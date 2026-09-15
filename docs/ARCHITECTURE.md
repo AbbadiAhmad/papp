@@ -107,7 +107,7 @@ Each **core** module above is itself permission-gated the same way a feature mod
 system_settings(key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_by UUID, updated_at TIMESTAMPTZ)
 ```
 
-Holds, at minimum: `auth.password_policy`, `auth.token_lifetimes` (access/refresh/idle/absolute), and `notifications.templates.*` (D22, see §12.3). Read through a small cached settings service (invalidated on write) rather than passed around as raw config, so every consumer (`AuthModule`, `SessionsModule`, `NotificationsModule`) always sees the current value without a restart. Every write to `system_settings` goes through the normal `@Audit(...)` path like any other update — a policy change is itself an accountable action.
+Holds, at minimum: `auth.password_policy`, `auth.token_lifetimes` (access/refresh/idle/absolute), `notifications.templates.*` (D22, see §12.3), and `security.public_endpoint_rate_limit` (D34, per-IP rate limit for public/anonymous routes, §7.5). Read through a small cached settings service (invalidated on write) rather than passed around as raw config, so every consumer (`AuthModule`, `SessionsModule`, `NotificationsModule`) always sees the current value without a restart. Every write to `system_settings` goes through the normal `@Audit(...)` path like any other update — a policy change is itself an accountable action.
 
 Exposed to admins from a **Users module → Settings** screen (tabs: Password Policy, Session Timing, Notification Templates), permission-gated like anything else (`users.settings.view` / `users.settings.update`) — not hardcoded to `admin` (§7.4 stays the only hardcoded-role exception in the codebase).
 
@@ -138,13 +138,17 @@ Permissions are **registered by each module's manifest** (core platform register
 
 Rule D12 ("admin can always reach the Permissions page regardless of grants") is implemented as a single, explicit, code-reviewed bypass: the Permissions page's guard checks `role.code === 'admin'` **in addition to** the normal permission check (`OR`, not instead of). This is the **only** place in the codebase allowed to special-case a role by name — documented here so it's never "reinvented" elsewhere by accident. Every other page/action/API must go through the normal permission table with no hardcoded role checks. This rule is also encoded in the AI-agent skill (`.claude/skills/papp-add-feature/SKILL.md`) so future generated code doesn't add new hardcoded role checks.
 
+### 7.5 Public / anonymous routes (D34)
+
+Not every route requires a logged-in user — a module may need a directly-shareable link (e.g. a future survey module's `/survey/:surveyId`) reachable by anyone with the URL, no session. This is a first-class, data-driven pattern (`"access": "public"` on a manifest route entry), not a special case per module — full design in `docs/MODULE_SPEC.md` §7. In short: `@Public()` opts a specific backend endpoint out of the auth requirement (the guard still runs, it just allows a missing user for that endpoint); RBAC permissions don't apply to anonymous requests (any access rule, like "this record must be published," is business logic in the module's service, not a permission check); public **write** endpoints must apply the shared `ThrottlerGuard` with an admin-tunable per-IP limit (`system_settings` key `security.public_endpoint_rate_limit`, same pattern as §6.3); and `audit_log` gets an `actor_type` column (§8.1) so anonymous actions are still traceable by IP/user-agent even with no user to attribute them to.
+
 ## 8. Audit logging
 
 ### 8.1 Data model
 
 ```
 audit_log(
-  id, occurred_at, actor_user_id, actor_session_id,
+  id, occurred_at, actor_user_id, actor_session_id, actor_type,  -- actor_type: 'user' | 'system' | 'anonymous'
   category,            -- e.g. "auth", "user_management", "permissions", "library.books"
   entity_type,          -- e.g. "User", "Role", "Book"
   entity_id,
@@ -154,6 +158,8 @@ audit_log(
   ip_address, user_agent
 )
 ```
+
+`actor_user_id` is nullable: `actor_type = 'system'` for platform-triggered actions (e.g. a scheduled job, if one is ever added) and `actor_type = 'anonymous'` for actions taken through a public/unauthenticated route (§7.5) — IP address and user agent remain the identifying trace for those. `actor_type = 'user'` always has a non-null `actor_user_id`.
 
 `category` is always the owning module's key (`core.users`, `library.books`, …) so the audit screen can filter by module — this is what "the entity of the entry should be categorized" means in the data model.
 

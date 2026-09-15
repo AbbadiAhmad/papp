@@ -95,8 +95,20 @@ modules/library-catalog/
     }
   ],
 
+  "routes": [
+    // Every frontend route the module owns, not just the ones in "menu" — includes detail pages,
+    // and any route meant to be reached by a direct/shared link rather than site navigation.
+    // See §7 "Public / shareable routes" for the "public" access level.
+    {
+      "pattern": "/library/books/:bookId",
+      "access": "authenticated",              // default if omitted
+      "requiredPermission": "library_catalog.books.view",
+      "component": "frontend/pages/BookDetailPage.tsx"
+    }
+  ],
+
   "frontend": {
-    "basePath": "/library",                   // route prefix this module owns; install-time collision check against other installed modules
+    "basePath": "/library",                   // route prefix this module owns; install-time collision check against other installed modules — every entry in "menu" and "routes" must fall under this prefix
     "entry": "frontend/routes.tsx",
     "landingPage": "/library/books"            // where "open module" / its top menu entry lands
   },
@@ -154,3 +166,39 @@ module_migrations(
 - Never skip the `@Audit(...)` decorator on a create/update/delete endpoint.
 - Never ship without an `ar` locale file (blocked at install validation).
 - Never mark a field containing a secret without `@Sensitive()`.
+- Never mark a **write** endpoint `access: "public"` without an accompanying abuse-mitigation note in the module's own docs (rate limiting and/or a resource-state check) — see §7.3.
+
+## 7. Public / shareable routes
+
+Some modules need a URL a link can be shared to and opened by someone with **no login at all** — your example: a survey module exposing `/survey/:surveyId` so a link can be handed out and filled in by anyone. This is a first-class, data-driven pattern, not a one-off hack per module.
+
+### 7.1 Declaring a public route
+
+Any entry in a module's `manifest.json` **`routes`** array (§2) can set `"access": "public"` instead of the default `"authenticated"`. A public route:
+- Never redirects to the login page — the frontend router mounts it directly, no session required.
+- Has **no `requiredPermission`** — permissions are an RBAC concept for logged-in users; an anonymous visitor has no roles to check. Any access rule for a public route (e.g. "this survey must currently be published/open") is **business logic in the module's own service**, not an RBAC permission.
+- Its dynamic segment (`:surveyId` above) is exactly the same React Router / NestJS `:param` mechanism as any other route — nothing special is needed to support "the ID is in the URL."
+
+### 7.2 Matching backend endpoint
+
+The controller method backing a public route is marked with a `@Public()` decorator, checked by the global `JwtAuthGuard` itself (not bypassed by omitting the guard — the guard is still applied everywhere, it just short-circuits to "no user" instead of rejecting when it sees `@Public()`). `PermissionGuard` similarly no-ops when there's no authenticated user *and* the route is marked public; it still rejects an unauthenticated request to any endpoint that isn't. This keeps "every endpoint goes through both guards, no exceptions" true (`FEATURE_TEMPLATE.md` §1) while still allowing deliberate, explicit public access.
+
+```ts
+@Get('public/:surveyId')
+@Public()
+async getPublicSurvey(@Param('surveyId') id: string) {
+  return this.surveys.getIfPublished(id);   // service enforces "published" state itself — 404, not 403, if not
+}
+```
+
+### 7.3 Public write endpoints need an abuse-mitigation plan
+
+A public **read** (viewing a survey) is low-risk. A public **write** (submitting a survey response, anonymously, from the open internet) is a standing abuse vector — bots, spam, scraping. Any module adding one must apply the platform's shared `ThrottlerGuard` (per-IP rate limit, default a conservative limit set in `system_settings` under `security.public_endpoint_rate_limit`, admin-tunable like password policy, §6.3 of `ARCHITECTURE.md`) and document in the module's own notes why the limit chosen is reasonable for that action. This isn't optional — see the "never" list in §6.
+
+### 7.4 Audit logging for anonymous actions
+
+`audit_log.actor_user_id` is nullable; an `actor_type` column (`'user' | 'system' | 'anonymous'`) distinguishes "no user because it's a background job" from "no user because it's a genuine anonymous visitor." IP address and user agent are still captured for anonymous actions — they're the only identifying trace available, which is exactly why they matter more here, not less.
+
+### 7.5 Route ownership stays simple
+
+A module's `basePath` (§2) is still the single collision-checked namespace boundary — `/survey` belongs entirely to the survey module, public and authenticated routes alike. Nothing new is needed for uniqueness beyond what §4 step 2 already validates; `/survey/:surveyId` and `/survey/manage` simply both nest under the one already-reserved prefix.

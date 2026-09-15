@@ -55,6 +55,14 @@ You confirmed "dynamic install, orchestrated restart": installing a module from 
 
 D22–D24 together mean the Users module needs a **Settings** sub-area, not just user/role CRUD: a small `system_settings` table (key, value `jsonb`, `updated_by`, `updated_at`) holding password policy, session/token lifetimes, and notification templates, editable from an admin screen, read by `AuthModule`/`SessionsModule`/`NotificationsModule` at runtime (cached, invalidated on change) instead of reading fixed config constants. Changes to these settings go through the normal audit log like any other update. This is reflected in `ARCHITECTURE.md` §6 and §12 (Notification Center).
 
+## Public/shareable routes (added after you raised the survey-link example)
+
+| # | Decision | Status |
+|---|---|---|
+| D34 | Modules can declare individual routes as `"access": "public"` in their manifest (`MODULE_SPEC.md` §2/§7) — reachable with no login, dynamic ID segments included (e.g. `/survey/:surveyId`). Backend pairs this with a `@Public()` decorator that the existing `JwtAuthGuard`/`PermissionGuard` explicitly recognize (guards stay applied everywhere, no bypassed endpoints) rather than an ad-hoc unguarded controller. Public **write** endpoints must use the shared, admin-tunable `ThrottlerGuard` (`system_settings` key `security.public_endpoint_rate_limit`) as an abuse-mitigation baseline. `audit_log` gains an `actor_type` (`user`/`system`/`anonymous`) column so anonymous actions stay traceable by IP/user-agent. | DECIDED |
+
+This generalizes the very first requirement's "default page (public or restricted with hooks)" line into a concrete, reusable mechanism rather than leaving it implicit.
+
 ## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |

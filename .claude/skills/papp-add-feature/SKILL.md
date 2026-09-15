@@ -14,8 +14,9 @@ Read these first if not already in context: `docs/ARCHITECTURE.md`, `docs/MODULE
 
 ## Every new endpoint must have
 
-- [ ] A permission code declared in the module's `manifest.json` `permissions` array (never invent a code inline only in the controller).
-- [ ] `@RequirePermission('<code>')` on the controller method (or class, if the whole controller shares one gate) — via `PermissionGuard`, applied alongside `JwtAuthGuard`. No endpoint is ever permission-check-free, including read-only ones, unless it's genuinely public (must be called out explicitly and justified — public endpoints are rare and reviewed carefully).
+- [ ] A permission code declared in the module's `manifest.json` `permissions` array (never invent a code inline only in the controller) — **unless** it's a deliberate public route (next bullet).
+- [ ] `@RequirePermission('<code>')` on the controller method (or class, if the whole controller shares one gate) — via `PermissionGuard`, applied alongside `JwtAuthGuard`. No endpoint is ever permission-check-free, including read-only ones, unless it's genuinely public.
+- [ ] If the endpoint is meant to be reachable with no login (a shareable link, per `docs/MODULE_SPEC.md` §7): the matching frontend route has `"access": "public"` in the manifest's `routes` array, the backend method has `@Public()`, and any access rule is enforced in the service layer (not a permission check — there's no user to check). If it's a **write**, it must also use the shared `ThrottlerGuard` (`system_settings.security.public_endpoint_rate_limit`) — this is not optional, see `MODULE_SPEC.md` §6.
 - [ ] `@Audit({ category, entityType, action })` on every create/update/delete endpoint. Read endpoints only get it if they expose another user's sensitive data.
 - [ ] A `defaultRolePermissions` entry in the manifest for every base role (`admin`, `library_assistant`, `finance`, `reader`), even if the value is an empty array — explicit "no access" beats an implicit gap.
 - [ ] **Never** a hardcoded role-name check (`user.role === 'admin'`, `roles.includes('finance')`, etc.) anywhere in feature/module code. The **only** exception in the entire codebase is the Permissions page's own guard, per `docs/ARCHITECTURE.md` §7.4 — if you think you need a second one, stop and raise it with the user instead of adding it.

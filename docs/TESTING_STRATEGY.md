@@ -57,12 +57,16 @@ For every mutating endpoint: perform the action, then assert an `audit_log` row 
 - A snapshot/lint test asserts every key present in a module's `en.json` also exists in `ar.json` (and vice versa) — catches "shipped without Arabic" and "forgot to translate the new key" both.
 - A component test renders one representative page in both `ar` (RTL) and `en` (LTR) and asserts `dir="rtl"`/`dir="ltr"` propagates to the root and that number/date formatting output uses Latin digits and the Gregorian calendar in both.
 
-## 6. Module lifecycle tests
+## 6. Public/anonymous route tests
+
+For any endpoint marked `@Public()`: an e2e test asserts it's reachable with **no** `Authorization` header (not a 401), that `audit_log` (if the action is audited) records `actor_type = 'anonymous'` with a null `actor_user_id` but a captured IP/user-agent, and — for a public **write** endpoint — that the `ThrottlerGuard` actually rejects a burst of requests over the configured per-IP limit (`system_settings.security.public_endpoint_rate_limit`) with a 429, not silently accepting unlimited requests.
+
+## 7. Module lifecycle tests
 
 - Installing a module with a manifest that fails validation (bad `compatibleAppVersion`, missing `ar` locale, colliding `basePath`) is rejected and leaves no partial state (`module_registry` row, if any, is `failed`, not `installed`).
 - Installing twice is idempotent / clearly rejected (no duplicate migrations applied — checksum check catches an edited already-applied migration file).
 - Upgrade only applies new migrations and does not re-apply `defaultRolePermissions` over existing grants (regression test using a manually-altered grant, asserted unchanged after upgrade).
 
-## 7. CI gate (once code exists)
+## 8. CI gate (once code exists)
 
 All of the above run on every push to the single branch (D4) before merge/deploy is considered safe: `lint → typecheck → unit → integration (testcontainers) → e2e (backend) → frontend unit → frontend e2e (smoke subset) → manifest/locale lint`. Coverage target: **80%** lines on `PermissionGuard`, `AuditInterceptor`, `AuthModule`, and the module registry specifically (the security-critical core) — no fixed global percentage mandated elsewhere, since chasing a number on UI code isn't the goal.
