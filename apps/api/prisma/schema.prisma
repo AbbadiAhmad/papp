@@ -1,0 +1,56 @@
+// papp — Prisma schema (hand-maintained, mirrors the raw SQL migrations under
+// apps/api/src/core/migrations/*.sql — see docs/BUILD_PLAN.md §1/§2 and D16 in
+// docs/DECISIONS.md). `prisma generate` only — `prisma migrate` is never run in
+// this repo; schema changes ship as a new raw .sql migration file first, and
+// this file is updated by hand to match what that SQL actually created.
+//
+// Phase 0 scope: only the module registry / migration-tracking tables. The
+// rest of the core model set (User, Role, Permission, AuditLog, ...) arrives
+// phase by phase alongside the migration file that creates it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ModuleStatus {
+  installing
+  installed
+  upgrading
+  disabled
+  uninstalling
+  failed
+
+  @@map("module_status")
+}
+
+/// A row per installed "module" — including the core platform itself, tracked
+/// as the non-uninstallable pseudo-module `key = "core"` (see BUILD_PLAN.md §1).
+model ModuleRegistryEntry {
+  key              String       @id
+  version          String
+  status           ModuleStatus
+  installedAt      DateTime?    @map("installed_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  manifestSnapshot Json?        @map("manifest_snapshot")
+
+  @@map("module_registry")
+}
+
+/// One row per applied `.sql` migration file, keyed by (moduleKey, filename),
+/// checksum-verified by MigrationRunnerService so a shipped migration can
+/// never be silently re-applied after being edited.
+model ModuleMigration {
+  id        String   @id @default(uuid()) @db.Uuid
+  moduleKey String   @map("module_key")
+  filename  String
+  checksum  String
+  appliedAt DateTime @default(now()) @map("applied_at")
+
+  @@unique([moduleKey, filename])
+  @@map("module_migrations")
+}

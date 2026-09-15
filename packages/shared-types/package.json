@@ -1,0 +1,18 @@
+{
+  "name": "@papp/shared-types",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Cross-cutting TypeScript types/DTOs shared between apps/api and apps/web (AuthUser, ManifestSchema, permission-code unions, etc. — populated phase by phase).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.8",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}

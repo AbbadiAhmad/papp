@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.npm/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# prisma generated client (regenerated via `prisma generate`, never committed)
+apps/api/generated/
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# misc
+*.local
