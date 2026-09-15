@@ -215,6 +215,60 @@ model AuditLog {
   @@map("audit_log")
 }
 
+// --- Phase 4: Notification Center ------------------------------------------
+// See apps/api/src/core/migrations/0006_create_notifications.sql for the raw
+// DDL this mirrors (including the two target-shape CHECK constraints Prisma
+// cannot express), and docs/ARCHITECTURE.md §12 / docs/BUILD_PLAN.md §2.
+
+enum NotificationTargetType {
+  user
+  role
+  all_users
+
+  @@map("notification_target_type")
+}
+
+/// One row per "send" event (D20/D21). `bodyMarkdown` is Markdown SOURCE —
+/// rendered to sanitized HTML at send/display time, never stored
+/// pre-rendered (§12.1). `sentBy`/`targetId` are deliberately NOT relations:
+/// a sent notification must outlive the sender/role it describes (same
+/// rationale as AuditLog's actor columns).
+model Notification {
+  id           String                 @id @default(uuid()) @db.Uuid
+  createdAt    DateTime               @default(now()) @map("created_at")
+  category     String
+  title        String
+  bodyMarkdown String                 @map("body_markdown")
+  /// null = system-generated (e.g. a password reset notice).
+  sentBy       String?                @db.Uuid @map("sent_by")
+  targetType   NotificationTargetType @map("target_type")
+  /// user_id or role_id; null when targetType = 'all_users'.
+  targetId     String?                @db.Uuid @map("target_id")
+
+  recipients NotificationRecipient[]
+
+  @@index([createdAt])
+  @@index([category])
+  @@map("notifications")
+}
+
+/// The in-app fan-out (§12.1): one row per targeted user per notification —
+/// drives the bell icon / unread count. `emailedAt` records the moment the
+/// email channel actually handed the rendered mail to the transport (null
+/// for in-app-only categories or when the email failed).
+model NotificationRecipient {
+  notificationId String    @db.Uuid @map("notification_id")
+  userId         String    @db.Uuid @map("user_id")
+  readAt         DateTime? @map("read_at")
+  emailedAt      DateTime? @map("emailed_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId, readAt])
+  @@map("notification_recipients")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

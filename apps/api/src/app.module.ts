@@ -5,6 +5,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './core/auth/auth.module';
 import { MigrationRunnerService } from './core/module-registry/migration-runner.service';
+import { NotificationsModule } from './core/notifications/notifications.module';
 import { PermissionsModule } from './core/permissions/permissions.module';
 import { RolesModule } from './core/roles/roles.module';
 import { SessionsModule } from './core/sessions/sessions.module';
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
     SettingsModule,
     PermissionsModule,
     AuditModule,
+    NotificationsModule,
     AuthModule,
     SessionsModule,
     UsersModule,

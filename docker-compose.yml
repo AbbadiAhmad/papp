@@ -28,6 +28,13 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-papp}:${POSTGRES_PASSWORD:-papp}@db:5432/${POSTGRES_DB:-papp}?schema=public
       PORT: ${PORT:-3000}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — see .env.example}
+      # Notification Center email channel (all optional — when SMTP_HOST is
+      # unset the api logs rendered mail instead of delivering it).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "${PORT:-3000}:3000"
     healthcheck:

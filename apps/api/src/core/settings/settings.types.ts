@@ -25,5 +25,29 @@ export interface TokenLifetimes {
   absoluteTimeoutDays: number;
 }
 
+/**
+ * system_settings keys: "notifications.templates.<templateKey>" (D22, §12.3).
+ * One freeform {subject, bodyMarkdown} pair per template — operator-authored
+ * CONTENT in whatever language the admin chooses, NOT developer i18n keys.
+ * The only placeholder the Phase 4 renderer substitutes is {{name}} (the
+ * recipient's display name) — see NotificationsService.
+ */
+export interface NotificationTemplate {
+  subject: string;
+  bodyMarkdown: string;
+}
+
+/**
+ * system_settings key: "notifications.categories" — which categories ALSO
+ * go out via email (every send always fans out in-app rows regardless).
+ * A category absent from this map defaults to in-app only.
+ */
+export type NotificationCategoriesConfig = Record<string, { email: boolean }>;
+
 export const PASSWORD_POLICY_KEY = 'auth.password_policy';
 export const TOKEN_LIFETIMES_KEY = 'auth.token_lifetimes';
+export const NOTIFICATION_CATEGORIES_KEY = 'notifications.categories';
+/** Prefix for every template key; full key = prefix + templateKey. */
+export const NOTIFICATION_TEMPLATE_KEY_PREFIX = 'notifications.templates.';
+export const PASSWORD_RESET_TEMPLATE_KEY = 'notifications.templates.password_reset';
+export const FORCE_PASSWORD_CHANGE_TEMPLATE_KEY = 'notifications.templates.force_password_change';

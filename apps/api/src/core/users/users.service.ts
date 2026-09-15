@@ -1,10 +1,17 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertPasswordMeetsPolicy } from '../auth/password-policy.util';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
-import { PASSWORD_POLICY_KEY, PasswordPolicy } from '../settings/settings.types';
+import {
+  FORCE_PASSWORD_CHANGE_TEMPLATE_KEY,
+  NotificationTemplate,
+  PASSWORD_POLICY_KEY,
+  PASSWORD_RESET_TEMPLATE_KEY,
+  PasswordPolicy,
+} from '../settings/settings.types';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PublicUser, toPublicUser } from './user.presenter';
@@ -13,9 +20,16 @@ const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    // @Optional + appended last: same fixture-friendliness rule as
+    // SettingsService's AuditLogWriter — lightweight unit fixtures may
+    // construct UsersService(prisma, settings) without the notification
+    // pipeline; in the real app UsersModule always provides it.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   private getPasswordPolicy(): Promise<PasswordPolicy> {
@@ -59,7 +73,7 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<PublicUser> {
-    await this.findById(id); // 404s consistently before attempting the write
+    const before = await this.findById(id); // 404s consistently before attempting the write
 
     const data: Prisma.UserUpdateInput = {
       email: dto.email,
@@ -82,11 +96,61 @@ export class UsersService {
       data.mustChangePassword = dto.mustChangePassword;
     }
 
+    let user;
     try {
-      const user = await this.prisma.user.update({ where: { id }, data });
-      return toPublicUser(user);
+      user = await this.prisma.user.update({ where: { id }, data });
     } catch (error) {
       throw this.translateUniqueConstraintError(error);
+    }
+
+    // Phase 4 wiring (BUILD_PLAN.md Phase 4): an admin-driven password
+    // reset, or newly flipping mustChangePassword on, notifies the affected
+    // user through the Notification Center using the admin-editable
+    // template (in-app always; email too when the category has email
+    // enabled AND SMTP is configured). Runs AFTER the update committed and
+    // never fails it. A password reset wins over the bare flag flip — the
+    // reset notice already tells the user a new password is required.
+    if (dto.password !== undefined) {
+      await this.notifyFromTemplate(user.id, 'auth.password_reset', PASSWORD_RESET_TEMPLATE_KEY);
+    } else if (dto.mustChangePassword === true && !before.mustChangePassword) {
+      await this.notifyFromTemplate(user.id, 'auth.force_password_change', FORCE_PASSWORD_CHANGE_TEMPLATE_KEY);
+    }
+
+    return toPublicUser(user);
+  }
+
+  /**
+   * Sends the notification described by an admin-editable template
+   * (ARCHITECTURE.md §12.3): the template's `subject` becomes the title and
+   * its `bodyMarkdown` the body — {{name}} is substituted per recipient at
+   * render time by NotificationsService. `sentBy: null` because these are
+   * system-generated notices (§12.1), triggered by an admin action whose
+   * accountability already lives in the users PATCH audit row.
+   */
+  private async notifyFromTemplate(userId: string, category: string, templateKey: string): Promise<void> {
+    if (!this.notifications) {
+      this.logger.error(
+        `User ${userId} should have received a "${category}" notification but NO NotificationsService is ` +
+          'wired — this must never occur outside an isolated unit-test fixture.',
+      );
+      return;
+    }
+    try {
+      const template = await this.settings.get<NotificationTemplate>(templateKey);
+      await this.notifications.send({
+        category,
+        title: template.subject,
+        bodyMarkdown: template.bodyMarkdown,
+        targetType: 'user',
+        targetId: userId,
+        sentBy: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `FAILED to send the "${category}" notification to user ${userId} — the underlying user update ` +
+          'itself succeeded.',
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 

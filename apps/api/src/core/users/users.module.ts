@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ExcelImportController } from './excel-import.controller';
 import { ExcelImportService } from './excel-import.service';
 import { UsersController } from './users.controller';
@@ -10,6 +11,9 @@ import { UsersService } from './users.service';
   // `GET /users/:id` would otherwise swallow `GET /users/export` (treating
   // "export" as the :id param) before ExcelImportController's literal route
   // ever gets a chance to match.
+  // NotificationsModule: the password-reset / force-password-change notices
+  // UsersService sends on the users PATCH path (BUILD_PLAN.md Phase 4).
+  imports: [NotificationsModule],
   controllers: [ExcelImportController, UsersController],
   providers: [UsersService, ExcelImportService],
   exports: [UsersService],

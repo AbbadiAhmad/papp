@@ -3,11 +3,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogWriter } from '../audit/audit-log.writer';
 
 /**
- * Minimal `system_settings` read/write service (see docs/BUILD_PLAN.md,
- * Phase 1 note: "plumb early, feature later" — Auth needs
- * `auth.password_policy`/`auth.token_lifetimes` values immediately, so this
- * is deliberately bare: no in-memory caching (that arrives in Phase 4 with
- * the admin Settings screen).
+ * `system_settings` read/write service (ARCHITECTURE.md §6.3).
+ *
+ * Phase 4 upgrade: `get()` now serves from an in-memory cache after the
+ * first read of each key ("read through a small cached settings service"),
+ * and `set()` invalidates that key after the DB write, so read-after-write
+ * is always consistent within this process. Only successful lookups are
+ * cached — a missing key keeps throwing on every call (it is a seeding
+ * bug, not a cacheable fact). Single-process cache is sufficient for the
+ * single-`api`-container docker-compose topology (D5); if the api is ever
+ * scaled out, invalidation needs a cross-process signal — flagged in the
+ * Phase 4 report.
  *
  * Phase 3 retrofit: every `set()` writes an audit row (category
  * 'core.settings', old/new value) through AuditLogWriter, which also runs
@@ -34,14 +40,39 @@ export class SettingsService {
     @Optional() private readonly auditLogWriter?: AuditLogWriter,
   ) {}
 
+  /**
+   * key -> cached value. Values are treated as immutable by every consumer
+   * (they come straight out of a JSONB column); nothing hands out a copy,
+   * so callers must never mutate what `get()` returns.
+   */
+  private readonly cache = new Map<string, unknown>();
+
   async get<T>(key: string): Promise<T> {
+    if (this.cache.has(key)) {
+      return this.cache.get(key) as T;
+    }
     const row = await this.prisma.systemSetting.findUnique({ where: { key } });
     if (!row) {
       throw new InternalServerErrorException(
         `system_settings key "${key}" is missing. It should have been seeded by a core migration.`,
       );
     }
+    this.cache.set(key, row.value);
     return row.value as T;
+  }
+
+  /**
+   * All keys starting with `prefix` (e.g. every `notifications.templates.*`
+   * row), keyed by FULL key. Deliberately uncached: it exists for the rare
+   * admin Settings screen read, and keeping a prefix-scan coherent with the
+   * per-key cache isn't worth it — the hot path (`get()`) stays cached.
+   */
+  async getManyByPrefix(prefix: string): Promise<Record<string, unknown>> {
+    const rows = await this.prisma.systemSetting.findMany({
+      where: { key: { startsWith: prefix } },
+      orderBy: { key: 'asc' },
+    });
+    return Object.fromEntries(rows.map((row) => [row.key, row.value]));
   }
 
   async set(key: string, value: unknown, updatedBy?: string): Promise<void> {
@@ -52,6 +83,11 @@ export class SettingsService {
       update: { value: value as never, updatedBy },
       create: { key, value: value as never, updatedBy },
     });
+
+    // Invalidate (rather than overwrite) AFTER the successful write: the
+    // next get() re-reads what the DB actually persisted, so the cache can
+    // never drift from a value the driver normalized differently.
+    this.cache.delete(key);
 
     if (!this.auditLogWriter) {
       this.logger.error(
