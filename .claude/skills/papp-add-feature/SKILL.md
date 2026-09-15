@@ -20,7 +20,11 @@ Read these first if not already in context: `docs/ARCHITECTURE.md`, `docs/MODULE
 - [ ] `@Audit({ category, entityType, action })` on every create/update/delete endpoint. Read endpoints only get it if they expose another user's sensitive data.
 - [ ] A `defaultRolePermissions` entry in the manifest for every base role (`admin`, `library_assistant`, `finance`, `reader`), even if the value is an empty array — explicit "no access" beats an implicit gap.
 - [ ] **Never** a hardcoded role-name check (`user.role === 'admin'`, `roles.includes('finance')`, etc.) anywhere in feature/module code. The **only** exception in the entire codebase is the Permissions page's own guard, per `docs/ARCHITECTURE.md` §7.4 — if you think you need a second one, stop and raise it with the user instead of adding it.
-- [ ] A permission-matrix e2e test per `docs/TESTING_STRATEGY.md` §2 covering all four base roles + anonymous.
+- [ ] A permission-matrix e2e test per `docs/TESTING_STRATEGY.md` §2 covering all four base roles + anonymous — **unless** the base platform is still in its pre-Phase-9 build (see next section): write a Tier 1 unit test of the permission check instead, and note the deferred e2e coverage for the Phase 9 hardening pass.
+
+## Test tiering (D37) — read this before writing any test
+
+Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`docs/BUILD_PLAN.md` Phases 1–8), write **only Tier 1 tests** — fast unit tests with mocked dependencies (no Docker, no real DB, no browser) plus static/lint checks. Do **not** reach for Testcontainers, a really-booted app + real DB, or Playwright per-feature; that's Tier 2, deferred to the dedicated Phase 9 hardening pass so it's built once, against real CI Docker access, instead of fought repeatedly in a sandbox that can't run it. In place of Tier 2 coverage, demonstrate the feature actually works with a real manual/scripted smoke verification (curl or a scratch script against a reachable Postgres) and report the real output — this is reviewed but not committed as a test file. If you're working on or after Phase 9, this restriction is lifted — write full Tier 2 coverage as normal.
 
 ## Every new field that touches secrets
 

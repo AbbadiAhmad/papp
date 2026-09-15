@@ -70,6 +70,12 @@ This generalizes the very first requirement's "default page (public or restricte
 | D35 | **Prisma pinned to `^6.19.3`, not the newest `7.x`.** Prisma 7 removes the classic `datasource { url }` pattern in `schema.prisma` in favor of driver adapters + a separate `prisma.config.ts` — a real architectural change, not a patch bump. Prisma 6 is the newest version still compatible with the "hand-maintained `schema.prisma`, generate-only, raw-SQL migrations" approach this plan is built around (D16, `BUILD_PLAN.md` §1). Revisit deliberately if/when moving to Prisma 7 is wanted — it's real work, not a version-bump housekeeping task. | DECIDED (Developer agent call, Phase 0) |
 | D36 | **TypeScript pinned to `^6.0.3`, not the newest `7.x`.** `typescript-eslint` 8.70.0 (current) requires `typescript >=4.8.4 <6.1.0`; a newer TS would break the lint toolchain. Revisit once `typescript-eslint` supports TS 7. | DECIDED (Developer agent call, Phase 0) |
 
+## Testing sequencing (2026-09-15, during multi-agent build)
+
+| # | Decision | Status |
+|---|---|---|
+| D37 | **Test investment is tiered and sequenced, not uniform across every phase.** Tier 1 (fast, mocked-dependency unit tests + static lint checks, no Docker/DB/browser) is written continuously through Phases 1–8. Tier 2 (Testcontainers integration tests, full Supertest e2e, the permission-matrix multi-role sweep, Playwright browser e2e, CI coverage-gate enforcement) is deferred to a new dedicated `BUILD_PLAN.md` Phase 9 ("Test hardening"), run once against real CI Docker access rather than repeatedly fought against this dev sandbox's Docker restriction. Per-phase acceptance during Phases 1–8 substitutes a manual/scripted smoke verification for full e2e. Full rationale and tier definitions in `TESTING_STRATEGY.md` §0. | DECIDED |
+
 ## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |

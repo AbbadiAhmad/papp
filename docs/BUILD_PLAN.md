@@ -4,6 +4,8 @@ Status: buildable implementation plan derived from `ARCHITECTURE.md`, `MODULE_SP
 
 This plan is for three roles: an **Orchestrator** (sequences the work, not touched directly by this doc), a **Developer** agent (writes application code), and a **Tester** agent (writes tests). Both work **phase by phase, on the single branch** (D4) — a phase is not "done" until its acceptance criteria pass, and the next phase does not start until then. Within a phase, Developer and Tester own disjoint files (listed explicitly per phase) so they can work the same phase without merge conflicts.
 
+**Convention used throughout this plan — "tests are tiered" (D37):** every phase's "Tester builds" list below was originally written assuming full Tier 2 coverage (Testcontainers integration tests, real Supertest e2e, Playwright) alongside Tier 1 (fast mocked-dependency unit tests, static lint checks). That's since been revised — see `TESTING_STRATEGY.md` §0. **When actually executing Phases 1–8, build only the Tier 1 portion of each phase's Tester list** (unit tests with mocked dependencies, and any static/lint script); skip anything requiring Testcontainers, a really-booted app + real DB, or a browser — those are deferred to the new **Phase 9 — Test hardening**, added at the end of this document, which sweeps back across everything built in Phases 0–8 in one dedicated pass. In place of the deferred tests, each phase's Developer must still demonstrate the feature works via a real manual/scripted smoke verification (see TESTING_STRATEGY.md §0) — this is reviewed by the orchestrator but not committed as an automated test. (Phase 0 was built before this policy existed and already has some Tier 2 coverage committed — that's fine as-is, it doesn't need to be undone, it just isn't the pattern to repeat per-phase going forward.)
+
 **Convention used throughout this plan — "plumb early, feature later":** a few pieces of core infrastructure are needed by an earlier phase than the phase that "owns" the full feature (e.g. Auth needs `system_settings` values before the Settings admin screen exists). In those cases the earlier phase builds the minimal plumbing (a table + a bare service, no caching/admin UI) and the owning phase later extends it. This is called out explicitly at each occurrence so it's never mistaken for scope creep.
 
 ---
@@ -464,6 +466,22 @@ Each phase lists: what's built, the exact Developer/Tester file split, and "Done
 - Frontend: `BooksListPage` permission-gated rendering test, i18n completeness for `library_catalog` namespace.
 
 **Done when:** the module installs cleanly through the real admin UI (Phase 6) end-to-end (migrations run, permissions/menu/locales register, restart happens, routes mount on both frontend and backend), every test above passes, and the full CI pipeline (Phase 7) stays green with this module included.
+
+---
+
+### Phase 9 — Test hardening (Tier 2, production-readiness pass)
+
+Not part of the original 0–8 sequence — added per D37 once it became clear that fighting Testcontainers/Docker/Playwright setup fresh in every phase was costing far more agent effort than it was worth before the codebase had settled. This phase happens **after Phase 8**, once the whole base platform + the Library Catalog proof module exist, and is the single place Tier 2 coverage (per `TESTING_STRATEGY.md` §0) gets built — run against real CI Docker access (Phase 7's pipeline), not this dev sandbox.
+
+**Tester builds** (Developer's role in this phase is minor — fixing any real bugs Tier 2 coverage surfaces, not building new features):
+- Backend integration tests (Testcontainers Postgres) for every DB-touching service built in Phases 0–8: the migration runner (Phase 0 already has this — verify it still passes against the current schema), Auth/Sessions/Users (Phase 1), Roles/Permissions/Excel import (Phase 2), Audit incl. purge boundary (Phase 3), Notifications/Settings (Phase 4), ModuleRegistry lifecycle + I18n (Phase 5), Library Catalog (Phase 8).
+- Full backend e2e (Supertest against a really-booted app + real DB) for every endpoint across all phases, using the **now-fully-implemented** `test/support/permission-matrix.ts` helper (§2) — every endpoint gets the success/403/401 sweep across all four base roles, not just the phase that introduced it.
+- The public-route Tier 2 checks: the Phase 5 fixture public route and the Phase 8 real Library Catalog public route, both including `ThrottlerGuard` burst-rejection against the real docker-compose network topology (not `localhost`).
+- Frontend Playwright e2e per `TESTING_STRATEGY.md`: login, force-password-change, a `reader` genuinely blocked from a `finance`-only page even by direct URL, language switch (RTL/LTR + Latin-digit/Gregorian formatting), and a Library Catalog smoke flow.
+- Wire CI's coverage gate (`TESTING_STRATEGY.md` §8) for real: 80% lines on `PermissionGuard`, `AuditInterceptor`, `AuthModule`, `ModuleRegistryModule` — enforced as a failing check, not just aspirational text.
+- Sweep `docs/DECISIONS.md`/`BUILD_PLAN.md` risk items (§4 below) for ones that are only really provable under Tier 2 (e.g. risk #7's per-IP throttling against the real docker network) and confirm each has a passing test, not just a Tier 1 approximation.
+
+**Done when:** the full Tier 2 suite passes in real CI (Phase 7's pipeline, with working Docker access), the coverage gate is enforced and met, and every phase's original (now-fulfilled) Tier 2 "Done when" criteria — as originally specified before the D37 revision — are true. At this point the app is genuinely production-test-ready, not just feature-complete.
 
 ---
 

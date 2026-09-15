@@ -1,5 +1,26 @@
 # Testing Strategy
 
+## 0. Testing tiers — what to write now vs. defer (D37)
+
+Two tiers, deliberately sequenced differently across the project's timeline:
+
+**Tier 1 — lean, write continuously in every phase (Phases 1–8):**
+- Pure unit tests: business logic in services/guards/interceptors, with dependencies **mocked** (mock Prisma, no real DB, no containers, no network, no browser). Runs in seconds.
+- Static/lint checks: manifest⇄code permission consistency, locale completeness, "no hardcoded role name," and the `@Sensitive()` schema-scan test (it's pure Prisma-DMMF introspection — no DB connection needed, so it belongs in Tier 1 despite touching the schema).
+- Rule of thumb: if a test needs Docker, a real Postgres, a browser, or more than a couple seconds to run, it is **not** Tier 1.
+
+**Tier 2 — heavier, deferred to a dedicated hardening pass (`BUILD_PLAN.md` Phase 9, after Phase 8):**
+- Testcontainers-backed integration tests (real throwaway Postgres per run).
+- Full e2e tests (Supertest against a really-booted app + real DB), including the permission-matrix multi-role sweep (§2 below).
+- Playwright browser e2e.
+- CI coverage-gate enforcement (§8).
+
+**Why sequenced this way:** Phase 0's Tester agent spent ~800s and 119 tool calls fighting Testcontainers/ESM/Jest configuration to produce integration tests that still couldn't actually execute in this dev sandbox (Docker image pulls are egress-blocked here) — correct, well-written tests, but that cost repeated every single phase would slow the whole build far more than the tests are worth this early, before the shape of the code has settled. Instead: **Tier 1 tests are still mandatory every phase** (they're cheap and catch real logic bugs immediately), but Tier 2 is written **once**, in Phase 9, in one dedicated pass across everything built in Phases 0–8, run against real CI Docker access (Phase 7's pipeline) rather than fought against a sandbox that can't run it anyway.
+
+**Per-phase acceptance during Phases 1–8** is therefore: Tier 1 tests pass, `npm run build`/`npm run lint` clean, **and** a manual or scripted smoke verification (a curl transcript or a scratch script run against a real reachable Postgres — the same substitute the Phase 0/1 Developer agents already used) demonstrating the feature genuinely works end-to-end. That smoke verification is not committed as a test file; it's real command output pasted into the agent's report and reviewed by the orchestrator before commit — it substitutes for automated e2e until Phase 9 makes it permanent.
+
+Any "Tester builds" bullet elsewhere in `BUILD_PLAN.md` that names Testcontainers, a booted app + real DB, or Playwright is Tier 2 — skip it when that phase actually runs; Phase 9 lists the full deferred set.
+
 ## 1. Tooling
 
 | Layer | Tool | What it covers |
