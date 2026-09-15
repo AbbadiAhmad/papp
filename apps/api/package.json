@@ -9,7 +9,10 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,prisma}/**/*.ts\"",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.unit.config.ts",
+    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.integration.config.ts",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.e2e.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.3",
@@ -27,12 +30,18 @@
     "@nestjs/cli": "^12.0.1",
     "@nestjs/schematics": "^12.0.2",
     "@nestjs/testing": "^12.0.3",
+    "@testcontainers/postgresql": "^12.1.0",
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.6.0",
     "@types/pg": "^8.23.1",
+    "@types/supertest": "^6.0.3",
     "eslint": "^10.1.8",
+    "jest": "^30.5.1",
     "prisma": "^6.19.3",
     "source-map-support": "^0.5.21",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
