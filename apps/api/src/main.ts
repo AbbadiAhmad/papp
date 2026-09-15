@@ -1,6 +1,7 @@
 import 'reflect-metadata';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
@@ -45,7 +46,14 @@ async function bootstrap(): Promise<void> {
   await bootstrapRegistryTables();
 
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  app.enableCors({ credentials: true });
+  // Refresh tokens travel as an httpOnly cookie (see AuthController) — this
+  // is what makes `req.cookies` available to read them back.
+  app.use(cookieParser());
+  // DTOs (LoginDto, CreateUserDto, ...) rely on class-validator decorators;
+  // `whitelist` strips unknown properties, `transform` lets `@Type()`-free
+  // primitive coercion (e.g. route params) work as NestJS expects.
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   logger.log(`Applying core migrations from ${CORE_MIGRATIONS_DIR}...`);
   const migrationRunner = app.get(MigrationRunnerService);

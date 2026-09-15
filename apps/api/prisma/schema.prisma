@@ -54,3 +54,67 @@ model ModuleMigration {
   @@unique([moduleKey, filename])
   @@map("module_migrations")
 }
+
+// --- Phase 1: Auth + Sessions + Users core -------------------------------
+// See apps/api/src/core/migrations/0001_create_users.sql,
+// 0002_create_user_sessions.sql, 0003_create_system_settings.sql for the
+// raw DDL this mirrors, and docs/BUILD_PLAN.md §2 for the field outline.
+//
+// `failedLoginAttempts`/`lockedUntil` on User are additions beyond
+// BUILD_PLAN.md §2's literal outline — lockout (auth.password_policy) has
+// nowhere else to persist its running state. See 0001_create_users.sql's
+// header comment.
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  name                String
+  externalId          String?   @unique @map("external_id")
+  department          String?
+  /// @Sensitive
+  passwordHash        String    @map("password_hash")
+  mustChangePassword  Boolean   @default(false) @map("must_change_password")
+  isActive            Boolean   @default(true) @map("is_active")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  lastLoginAt         DateTime? @map("last_login_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  createdBy           String?   @db.Uuid @map("created_by")
+
+  sessions UserSession[]
+
+  @@map("users")
+}
+
+/// One row per issued refresh token / session (`id` doubles as the JWT `sid`
+/// claim). See ARCHITECTURE.md §6.1.
+model UserSession {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid @map("user_id")
+  /// @Sensitive
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  issuedAt         DateTime  @default(now()) @map("issued_at")
+  lastActiveAt     DateTime  @default(now()) @map("last_active_at")
+  expiresAt        DateTime  @map("expires_at")
+  ipAddress        String?   @map("ip_address")
+  userAgent        String?   @map("user_agent")
+  geoLocation      Json?     @map("geo_location")
+  revokedAt        DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_sessions")
+}
+
+/// Admin-tunable policy/threshold storage (D22/D23/D24) — password policy,
+/// token lifetimes, notification templates, etc. Read through
+/// SettingsService, never a hardcoded constant.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedBy String?  @db.Uuid @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
