@@ -21,6 +21,8 @@ Two tiers, deliberately sequenced differently across the project's timeline:
 
 Any "Tester builds" bullet elsewhere in `BUILD_PLAN.md` that names Testcontainers, a booted app + real DB, or Playwright is Tier 2 — skip it when that phase actually runs; Phase 9 lists the full deferred set.
 
+**Known Tier 1 gotcha (apps/api):** this project's Jest config runs tests as real ESM (`extensionsToTreatAsEsm` + `NODE_OPTIONS=--experimental-vm-modules`, needed because NestJS 12's own packages ship ESM-only — see Phase 0's commit history). Under that setup, `describe`/`it`/`expect`/`beforeEach`/`afterEach` work as ambient globals, but **`jest` itself does not** — a bare `jest.fn()`/`jest.spyOn(...)` throws `ReferenceError: jest is not defined`. Fix: explicitly `import { jest, describe, it, expect, ... } from '@jest/globals';` in any spec file that uses `jest.*`. Hit this once in Phase 1; documented here so it isn't rediscovered every phase.
+
 ## 1. Tooling
 
 | Layer | Tool | What it covers |
