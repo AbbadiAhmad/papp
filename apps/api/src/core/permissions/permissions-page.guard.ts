@@ -1,0 +1,70 @@
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import type { Request } from 'express';
+import { REQUIRE_PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
+import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { PermissionsService } from './permissions.service';
+
+/**
+ * *** THE single hard-coded D12 exception in the entire codebase. ***
+ *
+ * ARCHITECTURE.md §7.4 / docs/DECISIONS.md D12: "Admin always has access to
+ * the Permissions page, regardless of its own permission grants." This is
+ * the one, explicit, code-reviewed bypass — checking `role.code === 'admin'`
+ * IN ADDITION TO the normal permission check (OR, not instead of).
+ *
+ * This must be the ONLY file anywhere in this codebase containing a
+ * role-name-shaped conditional (`role.code === 'admin'`, `.includes('admin')`,
+ * a string-literal role check, etc.). If you think you need a second one —
+ * e.g. "admin should always see the Modules screen too" — the answer is
+ * always "grant admin the permission by default in the seed migration,
+ * don't hardcode a second bypass." Stop and raise it with the user instead.
+ * (Enforced later by scripts/lint-no-hardcoded-roles.ts, Phase 7 — this
+ * comment is the primary defense in the meantime.)
+ *
+ * Applied ONLY on the Permissions-grant-management endpoints
+ * (`PermissionsController`'s `roles/:roleId/grants` routes) in place of the
+ * normal `PermissionGuard` — everywhere else in the codebase uses
+ * `PermissionGuard`, with no admin bypass, full stop.
+ *
+ * Role codes are resolved FRESH from the database on every request
+ * (`PermissionsService.getRoleCodesForUser`), exactly like effective
+ * permissions — never cached, never read from a JWT claim. See this
+ * Developer agent's report for the reasoning on why roles are looked up
+ * fresh rather than embedded in the access token for this phase.
+ */
+@Injectable()
+export class PermissionsPageGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly permissionsService: PermissionsService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<Request>();
+    const user = (request as Request & { user?: AuthenticatedUser }).user;
+    if (!user) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    const roleCodes = await this.permissionsService.getRoleCodesForUser(user.userId);
+    if (roleCodes.includes('admin')) {
+      // *** THE one sanctioned exception — see file-level docblock. ***
+      return true;
+    }
+
+    const requiredPermission = this.reflector.getAllAndOverride<string | undefined>(REQUIRE_PERMISSION_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (!requiredPermission) {
+      return true;
+    }
+
+    const effectivePermissions = await this.permissionsService.getEffectivePermissionCodes(user.userId);
+    if (!effectivePermissions.has(requiredPermission)) {
+      throw new ForbiddenException(`Missing required permission: ${requiredPermission}`);
+    }
+    return true;
+  }
+}

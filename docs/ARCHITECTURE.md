@@ -85,7 +85,7 @@ Each **core** module above is itself permission-gated the same way a feature mod
 ### 6.1 Auth flow (JWT access + refresh, D18)
 
 1. `POST /auth/login` — validates credentials, checks lockout state (policy from `system_settings`, §6.4), issues:
-   - **Access token** (JWT, short-lived — default 15 min, admin-configurable via `system_settings`, D24): carries `sub` (user id), `roles`, `sid` (session id). Permissions are **not** embedded in the token (they'd go stale the instant an admin changes a grant); `PermissionGuard` always resolves the caller's effective permissions fresh from `role_permissions` on each request.
+   - **Access token** (JWT, short-lived — default 15 min, admin-configurable via `system_settings`, D24): carries exactly `sub` (user id) and `sid` (session id) — nothing else. Neither permissions **nor role codes** are embedded in the token (both would go stale the instant an admin changes a grant/assignment); `PermissionGuard` resolves effective permissions, and the D12 `PermissionsPageGuard` resolves role codes, fresh from the database on every request (D45 — supersedes an earlier draft of this line that had `roles` in the token).
    - **Refresh token** (opaque random string, long-lived — default 30 days, admin-configurable): stored **hashed** in `user_sessions`, returned to the client as an httpOnly, `Secure`, `SameSite=Strict` cookie (web) — never exposed to JS.
 2. `user_sessions` row captures: `session_id`, `user_id`, `refresh_token_hash`, `issued_at`, `last_active_at`, `expires_at`, `ip_address`, `user_agent`, `geo_location` (from IP lookup, A3), `revoked_at`.
 3. Every authenticated request updates `last_active_at` on that session (throttled, not literally every request, to avoid write amplification).

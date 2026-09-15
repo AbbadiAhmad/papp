@@ -82,7 +82,8 @@ model User {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   createdBy           String?   @db.Uuid @map("created_by")
 
-  sessions UserSession[]
+  sessions  UserSession[]
+  userRoles UserRole[]
 
   @@map("users")
 }
@@ -117,4 +118,72 @@ model SystemSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+// --- Phase 2: Roles + Permissions ----------------------------------------
+// See apps/api/src/core/migrations/0004_create_roles_permissions.sql for the
+// raw DDL + seed data this mirrors, and docs/ARCHITECTURE.md §7.1.
+
+/// The 4 base roles (D9) are seeded with `isSystem = true` and are never
+/// deletable. Admins may create additional custom roles later (isSystem = false).
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  nameI18nKey String   @map("name_i18n_key")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+/// The permission catalog — registered the same conceptual way a module
+/// manifest would (code, moduleKey, category, descriptionI18nKey). `core`'s
+/// own catalog is seeded by 0004_create_roles_permissions.sql; a future
+/// installed module registers its own permissions the same way at install time.
+model Permission {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique
+  moduleKey          String   @map("module_key")
+  category           String
+  descriptionI18nKey String   @map("description_i18n_key")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// The grant table admins edit from the Permissions page. A user's effective
+/// permission set = union of permissions granted to every role they hold —
+/// always resolved fresh from this table by PermissionGuard, never cached
+/// across requests and never trusted from a JWT claim (ARCHITECTURE.md §7.2).
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  grantedAt    DateTime @default(now()) @map("granted_at")
+  grantedBy    String?  @map("granted_by") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     String   @map("role_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  assignedBy String?  @map("assigned_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
 }

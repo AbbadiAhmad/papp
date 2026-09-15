@@ -102,6 +102,16 @@ The librarian (the actual future end user) gave detailed non-technical requireme
 | A11 | "RLS" in the librarian's security list (§36) means strict role-based access control at the API layer (already provided by `PermissionGuard`), not literal PostgreSQL Row-Level-Security policies. | The platform is single-tenant (D29) with no per-row multi-tenant isolation need; literal DB-level RLS would be new infrastructure with no clear use case under that constraint. Override if literal RLS was actually intended. |
 | A12 | "Staff" (supervisors/teachers) in the domain input are the same as platform Users holding the `library_assistant` role — not a separate non-login entity like the students question above. | Unlike students, the input describes staff actively using the scan screen/app themselves, which requires login — consistent with the existing role model. |
 
+## Phase 2 build decisions (2026-09-15, Developer agent calls — accepted by orchestrator, awaiting your review)
+
+| # | Decision | Status |
+|---|---|---|
+| D45 | **Role codes are never embedded in the JWT** — the access token stays exactly `{sub, sid}`. The D12 admin check (`PermissionsPageGuard`) resolves role codes fresh from the DB per request, same as effective permissions. More consistent with §7.2's "never trust from token," keeps Phase 1's token contract (and its tests) untouched; cost is one extra indexed join on the two grants-endpoint routes only. Supersedes BUILD_PLAN.md Phase 2's literal "add a `roles` claim" wording; ARCHITECTURE.md §6.1 updated to match. | DECIDED (agent call) |
+| D46 | **Each phase seeds only its own permission codes** — Phase 2 seeded the 17 codes whose enforcement points exist (`users.*`, `roles.*`, `permissions.*`, `sessions.*`); `audit.*`/`notifications.*`/`modules.*` are seeded by Phases 3/4/5's own migrations when their controllers arrive, exactly like a module registering permissions at install time. No dangling catalog rows for endpoints that don't exist yet. | DECIDED (agent call) |
+| D47 | **Self-scoped `/me` endpoints (`GET /users/me`, `GET /sessions/me`) carry no permission code** — they return only the caller's own data and must stay reachable by every role (a default `reader` holds zero user-management grants; gating `/users/me` behind `users.view` would lock users out of their own account view). `PermissionGuard` passes any undecorated handler through once authenticated, by design. | DECIDED (agent call) |
+| A13 | Excel user-import assigns the row's role **additively** (adds it to `user_roles` without removing other roles the user already holds) — not a full role-replace sync. Flag if you'd rather re-import fully replace a user's roles. | ASSUMED |
+| A14 | Default role→permission grant matrix seeded in Phase 2: `admin` = all 17, `library_assistant` = `users.view` only, `finance`/`reader` = none of the user-management set. First-cut defaults, freely adjustable from the Permissions page. | ASSUMED |
+
 ## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |

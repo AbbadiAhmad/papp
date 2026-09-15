@@ -2,13 +2,15 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AuthModule } from './core/auth/auth.module';
 import { MigrationRunnerService } from './core/module-registry/migration-runner.service';
+import { PermissionsModule } from './core/permissions/permissions.module';
+import { RolesModule } from './core/roles/roles.module';
 import { SessionsModule } from './core/sessions/sessions.module';
 import { SettingsModule } from './core/settings/settings.module';
 import { UsersModule } from './core/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
-  imports: [PrismaModule, SettingsModule, AuthModule, SessionsModule, UsersModule],
+  imports: [PrismaModule, SettingsModule, PermissionsModule, AuthModule, SessionsModule, UsersModule, RolesModule],
   controllers: [AppController],
   // MigrationRunnerService is provided here (rather than its own module) for
   // Phase 0 — it grows into the full ModuleRegistryModule in Phase 5 once
