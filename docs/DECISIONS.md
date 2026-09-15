@@ -76,6 +76,32 @@ This generalizes the very first requirement's "default page (public or restricte
 |---|---|---|
 | D37 | **Test investment is tiered and sequenced, not uniform across every phase.** Tier 1 (fast, mocked-dependency unit tests + static lint checks, no Docker/DB/browser) is written continuously through Phases 1–8. Tier 2 (Testcontainers integration tests, full Supertest e2e, the permission-matrix multi-role sweep, Playwright browser e2e, CI coverage-gate enforcement) is deferred to a new dedicated `BUILD_PLAN.md` Phase 9 ("Test hardening"), run once against real CI Docker access rather than repeatedly fought against this dev sandbox's Docker restriction. Per-phase acceptance during Phases 1–8 substitutes a manual/scripted smoke verification for full e2e. Full rationale and tier definitions in `TESTING_STRATEGY.md` §0. | DECIDED |
 
+## Librarian input on the future Library module (2026-09-15)
+
+The librarian (the actual future end user) gave detailed non-technical requirements for the Library module — captured in full in `docs/LIBRARY_MODULE_REQUIREMENTS.md`. This is domain input for Phase 8+, not something being built now. Two platform-level architecture requests came with it, plus several gaps/open questions the domain input surfaced:
+
+| # | Decision/gap | Status |
+|---|---|---|
+| D38 | **"Roles and permissions defined by every module's manifest" — already satisfied, no change needed.** Confirmed: `MODULE_SPEC.md` §2 already has modules declare their own `permissions` + `defaultRolePermissions`, exactly like GibbonEdu. | CONFIRMED, no action |
+| D39 | **"Settings defined within the module (Odoo-style)" — was a real gap, now closed.** Added a `settings` array to the module manifest (`MODULE_SPEC.md` §2/§8): a module declares its own admin-editable `system_settings` keys (namespaced `<moduleKey>.<name>`), seeded with defaults on first install only (same clobber-avoidance rule as `defaultRolePermissions`), rendered generically in the core Settings screen. Directly motivated by the librarian's request for admin-editable `loan_period_days`/`fine_per_day`/`max_books_per_student` (`LIBRARY_MODULE_REQUIREMENTS.md` §8). | DECIDED |
+| D40 | "Platform should be flexible to host multiple modules, not necessarily the library" — reaffirms the existing design goal (`ARCHITECTURE.md` §1); no architecture change, just a standing constraint to keep honoring as Library-specific requirements come in (nothing library-specific should leak into core). | CONFIRMED, no action |
+
+### Open questions raised by the domain input — need your decision before Phase 8
+
+| # | Question | My read / recommendation |
+|---|---|---|
+| Q1 | **Are library "students/patrons" the same as the platform's `reader` role (real login-capable Users), or a separate lightweight entity with no login at all?** The librarian describes students as scanned-by-staff, printed-card entities — never mentions them logging in themselves. The base platform's original requirements named `reader` as one of four core roles, implying login capability. This materially changes the Phase 8+ data model (does a "student" get a row in `users` at all?). | Leaning toward a **separate lightweight entity** (e.g. `library_circulation.students`, no password/session/login) — forcing thousands of non-logging-in school children into the `users`/auth/session system would be real overhead (password policy, lockouts, sessions — none of which make sense for them) for no benefit today. A student record could optionally *link* to a real `reader` User later if self-service (viewing your own reading history online) is ever wanted. **Needs your confirmation** — this is exactly the kind of decision you asked to be consulted on. |
+| Q2 | **Should the Excel-import "preview + per-row error report before any save" pattern (`LIBRARY_MODULE_REQUIREMENTS.md` §15) be retrofitted into Phase 2's Users import now, or built later as a shared framework once a second consumer (a Library module) actually needs it?** Phase 2 (in progress) currently only has an upsert + rejected-rows report, not a pre-save preview screen. | Recommend: ship Phase 2's simpler version now (don't block current work), but treat "generalize into a shared Excel-import framework with preview" as a named, tracked follow-up rather than something Phase 8 quietly reinvents from scratch. Flagging for your call on timing. |
+| Q3 | **Is a generic backup/restore capability needed as a base-platform feature, or does comprehensive per-entity Excel export (already required) satisfy the librarian's "backup" ask?** `ARCHITECTURE.md` has no generic backup/restore design today. | No recommendation yet — this has real infra implications (where backup files live, retention, restore process) that deserve a deliberate decision, not a default. |
+| Q4 | **Module boundaries for the library domain**: the librarian's own description of the financial piece ("depends on the book and book-browsing modules") suggests three cooperating modules — `library_catalog`, `library_circulation`, `library_finance` — rather than one monolithic "Library Catalog" module as `BUILD_PLAN.md` Phase 8 currently assumes. | Recommend adopting the three-module split — cleaner permission boundaries (matches the `finance` role's own manifest-declared permissions naturally) and a second real proof of the `dependsOn` mechanism beyond just Phase 8's original single-module scope. Not urgent to decide now (Phase 8 is still several phases away) but worth confirming before that phase starts. |
+
+### Assumptions made in interpreting the domain input (flag if wrong)
+
+| # | Assumption | Why |
+|---|---|---|
+| A11 | "RLS" in the librarian's security list (§36) means strict role-based access control at the API layer (already provided by `PermissionGuard`), not literal PostgreSQL Row-Level-Security policies. | The platform is single-tenant (D29) with no per-row multi-tenant isolation need; literal DB-level RLS would be new infrastructure with no clear use case under that constraint. Override if literal RLS was actually intended. |
+| A12 | "Staff" (supervisors/teachers) in the domain input are the same as platform Users holding the `library_assistant` role — not a separate non-login entity like the students question above. | Unlike students, the input describes staff actively using the scan screen/app themselves, which requires login — consistent with the existing role model. |
+
 ## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |

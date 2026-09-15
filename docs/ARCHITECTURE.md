@@ -111,6 +111,8 @@ Holds, at minimum: `auth.password_policy`, `auth.token_lifetimes` (access/refres
 
 Exposed to admins from a **Users module → Settings** screen (tabs: Password Policy, Session Timing, Notification Templates), permission-gated like anything else (`users.settings.view` / `users.settings.update`) — not hardcoded to `admin` (§7.4 stays the only hardcoded-role exception in the codebase).
 
+**Settings are not core-only.** Any installed module can declare and seed its own `system_settings` keys (namespaced `<moduleKey>.<name>`) via its manifest's `settings` array, gaining its own section in the same Settings screen — see `MODULE_SPEC.md` §8. This closes a gap surfaced by real domain input (a library module needing admin-editable loan/fine policy values, `docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) and mirrors how permissions and menus were already module-declared (§7.3), not just settings.
+
 ## 7. Roles & permissions (RBAC)
 
 ### 7.1 Data model (core)

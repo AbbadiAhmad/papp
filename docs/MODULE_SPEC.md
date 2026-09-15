@@ -75,6 +75,21 @@ modules/library-catalog/
     // Empty by default. Use sparingly — this is a stronger statement than "not granted by default."
   },
 
+  "settings": [
+    // Odoo-style: a module can declare its own admin-editable settings, not just permissions/menus.
+    // Each entry becomes a system_settings row (ARCHITECTURE.md §6.3), namespaced under the module key
+    // so it can never collide with core's or another module's keys. Seeded with `default` on first
+    // install ONLY (same "first install only" rule as defaultRolePermissions below — an upgrade never
+    // re-seeds and clobbers an admin's chosen value). See §7 for the install-time registration flow.
+    {
+      "key": "library_catalog.loan_policy",             // full system_settings key = "<moduleKey>.<name>"
+      "type": "json",                                     // "json" | "string" | "number" | "boolean" — informs the Settings UI's editor widget
+      "default": { "maxBooksPerStudent": 2, "loanPeriodDays": 7, "finePerDay": 1 },
+      "labelKey": "library_catalog.settings.loan_policy", // i18n key for the Settings screen section heading
+      "requiredPermission": "library_catalog.settings.update"  // must also appear in this manifest's permissions array
+    }
+  ],
+
   "menu": [
     {
       "id": "library_catalog.root",
@@ -146,7 +161,7 @@ module_migrations(
 1. Admin uploads/points to a module package (or it's already present under `modules/` in the deployed image — see open item in `CHECKLIST.md` re: where packages come from).
 2. `ModuleRegistryModule` validates: manifest schema, `compatibleAppVersion` against the running platform version, `dependsOn` all already `installed`, no `basePath`/`apiPrefix` collision with another installed module, `locales.supported` includes the platform default language.
 3. Runs `migrations/*.sql` in order inside a transaction; records each in `module_migrations` with a checksum.
-4. Registers `permissions` rows; applies `defaultRolePermissions` (first install only).
+4. Registers `permissions` rows; applies `defaultRolePermissions` (first install only). Seeds `settings` entries into `system_settings` with their `default` value (first install only — see §8).
 5. Registers `menu` entries (validated: every `parentId` resolves, no cycles).
 6. Merges `locales/*.json` into the running i18n dictionaries.
 7. Sets `module_registry.status = installed`.
@@ -202,3 +217,19 @@ A public **read** (viewing a survey) is low-risk. A public **write** (submitting
 ### 7.5 Route ownership stays simple
 
 A module's `basePath` (§2) is still the single collision-checked namespace boundary — `/survey` belongs entirely to the survey module, public and authenticated routes alike. Nothing new is needed for uniqueness beyond what §4 step 2 already validates; `/survey/:surveyId` and `/survey/manage` simply both nest under the one already-reserved prefix.
+
+## 8. Module-defined settings
+
+Raised as a gap by real domain input (a library module needing admin-editable `loan_period_days`/`fine_per_day`/`max_books_per_student` — see `docs/LIBRARY_MODULE_REQUIREMENTS.md` §8): permissions and menus were already data-driven per module (§2), but **settings were not** — only core had a way to declare and seed its own `system_settings` keys. This section closes that gap, matching Odoo's per-app settings pattern.
+
+### 8.1 How it works
+
+A module's `manifest.json` `settings` array (§2) declares its own admin-editable configuration. At install time (§4), each entry's `key` (always `<moduleKey>.<name>`, enforced so modules can never collide with core's or each other's settings) is seeded into `system_settings` with its `default` value — **first install only**, exactly like `defaultRolePermissions` (§4/§5): an upgrade never re-seeds a settings key, so it never clobbers a value an admin already changed. A `key` introduced by an upgrade (a genuinely new setting the module didn't have before) is seeded then, since there's nothing to clobber yet.
+
+### 8.2 Reading and writing
+
+Read through the same cached `SettingsService` core already uses (`ARCHITECTURE.md` §6.3) — modules don't get their own separate settings-storage mechanism, just their own namespaced keys in the one shared table. Writing a module's setting requires the `requiredPermission` declared alongside it (which must itself be one of the module's own declared `permissions`, §2) — never hardcoded to `admin`, same rule as everything else in this platform (`ARCHITECTURE.md` §7.4 stays the only hardcoded-role exception anywhere).
+
+### 8.3 Settings UI
+
+The core Settings screen (`ARCHITECTURE.md` §6.3, currently "Password Policy / Session Timing / Notification Templates" tabs) grows one additional section per **installed** module that declares any `settings` entries, rendered generically from each entry's `type`/`labelKey`/`default` shape rather than needing bespoke UI per module — an uninstalled module's settings section simply isn't shown (though its underlying `system_settings` rows are left in place on uninstall, per the same safe-by-default policy as everything else, D26).
