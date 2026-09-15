@@ -16,15 +16,18 @@ Modular back-office platform: complete user/role/permission management + audit l
 
 ## Stack (once implementation starts)
 
-React + TypeScript + MUI (RTL via theme direction) · NestJS (TypeScript) · PostgreSQL · Prisma for queries/types with per-module raw SQL migrations · JWT access + refresh tokens with a Postgres-backed revocable session registry · docker-compose (`db`, `api`, `web`) · single git branch.
+React + TypeScript + MUI (RTL via theme direction) · NestJS (TypeScript) · PostgreSQL · Prisma for queries/types with per-module raw SQL migrations · JWT access + refresh tokens with a Postgres-backed revocable session registry · docker-compose (`db`, `api`, `web`) · single git branch · GitHub Actions CI (D31).
+
+Core (always installed, never uninstallable): Auth, Sessions, Users (incl. Settings: password policy, session/token lifetimes, notification templates), Roles, Permissions, Audit, **Notifications** (in-app + email, D20), ModuleRegistry, I18n. Everything else (Library Catalog, Borrowing, Finance, …) is an installable module per `docs/MODULE_SPEC.md`.
 
 ## Non-negotiable rules (see SKILL.md for the full checklist)
 
 1. Every action is permission-gated by a permission **code**, never a hardcoded role name — the one exception (Permissions page always reachable by `admin`) is documented in `ARCHITECTURE.md` §7.4 and must never be duplicated elsewhere.
-2. Every create/update/delete is audit-logged with old/new values, except fields marked `@Sensitive()` (passwords, tokens, hashes).
-3. Every module ships its own `ar` + confirmed-language locale files (D19) — a module without Arabic strings fails install validation.
+2. Every create/update/delete is audit-logged with old/new values, except fields marked `@Sensitive()` (passwords, tokens, hashes). Audit entries are only ever removed via the manual, admin-triggered purge with a cutoff capped at yesterday (`ARCHITECTURE.md` §8.4) — never a silent/automatic delete.
+3. Every module ships its own `ar` + confirmed-language locale files (D19) — a module without Arabic strings fails install validation. (Notification templates are the one exception — operator-authored content in `system_settings`, not developer i18n keys, per D22.)
 4. Numerals: Western Arabic digits (0-9) everywhere, even in Arabic UI (D6). Calendar: Gregorian everywhere (D7). Both are pinned explicitly in the shared format utilities, never left to locale defaults.
 5. New features follow `docs/FEATURE_TEMPLATE.md` exactly: manifest permission entry → guard decorator → audit decorator → locale keys in every language → tests (permission matrix + audit + i18n completeness).
+6. Password policy and session/token lifetimes are **never** hardcoded constants — they're read from `system_settings` (`ARCHITECTURE.md` §6.3) through the cached settings service, same pattern any future admin-tunable policy should follow.
 
 ## Working with the user
 

@@ -68,10 +68,11 @@ No Redis/queue/email service in this phase (see A2, A6). Adding one later is a d
 NestJS app
 ├── AuthModule            — login, refresh, logout, force-password-change
 ├── SessionsModule         — session registry, "active sessions" admin view, revoke
-├── UsersModule            — CRUD, browse, Excel import/export, admin actions
+├── UsersModule            — CRUD, browse, Excel import/export, admin actions, Settings sub-area (§6.4)
 ├── RolesModule            — role CRUD, assign roles to users
 ├── PermissionsModule      — permission registry, role↔permission grants, PermissionGuard
-├── AuditModule            — AuditInterceptor, audit log query API
+├── AuditModule            — AuditInterceptor, audit log query API, admin-triggered purge (§8.4)
+├── NotificationsModule    — core, mandatory (D20): in-app notifications + outbound email (§12)
 ├── ModuleRegistryModule   — install/upgrade/uninstall modules, manifest validation
 ├── I18nModule             — merges core + per-module locale bundles, language switch API
 └── <feature modules>      — installed dynamically at runtime (see MODULE_SPEC.md)
@@ -83,21 +84,32 @@ Each **core** module above is itself permission-gated the same way a feature mod
 
 ### 6.1 Auth flow (JWT access + refresh, D18)
 
-1. `POST /auth/login` — validates credentials, checks lockout state (A5), issues:
-   - **Access token** (JWT, short-lived, e.g. 15 min): carries `sub` (user id), `roles`, `permissions` snapshot (or role list only — see open item in CHECKLIST), `sid` (session id).
-   - **Refresh token** (opaque random string, long-lived, e.g. 7–30 days, sliding or absolute — open item): stored **hashed** in `user_sessions`, returned to the client as an httpOnly, `Secure`, `SameSite=Strict` cookie (web) — never exposed to JS.
+1. `POST /auth/login` — validates credentials, checks lockout state (policy from `system_settings`, §6.4), issues:
+   - **Access token** (JWT, short-lived — default 15 min, admin-configurable via `system_settings`, D24): carries `sub` (user id), `roles`, `sid` (session id). Permissions are **not** embedded in the token (they'd go stale the instant an admin changes a grant); `PermissionGuard` always resolves the caller's effective permissions fresh from `role_permissions` on each request.
+   - **Refresh token** (opaque random string, long-lived — default 30 days, admin-configurable): stored **hashed** in `user_sessions`, returned to the client as an httpOnly, `Secure`, `SameSite=Strict` cookie (web) — never exposed to JS.
 2. `user_sessions` row captures: `session_id`, `user_id`, `refresh_token_hash`, `issued_at`, `last_active_at`, `expires_at`, `ip_address`, `user_agent`, `geo_location` (from IP lookup, A3), `revoked_at`.
 3. Every authenticated request updates `last_active_at` on that session (throttled, not literally every request, to avoid write amplification).
 4. `POST /auth/refresh` — rotates the refresh token (old one invalidated, prevents replay), issues a new access token. Refresh reuse (an already-rotated token presented again) revokes the whole session chain — signals possible token theft.
 5. `POST /auth/logout` — revokes the current session.
 6. Admin "Active Sessions" screen (Users module) lists all sessions per user (or system-wide) with IP/location/last-active, and can force-revoke any of them (forced logout) — this satisfies "see active users, last login, IP address."
-7. Absolute session timeout **and** idle timeout are both enforced (two separate configurable durations) — satisfies "considering active session time."
+7. Absolute session timeout **and** idle timeout are both enforced (two separate durations, both admin-configurable via `system_settings`, D24) — satisfies "considering active session time."
 
 ### 6.2 Password handling
 
 - Hashing: Argon2id (or bcrypt if we standardize on what NestJS ecosystem defaults to — open item, low stakes).
 - Admin can: set a user's password directly, and/or force "must change password at next login" (a `must_change_password` flag checked at login, redirects to a mandatory change-password screen before anything else is reachable).
 - Passwords, password hashes, and raw tokens are **never** written to the audit log (D13 exclusion) — enforced structurally, not by convention (§8.3).
+- Complexity/length rules and failed-login lockout threshold/duration are **not hardcoded** — read from `system_settings` (D23), with sane pre-filled defaults (min 10 chars, one letter + one number, 5 failed attempts → 15 min lockout) that the admin can change from the Users module's Settings screen. A settings change takes effect on the next login attempt (in-flight sessions are unaffected until they re-authenticate).
+
+### 6.3 `system_settings` (D22/D23/D24)
+
+```
+system_settings(key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_by UUID, updated_at TIMESTAMPTZ)
+```
+
+Holds, at minimum: `auth.password_policy`, `auth.token_lifetimes` (access/refresh/idle/absolute), and `notifications.templates.*` (D22, see §12.3). Read through a small cached settings service (invalidated on write) rather than passed around as raw config, so every consumer (`AuthModule`, `SessionsModule`, `NotificationsModule`) always sees the current value without a restart. Every write to `system_settings` goes through the normal `@Audit(...)` path like any other update — a policy change is itself an accountable action.
+
+Exposed to admins from a **Users module → Settings** screen (tabs: Password Policy, Session Timing, Notification Templates), permission-gated like anything else (`users.settings.view` / `users.settings.update`) — not hardcoded to `admin` (§7.4 stays the only hardcoded-role exception in the codebase).
 
 ## 7. Roles & permissions (RBAC)
 
@@ -153,6 +165,10 @@ A single `AuditInterceptor` (NestJS interceptor, applied globally, opt-out not o
 
 A field-level `@Sensitive()` marker (used on the Prisma model fields for `passwordHash`, token fields, etc.) is checked by the interceptor's diffing function **before** it ever serializes old/new values — sensitive fields are stripped to `"[redacted]"` at the serialization layer itself, so a developer forgetting to think about it can't accidentally leak a hash into the log. This is enforced by a unit test that scans the Prisma schema for known-sensitive field name patterns and asserts they're all marked (see `docs/TESTING_STRATEGY.md`).
 
+### 8.4 Manual purge (D25)
+
+No automatic retention job. Instead, an admin-only screen (`audit.purge` permission) in Audit settings lets the admin pick a **cutoff date**, capped at **yesterday** (the UI/API rejects any cutoff ≥ today — you can never purge the most recent day's entries, so there's always at least one full day of buffer to catch a mistake before it's unrecoverable). Confirming the purge deletes every `audit_log` row with `occurred_at < cutoff`. The purge action itself writes a **new** `audit_log` row (category `core.audit`, action `purge`) recording the actor, the cutoff date, and the number of rows deleted — this one entry is written *after* the delete completes, so it survives and the purge is never itself untraceable.
+
 ## 9. Internationalization & RTL
 
 - Library: `react-i18next` (or `@nestjs/i18n` mirror on the backend for server-generated strings like email subjects/validation messages).
@@ -166,10 +182,45 @@ A field-level `@Sensitive()` marker (used on the Prisma model fields for `passwo
 
 Full spec in `docs/MODULE_SPEC.md`. Summary: each feature (Library, Borrowing, Finance…) is a self-contained package with a `manifest.json` describing its DB migrations, menu entries, permissions + default role grants, locale files, frontend routes/landing page, and backend module. It is installed/upgraded/uninstalled from an admin "Modules" screen; install triggers migrations + registry writes + an orchestrated backend restart (see D15 reinterpretation in `DECISIONS.md`).
 
-## 11. Non-goals for this phase
+## 12. Notification Center (D20 — core, mandatory)
+
+Unlike every other feature module, Notifications ships as a **core** capability (`NotificationsModule`) alongside Users/Roles/Permissions/Audit — not built through the module-manifest system, and never uninstallable. It's core because `AuthModule`'s password-reset/force-change flow and any future system alert depend on it always being present.
+
+### 12.1 Two delivery channels, one event
+
+```
+notifications(
+  id, created_at, category,          -- e.g. "auth.password_reset", "system.announcement"
+  title, body_markdown,               -- rendered to HTML at display/send time, never stored pre-rendered
+  sent_by UUID,                       -- null for system-generated (e.g. password reset)
+  target_type,                        -- "user" | "role" | "all_users"  (D21 — never an arbitrary external address)
+  target_id                           -- user_id or role_id, null when target_type = 'all_users'
+)
+notification_recipients(notification_id, user_id, read_at, emailed_at)
+```
+
+A single "send" action fans out to both channels: an `notification_recipients` row per targeted user (drives the in-app bell icon / unread count, D_orig "user in website notification"), and — if the notification's category has email enabled — an outbound email using the matching template (§12.3).
+
+### 12.2 Targeting (D21)
+
+`target_type = 'user'` (a specific person), `'role'` (everyone currently holding a role, resolved at send time — not a static list), or `'all_users'` ("public" in your original wording). All three resolve only to existing platform accounts; there is no free-text external email field, keeping this consistent with D21 and sidestepping open-relay/abuse concerns entirely.
+
+### 12.3 Templates are content, not code (D22)
+
+Templates (forgot-password, force-password-change notice, future ones) are rows in `system_settings` (§6.3) under keys like `notifications.templates.password_reset`, each holding `{ subject, body_markdown }`. The admin edits this from **Users module → Settings → Notification Templates** as a single free-form field per template — Markdown source, written in whatever language the admin chooses (no per-locale key structure like UI strings have; this is operator-authored content, not developer-authored UI copy, so D19's per-module locale-file system does not apply here). At send time, `body_markdown` is rendered to HTML (a standard sanitizing Markdown renderer — no raw HTML injection from an admin-authored template) for the email channel and rendered as-is (or lightly rendered) for the in-app view.
+
+### 12.4 Permissions
+
+`notifications.send` (compose/send to a target), `notifications.templates.manage` (edit templates, effectively `users.settings.update` from §6.3), `notifications.view` (see your own in-app notifications — granted to every role by default, since everyone needs to see notices meant for them).
+
+## 13. Module system
+
+Full spec in `docs/MODULE_SPEC.md`. Summary: each **feature** (Library, Borrowing, Finance…) — as opposed to core capabilities like Notifications above — is a self-contained package with a `manifest.json` describing its DB migrations, menu entries, permissions + default role grants, locale files, frontend routes/landing page, and backend module. It is installed/upgraded/uninstalled from an admin "Modules" screen; install triggers migrations + registry writes + an orchestrated backend restart (D15 in `DECISIONS.md`).
+
+## 14. Non-goals for this phase
 
 - Mobile/desktop native clients (API is designed to support them later, not built now).
-- Multi-tenancy (A1).
-- Email sending (A6).
-- Kubernetes/multi-host orchestration (A9).
+- Multi-tenancy (D29).
+- Kubernetes/multi-host orchestration (D33 — deployment target undecided but provider-agnostic).
 - Per-user permission overrides beyond role-based grants (§7.1 note).
+- Free-text external email recipients for notifications (D21 — platform users only).

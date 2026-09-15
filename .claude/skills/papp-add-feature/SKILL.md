@@ -25,6 +25,10 @@ Read these first if not already in context: `docs/ARCHITECTURE.md`, `docs/MODULE
 
 - [ ] Marked `@Sensitive()` at the Prisma field level (passwords, tokens, hashes, anything that shouldn't appear in the audit log). Verify the schema-scan test in `docs/TESTING_STRATEGY.md` §3 still passes.
 
+## Every new admin-tunable policy/threshold
+
+- [ ] Stored as a key in `system_settings` (`docs/ARCHITECTURE.md` §6.3) and read through the cached settings service — never a hardcoded constant, `.env` value, or magic number in code. Password policy and session/token lifetimes already follow this (D23/D24); any new one (a future notification-sending limit, an import batch size, etc.) should too unless there's a specific reason not to — raise it with the user if unsure.
+
 ## Every new UI page
 
 - [ ] Copy goes through `t('module_key.namespace.key')`, never hardcoded strings, in **both** `locales/ar.json` and `locales/en.json` (or the full confirmed language set — check `docs/CHECKLIST.md` item 4 for the current answer) at the same time. A key added to one language file without the other fails the locale-completeness lint.

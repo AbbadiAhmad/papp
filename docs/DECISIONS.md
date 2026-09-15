@@ -28,34 +28,42 @@ This log is append-only going forward: new architectural choices get a new numbe
 | D18 | Auth model: **JWT access token + refresh token**, with a server-side revocable registry for the "active sessions" admin view | DECIDED |
 | D19 | Each module ships its **own localization files** (one JSON/YAML bundle per supported language, namespaced under the module key) — not just core. Missing keys fall back to the language's default namespace, then to the base app's default language. | DECIDED |
 
-## My reinterpretation of D15 — please confirm
+## D15 reinterpretation — confirmed
 
-You picked "runtime dynamic plugin loading" (the most Odoo-like option) over compile-time registration. I want to be upfront about what's realistically achievable in a **compiled TypeScript** stack before we build on it:
+You confirmed "dynamic install, orchestrated restart": installing a module from the admin UI runs its DB migrations + registers menus/permissions/routes immediately, then triggers a brief automated, health-checked backend restart so the new NestJS module actually mounts. No manual redeploy/rebuild step is needed to install a module — only the short restart. `MODULE_SPEC.md` is written around this. (Full rationale for why literal zero-downtime hot code swap isn't realistic in compiled TypeScript is preserved in git history of this file.)
 
-- **True hot in-memory code swap** (add a module's backend code to a running Node process with zero restart, like PHP/Odoo's Python does) is not practical or safe in NestJS. Compiled TS + Node's module cache make that a research project, not an engineering task, and it would be the least tested, hardest-to-secure part of the whole platform.
-- What **is** realistic and still gives you the Odoo/Gibbon experience you want (install a module from an admin screen, no manual redeploy/rebuild step) is:
-  1. A module is a self-contained package dropped into a `modules/` directory (or published as a private npm package and installed there).
-  2. "Install" from the admin UI: the platform runs the module's SQL migrations, registers its menus/permissions/routes into the database, marks it `installed`, then triggers an **automated, orchestrated restart** of the backend container (docker-compose managed, health-checked, sub-few-seconds) so the new NestJS module is mounted. The frontend uses lazy-loaded route bundles (dynamic `import()`, optionally Webpack Module Federation later) so new module UI can often be picked up without a full frontend redeploy.
-  3. No code rebuild/CI pipeline run is required to install a module — that's the part that matters for your workflow. A brief, automatic backend restart is the trade-off.
-- This is what I'll call **"dynamic install, orchestrated restart"** going forward. It gets you: install/upgrade/uninstall from the DB-driven module registry, per-module manifests, no manual redeploy — everything in your ask except literal zero-downtime hot code swap.
+## Checklist round — resolved (2026-09-15)
 
-**I need your confirmation on this before I design `MODULE_SPEC.md` around it** — see `docs/CHECKLIST.md` item 1. If a few seconds of backend restart on module install is unacceptable, tell me and I'll redesign around the "Hybrid: compile-time code, DB-driven activation" option instead (all module code ships in every build; a DB flag turns it on/off — genuinely zero-downtime, but a module's *code* still needs a normal deploy to arrive).
+| # | Decision | Status |
+|---|---|---|
+| D20 | **Notification Center is a core, mandatory capability** (not an optional module) — lives alongside Users/Roles/Permissions/Audit, always installed, can never be uninstalled. Covers in-app (website) notifications and outbound email. Auth's forgot-password/system emails depend on it. | DECIDED |
+| D21 | "Public" notification/email sends reach **platform users only** (all users, or a filtered subset by role) — never arbitrary external addresses not tied to an account. | DECIDED |
+| D22 | Notification/email **templates** (forgot-password and others) are admin-editable content: **one content field per template**, written in **Markdown**, and the admin can write it in **any language** they choose (freeform — not structured per-locale like UI i18n keys). Managed from the Users module's settings area. | DECIDED |
+| D23 | **Password policy is not hardcoded.** Minimum length, complexity rules, and failed-login lockout threshold/duration are admin-editable settings in the Users module (with sane defaults pre-filled), not fixed constants. | DECIDED |
+| D24 | **Session/token lifetimes are not hardcoded either** — access-token lifetime, refresh-token lifetime, idle timeout, and absolute session timeout are all admin-editable settings in the Users module, same pattern as D23. | DECIDED |
+| D25 | **Audit log purge is manual, admin-triggered, in log settings**: admin picks a cutoff date (capped at yesterday — today's/very recent entries can never be purged) and everything strictly older than that cutoff is deleted. No automatic/scheduled retention job. The purge action is itself audit-logged (actor, cutoff date, row count deleted). | DECIDED |
+| D26 | Module **uninstall is safe-by-default**: menus/routes/permissions are de-registered immediately, but database tables/data are left in place unless the admin explicitly confirms a separate "also delete data" step. | DECIDED |
+| D27 | Session/refresh-token registry confirmed in **PostgreSQL** (no Redis for now). | DECIDED |
+| D28 | Languages at launch confirmed: **Arabic (default, RTL) + English (LTR)**. | DECIDED |
+| D29 | **Single tenant** confirmed — no multi-tenancy, no `tenant_id` anywhere in the schema. | DECIDED |
+| D30 | Excel user import columns: **name, email, ID (national/employee), role, department**. Re-importing the same file **upserts** — matches existing users by ID/email and updates their fields rather than skipping them. | DECIDED |
+| D31 | **GitHub Actions CI** set up as part of the base platform build (lint/typecheck/unit/e2e per `TESTING_STRATEGY.md`, running on every push to the single branch). | DECIDED |
+| D32 | App name **"papp" is a placeholder** — used consistently for now (package names, UI title) but expected to be renamed later; low-cost to change. | DECIDED |
+| D33 | Deployment target beyond local docker-compose is **undecided** — design stays provider-agnostic (plain docker-compose, no provider-specific assumptions baked in). | DECIDED |
 
-## Assumptions (flag any that are wrong)
+### New design consequence of D22/D23/D24 — a `system_settings` concept
+
+D22–D24 together mean the Users module needs a **Settings** sub-area, not just user/role CRUD: a small `system_settings` table (key, value `jsonb`, `updated_by`, `updated_at`) holding password policy, session/token lifetimes, and notification templates, editable from an admin screen, read by `AuthModule`/`SessionsModule`/`NotificationsModule` at runtime (cached, invalidated on change) instead of reading fixed config constants. Changes to these settings go through the normal audit log like any other update. This is reflected in `ARCHITECTURE.md` §6 and §12 (Notification Center).
+
+## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |
 |---|---|---|
-| A1 | Single tenant (one library system, one organization) — no multi-tenancy | Not mentioned; multi-tenancy changes the DB schema significantly (tenant_id everywhere) so I'm not assuming it silently — see checklist. |
-| A2 | Session/refresh-token registry lives in **PostgreSQL**, not Redis | You didn't confirm Redis, and docker-compose was scoped to "DB, backend, frontend" (3 services). Postgres-backed sessions are slightly slower than Redis at scale but avoid an extra infra dependency. Easy to swap later — the session service will be written behind an interface. |
-| A3 | "Location" for session tracking = IP-based geolocation (city/country via IP lookup), not GPS/browser geolocation | This is a web back-office app; browser geolocation would require explicit user permission prompts and isn't standard for this use case. |
-| A4 | Languages at launch: Arabic (default, RTL) + English (LTR) | You said "multi-language, default Arabic" but didn't list the full set. Arabic+English is the minimum to prove the i18n/RTL system actually works in both directions. Additional languages are just new translation files, not architecture changes. |
-| A5 | Password policy: min 10 chars, at least one letter + one number, no forced periodic expiry (but admin can force a change at any time), 5 failed attempts → temporary lockout | Industry-reasonable default; not specified by you. |
-| A6 | Email sending (password reset links, notifications) is **out of scope for the base platform** — admin sets/resets passwords directly instead | Not mentioned in your requirements; adding it means an SMTP/email-provider dependency and templates. Easy to add as a module later. |
-| A7 | Excel import for users expects a fixed column template (name, email, national/employee ID, role, department) that we define and document, with a downloadable sample file | You mentioned import but not the exact columns/format. |
-| A8 | Audit log retention: indefinite, queryable/filterable by admin, no automatic purge | You didn't specify a retention policy; log tables are append-only and can be large — worth deciding early since deletion strategy affects the schema (partitioning). |
-| A9 | Hosting/deployment target for now is a single Docker host (docker-compose), not Kubernetes | Matches your docker-compose requirement; can be re-platformed later without app-code changes if containers stay stateless. |
-| A10 | Backend also exposes OpenAPI/Swagger docs (auto-generated from NestJS decorators) since the API must support a future mobile client | Reasonable default for an API meant to be consumed by another client later; costs little. |
+| A3 | "Location" for session tracking = IP-based geolocation (city/country via IP lookup), not GPS/browser geolocation | This is a web back-office app; browser geolocation would require explicit user permission prompts and isn't standard for this use case. Not yet explicitly confirmed by you. |
+| A10 | Backend also exposes OpenAPI/Swagger docs (auto-generated from NestJS decorators) since the API must support a future mobile client | Reasonable default for an API meant to be consumed by another client later; costs little. Not yet explicitly confirmed by you. |
+
+(A1, A2, A4–A9 from the original list are now superseded by D20–D33 above and removed from this table to avoid duplication.)
 
 ## Open items still needing your decision
 
-See `docs/CHECKLIST.md` — these are blocking before implementation starts.
+None blocking implementation start. A3 and A10 above are low-stakes defaults you can override any time without rework.
