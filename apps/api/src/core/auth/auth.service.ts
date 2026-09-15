@@ -12,6 +12,13 @@ export interface IssuedTokens {
   accessToken: string;
   refreshToken: string;
   refreshTokenExpiresAt: Date;
+  /**
+   * The authenticated user's id and the new session row's id (= the JWT
+   * `sid` claim). Never sent to the client — AuthController consumes them
+   * for the login audit row (ARCHITECTURE.md §8.2) and drops them.
+   */
+  userId: string;
+  sessionId: string;
 }
 
 interface RequestMeta {
@@ -71,7 +78,13 @@ export class AuthService {
       { secret: getJwtSecret(), expiresIn: `${lifetimes.accessTokenMinutes}m` },
     );
 
-    return { accessToken, refreshToken: rawRefreshToken, refreshTokenExpiresAt };
+    return {
+      accessToken,
+      refreshToken: rawRefreshToken,
+      refreshTokenExpiresAt,
+      userId,
+      sessionId: session.id,
+    };
   }
 
   /** Revokes every currently-active session for a user (theft-detection response). */
@@ -124,6 +137,9 @@ export class AuthService {
       data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
+    // The login audit row is written by AuthController right after this
+    // returns (ARCHITECTURE.md §8.2 — written directly by AuthModule, no
+    // @Audit/interceptor involvement since there's no before/after diff).
     return this.issueSession(user.id, meta);
   }
 
@@ -179,6 +195,7 @@ export class AuthService {
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    // The logout audit row is written by AuthController (§8.2, no diff).
   }
 
   async forcePasswordChange(userId: string, newPassword: string): Promise<void> {

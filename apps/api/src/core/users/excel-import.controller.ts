@@ -17,6 +17,7 @@ import type { Response } from 'express';
 // resolves below — without this, nothing in this file otherwise references
 // the `multer` module and TS may not load its ambient types.
 import 'multer';
+import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -53,6 +54,11 @@ export class ExcelImportController {
   @Post('import')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('users.import')
+  // Bulk action: one audit row for the whole commit, new_value = the full
+  // ImportReport (per-row actions + matched user ids). Preview is not
+  // audited — D42 guarantees it writes nothing. entity_id stays null (many
+  // entities touched at once).
+  @Audit({ category: 'core.users', entityType: 'User', action: 'import' })
   @UseInterceptors(FileInterceptor('file'))
   async commit(
     @UploadedFile() file: Express.Multer.File | undefined,

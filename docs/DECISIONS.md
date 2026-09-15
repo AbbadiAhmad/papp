@@ -111,6 +111,8 @@ The librarian (the actual future end user) gave detailed non-technical requireme
 | D47 | **Self-scoped `/me` endpoints (`GET /users/me`, `GET /sessions/me`) carry no permission code** — they return only the caller's own data and must stay reachable by every role (a default `reader` holds zero user-management grants; gating `/users/me` behind `users.view` would lock users out of their own account view). `PermissionGuard` passes any undecorated handler through once authenticated, by design. | DECIDED (agent call) |
 | A13 | Excel user-import assigns the row's role **additively** (adds it to `user_roles` without removing other roles the user already holds) — not a full role-replace sync. Flag if you'd rather re-import fully replace a user's roles. | ASSUMED |
 | A14 | Default role→permission grant matrix seeded in Phase 2: `admin` = all 17, `library_assistant` = `users.view` only, `finance`/`reader` = none of the user-management set. First-cut defaults, freely adjustable from the Permissions page. | ASSUMED |
+| A15 | (Phase 3) Self-service `forcePasswordChange` is **not** audited — the audit spec listed login/logout for auth. A "password_changed" row (values fully redacted) can be added if wanted; flag if so. | ASSUMED |
+| A16 | (Phase 3) Login/logout audit rows are written by `AuthController` rather than `AuthService`, and `SettingsService` takes its audit writer as `@Optional()` — both forced by Phase 1's untouchable unit-test signatures; behavior per spec either way. The Phase 1 specs should be modernized in a later test pass (noted for Phase 9). | ASSUMED |
 
 ## Assumptions still standing (flag any that are wrong)
 

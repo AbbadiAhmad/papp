@@ -174,6 +174,47 @@ model RolePermission {
   @@map("role_permissions")
 }
 
+// --- Phase 3: Audit log ---------------------------------------------------
+// See apps/api/src/core/migrations/0005_create_audit_log.sql for the raw DDL
+// this mirrors (including the CHECK (actor_type <> 'user' OR actor_user_id
+// IS NOT NULL) constraint, which Prisma cannot express), and
+// docs/ARCHITECTURE.md §8.1.
+
+enum ActorType {
+  user
+  system
+  anonymous
+
+  @@map("actor_type")
+}
+
+/// One row per audited action (D13). `actorUserId`/`actorSessionId` are
+/// deliberately NOT relations — audit rows must outlive the user/session
+/// they describe, so only the historical UUID is kept. `oldValue`/`newValue`
+/// are always passed through the @Sensitive redaction helper
+/// (src/common/sensitive/sensitive-fields.ts) before being written.
+model AuditLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  occurredAt     DateTime  @default(now()) @map("occurred_at")
+  actorUserId    String?   @db.Uuid @map("actor_user_id")
+  actorSessionId String?   @db.Uuid @map("actor_session_id")
+  actorType      ActorType @map("actor_type")
+  category       String
+  entityType     String    @map("entity_type")
+  entityId       String?   @map("entity_id")
+  action         String
+  oldValue       Json?     @map("old_value")
+  newValue       Json?     @map("new_value")
+  ipAddress      String?   @map("ip_address")
+  userAgent      String?   @map("user_agent")
+
+  @@index([occurredAt])
+  @@index([category])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@map("audit_log")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

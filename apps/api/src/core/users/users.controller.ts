@@ -1,4 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { Audit } from '../../common/decorators/audit.decorator';
+import type { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,7 +24,17 @@ import { UsersService } from './users.service';
  * account. See `PermissionGuard`'s docblock for why an undecorated handler
  * is allowed through once authenticated. Excel import/export live in
  * `excel-import.controller.ts` (separate file/permission codes).
+ *
+ * Phase 3 retrofit: every mutating endpoint carries `@Audit(...)`. The
+ * `fetchState` callbacks fetch the RAW Prisma row (passwordHash included) —
+ * that is deliberate: AuditLogWriter redacts every `/// @Sensitive` field to
+ * "[redacted]" before serialization, and fetching raw is exactly what makes
+ * a password change VISIBLE (as a redacted old/new diff) in the audit log
+ * without ever leaking the hash (ARCHITECTURE.md §8.3).
  */
+const fetchUserState = (prisma: PrismaService, req: Request) =>
+  prisma.user.findUnique({ where: { id: req.params.id as string } });
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
 export class UsersController {
@@ -46,12 +59,14 @@ export class UsersController {
 
   @Post()
   @RequirePermission('users.create')
+  @Audit({ category: 'core.users', entityType: 'User', action: 'create' })
   async create(@Body() dto: CreateUserDto, @CurrentUser() user: AuthenticatedUser): Promise<PublicUser> {
     return this.usersService.create(dto, user.userId);
   }
 
   @Patch(':id')
   @RequirePermission('users.update')
+  @Audit({ category: 'core.users', entityType: 'User', action: 'update', fetchState: fetchUserState })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto): Promise<PublicUser> {
     return this.usersService.update(id, dto);
   }
@@ -59,6 +74,7 @@ export class UsersController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('users.delete')
+  @Audit({ category: 'core.users', entityType: 'User', action: 'delete', fetchState: fetchUserState })
   async remove(@Param('id') id: string): Promise<void> {
     await this.usersService.remove(id);
   }
