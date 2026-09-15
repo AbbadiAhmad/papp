@@ -113,6 +113,7 @@ The librarian (the actual future end user) gave detailed non-technical requireme
 | A14 | Default role→permission grant matrix seeded in Phase 2: `admin` = all 17, `library_assistant` = `users.view` only, `finance`/`reader` = none of the user-management set. First-cut defaults, freely adjustable from the Permissions page. | ASSUMED |
 | A15 | (Phase 3) Self-service `forcePasswordChange` is **not** audited — the audit spec listed login/logout for auth. A "password_changed" row (values fully redacted) can be added if wanted; flag if so. | ASSUMED |
 | A16 | (Phase 3) Login/logout audit rows are written by `AuthController` rather than `AuthService`, and `SettingsService` takes its audit writer as `@Optional()` — both forced by Phase 1's untouchable unit-test signatures; behavior per spec either way. The Phase 1 specs should be modernized in a later test pass (noted for Phase 9). | ASSUMED |
+| A17 | (Phase 3) Audit-purge accepts impossible-but-well-formed dates (e.g. `2026-02-30`) via JS Date rollover (→ Mar 2) — still safely capped at yesterday, and the contract is pinned by a test so any future "fix" to strict calendar validation is deliberate, not accidental. | ASSUMED |
 
 ## Assumptions still standing (flag any that are wrong)
 
