@@ -8,10 +8,7 @@ Original Arabic request preserved in full at the end of this document (§20) for
 
 A complete web app for managing a school library (borrowing and reading), Arabic-first with RTL, usable on desktop, tablet, and phone. Must use QR codes and barcodes (USB barcode scanner **and** device camera), full Excel import/export, and report exports. Explicitly requested to be organized and extensible — which is exactly what the base platform (`docs/ARCHITECTURE.md`, `docs/MODULE_SPEC.md`) is for.
 
-**Likely module boundaries** (a refinement of `BUILD_PLAN.md` Phase 8's single "Library Catalog" module, worth deciding before Phase 8 starts): the librarian's own description of the financial piece ("a separate financial system... but linked to the library database... depends on the book and book-browsing modules") strongly suggests **three cooperating modules**, not one:
-- `library_catalog` — books, book copies, categories.
-- `library_circulation` — students/staff domain records, borrowing/returning, the scan screen, fines policy.
-- `library_finance` — financial transactions, payments, receipts (`dependsOn: ["library_circulation"]`).
+**Module boundaries (decided, D44):** `library_catalog` (books, book copies, categories) stands alone as its own module. `library_circulation` (students/staff domain records, borrowing/returning, the scan screen, fines policy) and `library_finance` (financial transactions, payments, receipts) are combined into **one** module, `dependsOn: ["library_catalog"]` — it cannot be installed before its prerequisite. `BUILD_PLAN.md` Phase 8 builds `library_catalog` only; the combined circulation+finance module is planned but not yet phased.
 
 This maps cleanly onto the existing `admin` / `library_assistant` / `finance` / `reader` roles and onto the module manifest's `dependsOn` mechanism (`MODULE_SPEC.md` §2).
 
@@ -28,7 +25,7 @@ No gap here — this is exactly what the base platform's per-module permission s
 - Each student needs a unique code, a QR code, and preferably also a barcode.
 - Admin can add a student manually, import from Excel, edit student data, print a student card containing the QR/barcode.
 
-**Open question raised, not a spec detail** — see `DECISIONS.md`: are these "students" the same as the platform's `reader` role (i.e., real login-capable Users), or a separate lightweight domain entity that never logs in and is only ever scanned by staff? The librarian's description (scanned by staff, identified by a printed card) reads like the latter, but the base platform's original requirements named `reader` as one of the four core roles. This needs a decision before Phase 8's data model is designed.
+**Resolved (D41):** students ARE the platform's `reader` role — real login-capable Users, same account model as everyone else, even though in daily use staff do the scanning on their behalf rather than the student logging in themselves. A user (of any role) can be created by a permitted staff member (as already designed) **or self-register**, gated by a new admin-editable `users.allow_self_registration` setting — this is a genuinely new base-platform capability, built in Phase 5 (see `BUILD_PLAN.md`), not something specific to this module.
 
 ## 3. Staff (supervisors/teachers)
 
@@ -84,7 +81,7 @@ A genuinely separate financial subsystem ("depends on the book and book-browsing
 
 **Import**: students, classes, books, book copies, staff — each with a **preview screen before saving**, and if any row is invalid, **nothing is saved** ("all or nothing"), with specific per-row error messages shown (e.g. "Row 25: duplicate student code," "Row 31: class does not exist," "Row 42: book title is empty").
 
-**This is a direct, concrete gap against what's currently planned** — see `DECISIONS.md`. The base platform's existing Excel import (Users, `BUILD_PLAN.md` Phase 2, D30) is an upsert flow with a rejected-rows report, but does **not** currently include a pre-save preview screen or per-row error display before commit — this librarian requirement asks for exactly that, for five different entity types. Building this once as a **shared, reusable Excel-import framework** (rather than five/six separate one-off implementations across Users + every future module) is the right call architecturally, flagged for a decision on when to build/generalize it.
+**Resolved (D42):** the preview + per-row-error pattern is now part of the base Users Excel import, built in Phase 2 (`BUILD_PLAN.md`) — kept deliberately simple (a preview endpoint that validates without writing, a commit endpoint that's all-or-nothing) rather than generalized into a shared framework yet. When this module's own five-entity import need actually arrives, it reuses the same simple pattern rather than reinventing it; generalizing into shared framework code is deferred until there's a second real consumer, not built speculatively now.
 
 **Export buttons requested**: students, reading history, borrowings, returns, fines, financial data, staff activity.
 
@@ -152,7 +149,7 @@ The system must support more than one academic year; previous years' data is nev
 
 Wants a comprehensive backup/export mechanism (students, books, borrowings, returns, fines, financial data) with historical records never lost across academic years.
 
-**Platform-level open question** — see `DECISIONS.md`: the base platform currently only commits to per-entity Excel export (already required above) as its "export" story; there's no generic backup/restore capability defined anywhere in `ARCHITECTURE.md`. Whether a real database-level backup mechanism is needed as a base-platform capability, or whether comprehensive Excel export is considered sufficient "backup" for this purpose, is flagged as an open question rather than assumed either way.
+**Resolved (D43):** a generic backup/restore capability is deferred — to be added later as its own base-platform feature, not assumed satisfied by per-entity Excel export and not built now. No phase assigned yet.
 
 ## 36. Security
 
