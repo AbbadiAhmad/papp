@@ -1,11 +1,36 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // Widened from "." (apps/api) to the monorepo root: `test/support/
+    // permission-matrix.ts` (repo root) and `modules/library_catalog/**`
+    // (sibling workspace) are both legitimately imported by this project's
+    // own e2e specs (D57/D59's deliberate cross-workspace design), and
+    // `noEmit: true` means there's no real output layout for `rootDir` to
+    // protect the way apps/api's OWN build tsconfig.json needs it to
+    // (D56/D58) — so there's no reason for this checking-only project to
+    // reject files outside apps/api the way TS6059 otherwise would.
+    "rootDir": "../..",
     "declaration": false,
     "noEmit": true,
     "incremental": false,
+    // D57/D59: modules ship both `.ts` source and pre-compiled `.js` side by
+    // side, so several places (this project's own dynamic module-loading
+    // test code, per its own docblocks) import the `.ts` extension
+    // explicitly on purpose, to force source resolution over the compiled
+    // sibling. `noEmit: true` again means this is safe to allow here.
+    "allowImportingTsExtensions": true,
     "types": ["node", "jest"]
   },
+  // `extends` merges `exclude` from tsconfig.json (["node_modules", "dist",
+  // "test"]) unless overridden here — and `exclude` silently wins over
+  // `include` for anything it matches. Without this override, EVERY file
+  // under `test/` was excluded from this project despite `include` below
+  // explicitly listing `test/**/*.ts` (real repro, D62: confirmed via
+  // `tsc --noEmit -p tsconfig.test.json --listFilesOnly`, which listed zero
+  // `*-spec.ts` files at all) — meaning `npx tsc --noEmit -p
+  // tsconfig.test.json` had been silently type-checking NOTHING under
+  // test/ this entire phase, a false-green signal for every "typecheck
+  // clean" verification claimed against e2e/integration/unit spec files.
+  "exclude": ["node_modules", "dist"],
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

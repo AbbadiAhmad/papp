@@ -47,6 +47,11 @@ const config: Config = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: COVERAGE_GATE_FILES,
   coverageThreshold: {
+    // Jest's own Config.CoverageThreshold type requires a `global` key
+    // structurally even for a purely per-file gate — left empty (no
+    // thresholds) since this project deliberately never chased a blanket
+    // global number (see this file's own docblock above).
+    global: {},
     'src/common/guards/permission.guard.ts': { lines: 80 },
     'src/common/interceptors/audit.interceptor.ts': { lines: 80 },
     'src/core/auth/auth.service.ts': { lines: 80 },

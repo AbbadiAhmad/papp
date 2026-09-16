@@ -108,7 +108,7 @@ describe('NotificationsService + SettingsService (integration, real DB)', () => 
     // And the row genuinely persisted in the DB, independent of this
     // process's cache — a brand new read straight off the table agrees.
     const row = await prisma.systemSetting.findUniqueOrThrow({ where: { key: PASSWORD_POLICY_KEY } });
-    expect((row.value as PasswordPolicy).minLength).toBe(14);
+    expect((row.value as unknown as PasswordPolicy).minLength).toBe(14);
 
     // Restore, so this test file doesn't leak state into whichever spec
     // Jest happens to run in the same worker next within this suite.

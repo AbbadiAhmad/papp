@@ -55,7 +55,7 @@ describe('Users (e2e)', () => {
     it('GET /users/:id requires users.view', async () => {
       const target = await fixtureForRole(app!, 'reader');
       await expectPermissionEnforcedAsync({
-        app: () => app!,
+        app: app!,
         method: 'get',
         path: `/users/${target.userId}`,
         requiredPermission: 'users.view',
@@ -64,7 +64,7 @@ describe('Users (e2e)', () => {
 
     it('POST /users requires users.create', async () => {
       await expectPermissionEnforcedAsync({
-        app: () => app!,
+        app: app!,
         method: 'post',
         path: '/users',
         requiredPermission: 'users.create',
@@ -79,7 +79,7 @@ describe('Users (e2e)', () => {
     it('PATCH /users/:id requires users.update', async () => {
       const target = await createUserWithRole(app!, 'reader', { label: 'patch-target' });
       await expectPermissionEnforcedAsync({
-        app: () => app!,
+        app: app!,
         method: 'patch',
         path: `/users/${target.userId}`,
         requiredPermission: 'users.update',
@@ -93,7 +93,7 @@ describe('Users (e2e)', () => {
       // reaches the service (PermissionGuard 403s them before that).
       const target = await createUserWithRole(app!, 'reader', { label: 'delete-target' });
       await expectPermissionEnforcedAsync({
-        app: () => app!,
+        app: app!,
         method: 'delete',
         path: `/users/${target.userId}`,
         requiredPermission: 'users.delete',
