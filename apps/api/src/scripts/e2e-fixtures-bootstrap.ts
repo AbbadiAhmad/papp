@@ -58,6 +58,7 @@ const BOOTSTRAP_MIGRATION_FILENAME = '0000_bootstrap_registry.sql';
 const CORE_MODULE_KEY = 'core';
 const CORE_MODULE_VERSION = '0.0.1';
 const LIBRARY_CATALOG_KEY = 'library_catalog';
+const SURVEY_KEY = 'survey';
 
 // Mirrors apps/web/tests/e2e/support/test-data.ts exactly — this is the one
 // place both sides of the fixture contract (what gets seeded, what the specs
@@ -70,6 +71,11 @@ const PWCHANGE_FIXTURE = {
   tempPassword: 'E2eTemp2026!',
 };
 const SEEDED_BOOK_TITLE = 'Phase9 E2E Smoke Test Book';
+// Mirrors apps/web/tests/e2e/support/test-data.ts's SURVEY_ADMIN_USER —
+// holds the `admin` role since none of the other seeded roles get any
+// `survey.*` permission by default (module manifest's own
+// defaultRolePermissions).
+const SURVEY_ADMIN_FIXTURE = { email: 'pw9e2e.surveyadmin@papp.local', name: 'Phase9 E2E Survey Admin', password: 'E2eSurveyAdmin2026!' };
 
 async function bootstrapRegistryTables(): Promise<void> {
   const sql = readFileSync(join(CORE_MIGRATIONS_DIR, BOOTSTRAP_MIGRATION_FILENAME), 'utf8');
@@ -134,6 +140,15 @@ async function main(): Promise<void> {
       await moduleRegistry.install(LIBRARY_CATALOG_KEY);
     }
 
+    const surveyEntry = await prisma.moduleRegistryEntry.findUnique({ where: { key: SURVEY_KEY } });
+    if (surveyEntry?.status === 'installed') {
+      logger.log('survey already installed — skipping install.');
+    } else {
+      logger.log('Installing survey (real ModuleRegistryService.install() flow)...');
+      const moduleRegistry = app.get(ModuleRegistryService);
+      await moduleRegistry.install(SURVEY_KEY);
+    }
+
     logger.log('Seeding Playwright Tier 2 fixture users...');
     await ensureFixtureUser(prisma, READER_FIXTURE, READER_FIXTURE.password, false, 'reader');
     // Seeded WITH must_change_password = true every run — apps/web/tests/e2e/support/db.ts's
@@ -141,6 +156,7 @@ async function main(): Promise<void> {
     // re-runs, but re-asserting it here too means a fresh CI database needs
     // no separate reset step on its very first run.
     await ensureFixtureUser(prisma, PWCHANGE_FIXTURE, PWCHANGE_FIXTURE.tempPassword, true, 'reader');
+    await ensureFixtureUser(prisma, SURVEY_ADMIN_FIXTURE, SURVEY_ADMIN_FIXTURE.password, false, 'admin');
 
     logger.log('Seeding Playwright Tier 2 fixture book...');
     const existingBook = await prisma.$queryRaw<

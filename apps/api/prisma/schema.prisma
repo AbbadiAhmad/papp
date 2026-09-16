@@ -357,6 +357,205 @@ model LibraryCatalogBookCopy {
   @@map("library_catalog_book_copies")
 }
 
+// --- survey module ---------------------------------------------------------
+// See modules/survey/migrations/001_create_survey_tables.sql for the raw DDL
+// these mirror. "One response per respondent" is a per-survey, admin-
+// toggleable setting (SurveySurvey.oneResponsePerRespondent), not a DB
+// constraint — it's enforced in modules/survey/backend/responses.service.ts,
+// not by a unique index (a plain/partial index can't be conditional on
+// another table's column).
+
+enum SurveyStatus {
+  draft
+  published
+  closed
+
+  @@map("survey_status")
+}
+
+enum SurveyQuestionType {
+  short_text
+  paragraph
+  single_choice
+  multi_choice
+  dropdown
+  linear_scale
+  date
+  time
+  rating
+
+  @@map("survey_question_type")
+}
+
+enum SurveyLogicAction {
+  show
+  hide
+
+  @@map("survey_logic_action")
+}
+
+enum SurveyLogicTargetType {
+  section
+  question
+
+  @@map("survey_logic_target_type")
+}
+
+/// The survey definition + its sharing/access settings. `ownerUserId` is the
+/// "provider" the completion-notification requirement refers to.
+model SurveySurvey {
+  id                       String       @id @default(uuid()) @db.Uuid
+  title                    String
+  description              String?
+  status                   SurveyStatus @default(draft)
+  ownerUserId              String       @map("owner_user_id") @db.Uuid
+  requiresLogin            Boolean      @default(false) @map("requires_login")
+  allowEditAfterSubmit     Boolean      @default(false) @map("allow_edit_after_submit")
+  oneResponsePerRespondent Boolean      @default(true) @map("one_response_per_respondent")
+  notifyOwnerOnSubmit      Boolean      @default(true) @map("notify_owner_on_submit")
+  /// Arbitrary admin-typed addresses — the module-owned exception to D21
+  /// (docs/DECISIONS.md) — never platform-user targets.
+  notifyEmails             Json         @default("[]") @map("notify_emails")
+  opensAt                  DateTime?    @map("opens_at")
+  closesAt                 DateTime?    @map("closes_at")
+  createdAt                DateTime     @default(now()) @map("created_at")
+  updatedAt                DateTime     @updatedAt @map("updated_at")
+
+  sections    SurveySection[]
+  logicRules  SurveyLogicRule[]
+  responses   SurveyResponse[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@map("survey_surveys")
+}
+
+model SurveySection {
+  id          String  @id @default(uuid()) @db.Uuid
+  surveyId    String  @map("survey_id") @db.Uuid
+  orderIndex  Int     @map("order_index")
+  title       String
+  description String?
+
+  survey    SurveySurvey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  questions SurveyQuestion[]
+
+  @@index([surveyId])
+  @@map("survey_sections")
+}
+
+model SurveyQuestion {
+  id          String             @id @default(uuid()) @db.Uuid
+  sectionId   String             @map("section_id") @db.Uuid
+  orderIndex  Int                @map("order_index")
+  type        SurveyQuestionType
+  title       String
+  description String?
+  required    Boolean            @default(false)
+  /// Type-specific shape (e.g. linear_scale min/max/labels) — see the
+  /// migration's own comment. Never read by raw SQL.
+  config      Json               @default("{}")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  section    SurveySection          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  options    SurveyQuestionOption[]
+  answers    SurveyAnswer[]
+  logicRulesAsSource SurveyLogicRule[] @relation("logicRulesAsSource")
+
+  @@index([sectionId])
+  @@map("survey_questions")
+}
+
+/// Options for the three enumeration types (single_choice/multi_choice/
+/// dropdown) — exactly the "enumeration answers" the logic engine branches on.
+model SurveyQuestionOption {
+  id         String @id @default(uuid()) @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  orderIndex Int    @map("order_index")
+  /// Stable machine value — never renamed once real responses/logic rules
+  /// reference it (see the migration's own comment).
+  value      String
+  label      String
+
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, value])
+  @@index([questionId])
+  @@map("survey_question_options")
+}
+
+/// The conditional show/hide engine (docs/DECISIONS.md has the exact
+/// visibility semantics). `targetId` is deliberately NOT a relation — it can
+/// point at either a SurveySection or a SurveyQuestion depending on
+/// `targetType`, which Prisma's relation model can't express as a single FK;
+/// resolved and validated in application code (modules/survey/logic-engine.ts
+/// + the structure-save endpoint), same rationale as ModuleMenuEntry.parentId
+/// above.
+model SurveyLogicRule {
+  id                 String                @id @default(uuid()) @db.Uuid
+  surveyId           String                @map("survey_id") @db.Uuid
+  sourceQuestionId   String                @map("source_question_id") @db.Uuid
+  sourceOptionValue  String                @map("source_option_value")
+  action             SurveyLogicAction
+  targetType         SurveyLogicTargetType @map("target_type")
+  targetId           String                @map("target_id") @db.Uuid
+  orderIndex         Int                   @map("order_index")
+
+  survey         SurveySurvey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  sourceQuestion SurveyQuestion @relation("logicRulesAsSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId])
+  @@index([sourceQuestionId])
+  @@index([targetType, targetId])
+  @@map("survey_logic_rules")
+}
+
+/// One row per FINAL submission only — see the migration file's header
+/// comment for why there is deliberately no draft/partial-response table
+/// anywhere in this schema (the user's explicit "not stored in the system
+/// unless complete" requirement, satisfied by construction).
+model SurveyResponse {
+  id                String    @id @default(uuid()) @db.Uuid
+  surveyId          String    @map("survey_id") @db.Uuid
+  /// Captured whenever the respondent has a real session, regardless of the
+  /// survey's own requiresLogin setting (docs/DECISIONS.md).
+  respondentUserId  String?   @map("respondent_user_id") @db.Uuid
+  respondentEmail   String?   @map("respondent_email")
+  /// @Sensitive
+  editTokenHash     String?   @map("edit_token_hash")
+  submittedAt       DateTime  @default(now()) @map("submitted_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  ipAddress         String?   @map("ip_address")
+  userAgent         String?   @map("user_agent")
+
+  survey  SurveySurvey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers SurveyAnswer[]
+
+  @@index([surveyId])
+  @@index([respondentUserId])
+  @@map("survey_responses")
+}
+
+/// One row per question per response — deliberately relational (not one JSON
+/// blob per response) specifically so the dynamic pivot report can GROUP BY
+/// question_id/value directly in SQL.
+model SurveyAnswer {
+  id         String @id @default(uuid()) @db.Uuid
+  responseId String @map("response_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  /// Shape depends on the question's type — string, string[], or number.
+  value      Json
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@index([responseId])
+  @@index([questionId])
+  @@map("survey_answers")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

@@ -48,6 +48,18 @@ export const INVALID_PASSWORD = 'not-the-real-password-1';
 /** Title of the library_catalog_books row seeded for the Phase 9 smoke flow. */
 export const SEEDED_BOOK_TITLE = 'Phase9 E2E Smoke Test Book';
 
+/**
+ * Survey module fixture (holds the `admin` role — none of `library_assistant`
+ * / `finance` / `reader` get any `survey.*` permission by default, so the
+ * builder/publish/responses/report flow genuinely needs an admin-role
+ * account, unlike the plain `reader` fixture above).
+ */
+export const SURVEY_ADMIN_USER = {
+  email: 'pw9e2e.surveyadmin@papp.local',
+  name: 'Phase9 E2E Survey Admin',
+  password: 'E2eSurveyAdmin2026!',
+};
+
 export const TEXT = {
   en: {
     login: 'Log in',
@@ -63,6 +75,21 @@ export const TEXT = {
     booksMenu: 'Books',
     save: 'Save',
     confirmPassword: 'Confirm password',
+    surveysMenu: 'Surveys',
+    newSurvey: 'New survey',
+    surveyTitleField: 'Title',
+    sectionTitleField: 'Section title',
+    questionTitleField: 'Question title',
+    questionTypeField: 'Question type',
+    optionValueField: 'Option value',
+    optionLabelField: 'Option label',
+    addQuestion: 'Add question',
+    addOption: 'Add option',
+    addRule: 'Add rule',
+    singleChoiceType: 'Single choice',
+    publish: 'Publish',
+    submit: 'Submit',
+    thankYou: 'Thank you — your response has been recorded.',
   },
   ar: {
     login: 'تسجيل الدخول',
@@ -78,5 +105,20 @@ export const TEXT = {
     booksMenu: 'الكتب',
     save: 'حفظ',
     confirmPassword: 'تأكيد كلمة المرور',
+    surveysMenu: 'الاستبيانات',
+    newSurvey: 'استبيان جديد',
+    surveyTitleField: 'العنوان',
+    sectionTitleField: 'عنوان القسم',
+    questionTitleField: 'نص السؤال',
+    questionTypeField: 'نوع السؤال',
+    optionValueField: 'قيمة الخيار',
+    optionLabelField: 'نص الخيار',
+    addQuestion: 'إضافة سؤال',
+    addOption: 'إضافة خيار',
+    addRule: 'إضافة قاعدة',
+    singleChoiceType: 'اختيار واحد',
+    publish: 'نشر',
+    submit: 'إرسال',
+    thankYou: 'شكراً لك — تم تسجيل ردك.',
   },
 };

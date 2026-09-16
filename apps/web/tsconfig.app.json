@@ -20,5 +20,16 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "../../modules/*/frontend"]
+  "include": [
+    "src",
+    "../../modules/*/frontend",
+    // The survey module's logic-engine.ts is deliberately framework-free
+    // (see its own docblock) specifically so the frontend can import the
+    // .ts SOURCE directly instead of duplicating the visibility evaluator —
+    // `composite: true` requires every file reachable from `include` to be
+    // listed explicitly, so this one file (never a whole `backend/**`
+    // glob — everything else there is NestJS/Node-only and would not
+    // type-check under this project's DOM-only `lib`) is named here too.
+    "../../modules/*/backend/logic-engine.ts"
+  ]
 }

@@ -31,6 +31,9 @@ import {
   AUTHENTICATED_LIBRARY_CATALOG_ROUTES,
   PUBLIC_LIBRARY_CATALOG_ROUTES,
 } from '../../../modules/library_catalog/frontend/routes';
+// Survey module — same static-route-table pattern as library_catalog above
+// (no dynamic module-federation-style loading exists yet).
+import { AUTHENTICATED_SURVEY_ROUTES, PUBLIC_SURVEY_ROUTES } from '../../../modules/survey/frontend/routes';
 
 function FullScreenLoader() {
   return (
@@ -64,6 +67,9 @@ function AppRoutes() {
         {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
+        {PUBLIC_SURVEY_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -74,6 +80,9 @@ function AppRoutes() {
       <Routes>
         <Route path="/force-password-change" element={<ForcePasswordChangePage />} />
         {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_SURVEY_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
@@ -105,6 +114,16 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {/* Survey module — AUTHENTICATED_SURVEY_ROUTES first so PageLayout's
+            menu-driven admin pages are always reachable; PUBLIC_SURVEY_ROUTES
+            too, so the same shareable /survey/:surveyId link also works for
+            an already-logged-in visitor, inside the app shell. */}
+        {AUTHENTICATED_SURVEY_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_SURVEY_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />

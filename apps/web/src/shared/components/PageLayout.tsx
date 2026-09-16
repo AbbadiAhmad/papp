@@ -24,6 +24,7 @@ import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import PollIcon from '@mui/icons-material/Poll';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
@@ -67,6 +68,14 @@ const MENU_ITEMS: MenuItemDef[] = [
     icon: <MenuBookIcon />,
     route: '/library/books',
     permissionCode: 'library_catalog.books.view',
+  },
+  // Survey module — same documented gap as library_catalog above.
+  {
+    id: 'survey',
+    labelKey: 'survey.menu.root',
+    icon: <PollIcon />,
+    route: '/survey/surveys',
+    permissionCode: 'survey.surveys.view',
   },
 ];
 

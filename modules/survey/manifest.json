@@ -1,0 +1,110 @@
+{
+  "key": "survey",
+  "name": "Survey",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0 <1.0.0",
+  "dependsOn": [],
+  "description": "Google-Forms-style survey builder: sections/questions with conditional show/hide logic driven by prior enumeration answers, public or login-required shareable links, optional post-submit answer editing, completion notifications to the owner and/or admin-configured addresses, and reporting including a dynamic pivot table.",
+
+  "migrations": {
+    "dir": "migrations"
+  },
+
+  "locales": {
+    "supported": ["ar", "en"],
+    "dir": "locales"
+  },
+
+  "permissions": [
+    { "code": "survey.surveys.view", "category": "survey", "descriptionKey": "survey.perm.surveys.view" },
+    { "code": "survey.surveys.create", "category": "survey", "descriptionKey": "survey.perm.surveys.create" },
+    { "code": "survey.surveys.update", "category": "survey", "descriptionKey": "survey.perm.surveys.update" },
+    { "code": "survey.surveys.delete", "category": "survey", "descriptionKey": "survey.perm.surveys.delete" },
+    { "code": "survey.surveys.publish", "category": "survey", "descriptionKey": "survey.perm.surveys.publish" },
+    { "code": "survey.responses.view", "category": "survey", "descriptionKey": "survey.perm.responses.view" },
+    { "code": "survey.responses.export", "category": "survey", "descriptionKey": "survey.perm.responses.export" },
+    { "code": "survey.responses.delete", "category": "survey", "descriptionKey": "survey.perm.responses.delete" }
+  ],
+
+  "defaultRolePermissions": {
+    "admin": [
+      "survey.surveys.view",
+      "survey.surveys.create",
+      "survey.surveys.update",
+      "survey.surveys.delete",
+      "survey.surveys.publish",
+      "survey.responses.view",
+      "survey.responses.export",
+      "survey.responses.delete"
+    ],
+    "library_assistant": [],
+    "finance": [],
+    "reader": []
+  },
+
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+
+  "settings": [],
+
+  "menu": [
+    {
+      "id": "survey.root",
+      "labelKey": "survey.menu.root",
+      "icon": "Poll",
+      "parentId": null,
+      "order": 30,
+      "route": "/survey/surveys",
+      "requiredPermission": "survey.surveys.view"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "/survey/surveys",
+      "access": "authenticated",
+      "requiredPermission": "survey.surveys.view",
+      "component": "frontend/pages/SurveysListPage.tsx"
+    },
+    {
+      "pattern": "/survey/surveys/:surveyId/edit",
+      "access": "authenticated",
+      "requiredPermission": "survey.surveys.update",
+      "component": "frontend/pages/SurveyBuilderPage.tsx"
+    },
+    {
+      "pattern": "/survey/surveys/:surveyId/responses",
+      "access": "authenticated",
+      "requiredPermission": "survey.responses.view",
+      "component": "frontend/pages/SurveyResponsesPage.tsx"
+    },
+    {
+      "pattern": "/survey/surveys/:surveyId/report",
+      "access": "authenticated",
+      "requiredPermission": "survey.responses.view",
+      "component": "frontend/pages/SurveyReportPage.tsx"
+    },
+    {
+      "pattern": "/survey/:surveyId",
+      "access": "public",
+      "component": "frontend/pages/TakeSurveyPage.tsx"
+    }
+  ],
+
+  "frontend": {
+    "basePath": "/survey",
+    "entry": "frontend/routes.tsx",
+    "landingPage": "/survey/surveys"
+  },
+
+  "backend": {
+    "entry": "backend/survey.module.js",
+    "apiPrefix": "/api/survey"
+  },
+
+  "lifecycle": {
+    "onInstall": null,
+    "onUpgrade": null,
+    "onUninstall": null
+  }
+}
