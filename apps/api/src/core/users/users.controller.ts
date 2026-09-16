@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { AllowMustChangePassword } from '../../common/decorators/allow-must-change-password.decorator';
 import { Audit } from '../../common/decorators/audit.decorator';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -33,6 +34,11 @@ import { UsersService } from './users.service';
  * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
  * global (app.module.ts) — only `MustChangePasswordGuard` stays
  * controller-scoped (see its own docblock).
+ *
+ * Phase 6: `GET /users/me` also carries `@AllowMustChangePassword()` — it's
+ * the frontend's only way to learn `mustChangePassword` is true in the first
+ * place, so blocking it created an infinite retry loop (found via real
+ * browser testing). See that decorator's docblock.
  */
 const fetchUserState = (prisma: PrismaService, req: Request) =>
   prisma.user.findUnique({ where: { id: req.params.id as string } });
@@ -43,6 +49,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
+  @AllowMustChangePassword()
   async getMe(@CurrentUser() user: AuthenticatedUser): Promise<PublicUser> {
     return this.usersService.findById(user.userId);
   }

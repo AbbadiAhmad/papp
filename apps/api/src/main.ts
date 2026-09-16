@@ -91,7 +91,17 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(
     buildRootModule(discoveredModules.map((m) => m.moduleClass)),
   );
-  app.enableCors({ credentials: true });
+  // `credentials: true` requires an ECHOED origin, never the `cors` package's
+  // wildcard default — a browser rejects a credentialed (cookie-carrying)
+  // response whose Access-Control-Allow-Origin is `*` (found live during
+  // Phase 6's browser verification: the refresh-cookie flow silently failed
+  // cross-origin). WEB_ORIGIN is a comma-separated allowlist (e.g. the Vite
+  // dev server + the docker-compose `web` nginx origin); with none set,
+  // default to the local dev server so `npm run dev` keeps working.
+  const webOrigins = (process.env.WEB_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean)) ?? [
+    'http://localhost:5173',
+  ];
+  app.enableCors({ origin: webOrigins, credentials: true });
   // Refresh tokens travel as an httpOnly cookie (see AuthController) — this
   // is what makes `req.cookies` available to read them back.
   app.use(cookieParser());

@@ -22,10 +22,16 @@ import { PermissionsService } from './permissions.service';
  * (Enforced later by scripts/lint-no-hardcoded-roles.ts, Phase 7 — this
  * comment is the primary defense in the meantime.)
  *
- * Applied ONLY on the Permissions-grant-management endpoints
- * (`PermissionsController`'s `roles/:roleId/grants` routes) in place of the
- * normal `PermissionGuard` — everywhere else in the codebase uses
- * `PermissionGuard`, with no admin bypass, full stop.
+ * Applied via `@PermissionCheckDelegatedToPermissionsPageGuard()` only on
+ * the read-only routes the Permissions PAGE itself needs to fully render
+ * and operate for a zero-grant admin: the grant-management sub-resource
+ * (`PermissionsController`'s `roles/:roleId/grants`) and the two catalog
+ * listings that sub-resource's UI is built from (`GET /permissions`,
+ * `GET /roles` — widened in Phase 6 after real-browser testing showed a
+ * zero-grant admin could edit grants but not see the catalogs needed to
+ * render the matrix in the first place). Everywhere else in the codebase
+ * uses plain `PermissionGuard`, with no admin bypass, full stop — this
+ * remains the only FILE containing role-name-shaped logic, per D12.
  *
  * Role codes are resolved FRESH from the database on every request
  * (`PermissionsService.getRoleCodesForUser`), exactly like effective

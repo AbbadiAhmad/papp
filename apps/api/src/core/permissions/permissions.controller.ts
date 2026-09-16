@@ -11,16 +11,20 @@ import { PermissionCheckDelegatedToPermissionsPageGuard, PermissionsPageGuard } 
 import { PermissionsService } from './permissions.service';
 
 /**
- * The catalog-listing endpoint goes through the normal, now-GLOBAL
- * `PermissionGuard` (no D12 bypass — you need `permissions.view` to see the
- * catalog, same as anything else). Only the grant-management sub-resource
- * (`roles/:roleId/grants`) — "the Permissions page" D12 is actually about —
- * uses `PermissionsPageGuard` instead, via
- * `@PermissionCheckDelegatedToPermissionsPageGuard()`: this tells the global
- * `PermissionGuard` to stand down on exactly these two handlers so
- * `PermissionsPageGuard`'s D12 admin-bypass is what actually decides access,
- * never overridden by the global guard rejecting first (see both guards'
- * docblocks — this is precisely what that delegation key exists for).
+ * Phase 6 extension of D12 (found via real-browser verification: a
+ * zero-grant admin could reach the grants sub-resource per the original D12
+ * exception, but not `GET /permissions` — so the Permissions page itself
+ * couldn't render its own matrix rows for that exact admin). The catalog
+ * listing here now ALSO delegates to `PermissionsPageGuard` via
+ * `@PermissionCheckDelegatedToPermissionsPageGuard()`, same as the grants
+ * sub-resource — this does not add a second hardcoded role check anywhere
+ * (`PermissionsPageGuard` in `permissions-page.guard.ts` remains the one
+ * file with that logic, per ARCHITECTURE.md §7.4); it only widens which
+ * routes are ALLOWED to delegate to that single, already-sanctioned guard.
+ * For every non-admin caller the behavior is byte-for-byte identical to the
+ * plain `permissions.view` check this replaced — the delegation only ever
+ * changes the outcome for the `admin` role itself (`GET /roles`'s analogous
+ * `roles.view` listing got the same treatment, see roles.controller.ts).
  */
 // Phase 3 @Audit fetchState: the role's grant list as sorted codes — called
 // before AND after the handler by AuditInterceptor, so the audit row's
@@ -41,6 +45,8 @@ export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
   @Get()
+  @UseGuards(PermissionsPageGuard)
+  @PermissionCheckDelegatedToPermissionsPageGuard()
   @RequirePermission('permissions.view')
   async list(): Promise<PublicPermission[]> {
     return this.permissionsService.list();

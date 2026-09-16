@@ -5,6 +5,7 @@ import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { PermissionCheckDelegatedToPermissionsPageGuard, PermissionsPageGuard } from '../permissions/permissions-page.guard';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PublicRole } from './role.presenter';
@@ -29,7 +30,14 @@ const fetchUserRoleState = (prisma: PrismaService, req: Request) =>
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
+  // Phase 6 extension of D12 (see permissions.controller.ts's matching
+  // docblock): the Permissions page needs the role catalog to render its
+  // matrix, so this listing delegates to PermissionsPageGuard too — for
+  // every non-admin caller this is byte-for-byte the same `roles.view`
+  // check it replaced; only the `admin` role's own zero-grant case changes.
   @Get()
+  @UseGuards(PermissionsPageGuard)
+  @PermissionCheckDelegatedToPermissionsPageGuard()
   @RequirePermission('roles.view')
   async list(): Promise<PublicRole[]> {
     return this.rolesService.list();
