@@ -17,6 +17,11 @@ const config: Config = {
   testMatch: ['<rootDir>/test/**/*.integration-spec.ts'],
   testTimeout: 120_000,
   maxWorkers: 1,
+  // Same fix as jest.unit.config.ts's "Known Tier 1 gotcha #2" (see
+  // jest.e2e.config.ts's identical comment) — a dual-shipped module's
+  // extensionless imports must resolve to `.ts` source, not its committed
+  // `.js` build output.
+  moduleFileExtensions: ['ts', 'js', 'json'],
 };
 
 export default config;

@@ -12,6 +12,39 @@ const config: Config = {
   testMatch: ['<rootDir>/test/**/*.e2e-spec.ts'],
   testTimeout: 120_000,
   maxWorkers: 1,
+  // Same fix as jest.unit.config.ts's "Known Tier 1 gotcha #2"
+  // (docs/TESTING_STRATEGY.md): any spec that loads a dual-shipped module's
+  // source (e.g. library_catalog, which ships both backend/*.ts and its own
+  // pre-compiled backend/*.js per MODULE_SPEC.md §1/D56) must resolve `.ts`
+  // first, or Jest's default extension order silently redirects to the
+  // committed CommonJS build output, which fails under this ESM-only
+  // runtime regardless of Docker/DB availability.
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  // "Known Tier 1 gotcha #3" (docs/TESTING_STRATEGY.md, D59): modules/library_catalog's
+  // public.controller.ts deliberately imports the REAL `PublicThrottlerGuard`
+  // from apps/api's BUILT output (`apps/api/dist/...`, per D57 — it's genuine
+  // shared rate-limiter logic, not a metadata-marker shim). That dist file is
+  // tsc-compiled CommonJS (`require('@nestjs/common')`), which jest-runtime's
+  // own CJS `require()` cannot load — @nestjs/common 12 ships ESM-only, and
+  // jest-runtime only gained `require(esm)` support on Node 24.9+ (this
+  // repo/CI target Node 22 — see jest.base.config.ts's docblock for the same
+  // Node-version boundary). Every other `.ts` import of NestJS packages in
+  // this suite avoids that failure entirely because ts-jest compiles `.ts` to
+  // real ESM (`useESM: true`) and Jest's `--experimental-vm-modules` loader
+  // uses Node's native ESM resolver for those, which has no such version
+  // floor. This is a TEST-ONLY redirect (mirrors the existing
+  // `@papp/shared-types` -> TS-source `moduleNameMapper` entry in
+  // jest.base.config.ts, same rationale): it points this one specifier at the
+  // exact `.ts` source AppModule itself already loads elsewhere in the same
+  // test run (so Jest's module cache gives every test exactly one guard
+  // class, not two), leaving the real dist import untouched for actual
+  // dev/production processes, which run on real Node (22.12+) with native
+  // require(esm) support and never hit this at all.
+  moduleNameMapper: {
+    ...baseConfig.moduleNameMapper,
+    '^.*/apps/api/dist/common/guards/public-throttler\\.guard$':
+      '<rootDir>/src/common/guards/public-throttler.guard.ts',
+  },
 };
 
 export default config;
