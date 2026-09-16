@@ -1,8 +1,16 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { ModuleManifest, parseModuleManifest } from '@papp/shared-types';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ModuleRegistryService } from '../../../src/core/module-registry/module-registry.service';
+import { Client } from 'pg';
+import { ManifestValidationError, ModuleRegistryService } from '../../../src/core/module-registry/module-registry.service';
 
 /**
  * Tier 1 unit tests for the module install/upgrade/uninstall lifecycle
@@ -91,6 +99,49 @@ function createMockPrisma(): MockPrisma {
     return Promise.all(arg as Promise<unknown>[]);
   });
   return prisma;
+}
+
+/**
+ * A schema-VALID raw manifest object, shaped exactly like
+ * test/fixtures/modules/valid_module/manifest.json, for tests that exercise
+ * `validateAgainstPlatform`/`applyDefaultRolePermissions` directly (private
+ * methods, called via a narrow bracket-notation cast — MODULE_SPEC.md §4
+ * step 2's cross-platform checks are the thing under test here, not Zod's
+ * own self-consistency rules, which have their own coverage via the
+ * `invalid_schema_module` fixture above). Overrides replace whole top-level
+ * keys, so a caller passing e.g. `{ locales: {...} }` must supply the full
+ * nested object.
+ */
+function buildRawManifest(overrides: Record<string, unknown> = {}): unknown {
+  return {
+    key: 'test_module',
+    name: 'Test Module',
+    version: '1.0.0',
+    compatibleAppVersion: '>=0.1.0',
+    dependsOn: [],
+    description: 'inline fixture manifest for validateAgainstPlatform tests',
+    migrations: { dir: 'migrations' },
+    locales: { supported: ['ar', 'en'], dir: 'locales' },
+    permissions: [],
+    defaultRolePermissions: {},
+    roleAccessPolicy: 'grantable',
+    roleAccessLocked: {},
+    settings: [],
+    routes: [],
+    menu: [],
+    frontend: { basePath: '/test_module', entry: 'index.tsx', landingPage: '/test_module' },
+    backend: { entry: 'index.ts', apiPrefix: '/test_module' },
+    lifecycle: { onInstall: null, onUpgrade: null, onUninstall: null },
+    ...overrides,
+  };
+}
+
+function buildManifest(overrides: Record<string, unknown> = {}): ModuleManifest {
+  const parsed = parseModuleManifest(buildRawManifest(overrides));
+  if (!parsed.success) {
+    throw new Error(`buildManifest: fixture failed schema validation: ${JSON.stringify(parsed.issues)}`);
+  }
+  return parsed.manifest;
 }
 
 describe('ModuleRegistryService', () => {
@@ -239,6 +290,34 @@ describe('ModuleRegistryService', () => {
         }),
       );
     });
+
+    it('throws NotFoundException when no manifest.json exists on disk for the key, without touching the DB', async () => {
+      await expect(service.install('totally_missing_module')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.moduleRegistryEntry.findUnique).not.toHaveBeenCalled();
+      expect(prisma.moduleRegistryEntry.upsert).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when manifest.json is not valid JSON', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue(null);
+
+      await expect(service.install('malformed_json_module')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.install('malformed_json_module')).rejects.toThrow(/not valid JSON/);
+    });
+
+    it('marks the module "failed" and rejects with InternalServerErrorException when migrations throw', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue(null);
+      migrationRunner.applyDirectory.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.install('valid_module')).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(service.install('valid_module')).rejects.toThrow(/disk full/);
+
+      expect(prisma.moduleRegistryEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ status: 'failed' }),
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('upgrade()', () => {
@@ -282,6 +361,61 @@ describe('ModuleRegistryService', () => {
       expect(result.status).toBe('installed');
       expect(i18n.rebuild).toHaveBeenCalledTimes(1);
     });
+
+    it('throws NotFoundException when the module is not registered at all', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue(null);
+      await expect(service.upgrade('valid_module')).rejects.toBeInstanceOf(NotFoundException);
+      expect(migrationRunner.applyDirectory).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the current status is not upgradable', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installing' });
+      await expect(service.upgrade('valid_module')).rejects.toBeInstanceOf(ConflictException);
+      expect(migrationRunner.applyDirectory).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when no manifest.json exists on disk for the key', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'ghost_module', status: 'installed' });
+      await expect(service.upgrade('ghost_module')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('marks the module "failed" and rejects when manifest.json fails schema validation', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'invalid_schema_module', status: 'installed' });
+
+      await expect(service.upgrade('invalid_schema_module')).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(migrationRunner.applyDirectory).not.toHaveBeenCalled();
+      expect(prisma.moduleRegistryEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ status: 'failed' }) }),
+      );
+    });
+
+    it('marks the module "failed" and rejects on a cross-validation failure (unmet dependsOn)', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockImplementation(async (args: unknown) => {
+        const key = (args as { where: { key: string } }).where.key;
+        if (key === 'depends_module') return { key: 'depends_module', status: 'installed' };
+        return null;
+      });
+
+      await expect(service.upgrade('depends_module')).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(migrationRunner.applyDirectory).not.toHaveBeenCalled();
+      expect(prisma.moduleRegistryEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ status: 'failed' }) }),
+      );
+    });
+
+    it('marks the module "failed" and rejects with InternalServerErrorException when migrations throw', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+      migrationRunner.applyDirectory.mockRejectedValue(new Error('disk full'));
+
+      await expect(service.upgrade('valid_module')).rejects.toBeInstanceOf(InternalServerErrorException);
+
+      expect(prisma.moduleRegistryEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ status: 'failed' }) }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('uninstall()', () => {
@@ -312,6 +446,207 @@ describe('ModuleRegistryService', () => {
 
       expect(downMigrationsSpy).toHaveBeenCalledTimes(1);
       expect(downMigrationsSpy).toHaveBeenCalledWith('valid_module');
+    });
+
+    it('throws ForbiddenException for the core pseudo-module, without touching the DB', async () => {
+      await expect(service.uninstall('core', false)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.moduleRegistryEntry.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the module is not registered', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue(null);
+      await expect(service.uninstall('valid_module', false)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws ConflictException when the current status cannot be uninstalled', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installing' });
+      await expect(service.uninstall('valid_module', false)).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('list()', () => {
+    it('maps every registry row through the public presenter, ordered by key', async () => {
+      const row = {
+        key: 'valid_module',
+        version: '1.0.0',
+        status: 'installed',
+        installedAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+        manifestSnapshot: { some: 'snapshot' },
+      };
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([row]);
+
+      const result = await service.list();
+
+      expect(prisma.moduleRegistryEntry.findMany).toHaveBeenCalledWith({ orderBy: { key: 'asc' } });
+      expect(result).toEqual([
+        {
+          key: 'valid_module',
+          version: '1.0.0',
+          status: 'installed',
+          installedAt: row.installedAt,
+          updatedAt: row.updatedAt,
+          manifestSnapshot: { some: 'snapshot' },
+        },
+      ]);
+    });
+  });
+
+  describe('triggerOrchestratedRestart()', () => {
+    it('logs the D15 rationale and calls process.exit(0)', () => {
+      const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+
+      service.triggerOrchestratedRestart('valid_module', 'install');
+
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+  });
+
+  /**
+   * Direct calls into the private cross-validation method — narrower and
+   * more targeted than driving every branch through install()/upgrade(),
+   * which already cover the "manifest schema itself is fine but
+   * validateAgainstPlatform rejects it" outcome for the dependsOn case.
+   * These cover the sibling branches: key mismatch, missing 'ar' locale,
+   * an unsatisfied compatibleAppVersion range, and both flavors of
+   * basePath/apiPrefix collision against an already-installed module.
+   */
+  describe('validateAgainstPlatform() (direct)', () => {
+    function validate(key: string, manifest: ModuleManifest): Promise<ManifestValidationError[]> {
+      return (
+        service as unknown as {
+          validateAgainstPlatform: (key: string, manifest: ModuleManifest) => Promise<ManifestValidationError[]>;
+        }
+      ).validateAgainstPlatform(key, manifest);
+    }
+
+    it('flags a manifest key that does not match the requested install key', async () => {
+      const manifest = buildManifest(); // key: 'test_module'
+      const issues = await validate('some_other_key', manifest);
+      expect(issues).toContainEqual(expect.objectContaining({ path: 'key' }));
+    });
+
+    it('flags a manifest that does not ship the platform default language (ar)', async () => {
+      const manifest = buildManifest({ locales: { supported: ['en'], dir: 'locales' } });
+      const issues = await validate('test_module', manifest);
+      expect(issues).toContainEqual(expect.objectContaining({ path: 'locales.supported' }));
+    });
+
+    it('flags a compatibleAppVersion range the running platform version does not satisfy', async () => {
+      const manifest = buildManifest({ compatibleAppVersion: '>=99.0.0' });
+      const issues = await validate('test_module', manifest);
+      expect(issues).toContainEqual(expect.objectContaining({ path: 'compatibleAppVersion' }));
+    });
+
+    it('flags a frontend.basePath and backend.apiPrefix that collide with an already-installed module', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+        {
+          key: 'some_other_module',
+          status: 'installed',
+          manifestSnapshot: {
+            frontend: { basePath: '/test_module' },
+            backend: { apiPrefix: '/test_module' },
+          },
+        },
+      ]);
+      const manifest = buildManifest(); // frontend.basePath = backend.apiPrefix = '/test_module'
+
+      const issues = await validate('test_module', manifest);
+
+      expect(issues).toContainEqual(expect.objectContaining({ path: 'frontend.basePath' }));
+      expect(issues).toContainEqual(expect.objectContaining({ path: 'backend.apiPrefix' }));
+    });
+
+    it('does not collide with itself or with core when re-validating an already-installed module', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+        { key: 'test_module', status: 'installed', manifestSnapshot: null },
+        { key: 'core', status: 'installed', manifestSnapshot: null },
+      ]);
+      const manifest = buildManifest();
+
+      const issues = await validate('test_module', manifest);
+
+      expect(issues.find((i) => i.path === 'frontend.basePath')).toBeUndefined();
+      expect(issues.find((i) => i.path === 'backend.apiPrefix')).toBeUndefined();
+    });
+  });
+
+  describe('applyDefaultRolePermissions() (direct)', () => {
+    it('warns and skips a role code that defaultRolePermissions references but that does not exist', async () => {
+      const manifest = buildManifest({
+        permissions: [{ code: 'test_module.items.view', category: 'items', descriptionKey: 'test_module.perm.items.view' }],
+        defaultRolePermissions: { ghost_role: ['test_module.items.view'] },
+      });
+      prisma.permission.findMany.mockResolvedValue([{ id: 'perm-1', code: 'test_module.items.view' }]);
+      prisma.role.findUnique.mockResolvedValue(null);
+
+      await (
+        service as unknown as {
+          applyDefaultRolePermissions: (tx: unknown, manifest: ModuleManifest, grantedBy?: string) => Promise<void>;
+        }
+      ).applyDefaultRolePermissions(prisma, manifest, 'admin-1');
+
+      expect(prisma.role.findUnique).toHaveBeenCalledWith({ where: { code: 'ghost_role' } });
+      expect(prisma.rolePermission.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Direct calls into the private down-migration runner — the existing
+   * uninstall() tests above mock this method out entirely (per this suite's
+   * own docblock) to keep uninstall()'s own tests focused on the
+   * lifecycle/status transitions; these cover the runner's own body,
+   * including the real `pg` Client usage (spied on its prototype so nothing
+   * touches a real database).
+   */
+  describe('runDownMigrationsIfPresent() (direct)', () => {
+    function runDownMigrations(key: string): Promise<void> {
+      return (service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }).runDownMigrationsIfPresent(
+        key,
+      );
+    }
+
+    it('warns and returns without touching module_migrations when migrations/down does not exist', async () => {
+      // depends_module's fixture directory has no migrations/down/ subdirectory at all.
+      await runDownMigrations('depends_module');
+      expect(prisma.moduleMigration.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('warns and returns without touching module_migrations when migrations/down has no .sql files', async () => {
+      await runDownMigrations('empty_down_module');
+      expect(prisma.moduleMigration.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('runs every down migration in reverse filename order via a pg Client, then clears module_migrations rows', async () => {
+      const connectSpy = jest.spyOn(Client.prototype, 'connect').mockResolvedValue(undefined as never);
+      const queriedSql: string[] = [];
+      const querySpy = jest
+        .spyOn(Client.prototype, 'query')
+        .mockImplementation((async (sql: unknown) => {
+          queriedSql.push(String(sql).trim());
+          return {} as never;
+        }) as never);
+      const endSpy = jest.spyOn(Client.prototype, 'end').mockResolvedValue(undefined as never);
+
+      await runDownMigrations('valid_module');
+
+      expect(connectSpy).toHaveBeenCalledTimes(1);
+      // 002_drop.sql sorts before 001_seed.sql in reverse filename order.
+      expect(queriedSql).toEqual(['select 1;', 'select 1;']);
+      expect(querySpy).toHaveBeenCalledTimes(2);
+      expect(endSpy).toHaveBeenCalledTimes(1);
+      expect(prisma.moduleMigration.deleteMany).toHaveBeenCalledWith({ where: { moduleKey: 'valid_module' } });
+    });
+
+    it('still closes the client and rethrows when a down migration query fails', async () => {
+      jest.spyOn(Client.prototype, 'connect').mockResolvedValue(undefined as never);
+      jest.spyOn(Client.prototype, 'query').mockRejectedValue(new Error('bad sql') as never);
+      const endSpy = jest.spyOn(Client.prototype, 'end').mockResolvedValue(undefined as never);
+
+      await expect(runDownMigrations('valid_module')).rejects.toThrow(/bad sql/);
+
+      expect(endSpy).toHaveBeenCalledTimes(1);
+      expect(prisma.moduleMigration.deleteMany).not.toHaveBeenCalled();
     });
   });
 });
