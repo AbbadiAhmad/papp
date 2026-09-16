@@ -1,0 +1,22 @@
+{
+  "key": "invalid_schema_module",
+  "name": "Invalid Schema Module",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0",
+  "dependsOn": [],
+  "description": "Fixture module whose manifest fails Zod self-consistency validation (permission code not prefixed with the module key)",
+  "migrations": { "dir": "migrations" },
+  "locales": { "supported": ["ar"], "dir": "locales" },
+  "permissions": [
+    { "code": "wrong_prefix.items.view", "category": "items", "descriptionKey": "invalid_schema_module.perm.items.view" }
+  ],
+  "defaultRolePermissions": {},
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+  "settings": [],
+  "routes": [],
+  "menu": [],
+  "frontend": { "basePath": "/invalid_schema_module", "entry": "index.tsx", "landingPage": "/invalid_schema_module" },
+  "backend": { "entry": "index.ts", "apiPrefix": "/invalid_schema_module" },
+  "lifecycle": { "onInstall": null, "onUpgrade": null, "onUninstall": null }
+}

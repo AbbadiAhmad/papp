@@ -1,0 +1,39 @@
+{
+  "key": "valid_module",
+  "name": "Valid Module",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0",
+  "dependsOn": [],
+  "description": "Fixture module for ModuleRegistryService unit tests",
+  "migrations": { "dir": "migrations" },
+  "locales": { "supported": ["ar", "en"], "dir": "locales" },
+  "permissions": [
+    { "code": "valid_module.items.view", "category": "items", "descriptionKey": "valid_module.perm.items.view" }
+  ],
+  "defaultRolePermissions": { "admin": ["valid_module.items.view"] },
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+  "settings": [
+    {
+      "key": "valid_module.some_setting",
+      "type": "boolean",
+      "default": true,
+      "labelKey": "valid_module.settings.some_setting",
+      "requiredPermission": "valid_module.items.view"
+    }
+  ],
+  "routes": [],
+  "menu": [
+    {
+      "id": "valid_module_root",
+      "labelKey": "valid_module.menu.root",
+      "parentId": null,
+      "order": 1,
+      "route": "/valid_module",
+      "requiredPermission": "valid_module.items.view"
+    }
+  ],
+  "frontend": { "basePath": "/valid_module", "entry": "index.tsx", "landingPage": "/valid_module" },
+  "backend": { "entry": "index.ts", "apiPrefix": "/valid_module" },
+  "lifecycle": { "onInstall": null, "onUpgrade": null, "onUninstall": null }
+}

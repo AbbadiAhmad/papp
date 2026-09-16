@@ -1,0 +1,22 @@
+{
+  "key": "depends_module",
+  "name": "Depends Module",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0",
+  "dependsOn": ["missing_dep"],
+  "description": "Fixture module whose dependsOn is never installed — for validateAgainstPlatform cross-check tests",
+  "migrations": { "dir": "migrations" },
+  "locales": { "supported": ["ar"], "dir": "locales" },
+  "permissions": [
+    { "code": "depends_module.items.view", "category": "items", "descriptionKey": "depends_module.perm.items.view" }
+  ],
+  "defaultRolePermissions": {},
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+  "settings": [],
+  "routes": [],
+  "menu": [],
+  "frontend": { "basePath": "/depends_module", "entry": "index.tsx", "landingPage": "/depends_module" },
+  "backend": { "entry": "index.ts", "apiPrefix": "/depends_module" },
+  "lifecycle": { "onInstall": null, "onUpgrade": null, "onUninstall": null }
+}
