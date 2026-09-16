@@ -137,6 +137,13 @@ Phase 6's Developer agent (frontend only, correctly did not touch `apps/api/**`)
 | A21 | Not fixed (deferred, low priority): no `GET /roles/:id/users` ("members of a role") endpoint exists — the frontend's role-assignment dialog does one `GET /roles/user/:userId` call per user instead, which the Phase 6 agent judged fine at current scale. Add the real endpoint if role membership lists become a performance concern. | ASSUMED (deferred) |
 | A22 | **No `GET /permissions/me/effective` endpoint exists**, so `apps/web/src/shared/permissions.tsx`'s `usePermission`/`runGated` learn deniability only from a real API call's actual 403 — never a precomputed/cached permission set. This is functionally correct and secure (the backend is always the real boundary either way) but is a UX rough edge: a control a user can't use stays visible until their first click fails, instead of being hidden upfront. Recommended follow-up, not urgent: add that endpoint (cheap — it's the same `getEffectivePermissionCodes` query `PermissionGuard` already runs, just exposed as a read) and switch the frontend to fetch-once-and-cache. Not built now to keep Phase 6 scoped to what the committed backend actually supports. | ASSUMED (deferred) |
 
+## Phase 7 build decisions (2026-09-16)
+
+| # | Decision | Status |
+|---|---|---|
+| D53 | **CI's coverage gate is wired as a real, enforced, currently-RED job** (`backend-coverage-gate`), not softened to match today's numbers: `PermissionGuard` 100%, `AuditInterceptor` 97.5%, `auth.service.ts` 97.6% all clear the 80% line bar; `auth.controller.ts` is **0%** (only exercised by the deferred Tier 2 e2e layer, no Tier 1 unit tests target the controller directly) and `module-registry.service.ts` is **71.34%** (short ~9 points — mostly install/upgrade error-path branches). The threshold is left at the real target per D37's spirit (never fake a gate to make it pass) — closing the gap is tracked as a follow-up (see next entry) rather than merged silently red. | DECIDED |
+| D54 | Playwright's `no tests found` for zero specs is a **real exit-1 failure**, not a benign no-op as BUILD_PLAN.md's Phase 7 text assumed — confirmed empirically against the installed `@playwright/test@1.63.0`. CI's frontend-e2e job uses `--pass-with-no-tests` explicitly until Phase 9 adds real specs. | DECIDED (correction to BUILD_PLAN assumption) |
+
 
 
 ## Assumptions still standing (flag any that are wrong)

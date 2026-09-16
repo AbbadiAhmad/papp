@@ -9,15 +9,22 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:permissions": "tsx scripts/lint-permissions.ts",
+    "lint:locales": "tsx scripts/lint-locales.ts",
+    "lint:no-hardcoded-roles": "tsx scripts/lint-no-hardcoded-roles.ts",
+    "lint:manifests": "npm run lint:permissions && npm run lint:locales && npm run lint:no-hardcoded-roles",
+    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.0",
     "eslint": "^10.1.8",
     "globals": "^17.12.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
   }

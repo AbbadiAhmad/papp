@@ -8,9 +8,10 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "lint": "eslint \"{src,prisma}/**/*.ts\"",
+    "lint": "eslint \"{src,prisma,test}/**/*.ts\"",
     "prisma:generate": "prisma generate",
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.unit.config.ts",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.unit.config.ts --coverage",
     "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.integration.config.ts",
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config test/jest.e2e.config.ts"
   },

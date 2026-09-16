@@ -1,0 +1,247 @@
+name: CI
+
+# D4/D31: single git branch for all work, CI runs on every push to it and on
+# every pull request. (A PR only ever targets this same branch, since it's
+# the only one — but the trigger is kept generic so a fork/PR workflow still
+# works if that ever changes.)
+on:
+  push:
+    branches:
+      - claude/compassionate-dijkstra-9f52cd
+  pull_request:
+    branches:
+      - claude/compassionate-dijkstra-9f52cd
+
+# Cancel superseded runs on the same ref so a rapid string of pushes doesn't
+# queue up redundant Testcontainers/Playwright runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  # Fixed, non-secret value for CI only — real deployments must set a long
+  # random value per .env.example; this just avoids the AuthModule's
+  # "insecure development default" warning spamming every job's log.
+  JWT_SECRET: ci-only-not-a-real-secret-see-env-example
+
+jobs:
+  # ---------------------------------------------------------------------
+  # lint -> typecheck -> build (docs/TESTING_STRATEGY.md §8 pipeline order)
+  # ---------------------------------------------------------------------
+  # `npm run build` at the root already runs `tsc -b`/`nest build`/`tsc` per
+  # workspace (docs/BUILD_PLAN.md Phase 7 task description says reuse this
+  # rather than add a separate `typecheck` script that would just duplicate
+  # the same compiler invocation), so this one job covers both "typecheck"
+  # and "build" stages.
+  build:
+    name: Lint, typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npm run --workspace=@papp/api prisma:generate
+      - name: Lint (all workspaces)
+        run: npm run lint
+      - name: Build / typecheck (all workspaces)
+        run: npm run build
+
+  # ---------------------------------------------------------------------
+  # Backend unit tests (Tier 1 — mocked dependencies, no DB/Docker/browser).
+  # Must pass on every push: 237 tests, no external deps.
+  # ---------------------------------------------------------------------
+  backend-unit:
+    name: Backend unit tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run --workspace=@papp/api prisma:generate
+      - name: apps/api test:unit
+        run: npm run test:unit --workspace=@papp/api
+
+  # ---------------------------------------------------------------------
+  # Coverage gate (docs/TESTING_STRATEGY.md §8): 80% lines on PermissionGuard,
+  # AuditInterceptor, AuthModule (auth.service.ts/auth.controller.ts), and
+  # ModuleRegistryModule (module-registry.service.ts) specifically — scoped
+  # per-file in apps/api/test/jest.unit.config.ts's `coverageThreshold`, not
+  # a blanket global threshold. Kept as its own job (rather than a step in
+  # backend-unit) so a coverage shortfall shows as its own clearly-labelled
+  # check rather than being read as "the unit tests themselves failed."
+  #
+  # KNOWN GAP as of Phase 7 (see this phase's Developer report): real
+  # measured coverage today is permission.guard.ts 100%, audit.interceptor.ts
+  # 97.5%, auth.service.ts 97.56% (all >= 80%, this job passes for them) —
+  # but auth.controller.ts is 0% (only exercised by the e2e layer, deferred
+  # to Tier 2 per D37) and module-registry.service.ts is ~71% (short of the
+  # 80% target). This job is therefore EXPECTED to fail right now; the
+  # threshold is deliberately left at the real 80% target rather than
+  # quietly lowered to match current numbers, so this failure stays visible
+  # until Tier 1 top-up tests (or Phase 9's hardening pass) close the gap.
+  backend-coverage-gate:
+    name: Backend coverage gate (security-critical core)
+    needs: backend-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run --workspace=@papp/api prisma:generate
+      - name: apps/api test:coverage (enforces coverageThreshold)
+        run: npm run test:coverage --workspace=@papp/api
+
+  # ---------------------------------------------------------------------
+  # Backend integration tests (Tier 2 — real Postgres via Testcontainers).
+  # ---------------------------------------------------------------------
+  # The actual specs (apps/api/test/**/*.integration-spec.ts) start their own
+  # throwaway Postgres 16 container per file via @testcontainers/postgresql
+  # (test/support/postgres-test-container.ts), which needs a reachable
+  # Docker daemon — already present on GitHub-hosted `ubuntu-latest` runners,
+  # no extra config required. The `services:` Postgres below is a defensive
+  # baseline (matching apps/api/.env.example's DATABASE_URL shape) for any
+  # spec that reads DATABASE_URL directly instead of spinning up its own
+  # container; Testcontainers-based specs override DATABASE_URL themselves
+  # and simply ignore this one.
+  backend-integration:
+    name: Backend integration tests (Testcontainers Postgres)
+    needs: backend-unit
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: papp
+          POSTGRES_PASSWORD: papp
+          POSTGRES_DB: papp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U papp -d papp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://papp:papp@localhost:5432/papp?schema=public
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run --workspace=@papp/api prisma:generate
+      - name: apps/api test:integration
+        run: npm run test:integration --workspace=@papp/api
+
+  # ---------------------------------------------------------------------
+  # Backend e2e tests (Tier 2 — Supertest against a really-booted app + real
+  # DB). Same Postgres dependency/rationale as the integration job above.
+  # ---------------------------------------------------------------------
+  backend-e2e:
+    name: Backend e2e tests
+    needs: backend-integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: papp
+          POSTGRES_PASSWORD: papp
+          POSTGRES_DB: papp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U papp -d papp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://papp:papp@localhost:5432/papp?schema=public
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run --workspace=@papp/api prisma:generate
+      - name: apps/api test:e2e
+        run: npm run test:e2e --workspace=@papp/api
+
+  # ---------------------------------------------------------------------
+  # Frontend unit/component tests (Vitest + RTL).
+  # ---------------------------------------------------------------------
+  frontend-unit:
+    name: Frontend unit tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: apps/web test
+        run: npm run test --workspace=@papp/web
+
+  # ---------------------------------------------------------------------
+  # Frontend e2e smoke (Playwright). Phase 6 shipped the config with zero
+  # specs (Phase 9 fills tests/e2e/ in); `--pass-with-no-tests` makes that a
+  # real pass instead of Playwright's default "Error: No tests found"
+  # (exit 1) — verified locally against the installed @playwright/test
+  # version (1.63.0) before relying on it here.
+  # ---------------------------------------------------------------------
+  frontend-e2e:
+    name: Frontend e2e smoke (Playwright)
+    needs: frontend-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: apps/web playwright test (zero specs today is a pass, not a failure)
+        working-directory: apps/web
+        run: npx playwright test --pass-with-no-tests
+
+  # ---------------------------------------------------------------------
+  # Static analysis: manifest/locale lint (docs/BUILD_PLAN.md Phase 7).
+  # ---------------------------------------------------------------------
+  static-analysis:
+    name: Static analysis (permissions / locales / no-hardcoded-roles)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck scripts/
+        run: npm run typecheck:scripts
+      - name: lint:permissions (manifest/seed <-> @RequirePermission consistency)
+        run: npm run lint:permissions
+      - name: lint:locales (ar/en key-set parity)
+        run: npm run lint:locales
+      - name: lint:no-hardcoded-roles (D12 single-exception check)
+        run: npm run lint:no-hardcoded-roles
