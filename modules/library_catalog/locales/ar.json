@@ -1,0 +1,50 @@
+{
+  "library_catalog.menu.root": "المكتبة",
+  "library_catalog.menu.books": "الكتب",
+
+  "library_catalog.perm.books.view": "عرض الكتب",
+  "library_catalog.perm.books.create": "إضافة كتب",
+  "library_catalog.perm.books.update": "تعديل الكتب",
+  "library_catalog.perm.books.delete": "حذف الكتب",
+  "library_catalog.perm.books.export": "تصدير الكتب",
+
+  "library_catalog.fields.title": "العنوان",
+  "library_catalog.fields.author": "المؤلف",
+  "library_catalog.fields.no_author": "مؤلف غير معروف",
+  "library_catalog.fields.publisher": "الناشر",
+  "library_catalog.fields.category": "التصنيف",
+  "library_catalog.fields.reading_level": "المستوى القرائي",
+  "library_catalog.fields.language": "اللغة",
+  "library_catalog.fields.description": "الوصف",
+  "library_catalog.fields.cover_image": "صورة الغلاف",
+  "library_catalog.fields.total_copies": "عدد النسخ",
+  "library_catalog.fields.created_at": "تاريخ الإضافة",
+
+  "library_catalog.actions.add_book": "إضافة كتاب",
+  "library_catalog.actions.add_copy": "إضافة نسخة",
+  "library_catalog.actions.export": "تصدير",
+
+  "library_catalog.books.create_title": "إضافة كتاب",
+  "library_catalog.books.edit_title": "تعديل الكتاب",
+  "library_catalog.books.delete_title": "حذف الكتاب",
+  "library_catalog.books.delete_confirm": "هل تريد حذف \"{{title}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+
+  "library_catalog.copies.title": "النسخ",
+  "library_catalog.copies.qr_code": "رمز الاستجابة السريعة",
+  "library_catalog.copies.status": "الحالة",
+  "library_catalog.copies.condition": "الحالة الفنية",
+  "library_catalog.copies.location": "الموقع",
+  "library_catalog.copies.acquisition_date": "تاريخ الاقتناء",
+
+  "library_catalog.copy_status.available": "متاحة",
+  "library_catalog.copy_status.borrowed": "معارة",
+  "library_catalog.copy_status.lost": "مفقودة",
+  "library_catalog.copy_status.damaged": "تالفة",
+  "library_catalog.copy_status.maintenance": "قيد الصيانة",
+  "library_catalog.copy_status.reserved": "محجوزة",
+
+  "library_catalog.public.not_found": "تعذر العثور على هذا الكتاب.",
+  "library_catalog.public.availability_summary": "{{available}} من {{total}} نسخة متاحة",
+  "library_catalog.public.available": "هذا الكتاب متاح حالياً.",
+  "library_catalog.public.unavailable": "هذا الكتاب غير متاح حالياً."
+}

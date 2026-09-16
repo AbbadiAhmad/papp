@@ -296,6 +296,67 @@ model ModuleMenuEntry {
   @@map("module_menu_entries")
 }
 
+// --- Phase 8: library_catalog module (first real installable module) -----
+// See modules/library_catalog/migrations/001_create_books_table.sql and
+// 002_create_book_copies_table.sql for the raw DDL these mirror, and
+// docs/LIBRARY_MODULE_REQUIREMENTS.md §4-5 for the field shape. Per
+// BUILD_PLAN.md §2's note, a module-owned table gets its own `model` block
+// appended here BY HAND (never `prisma migrate`) after its migration ships,
+// `@@map`-ed to the table the raw SQL actually created.
+
+enum LibraryCatalogBookCopyStatus {
+  available
+  borrowed
+  lost
+  damaged
+  maintenance
+  reserved
+
+  @@map("library_catalog_book_copy_status")
+}
+
+/// The catalog record (one row per title, independent of how many physical
+/// copies exist — see LibraryCatalogBookCopy below).
+model LibraryCatalogBook {
+  id           String   @id @default(uuid()) @db.Uuid
+  title        String
+  author       String?
+  publisher    String?
+  category     String?
+  readingLevel String?  @map("reading_level")
+  language     String?
+  description  String?
+  coverImage   String?  @map("cover_image")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  copies LibraryCatalogBookCopy[]
+
+  @@map("library_catalog_books")
+}
+
+/// One row per physical, individually-trackable copy of a Book
+/// (docs/LIBRARY_MODULE_REQUIREMENTS.md §5). Borrowing history that changes
+/// `status` over time belongs to the future library_circulation module
+/// (D44) — this table only ever tracks the copy's CURRENT state.
+model LibraryCatalogBookCopy {
+  id              String                        @id @default(uuid()) @db.Uuid
+  bookId          String                        @map("book_id") @db.Uuid
+  qrCode          String                        @unique @map("qr_code")
+  status          LibraryCatalogBookCopyStatus  @default(available)
+  condition       String?
+  location        String?
+  acquisitionDate DateTime?                     @map("acquisition_date") @db.Date
+  createdAt       DateTime                      @default(now()) @map("created_at")
+  updatedAt       DateTime                      @updatedAt @map("updated_at")
+
+  book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId])
+  @@index([status])
+  @@map("library_catalog_book_copies")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

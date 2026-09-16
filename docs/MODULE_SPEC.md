@@ -4,17 +4,26 @@ How a feature (Library Catalog, Borrowing, Finance, …) plugs into the base pla
 
 ## 1. Package layout
 
+**Real, load-bearing constraints, confirmed by building the first real module (`library_catalog`, D55-D57) — not illustrative details:**
+
+- **The directory name must equal the manifest `key` literally, snake_case** (`modules/library_catalog/`, not a hyphenated name) — `ModuleRegistryService`/the module loader build the on-disk path directly from the key string.
+- **`backend.entry` must point to compiled CommonJS output (`*.js`), never raw `.ts`** — plain Node cannot `import()` NestJS-decorated TypeScript, even with type-stripping. Every module ships a small own `tsconfig.json` (extending the shared base config) that compiles `backend/*.ts` → `backend/*.js` in place; **both the TypeScript source and its compiled output are checked into git together**.
+- **A module cannot directly import `apps/api/src/common/**`'s real decorators/guards** (`@Public()`, `@RequirePermission()`, `@Audit()`, `@CurrentUser()`, `MustChangePasswordGuard`) — only `apps/api/dist/**` exists as loadable JS at runtime. Until a shared `@papp/platform-kit` package exists, every module ships a small local `backend/platform.ts` re-declaring these as thin metadata shims against the exact same literal string keys the real global guards read (see D57 in `docs/DECISIONS.md` for the full rationale and the current known keys). `PublicThrottlerGuard` is the one exception a module should import for real (from `apps/api/dist/...`), since it's genuine shared logic, not a metadata marker.
+
 ```
-modules/library-catalog/
+modules/library_catalog/
 ├── manifest.json
+├── tsconfig.json                       -- compiles backend/*.ts -> backend/*.js in place (D56)
 ├── migrations/
 │   ├── 001_create_books_table.sql
 │   ├── 002_add_isbn_index.sql
 │   └── ...
 ├── backend/
-│   ├── library-catalog.module.ts      -- NestJS module, imported by the registry loader
-│   ├── books.controller.ts
-│   ├── books.service.ts
+│   ├── platform.ts                     -- local decorator/guard shims (D57) — see docs/DECISIONS.md
+│   ├── library-catalog.module.ts       -- NestJS module source
+│   ├── library-catalog.module.js       -- ...and its compiled output, both checked in
+│   ├── books.controller.ts / .js
+│   ├── books.service.ts / .js
 │   └── ...
 ├── frontend/
 │   ├── routes.tsx                      -- lazy-loaded route tree, mounted under the module's base path

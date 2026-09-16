@@ -22,6 +22,7 @@ import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
@@ -55,6 +56,18 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'notifications', labelKey: 'core.menu.notifications', icon: <NotificationsIcon />, route: '/notifications', permissionCode: null },
   { id: 'settings', labelKey: 'core.menu.settings', icon: <SettingsIcon />, route: '/settings', permissionCode: 'users.settings.view' },
   { id: 'modules', labelKey: 'core.menu.modules', icon: <ExtensionIcon />, route: '/modules', permissionCode: 'modules.view' },
+  // Phase 8 — library_catalog module. This sidebar list is a static array,
+  // not yet driven from the `module_menu_entries` table ModuleRegistryService
+  // populates at install time (no such generic-menu-rendering mechanism was
+  // built in Phase 5/6 — flagged in this Developer agent's report as a real
+  // gap: today, EVERY installed module needs this same manual addition here).
+  {
+    id: 'library_catalog',
+    labelKey: 'library_catalog.menu.books',
+    icon: <MenuBookIcon />,
+    route: '/library/books',
+    permissionCode: 'library_catalog.books.view',
+  },
 ];
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {

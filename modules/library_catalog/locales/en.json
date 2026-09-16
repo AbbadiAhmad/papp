@@ -1,0 +1,50 @@
+{
+  "library_catalog.menu.root": "Library",
+  "library_catalog.menu.books": "Books",
+
+  "library_catalog.perm.books.view": "View books",
+  "library_catalog.perm.books.create": "Create books",
+  "library_catalog.perm.books.update": "Update books",
+  "library_catalog.perm.books.delete": "Delete books",
+  "library_catalog.perm.books.export": "Export books",
+
+  "library_catalog.fields.title": "Title",
+  "library_catalog.fields.author": "Author",
+  "library_catalog.fields.no_author": "Unknown author",
+  "library_catalog.fields.publisher": "Publisher",
+  "library_catalog.fields.category": "Category",
+  "library_catalog.fields.reading_level": "Reading level",
+  "library_catalog.fields.language": "Language",
+  "library_catalog.fields.description": "Description",
+  "library_catalog.fields.cover_image": "Cover image",
+  "library_catalog.fields.total_copies": "Copies",
+  "library_catalog.fields.created_at": "Added on",
+
+  "library_catalog.actions.add_book": "Add book",
+  "library_catalog.actions.add_copy": "Add copy",
+  "library_catalog.actions.export": "Export",
+
+  "library_catalog.books.create_title": "Add book",
+  "library_catalog.books.edit_title": "Edit book",
+  "library_catalog.books.delete_title": "Delete book",
+  "library_catalog.books.delete_confirm": "Delete \"{{title}}\"? This cannot be undone.",
+
+  "library_catalog.copies.title": "Copies",
+  "library_catalog.copies.qr_code": "QR code",
+  "library_catalog.copies.status": "Status",
+  "library_catalog.copies.condition": "Condition",
+  "library_catalog.copies.location": "Location",
+  "library_catalog.copies.acquisition_date": "Acquired on",
+
+  "library_catalog.copy_status.available": "Available",
+  "library_catalog.copy_status.borrowed": "Borrowed",
+  "library_catalog.copy_status.lost": "Lost",
+  "library_catalog.copy_status.damaged": "Damaged",
+  "library_catalog.copy_status.maintenance": "Under maintenance",
+  "library_catalog.copy_status.reserved": "Reserved",
+
+  "library_catalog.public.not_found": "This book could not be found.",
+  "library_catalog.public.availability_summary": "{{available}} of {{total}} copies available",
+  "library_catalog.public.available": "This book is currently available.",
+  "library_catalog.public.unavailable": "This book is not currently available."
+}

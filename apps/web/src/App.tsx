@@ -23,6 +23,14 @@ import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
 import { ModulesAdminPage } from './core/modules/ModulesAdminPage';
+// Phase 8 — library_catalog module. No dynamic module-federation-style
+// loading exists yet (Phase 6 didn't build one; BUILD_PLAN.md Phase 8's own
+// note says a static addition to the route table is acceptable for now) —
+// see modules/library_catalog/frontend/routes.tsx's own docblock.
+import {
+  AUTHENTICATED_LIBRARY_CATALOG_ROUTES,
+  PUBLIC_LIBRARY_CATALOG_ROUTES,
+} from '../../../modules/library_catalog/frontend/routes';
 
 function FullScreenLoader() {
   return (
@@ -50,6 +58,12 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* MODULE_SPEC.md §7.1: a public route "never redirects to the login
+            page" — mounted here too so a shared link works for a visitor
+            with no session at all, not just an authenticated one. */}
+        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -59,6 +73,9 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/force-password-change" element={<ForcePasswordChangePage />} />
+        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
       </Routes>
     );
@@ -83,6 +100,13 @@ function AppRoutes() {
         <Route path="/notifications/compose" element={<NotificationsComposePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/modules" element={<ModulesAdminPage />} />
+        {/* Phase 8 — library_catalog module routes. */}
+        {AUTHENTICATED_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
