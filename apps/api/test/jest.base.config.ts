@@ -29,7 +29,28 @@ export const baseConfig: Config = {
   extensionsToTreatAsEsm: ['.ts'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.test.esm.json', useESM: true }],
+    // Phase 4 gotcha (the mirror image of the NestJS one above): sanitize-html
+    // is CJS, but its whole HTML-parsing dependency tree (htmlparser2 12 →
+    // domhandler/domutils/domelementtype/dom-serializer/entities) ships
+    // ESM-ONLY. Node 22.12+ handles that require(esm) natively at app
+    // runtime, but jest-runtime's own `require` only supports it on Node
+    // 24.9+ — under this sandbox's Node 22 it throws "Must use import to
+    // load ES Module: .../htmlparser2/dist/index.js" in any suite whose
+    // import graph reaches markdown.util.ts. Fix: let ts-jest downlevel just
+    // those packages' JS to CommonJS (allowJs + module: commonjs), enabled by
+    // the transformIgnorePatterns exception below.
+    '^.+\\.js$': [
+      'ts-jest',
+      {
+        useESM: false,
+        tsconfig: { allowJs: true, module: 'commonjs', esModuleInterop: true, target: 'es2022' },
+        diagnostics: false,
+      },
+    ],
   },
+  transformIgnorePatterns: [
+    '/node_modules/(?!(htmlparser2|domhandler|domutils|domelementtype|dom-serializer|entities)/)',
+  ],
   moduleFileExtensions: ['js', 'json', 'ts'],
   moduleNameMapper: {
     '^@papp/shared-types$': '<rootDir>/../../packages/shared-types/src/index.ts',
