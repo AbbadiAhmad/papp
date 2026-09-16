@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace=@papp/shared-types && npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "lint:permissions": "tsx scripts/lint-permissions.ts",
     "lint:locales": "tsx scripts/lint-locales.ts",

@@ -12,7 +12,28 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./",
+    // `paths: {}` deliberately CANCELS the `@papp/shared-types` -> TS-source
+    // mapping inherited from tsconfig.base.json (`extends` replaces `paths`
+    // wholesale, it doesn't merge). Resolving that alias to
+    // packages/shared-types/src/*.ts would pull a file outside this
+    // project's `rootDir` ("./src") into the compile — a hard TS6059 error
+    // the moment `declaration`/emit is on, since `rootDir` must contain
+    // every source file TS touches. apps/api must therefore resolve
+    // `@papp/shared-types` the normal way: real node_modules package
+    // resolution against the npm workspace symlink, reading its BUILT
+    // `dist/index.d.ts`/`dist/index.js` (per its package.json main/types
+    // fields) — which only exist once `packages/shared-types` has actually
+    // been built, hence the root `build` script building it first (see
+    // root package.json). This also matches runtime reality: the compiled
+    // `apps/api/dist/**/*.js` keeps the bare `require('@papp/shared-types')`
+    // specifier verbatim (TS never rewrites import paths), so the
+    // *running* process needs that same real, built package too — a
+    // source-only path alias could never have satisfied that even if the
+    // rootDir problem didn't exist. (This bug was invisible in any
+    // long-lived local checkout, where a stale `dist/` + the workspace
+    // symlink already existed — a genuinely fresh `npm ci`, i.e. real CI,
+    // is what surfaced it.)
+    "paths": {},
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
