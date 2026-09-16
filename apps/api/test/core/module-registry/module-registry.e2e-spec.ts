@@ -90,7 +90,7 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
   });
 
   describe('permission matrix', () => {
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/modules', requiredPermission: 'modules.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/modules', requiredPermission: 'modules.view' });
   });
 
   it('POST /modules/install requires modules.install, 401s anonymously, and 403s an unauthorized role', async () => {

@@ -27,7 +27,7 @@ describe('Audit (e2e)', () => {
   });
 
   describe('permission matrix', () => {
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/audit', requiredPermission: 'audit.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/audit', requiredPermission: 'audit.view' });
   });
 
   it('GET /audit returns real rows produced by earlier actions in this process (e.g. the fixture logins)', async () => {

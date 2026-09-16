@@ -29,7 +29,7 @@ describe('Notifications (e2e)', () => {
   describe('permission matrix', () => {
     // notifications.send: admin only by default.
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'post',
       path: '/notifications',
       requiredPermission: 'notifications.send',
@@ -39,7 +39,7 @@ describe('Notifications (e2e)', () => {
 
     // notifications.view is granted to ALL FOUR base roles by default — the
     // matrix still proves the real success path + real 401 for anonymous.
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/notifications/me', requiredPermission: 'notifications.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/notifications/me', requiredPermission: 'notifications.view' });
   });
 
   it('a real send fans out an in-app inbox row to the targeted user, who can then mark it read', async () => {

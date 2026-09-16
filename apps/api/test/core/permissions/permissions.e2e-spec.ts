@@ -27,7 +27,7 @@ describe('Permissions (e2e)', () => {
   });
 
   describe('permission matrix', () => {
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/permissions', requiredPermission: 'permissions.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/permissions', requiredPermission: 'permissions.view' });
 
     it('GET /permissions/roles/:roleId/grants requires permissions.view', async () => {
       const prisma = app!.get(PrismaService);

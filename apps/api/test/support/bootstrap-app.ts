@@ -1,5 +1,6 @@
-import type { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +36,17 @@ export async function createTestApp(): Promise<INestApplication> {
   await bootstrapRegistryTables();
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  // D61: real repro — without these two, EVERY e2e spec using this bootstrap
+  // silently diverged from main.ts's actual production wiring in ways that
+  // only surfaced once specs genuinely depended on the behavior (real CI):
+  // `/auth/refresh`'s whole flow reads `req.cookies[REFRESH_TOKEN_COOKIE_NAME]`
+  // (auth.controller.ts) — with no cookie-parser middleware, `req.cookies` is
+  // always `undefined`, so refresh can never succeed no matter how valid the
+  // cookie sent actually is (401, not because of any auth bug — because the
+  // cookie was never read at all). ValidationPipe's `transform: true` is
+  // needed too: some DTOs rely on it to coerce query/route params.
+  app.use(cookieParser());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const migrationRunner = app.get(MigrationRunnerService);
   await migrationRunner.applyDirectory(CORE_MIGRATIONS_DIR, CORE_MODULE_KEY);

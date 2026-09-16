@@ -21,13 +21,13 @@ describe('Settings (e2e)', () => {
   });
 
   describe('permission matrix (users.settings.view / users.settings.update, admin only by default)', () => {
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/settings/password-policy', requiredPermission: 'users.settings.view' });
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/settings/session-timing', requiredPermission: 'users.settings.view' });
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/settings/notification-templates', requiredPermission: 'users.settings.view' });
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/settings/registration', requiredPermission: 'users.settings.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/settings/password-policy', requiredPermission: 'users.settings.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/settings/session-timing', requiredPermission: 'users.settings.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/settings/notification-templates', requiredPermission: 'users.settings.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/settings/registration', requiredPermission: 'users.settings.view' });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'put',
       path: '/settings/password-policy',
       requiredPermission: 'users.settings.update',
@@ -35,7 +35,7 @@ describe('Settings (e2e)', () => {
     });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'put',
       path: '/settings/session-timing',
       requiredPermission: 'users.settings.update',
@@ -43,7 +43,7 @@ describe('Settings (e2e)', () => {
     });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'put',
       path: '/settings/registration',
       requiredPermission: 'users.settings.update',
@@ -51,7 +51,7 @@ describe('Settings (e2e)', () => {
     });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'put',
       path: '/settings/notification-templates',
       requiredPermission: 'users.settings.update',

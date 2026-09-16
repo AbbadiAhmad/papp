@@ -119,6 +119,19 @@ async function createAppWithLibraryCatalogInstalled(): Promise<INestApplication>
     create: { key: 'core', version: '0.0.1', status: 'installed', installedAt: new Date() },
   });
 
+  // `resolveModulesDir()` (apps/api/src/core/module-registry/modules-dir.ts)
+  // falls back to a `__dirname`-based path when MODULES_DIR is unset — that
+  // fallback is CJS-only (real repro, D61): every OTHER spec that installs a
+  // module sets MODULES_DIR to a disposable fixture directory (see
+  // module-registry.e2e-spec.ts / module-lifecycle.integration-spec.ts), so
+  // this was the first place `install()` ever ran with it unset under this
+  // ESM-compiled test runtime, throwing `ReferenceError: __dirname is not
+  // defined`. This spec deliberately wants the REAL `modules/library_catalog`
+  // directory (not a fixture), so it sets MODULES_DIR to that real path
+  // explicitly instead — same env var, same resolveModulesDir() codepath
+  // every other spec already relies on, just pointed at real content.
+  process.env.MODULES_DIR = join(REPO_ROOT, 'modules');
+
   // The REAL install flow (ModuleRegistryService.install), against the REAL
   // modules/library_catalog/manifest.json + migrations — real permission
   // catalog rows + real default role grants, exactly what
@@ -137,29 +150,12 @@ async function createAppWithLibraryCatalogInstalled(): Promise<INestApplication>
 // + late `import()` of the real compiled module) resolves to a usable Nest
 // module class independent of the database being reachable at all.
 //
-// KNOWN CURRENT GAP (found while writing this file, real repro, NOT a
-// Docker/Testcontainers issue): this test fails TODAY with "Must use import
-// to load ES Module: node_modules/@nestjs/common/index.js" even with a
-// reachable DB, because `jest.e2e.config.ts` (and `jest.integration.config.ts`)
-// do not carry the `moduleFileExtensions: ['ts', 'js', 'json']` override that
-// `jest.unit.config.ts` already applies for this EXACT scenario — see that
-// file's own docblock and docs/TESTING_STRATEGY.md's "Known Tier 1 gotcha #2".
-// library_catalog ships both `backend/*.ts` and a pre-compiled `backend/*.js`
-// side by side (MODULE_SPEC.md §1/D56); with the base config's `js`-before-`ts`
-// order, `library-catalog.module.ts`'s OWN internal extensionless imports
-// (`from './books.controller'`, etc. — modules/** source this Tester's scope
-// cannot edit) resolve to those committed `.js` siblings, which `require()`
-// NestJS's ESM-only packages and fail under Jest's experimental VM modules.
-// An explicit `.ts` extension on THIS file's own import (below) fixes only
-// the FIRST hop; every transitively-imported unqualified specifier inside
-// library_catalog's own source is still resolved by the same global Jest
-// config, so this cannot be worked around from a spec file alone. Fix (out
-// of this Tester's write scope — apps/api/test/jest.e2e.config.ts and
-// jest.integration.config.ts are config files, not `*.e2e-spec.ts`/
-// `permission-matrix.ts`): add the SAME `moduleFileExtensions: ['ts', 'js',
-// 'json']` line jest.unit.config.ts already has to both files. Flagged in
-// this Tester's final report as the one blocking, non-Docker-related finding
-// in this phase.
+// (Historical note, resolved — D59/D60: this test used to fail here with
+// "Must use import to load ES Module" before jest.e2e.config.ts/
+// jest.integration.config.ts carried `moduleFileExtensions: ['ts', 'js',
+// 'json']`, and separately with `ReferenceError: __dirname is not defined`
+// from `resolveModulesDir()`'s CJS-only fallback before this file started
+// setting `MODULES_DIR` explicitly below — see docs/DECISIONS.md D61.)
 describe('library_catalog module import wiring (no DB needed)', () => {
   it('the dynamic import of LibraryCatalogModule resolves to a usable Nest module class', async () => {
     ensureApiIsBuilt();
@@ -215,11 +211,11 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
   });
 
   describe('permission matrix (books)', () => {
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/api/library/books', requiredPermission: 'library_catalog.books.view' });
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/api/library/books/export', requiredPermission: 'library_catalog.books.export' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/api/library/books', requiredPermission: 'library_catalog.books.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/api/library/books/export', requiredPermission: 'library_catalog.books.export' });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'post',
       path: '/api/library/books',
       requiredPermission: 'library_catalog.books.create',

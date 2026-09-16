@@ -25,10 +25,10 @@ describe('Roles (e2e)', () => {
     // roles.view: admin only by default (0004) — GET /roles ALSO delegates to
     // PermissionsPageGuard (Phase 6 D12 extension), but for every non-admin
     // caller that is byte-for-byte the same roles.view check.
-    expectPermissionEnforced({ app: app!, method: 'get', path: '/roles', requiredPermission: 'roles.view' });
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/roles', requiredPermission: 'roles.view' });
 
     expectPermissionEnforced({
-      app: app!,
+      app: () => app!,
       method: 'post',
       path: '/roles',
       requiredPermission: 'roles.create',

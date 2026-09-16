@@ -198,8 +198,22 @@ function defaultSuccessStatus(method: HttpMethod): number {
 }
 
 export interface ExpectPermissionEnforcedOptions {
-  /** The already-booted app under test (see apps/api/test/support/bootstrap-app.ts). */
-  app: INestApplication;
+  /**
+   * A GETTER for the already-booted app under test (see
+   * apps/api/test/support/bootstrap-app.ts) — deliberately a function, not
+   * the app itself. Every call site invokes `expectPermissionEnforced(...)`
+   * directly inside a `describe(...)` body (required — it registers a real
+   * Jest `it(...)`, which must happen at collection time), which runs
+   * BEFORE that file's own `beforeAll` has assigned its `app` variable. A
+   * plain `app: INestApplication` value would therefore capture `undefined`
+   * permanently in this function's closure (real bug, found via real CI:
+   * every `it(...)` this produced threw `Cannot read properties of
+   * undefined (reading 'get')` the moment it actually ran, since JS
+   * evaluates call arguments eagerly). A getter defers reading `app` until
+   * the `it(...)` callback actually executes, by which point `beforeAll`
+   * has run — call sites pass `() => app!`, never `app!` directly.
+   */
+  app: () => INestApplication;
   /** HTTP method of the endpoint under test. */
   method: HttpMethod;
   /** Request path, e.g. "/users/:id" with concrete values already substituted by the caller. */
@@ -232,14 +246,15 @@ export function expectPermissionEnforced(opts: ExpectPermissionEnforcedOptions):
   const successStatus = opts.expectedSuccessStatus ?? defaultSuccessStatus(opts.method);
 
   it(`${opts.method.toUpperCase()} ${opts.path} requires permission "${opts.requiredPermission}"`, async () => {
+    const app = opts.app();
     for (const role of roles) {
       const [hasPerm, token] = await Promise.all([
-        roleHasPermission(opts.app, role, opts.requiredPermission),
-        tokenFor(opts.app, role),
+        roleHasPermission(app, role, opts.requiredPermission),
+        tokenFor(app, role),
       ]);
       const body = typeof opts.validBody === 'function' ? opts.validBody(role) : opts.validBody;
 
-      const agent = request(opts.app.getHttpServer());
+      const agent = request(app.getHttpServer());
       let req = agent[opts.method](opts.path).set('Authorization', `Bearer ${token}`);
       if (body !== undefined) req = req.send(body);
       const res = await req;
@@ -252,7 +267,7 @@ export function expectPermissionEnforced(opts: ExpectPermissionEnforcedOptions):
     }
 
     const anonBody = typeof opts.validBody === 'function' ? opts.validBody(roles[0]) : opts.validBody;
-    let anonReq = request(opts.app.getHttpServer())[opts.method](opts.path);
+    let anonReq = request(app.getHttpServer())[opts.method](opts.path);
     if (anonBody !== undefined) anonReq = anonReq.send(anonBody);
     const anonRes = await anonReq;
     expect(anonRes.status).toBe(401);
