@@ -4,9 +4,7 @@ import { Audit } from '../../common/decorators/audit.decorator';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PublicUser } from './user.presenter';
@@ -31,12 +29,16 @@ import { UsersService } from './users.service';
  * "[redacted]" before serialization, and fetching raw is exactly what makes
  * a password change VISIBLE (as a redacted old/new diff) in the audit log
  * without ever leaking the hash (ARCHITECTURE.md §8.3).
+ *
+ * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
+ * global (app.module.ts) — only `MustChangePasswordGuard` stays
+ * controller-scoped (see its own docblock).
  */
 const fetchUserState = (prisma: PrismaService, req: Request) =>
   prisma.user.findUnique({ where: { id: req.params.id as string } });
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
+@UseGuards(MustChangePasswordGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

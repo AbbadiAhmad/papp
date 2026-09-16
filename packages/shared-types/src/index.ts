@@ -1,12 +1,19 @@
 /**
  * @papp/shared-types — cross-cutting TypeScript types/DTOs shared by
- * apps/api and apps/web (AuthUser, ManifestSchema, permission-code string
- * literal unions, etc. — see docs/BUILD_PLAN.md §1).
+ * apps/api and apps/web (ManifestSchema, permission-code string literal
+ * unions, etc. — see docs/BUILD_PLAN.md §1). Populated phase by phase.
  *
- * Phase 0: intentionally empty. This package exists so the cross-package
- * import path (`@papp/shared-types`) and each app's tsconfig `paths` entry
- * are wired up and provably working before real types land in later phases.
+ * Phase 5: the module manifest schema/types (docs/MODULE_SPEC.md §2).
  */
-
-/** Placeholder marker type — remove once the first real shared type lands. */
-export type PappSharedTypesPlaceholder = never;
+export {
+  moduleManifestSchema,
+  parseModuleManifest,
+  type ManifestParseResult,
+  type ManifestValidationIssue,
+  type ModuleManifest,
+  type ModuleManifestMenuEntry,
+  type ModuleManifestPermission,
+  type ModuleManifestRoute,
+  type ModuleManifestSetting,
+  type ModuleStatus,
+} from './module-manifest';

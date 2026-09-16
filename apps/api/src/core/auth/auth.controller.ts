@@ -2,11 +2,14 @@ import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } fro
 import type { Request, Response } from 'express';
 import { AllowMustChangePassword } from '../../common/decorators/allow-must-change-password.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
+import { PublicThrottlerGuard } from '../../common/guards/public-throttler.guard';
 import { AuditLogWriter } from '../audit/audit-log.writer';
-import { AuthService, IssuedTokens } from './auth.service';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { AuthService, IssuedTokens, RegisteredUser } from './auth.service';
 import { ForcePasswordChangeDto } from './dto/force-password-change.dto';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { REFRESH_TOKEN_COOKIE_NAME } from './jwt.constants';
 import { extractRequestMeta } from './request-meta.util';
 
@@ -17,6 +20,14 @@ import { extractRequestMeta } from './request-meta.util';
  * changed nothing to audit, and token refresh rotation is deliberately not a
  * 'login' event. AuditLogWriter never throws, so a failed audit write can
  * never break login/logout themselves (it is loudly logged instead).
+ *
+ * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
+ * global (app.module.ts) — `login`/`refresh`/`register` are marked
+ * `@Public()` so the (still-running) `JwtAuthGuard` short-circuits to "no
+ * user" instead of demanding a Bearer token nobody has yet. `logout` and
+ * `force-password-change` no longer need a local `@UseGuards(JwtAuthGuard)`
+ * for the same reason — they are NOT `@Public()`, so the global guard still
+ * enforces authentication on them exactly as before.
  */
 @Controller('auth')
 export class AuthController {
@@ -27,6 +38,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Public()
   async login(
     @Body() body: LoginDto,
     @Req() req: Request,
@@ -53,6 +65,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Public()
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -65,7 +78,6 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
   @AllowMustChangePassword()
   async logout(
     @CurrentUser() user: AuthenticatedUser,
@@ -93,7 +105,6 @@ export class AuthController {
 
   @Post('force-password-change')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
   @AllowMustChangePassword()
   async forcePasswordChange(
     @CurrentUser() user: AuthenticatedUser,
@@ -101,6 +112,27 @@ export class AuthController {
   ): Promise<{ success: true }> {
     await this.authService.forcePasswordChange(user.userId, body.newPassword);
     return { success: true };
+  }
+
+  /**
+   * D41: self-registration. `@Public()` (no session exists yet) +
+   * `PublicThrottlerGuard` (a public WRITE endpoint — never optional per
+   * MODULE_SPEC.md §7.3). No `@RequirePermission` — RBAC doesn't apply to an
+   * anonymous caller (§7.1). `@Audit` here is the main point of this
+   * endpoint from a testing perspective: with `@Public()` set and no
+   * `req.user`, AuditInterceptor's actor resolution produces
+   * `actor_type='anonymous'` (see its own docblock) — no `fetchState` is
+   * given because there is no route param to look the new user up by; the
+   * handler's own response body (id/email/name, never a password/hash)
+   * becomes `newValue` via the interceptor's fallback.
+   */
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @Public()
+  @UseGuards(PublicThrottlerGuard)
+  @Audit({ category: 'core.auth', entityType: 'User', action: 'register' })
+  async register(@Body() body: RegisterDto): Promise<RegisteredUser> {
+    return this.authService.register(body);
   }
 
   private setRefreshCookie(res: Response, tokens: IssuedTokens): void {

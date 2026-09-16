@@ -269,6 +269,33 @@ model NotificationRecipient {
   @@map("notification_recipients")
 }
 
+// --- Phase 5: Module registry menu entries -------------------------------
+// See apps/api/src/core/migrations/0008_module_menu_entries.sql for the raw
+// DDL this mirrors, and docs/MODULE_SPEC.md §2 ("menu") / §4 step 5.
+
+/// One row per manifest `menu` entry (MODULE_SPEC.md §2), persisted at
+/// install/upgrade time so the frontend can render the nav tree without
+/// re-reading every module's manifest.json on every request. `id` is the
+/// manifest entry's own globally-unique string id (e.g.
+/// "library_catalog.root"), not a generated UUID. `parentId` is a plain
+/// column, not a Prisma relation (self-referential FKs would force
+/// parent-before-child insert ordering; cycle-freedom and resolution are
+/// already guaranteed by the shared Zod schema's self-consistency checks
+/// before any row is written — see packages/shared-types/src/module-manifest.ts).
+model ModuleMenuEntry {
+  id                 String  @id
+  moduleKey          String  @map("module_key")
+  labelI18nKey       String  @map("label_i18n_key")
+  icon               String?
+  parentId           String? @map("parent_id")
+  order              Int
+  route              String
+  requiredPermission String  @map("required_permission")
+
+  @@index([moduleKey])
+  @@map("module_menu_entries")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

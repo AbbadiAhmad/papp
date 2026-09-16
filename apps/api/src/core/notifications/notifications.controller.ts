@@ -3,9 +3,7 @@ import type { Request } from 'express';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { InboxItem, NotificationsService } from './notifications.service';
@@ -28,8 +26,10 @@ const fetchOwnRecipientRow = (prisma: PrismaService, req: Request) => {
   });
 };
 
+// Phase 5 global-guard switch: JwtAuthGuard/PermissionGuard are now global
+// (app.module.ts) — only MustChangePasswordGuard stays controller-scoped.
 @Controller('notifications')
-@UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
+@UseGuards(MustChangePasswordGuard)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 

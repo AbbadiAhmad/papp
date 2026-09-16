@@ -44,9 +44,28 @@ export interface NotificationTemplate {
  */
 export type NotificationCategoriesConfig = Record<string, { email: boolean }>;
 
+/**
+ * system_settings key: "security.public_endpoint_rate_limit" (D34, §7.5).
+ * Per-IP limit for @Public() WRITE endpoints — read PER REQUEST by
+ * PublicThrottlerGuard (cheap: SettingsService caches), so an admin tuning
+ * it takes effect immediately. Seeded by 0007_module_system.sql.
+ */
+export interface PublicEndpointRateLimit {
+  /** Max requests per IP within the window. */
+  limit: number;
+  windowSeconds: number;
+}
+
 export const PASSWORD_POLICY_KEY = 'auth.password_policy';
 export const TOKEN_LIFETIMES_KEY = 'auth.token_lifetimes';
 export const NOTIFICATION_CATEGORIES_KEY = 'notifications.categories';
+/**
+ * system_settings key: "users.allow_self_registration" (D41) — plain JSONB
+ * boolean. Default false (seeded by 0007): POST /auth/register 403s until an
+ * admin opts in via PUT /settings/registration.
+ */
+export const ALLOW_SELF_REGISTRATION_KEY = 'users.allow_self_registration';
+export const PUBLIC_ENDPOINT_RATE_LIMIT_KEY = 'security.public_endpoint_rate_limit';
 /** Prefix for every template key; full key = prefix + templateKey. */
 export const NOTIFICATION_TEMPLATE_KEY_PREFIX = 'notifications.templates.';
 export const PASSWORD_RESET_TEMPLATE_KEY = 'notifications.templates.password_reset';

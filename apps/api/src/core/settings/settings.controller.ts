@@ -1,14 +1,14 @@
 import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { assertValidTemplates, UpdateNotificationTemplatesDto } from './dto/update-notification-templates.dto';
 import { UpdatePasswordPolicyDto } from './dto/update-password-policy.dto';
+import { UpdateRegistrationDto } from './dto/update-registration.dto';
 import { UpdateSessionTimingDto } from './dto/update-session-timing.dto';
 import { SettingsService } from './settings.service';
 import {
+  ALLOW_SELF_REGISTRATION_KEY,
   NOTIFICATION_TEMPLATE_KEY_PREFIX,
   NotificationTemplate,
   PASSWORD_POLICY_KEY,
@@ -18,14 +18,17 @@ import {
 } from './settings.types';
 
 /**
- * The three core Settings tabs (ARCHITECTURE.md §6.3): Password Policy,
- * Session Timing, Notification Templates. Permission-gated by
- * `users.settings.view` / `users.settings.update` — NOT hardcoded to admin
- * (§7.4 stays the only role-name exception in the codebase). Per §12.4,
- * `notifications.templates.manage` is "effectively users.settings.update",
- * so the templates tab is gated by the same users.settings.* codes as the
- * other two tabs; the notifications.templates.manage catalog entry exists
- * (seeded in 0006, granted to admin) for a future finer split.
+ * The core Settings tabs (ARCHITECTURE.md §6.3): Password Policy, Session
+ * Timing, Notification Templates, and (Phase 5, D41) Self-Registration.
+ * Permission-gated by `users.settings.view` / `users.settings.update` — NOT
+ * hardcoded to admin (§7.4 stays the only role-name exception in the
+ * codebase). Per §12.4, `notifications.templates.manage` is "effectively
+ * users.settings.update", so the templates tab is gated by the same
+ * users.settings.* codes as the others; the notifications.templates.manage
+ * catalog entry exists (seeded in 0006, granted to admin) for a future finer
+ * split. Self-registration is folded into this same controller/permission
+ * pair rather than a bespoke `users.registration.*` code — it's exactly one
+ * more Users-module admin-tunable boolean, same shape as the other three tabs.
  *
  * Auditing: NO `@Audit(...)` decorators here — deliberately. Every write
  * already produces its audit row inside `SettingsService.set()` (the Phase 3
@@ -34,9 +37,13 @@ import {
  * templates PUT). The controller's job is only to pass the caller's userId
  * through as `updatedBy`, which is what makes the service-level row an
  * actor_type='user' row instead of 'system'.
+ *
+ * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
+ * global (app.module.ts) — only `MustChangePasswordGuard` stays
+ * controller-scoped (see its own docblock).
  */
 @Controller('settings')
-@UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
+@UseGuards(MustChangePasswordGuard)
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
@@ -108,5 +115,24 @@ export class SettingsController {
       );
     }
     return this.getNotificationTemplates();
+  }
+
+  // --- Tab 4: Self-Registration (D41) --------------------------------------
+
+  @Get('registration')
+  @RequirePermission('users.settings.view')
+  async getRegistration(): Promise<{ allowSelfRegistration: boolean }> {
+    const allowSelfRegistration = await this.settingsService.get<boolean>(ALLOW_SELF_REGISTRATION_KEY);
+    return { allowSelfRegistration };
+  }
+
+  @Put('registration')
+  @RequirePermission('users.settings.update')
+  async updateRegistration(
+    @Body() dto: UpdateRegistrationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ allowSelfRegistration: boolean }> {
+    await this.settingsService.set(ALLOW_SELF_REGISTRATION_KEY, dto.allowSelfRegistration, user.userId);
+    return this.getRegistration();
   }
 }

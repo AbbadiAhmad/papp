@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { REQUIRE_PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
@@ -33,6 +33,24 @@ import { PermissionsService } from './permissions.service';
  * Developer agent's report for the reasoning on why roles are looked up
  * fresh rather than embedded in the access token for this phase.
  */
+/**
+ * Phase 5 (global-guard switch): now that `PermissionGuard` is registered as
+ * a global APP_GUARD, it would run on the grant-management endpoints too and
+ * reject an admin who lacks the literal permission BEFORE this guard's D12
+ * bypass ever gets a chance — silently breaking "admin always has access to
+ * the Permissions page." This metadata key tells the global `PermissionGuard`
+ * to stand down on exactly the handlers where THIS guard is applied instead.
+ *
+ * It lives in this file on purpose: it is part of the same single sanctioned
+ * D12 exception, not a general-purpose escape hatch. Never apply
+ * `@PermissionCheckDelegatedToPermissionsPageGuard()` to a handler that does
+ * not also carry `@UseGuards(PermissionsPageGuard)` — that would leave the
+ * handler with NO permission check at all.
+ */
+export const PERMISSION_CHECK_DELEGATED_KEY = 'permissionCheckDelegatedToPermissionsPageGuard';
+export const PermissionCheckDelegatedToPermissionsPageGuard = (): MethodDecorator =>
+  SetMetadata(PERMISSION_CHECK_DELEGATED_KEY, true);
+
 @Injectable()
 export class PermissionsPageGuard implements CanActivate {
   constructor(

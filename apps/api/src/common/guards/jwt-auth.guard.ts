@@ -21,20 +21,17 @@ interface AccessTokenPayload {
  * the very next request, no stale-token grace window"). Permissions are
  * deliberately not resolved here — that's Phase 2's PermissionGuard.
  *
- * Recognizes an `isPublic` reflector key so Phase 5's `@Public()` decorator
- * can exempt routes without any change to this file (per docs/BUILD_PLAN.md
- * Phase 1 spec). Nothing sets that key yet, so every route this guard is
- * applied to currently requires auth.
+ * Recognizes an `isPublic` reflector key so `@Public()` (added in Phase 5,
+ * `common/decorators/public.decorator.ts`) can exempt routes without any
+ * change to this file — exactly the one-line change anticipated back in
+ * Phase 1's version of this docblock.
  *
- * Deliberately NOT registered as a global `APP_GUARD` provider in Phase 1:
- * doing so would also gate AuthController's `login`/`refresh` endpoints,
- * which must stay reachable with no prior token, and there is no
- * `@Public()` decorator yet to exempt them with (that's Phase 5). Instead
- * it's applied explicitly via `@UseGuards(JwtAuthGuard)` wherever auth is
- * required right now (SessionsController, UsersController, AuthController's
- * `logout`/`force-password-change`). Swapping to a global `APP_GUARD`
- * registration once `@Public()` exists is then a one-line change here, not
- * a rewrite of this guard's logic.
+ * Phase 5: registered as a global `APP_GUARD` provider in app.module.ts
+ * (before `PermissionGuard`, which reads `request.user` this guard
+ * populates). This now DOES gate every route in the app, including
+ * `AuthController`'s `login`/`refresh`/`register` — which is exactly why
+ * those three are marked `@Public()` (so this guard short-circuits to "no
+ * user" for them instead of demanding a Bearer token nobody has yet).
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

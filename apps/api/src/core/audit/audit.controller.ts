@@ -2,9 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, UseGuard
 import type { Request } from 'express';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { extractRequestMeta } from '../auth/request-meta.util';
 import { AuditPage, AuditService, PurgeResult } from './audit.service';
 import { PurgeAuditDto } from './dto/purge-audit.dto';
@@ -18,9 +16,13 @@ import { QueryAuditDto } from './dto/query-audit.dto';
  * Neither endpoint carries @Audit: GET is a read, and the purge writes its
  * own richer row (with the real deleted-row count) from AuditService, AFTER
  * the delete completes.
+ *
+ * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
+ * global (app.module.ts) — only `MustChangePasswordGuard` stays
+ * controller-scoped.
  */
 @Controller('audit')
-@UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
+@UseGuards(MustChangePasswordGuard)
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

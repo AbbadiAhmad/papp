@@ -1,12 +1,30 @@
-import { HttpException, HttpStatus, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { PASSWORD_POLICY_KEY, PasswordPolicy, TOKEN_LIFETIMES_KEY, TokenLifetimes } from '../settings/settings.types';
+import {
+  ALLOW_SELF_REGISTRATION_KEY,
+  PASSWORD_POLICY_KEY,
+  PasswordPolicy,
+  TOKEN_LIFETIMES_KEY,
+  TokenLifetimes,
+} from '../settings/settings.types';
+import { RegisterDto } from './dto/register.dto';
 import { getJwtSecret } from './jwt.constants';
 import { assertPasswordMeetsPolicy } from './password-policy.util';
+
+/** D9/D41: the role every self-registered account is auto-assigned. */
+const SELF_REGISTRATION_ROLE_CODE = 'reader';
+const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  name: string;
+}
 
 export interface IssuedTokens {
   accessToken: string;
@@ -208,5 +226,57 @@ export class AuthService {
       where: { id: user.id },
       data: { passwordHash, mustChangePassword: false },
     });
+  }
+
+  /**
+   * D41: self-registration. 403s when `users.allow_self_registration` is
+   * off (the admin-editable Users setting — see settings.controller.ts's
+   * `/settings/registration`); otherwise validates the password against the
+   * live `auth.password_policy` (same rule as any other password, D23),
+   * creates the user, and assigns EXACTLY the `reader` role — never a choice
+   * the registrant makes. Deliberately does NOT auto-login (no session/
+   * tokens issued here, per BUILD_PLAN.md Phase 5: "does not auto-login (201,
+   * no tokens)") — the new user logs in separately afterward like anyone else.
+   */
+  async register(dto: RegisterDto): Promise<RegisteredUser> {
+    const allowSelfRegistration = await this.settings.get<boolean>(ALLOW_SELF_REGISTRATION_KEY);
+    if (!allowSelfRegistration) {
+      throw new ForbiddenException('Self-registration is currently disabled');
+    }
+
+    const policy = await this.getPasswordPolicy();
+    assertPasswordMeetsPolicy(dto.password, policy);
+
+    const readerRole = await this.prisma.role.findUnique({ where: { code: SELF_REGISTRATION_ROLE_CODE } });
+    if (!readerRole) {
+      // Seeded by 0004_create_roles_permissions.sql — its absence means the
+      // core migrations never ran, a deployment bug, not a user error.
+      throw new InternalServerErrorException(`Base role "${SELF_REGISTRATION_ROLE_CODE}" is missing`);
+    }
+
+    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: dto.email,
+            name: dto.name,
+            passwordHash,
+            // The registrant chose their own password — no forced change,
+            // unlike an admin-created account with a temporary one.
+            mustChangePassword: false,
+          },
+        });
+        await tx.userRole.create({ data: { userId: created.id, roleId: readerRole.id } });
+        return created;
+      });
+      return { id: user.id, email: user.email, name: user.name };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
+    }
   }
 }

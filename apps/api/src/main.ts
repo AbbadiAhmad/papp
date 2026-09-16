@@ -1,11 +1,13 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { DynamicModule, ForwardReference, Logger, Module, Type, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { AppModule } from './app.module';
+import { discoverInstalledModules } from './core/module-registry/module-loader';
 import { MigrationRunnerService } from './core/module-registry/migration-runner.service';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -41,11 +43,54 @@ async function bootstrapRegistryTables(): Promise<void> {
   }
 }
 
+/**
+ * Builds the actual root module Nest boots from: `AppModule` (all of core)
+ * plus whatever `discoverInstalledModules()` found. Nest's `@Module(...)` is
+ * just a decorator FUNCTION under the hood — calling it directly against a
+ * throwaway class is the standard way to assemble a module list that isn't
+ * known until runtime (D15: modules mount at boot, never hot-swapped into
+ * an already-running app).
+ */
+type NestImport = Type<unknown> | DynamicModule | ForwardReference | Promise<DynamicModule>;
+
+function buildRootModule(discoveredModuleClasses: unknown[]): Type<unknown> {
+  class RootModule {}
+  Module({ imports: [AppModule, ...(discoveredModuleClasses as NestImport[])] })(RootModule);
+  return RootModule;
+}
+
+/**
+ * Applies `TRUST_PROXY` (see `.env.example`) ONLY when the env var is set —
+ * this is what makes `PublicThrottlerGuard`'s per-IP resolution correct
+ * behind the docker-compose `web` nginx reverse proxy in a real deployment,
+ * while staying safe for direct/dev access (an unset TRUST_PROXY means
+ * Express never trusts a caller-supplied X-Forwarded-For header, so a direct
+ * caller can't spoof their IP to dodge the per-IP throttle).
+ */
+function applyTrustProxy(app: NestExpressApplication): void {
+  const raw = process.env.TRUST_PROXY;
+  if (!raw) return;
+
+  let value: boolean | number | string;
+  if (raw === 'true') value = true;
+  else if (raw === 'false') value = false;
+  else if (/^\d+$/.test(raw)) value = Number(raw);
+  else value = raw; // Express also accepts subnet/CIDR strings and 'loopback' etc.
+
+  app.set('trust proxy', value);
+  logger.log(`trust proxy enabled (TRUST_PROXY=${raw}) — client IP now derived from X-Forwarded-For.`);
+}
+
 async function bootstrap(): Promise<void> {
   logger.log('Bootstrapping module_registry / module_migrations tables...');
   await bootstrapRegistryTables();
 
-  const app = await NestFactory.create(AppModule);
+  logger.log('Discovering installed (non-core) modules to mount...');
+  const discoveredModules = await discoverInstalledModules();
+
+  const app = await NestFactory.create<NestExpressApplication>(
+    buildRootModule(discoveredModules.map((m) => m.moduleClass)),
+  );
   app.enableCors({ credentials: true });
   // Refresh tokens travel as an httpOnly cookie (see AuthController) — this
   // is what makes `req.cookies` available to read them back.
@@ -54,6 +99,7 @@ async function bootstrap(): Promise<void> {
   // `whitelist` strips unknown properties, `transform` lets `@Type()`-free
   // primitive coercion (e.g. route params) work as NestJS expects.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  applyTrustProxy(app);
 
   logger.log(`Applying core migrations from ${CORE_MIGRATIONS_DIR}...`);
   const migrationRunner = app.get(MigrationRunnerService);
@@ -71,6 +117,9 @@ async function bootstrap(): Promise<void> {
       installedAt: new Date(),
     },
   });
+
+  const mountedKeys = discoveredModules.map((m) => m.key);
+  logger.log(`${mountedKeys.length} module(s) mounted${mountedKeys.length > 0 ? ` [${mountedKeys.join(', ')}]` : ''}.`);
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

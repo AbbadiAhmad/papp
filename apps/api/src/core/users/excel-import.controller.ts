@@ -20,9 +20,7 @@ import 'multer';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { ExcelImportService } from './excel-import.service';
 import { ImportReport } from './excel-import.types';
 
@@ -33,9 +31,13 @@ const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreads
  * (it re-parses the SAME uploaded file rather than accepting a client-held
  * preview result as ground truth — see ExcelImportService's docblock) and
  * commits all-or-nothing in a single transaction.
+ *
+ * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
+ * global (app.module.ts) — only `MustChangePasswordGuard` stays
+ * controller-scoped.
  */
 @Controller('users')
-@UseGuards(JwtAuthGuard, MustChangePasswordGuard, PermissionGuard)
+@UseGuards(MustChangePasswordGuard)
 export class ExcelImportController {
   constructor(private readonly excelImportService: ExcelImportService) {}
 

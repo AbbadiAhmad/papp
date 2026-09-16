@@ -115,6 +115,17 @@ The librarian (the actual future end user) gave detailed non-technical requireme
 | A16 | (Phase 3) Login/logout audit rows are written by `AuthController` rather than `AuthService`, and `SettingsService` takes its audit writer as `@Optional()` — both forced by Phase 1's untouchable unit-test signatures; behavior per spec either way. The Phase 1 specs should be modernized in a later test pass (noted for Phase 9). | ASSUMED |
 | A17 | (Phase 3) Audit-purge accepts impossible-but-well-formed dates (e.g. `2026-02-30`) via JS Date rollover (→ Mar 2) — still safely capped at yesterday, and the contract is pinned by a test so any future "fix" to strict calendar validation is deliberate, not accidental. | ASSUMED |
 
+## Phase 5 build decisions (2026-09-16, Developer agent calls — accepted by orchestrator, awaiting your review)
+
+| # | Decision | Status |
+|---|---|---|
+| D48 | **Module `--drop-data` uninstall runs `modules/<key>/migrations/down/*.sql` in reverse order if present, else leaves data tables in place with a logged warning.** `MODULE_SPEC.md` §5 specified the *behavior* ("drop-data confirmation runs a down migration set if present") but not the file convention — this `migrations/down/` folder convention is the concrete mechanism. Update `MODULE_SPEC.md` §5 to name it explicitly if you're happy with it. | DECIDED (agent call) |
+| D49 | **Self-registration's admin toggle (`users.allow_self_registration`) is gated by the existing `users.settings.view`/`users.settings.update` permission codes**, not a new dedicated code — it's one more boolean on the Users-module settings surface, same shape as password policy/session timing. | DECIDED (agent call) |
+| A18 | **`GET /health` needed `@Public()`** — a real regression the global-guard switch introduced (docker-compose's own container healthcheck would otherwise 401 and the container would be marked unhealthy). Found and fixed via live testing during this phase, not a hypothetical. | ASSUMED (fixed) |
+| A19 | The module-registry's reserved core `basePath`/`apiPrefix` collision list is a hardcoded backstop (core routes aren't manifest-declared, so can't be cross-checked automatically). `apiPrefix` reservations are authoritative (real controller prefixes); `frontend.basePath` reservations are a best guess since Phase 6 hasn't fixed the SPA's route names yet — revisit once Phase 6 lands. | ASSUMED |
+
+
+
 ## Assumptions still standing (flag any that are wrong)
 
 | # | Assumption | Why |

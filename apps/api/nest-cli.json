@@ -8,6 +8,10 @@
       {
         "include": "core/migrations/**/*.sql",
         "watchAssets": true
+      },
+      {
+        "include": "core/i18n/locales/**/*.json",
+        "watchAssets": true
       }
     ]
   }
