@@ -34,6 +34,17 @@ const config: Config = {
   ...baseConfig,
   displayName: 'unit',
   testMatch: ['<rootDir>/test/**/*.spec.ts', '<rootDir>/src/**/*.spec.ts'],
+  // `library_catalog` (Phase 8) ships BOTH `backend/*.ts` source AND its own
+  // pre-compiled `backend/*.js` output side by side (MODULE_SPEC.md §1/D56).
+  // `baseConfig`'s default `moduleFileExtensions` order (`js` before `ts`,
+  // needed nowhere else since apps/api/src is .ts-only with a SEPARATE
+  // `dist/` output dir) would silently resolve this unit layer's
+  // extensionless imports of that module's `.ts` source to the committed
+  // `.js` file instead — CommonJS output that can't `require()` NestJS 12's
+  // ESM-only packages under this runtime. Unit tests import module sources
+  // the same way every other apps/api/test/** spec imports apps/api/src/**
+  // (straight from `.ts`, never the compiled output), so `.ts` must win here.
+  moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: COVERAGE_GATE_FILES,
   coverageThreshold: {
     'src/common/guards/permission.guard.ts': { lines: 80 },

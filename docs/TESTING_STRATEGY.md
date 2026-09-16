@@ -23,6 +23,8 @@ Any "Tester builds" bullet elsewhere in `BUILD_PLAN.md` that names Testcontainer
 
 **Known Tier 1 gotcha (apps/api):** this project's Jest config runs tests as real ESM (`extensionsToTreatAsEsm` + `NODE_OPTIONS=--experimental-vm-modules`, needed because NestJS 12's own packages ship ESM-only — see Phase 0's commit history). Under that setup, `describe`/`it`/`expect`/`beforeEach`/`afterEach` work as ambient globals, but **`jest` itself does not** — a bare `jest.fn()`/`jest.spyOn(...)` throws `ReferenceError: jest is not defined`. Fix: explicitly `import { jest, describe, it, expect, ... } from '@jest/globals';` in any spec file that uses `jest.*`. Hit this once in Phase 1; documented here so it isn't rediscovered every phase.
 
+**Known Tier 1 gotcha #2 (any module that ships both `.ts` and pre-compiled `.js`, per `MODULE_SPEC.md` §1/D56):** Jest's default `moduleFileExtensions` resolves a bare `import ... from './books.service'` to `.js` before `.ts`. Every other package in this repo is `.ts`-only with a separate `dist/` output directory, so this never mattered until Phase 8's `library_catalog` module shipped `backend/*.ts` and `backend/*.js` side by side in the same directory — a test importing the module's source got silently redirected to the committed CommonJS build output instead, which fails under this runtime (NestJS is ESM-only here). Fixed in `apps/api/test/jest.unit.config.ts` (unit layer only) with `moduleFileExtensions: ['ts', 'js', 'json']` so `.ts` wins whenever both exist. Any future dual-shipped module's Tier 1 tests are already covered by this — no per-module fix needed — but if a *new* Jest config is ever added (a module-specific one, say), remember to carry this setting over.
+
 ## 1. Tooling
 
 | Layer | Tool | What it covers |
