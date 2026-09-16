@@ -186,9 +186,27 @@ describe('Users (e2e)', () => {
       const anon = await request(app!.getHttpServer()).get('/users/export');
       expect(anon.status).toBe(401);
 
-      const ok = await request(app!.getHttpServer()).get('/users/export').set('Authorization', `Bearer ${admin.token}`);
+      // Real repro (D63): superagent has no registered parser for this real
+      // xlsx MIME type and — despite reading its own parser-selection source,
+      // which suggested it would fall back to a generic Buffer parser — the
+      // actual observed behavior puts the bytes in `res.text` and leaves
+      // `res.body` as `{}` (confirmed with a standalone express+supertest
+      // repro against this exact Content-Type). `.buffer(true)` ALONE is not
+      // enough either (same repro, still `{}`) — an explicit binary `.parse`
+      // callback is required to force `res.body` to actually be the real
+      // `Buffer`.
+      const ok = await request(app!.getHttpServer())
+        .get('/users/export')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
       expect(ok.status).toBe(200);
       expect(ok.headers['content-type']).toContain('spreadsheetml');
+      expect(Buffer.isBuffer(ok.body)).toBe(true);
       expect(ok.body.length).toBeGreaterThan(0);
     });
   });

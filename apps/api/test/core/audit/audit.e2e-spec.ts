@@ -3,7 +3,12 @@ import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import request from 'supertest';
 import { createTestApp } from '../../support/bootstrap-app';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
-import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../../test/support/permission-matrix';
+import {
+  ALL_ROLE_CODES,
+  TEST_USER_PASSWORD,
+  expectPermissionEnforced,
+  fixtureForRole,
+} from '../../../../../test/support/permission-matrix';
 
 function isoDateDaysAgo(days: number): string {
   const d = new Date();
@@ -30,8 +35,17 @@ describe('Audit (e2e)', () => {
     expectPermissionEnforced({ app: () => app!, method: 'get', path: '/audit', requiredPermission: 'audit.view' });
   });
 
-  it('GET /audit returns real rows produced by earlier actions in this process (e.g. the fixture logins)', async () => {
+  it('GET /audit returns real rows produced by earlier actions in this process (e.g. a real login)', async () => {
     const admin = await fixtureForRole(app!, 'admin');
+    // `fixtureForRole` itself calls `AuthService.login()` directly (bypassing
+    // HTTP) — the actual audit write for a login lives in AuthController,
+    // not AuthService, so a fixture-created login never produces an audit
+    // row on its own. A real POST /auth/login does.
+    const loginRes = await request(app!.getHttpServer())
+      .post('/auth/login')
+      .send({ email: admin.email, password: TEST_USER_PASSWORD });
+    expect(loginRes.status).toBe(200);
+
     const res = await request(app!.getHttpServer())
       .get('/audit')
       .query({ category: 'core.auth', pageSize: 200 })

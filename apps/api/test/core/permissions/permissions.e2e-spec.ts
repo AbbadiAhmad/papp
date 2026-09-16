@@ -73,7 +73,11 @@ describe('Permissions (e2e)', () => {
         orderBy: { occurredAt: 'desc' },
       });
       expect(row).not.toBeNull();
-      expect((row!.oldValue as { permissionCodes: string[] }).permissionCodes).toEqual([]);
+      // finance holds `notifications.view` by default (0006_create_notifications.sql
+      // seeds it for library_assistant/finance/reader) — the real "before"
+      // state, not an empty set; this PUT is a full replace, which is why
+      // it disappears from newValue below.
+      expect((row!.oldValue as { permissionCodes: string[] }).permissionCodes).toEqual(['notifications.view']);
       expect((row!.newValue as { permissionCodes: string[] }).permissionCodes).toEqual(['audit.view']);
 
       // Revoke again so it doesn't leak into other tests in this file.
