@@ -178,6 +178,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run --workspace=@papp/api prisma:generate
+      # D59 follow-up: apps/api/tsconfig.json's `paths: {}` (D58) means a
+      # REAL tsc build of apps/api needs `@papp/shared-types` already built
+      # (its `dist/index.d.ts` must exist) — ts-jest-run specs sidestep this
+      # via jest.base.config.ts's own moduleNameMapper (source-only redirect,
+      # never needs the real dist), but library-catalog.e2e-spec.ts's
+      # `ensureApiIsBuilt()` self-heal shells out to a REAL `npm run build`
+      # if apps/api/dist is missing — which is NOT jest-run and would hit
+      # this exact gap on a genuinely fresh checkout without this step.
+      # Building both explicitly here makes that self-heal a guaranteed
+      # no-op rather than a latent failure mode.
+      - name: Build @papp/shared-types + @papp/api (so the e2e self-heal never has to)
+        run: npm run build --workspace=@papp/shared-types && npm run build --workspace=@papp/api
       - name: apps/api test:e2e
         run: npm run test:e2e --workspace=@papp/api
 
@@ -200,15 +212,40 @@ jobs:
 
   # ---------------------------------------------------------------------
   # Frontend e2e smoke (Playwright). Phase 6 shipped the config with zero
-  # specs (Phase 9 fills tests/e2e/ in); `--pass-with-no-tests` makes that a
-  # real pass instead of Playwright's default "Error: No tests found"
-  # (exit 1) — verified locally against the installed @playwright/test
-  # version (1.63.0) before relying on it here.
+  # specs; Phase 9 fills tests/e2e/ in with real specs against a REALLY
+  # booted api + real Postgres + real served web bundle (D59 follow-up,
+  # docs/TESTING_STRATEGY.md §1's Playwright bullet). `--pass-with-no-tests`
+  # is kept so this job still passes if `tests/e2e/` is ever momentarily
+  # empty again — harmless once real specs exist, since it only changes the
+  # zero-test case.
+  #
+  # Needs the SAME Postgres service the backend Tier 2 jobs use — apps/web's
+  # playwright.config.ts `webServer` entries boot a real `apps/api` (build +
+  # `node dist/scripts/e2e-fixtures-bootstrap.js` + `node dist/main.js`,
+  # installing `library_catalog` and seeding this suite's fixture users/book
+  # for real — see that script's own docblock) and a real built+served web
+  # bundle (`vite build && vite preview`) against it.
   # ---------------------------------------------------------------------
   frontend-e2e:
     name: Frontend e2e smoke (Playwright)
     needs: frontend-unit
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: papp
+          POSTGRES_PASSWORD: papp
+          POSTGRES_DB: papp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U papp -d papp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://papp:papp@localhost:5432/papp?schema=public
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -216,10 +253,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm run --workspace=@papp/api prisma:generate
       - name: Install Playwright browsers
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
-      - name: apps/web playwright test (zero specs today is a pass, not a failure)
+      - name: apps/web playwright test (real api + real Postgres + real served web bundle)
         working-directory: apps/web
         run: npx playwright test --pass-with-no-tests
 
