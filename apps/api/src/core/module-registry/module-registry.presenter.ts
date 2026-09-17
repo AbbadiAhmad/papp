@@ -26,12 +26,13 @@ export function toPublicModuleEntry(row: ModuleRegistryEntry): PublicModuleEntry
  * The narrow slice of an installed module's manifest the frontend SHELL
  * needs to mount routes and render the sidebar menu WITHOUT hardcoding any
  * module's name (root DECISIONS.md D78) — never the full `manifestSnapshot`
- * (version/status internals are `modules.view`-gated admin concerns, not
- * something every logged-in user, let alone an anonymous visitor, should
- * receive). Deliberately excludes `backend`/`permissions`/`settings`/
+ * (version/status internals are `modules.view`-gated admin concerns).
+ * Deliberately excludes `backend`/`permissions`/`settings`/
  * `defaultRolePermissions` etc. — none of that is needed to decide "does a
- * route/menu-item exist", and none of it is safe to hand to an anonymous
- * caller.
+ * route/menu-item exist". Still gated behind authentication at the
+ * controller (root D79) — even this narrow slice discloses WHICH modules
+ * are actually installed for this tenant, which an anonymous caller has no
+ * business enumerating.
  */
 export interface FrontendModuleManifest {
   key: string;

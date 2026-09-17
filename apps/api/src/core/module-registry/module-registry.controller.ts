@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/comm
 import type { Request, Response } from 'express';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -39,18 +38,28 @@ export class ModuleRegistryController {
   }
 
   /**
-   * `@Public()`, no `@RequirePermission` — same category as `GET /i18n/:lang`
-   * (i18n.controller.ts's own docblock): a structural read with no
-   * per-caller side effect and nothing sensitive in the payload (route
-   * patterns/menu labels, not manifest internals — see
-   * `FrontendModuleManifest`'s own docblock), needed by the anonymous route
-   * tree itself before any session exists. This is the ONE thing that lets
-   * `apps/web/src/App.tsx`/`PageLayout.tsx` mount a module's routes/menu
-   * without importing that module by name (root DECISIONS.md D78) — every
-   * caller, logged in or not, hits this same endpoint.
+   * Authenticated, no `@RequirePermission` — same "logged in is enough,
+   * no specific grant needed" category as `GET /users/me`/`GET /users/me/
+   * landing-page-options` (root D72), NOT `@Public()` (root D79 — corrects
+   * D78's original choice here). `FrontendModuleManifest` itself is
+   * deliberately narrow (route patterns/menu labels, never manifest
+   * internals — see its own docblock), but WHICH modules are actually
+   * installed for this tenant is still real information an anonymous
+   * caller has no business enumerating: the shipped JS bundle (root D78's
+   * `import.meta.glob`) contains every module physically present in this
+   * build regardless of install status, so a genuinely public version of
+   * this endpoint would hand an anonymous visitor a strictly MORE precise
+   * map of this deployment's actual attack surface (which permission codes
+   * exist, which modules are live here) than static analysis of the bundle
+   * alone. Only `apps/web/src/App.tsx`'s AUTHENTICATED route tree and
+   * `PageLayout.tsx`'s sidebar call this; the anonymous/must-change-password
+   * route trees mount every discovered module's `publicRoutes` directly
+   * from the build-time glob instead (see `usePublicModuleRoutes` — a
+   * public route's own underlying API 404s gracefully if that module isn't
+   * actually installed, exactly as it already did before this endpoint
+   * existed, so no anonymous-reachable manifest call is needed for it at all).
    */
   @Get('frontend-manifest')
-  @Public()
   async frontendManifest(): Promise<FrontendModuleManifest[]> {
     return this.moduleRegistry.listFrontendManifests();
   }

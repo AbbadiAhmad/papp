@@ -26,7 +26,11 @@ import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
 import { ModulesAdminPage } from './core/modules/ModulesAdminPage';
-import { useModuleFrontendManifests, useModuleRoutes } from './shared/modules/useInstalledModules';
+import {
+  useAuthenticatedModuleRoutes,
+  useModuleFrontendManifests,
+  usePublicModuleRoutes,
+} from './shared/modules/useInstalledModules';
 
 function FullScreenLoader() {
   return (
@@ -70,21 +74,27 @@ function LandingPageRedirect() {
  * still renders `<TopBar/>` (see App() below) so the brand bar is present
  * from the very first paint, before any network round-trip resolves.
  *
- * Module routes (root DECISIONS.md D78) are resolved ONCE here, before any
- * branch — `useModuleRoutes` is a hook and must not be called conditionally
- * — then spread into whichever branch actually renders below. Nothing here
- * imports a module by name: `authenticatedModuleRoutes`/`publicModuleRoutes`
- * come entirely from `GET /modules/frontend-manifest` (installed modules)
- * cross-referenced against whatever `modules/*\/frontend/routes.tsx` files
- * Vite discovered at build time (`shared/modules/discovery.ts`). Adding or
- * removing a module changes NEITHER array's construction — only what ends
- * up in them at runtime.
+ * Module routes (root DECISIONS.md D78/D79) are resolved ONCE here, before
+ * any branch — these are hooks and must not be called conditionally — then
+ * spread into whichever branch actually renders below. Nothing here imports
+ * a module by name. `publicModuleRoutes` needs no network call at all (every
+ * discovered module's public routes mount unconditionally — a public
+ * route's own API already 404s gracefully if that module isn't installed,
+ * so there's nothing to gain, and real information to lose, from asking an
+ * anonymous-reachable endpoint which modules exist just to decide this).
+ * `authenticatedModuleRoutes` DOES need the real installed-module list —
+ * fetched only once actually authenticated (root D79: the backend endpoint
+ * requires a session, unlike D78's original `@Public()` choice), from
+ * `GET /modules/frontend-manifest` cross-referenced against whatever
+ * `modules/*\/frontend/routes.tsx` files Vite discovered at build time
+ * (`shared/modules/discovery.ts`). Adding or removing a module changes
+ * NEITHER array's construction — only what ends up in them at runtime.
  */
 function AppRoutes() {
   const { status, mustChangePassword } = useAuth();
-  const moduleManifests = useModuleFrontendManifests();
-  const authenticatedModuleRoutes = useModuleRoutes(moduleManifests, 'authenticated');
-  const publicModuleRoutes = useModuleRoutes(moduleManifests, 'public');
+  const moduleManifests = useModuleFrontendManifests(status === 'authenticated' && !mustChangePassword);
+  const authenticatedModuleRoutes = useAuthenticatedModuleRoutes(moduleManifests);
+  const publicModuleRoutes = usePublicModuleRoutes();
 
   if (status === 'initializing') {
     return <FullScreenLoader />;

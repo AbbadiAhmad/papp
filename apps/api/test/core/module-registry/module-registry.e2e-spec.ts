@@ -157,8 +157,16 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
     expect((auditRow!.newValue as { key: string }).key).toBe(MODULE_KEY);
   });
 
-  it('GET /modules/frontend-manifest is reachable with NO Authorization header and exposes only the frontend-shell slice (root D78)', async () => {
-    const res = await request(app!.getHttpServer()).get('/modules/frontend-manifest');
+  it('GET /modules/frontend-manifest requires authentication but no specific permission, and exposes only the frontend-shell slice (root D78/D79)', async () => {
+    const anon = await request(app!.getHttpServer()).get('/modules/frontend-manifest');
+    expect(anon.status).toBe(401); // root D79: NOT @Public() — an anonymous caller must never enumerate which modules are installed.
+
+    // ANY authenticated role can call this, regardless of modules.view or any other permission — same
+    // "logged in is enough" category as GET /users/me, not gated the way GET /modules itself is.
+    const reader = await fixtureForRole(app!, 'reader');
+    const res = await request(app!.getHttpServer())
+      .get('/modules/frontend-manifest')
+      .set('Authorization', `Bearer ${reader.token}`);
     expect(res.status).toBe(200);
 
     const entry = (res.body as Array<{ key: string }>).find((m) => m.key === MODULE_KEY);
@@ -170,7 +178,7 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
       menu: baseManifest().menu,
     });
     // The whole point (root DECISIONS.md D78): no admin-only manifest
-    // internals leak through this public endpoint.
+    // internals leak through this endpoint, even to an authenticated caller.
     expect(entry).not.toHaveProperty('backend');
     expect(entry).not.toHaveProperty('permissions');
     expect(entry).not.toHaveProperty('version');
@@ -277,7 +285,9 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
     // The whole point of D78: uninstalling makes the module vanish from the
     // frontend-manifest feed with NO platform code change — the frontend
     // shell just stops rendering its routes/menu on the next fetch.
-    const manifestAfterUninstall = await request(app!.getHttpServer()).get('/modules/frontend-manifest');
+    const manifestAfterUninstall = await request(app!.getHttpServer())
+      .get('/modules/frontend-manifest')
+      .set('Authorization', `Bearer ${admin.token}`);
     expect((manifestAfterUninstall.body as Array<{ key: string }>).some((m) => m.key === MODULE_KEY)).toBe(false);
   });
 

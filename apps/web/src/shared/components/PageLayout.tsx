@@ -70,7 +70,10 @@ const CORE_MENU_ITEMS: MenuItemDef[] = [
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
-  const moduleManifests = useModuleFrontendManifests();
+  // NavList only ever renders inside PageLayout, which App.tsx only mounts
+  // once fully authenticated (never anonymous, never must-change-password) —
+  // always enabled here is correct (root D79: the endpoint requires a session).
+  const moduleManifests = useModuleFrontendManifests(true);
 
   // Root DECISIONS.md D78: every installed module's own menu entries,
   // flattened generically from its manifest — App.tsx/PageLayout.tsx never
