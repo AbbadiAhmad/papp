@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertPasswordMeetsPolicy } from '../auth/password-policy.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { SettingsService } from '../settings/settings.service';
 import {
   FORCE_PASSWORD_CHANGE_TEMPLATE_KEY,
@@ -14,7 +15,18 @@ import {
 } from '../settings/settings.types';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { LandingPageOption } from './landing-page-option';
 import { PublicUser, toPublicUser } from './user.presenter';
+
+/** Shape of the one manifest slice this service reads out of `manifestSnapshot`. */
+interface LandingPageManifestSlice {
+  key: string;
+  name: string;
+  frontend?: { landingPage?: unknown };
+  menu?: Array<{ route: string; labelKey: string; requiredPermission: string }>;
+}
+
+const PLATFORM_DEFAULT_LANDING_PAGE_LABEL_KEY = 'core.myPreferences.platformDefault';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -25,10 +37,11 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly permissions: PermissionsService,
     // @Optional + appended last: same fixture-friendliness rule as
     // SettingsService's AuditLogWriter — lightweight unit fixtures may
-    // construct UsersService(prisma, settings) without the notification
-    // pipeline; in the real app UsersModule always provides it.
+    // construct UsersService(prisma, settings, permissions) without the
+    // notification pipeline; in the real app UsersModule always provides it.
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
@@ -157,6 +170,56 @@ export class UsersService {
   async remove(id: string): Promise<void> {
     await this.findById(id);
     await this.prisma.user.delete({ where: { id } });
+  }
+
+  /**
+   * Feature: per-user default landing page. The platform default (`null`)
+   * is always first, followed by every currently-installed module whose
+   * `frontend.landingPage` the caller can actually see — visibility is
+   * decided by matching that route against the module's own `menu` entries
+   * and checking the caller's REAL effective permissions (never a cached/
+   * guessed list), same source of truth `PermissionGuard` itself uses.
+   */
+  async listLandingPageOptions(userId: string): Promise<LandingPageOption[]> {
+    const [permissionCodes, installedModules] = await Promise.all([
+      this.permissions.getEffectivePermissionCodes(userId),
+      this.prisma.moduleRegistryEntry.findMany({ where: { status: 'installed' } }),
+    ]);
+
+    const options: LandingPageOption[] = [
+      { value: null, labelKey: PLATFORM_DEFAULT_LANDING_PAGE_LABEL_KEY, moduleKey: null },
+    ];
+
+    for (const row of installedModules) {
+      const manifest = row.manifestSnapshot as unknown as LandingPageManifestSlice | null;
+      const landingPage = manifest?.frontend?.landingPage;
+      if (!manifest || typeof landingPage !== 'string') continue;
+
+      const menuEntry = manifest.menu?.find((entry) => entry.route === landingPage);
+      if (menuEntry && !permissionCodes.has(menuEntry.requiredPermission)) continue;
+
+      options.push({
+        value: landingPage,
+        labelKey: menuEntry?.labelKey ?? `${manifest.key}.menu.root`,
+        moduleKey: manifest.key,
+      });
+    }
+
+    return options;
+  }
+
+  /** `landingPage: null` resets to the platform default. Any other value must be one of `listLandingPageOptions()`'s own results — re-checked here, never trusted from the client. */
+  async setDefaultLandingPage(userId: string, landingPage: string | null): Promise<PublicUser> {
+    if (landingPage !== null) {
+      const options = await this.listLandingPageOptions(userId);
+      if (!options.some((option) => option.value === landingPage)) {
+        throw new BadRequestException(
+          `"${landingPage}" is not an available landing page for this account (not installed, or you lack permission to view it).`,
+        );
+      }
+    }
+    const user = await this.prisma.user.update({ where: { id: userId }, data: { defaultLandingPage: landingPage } });
+    return toPublicUser(user);
   }
 
   private translateUniqueConstraintError(error: unknown): unknown {

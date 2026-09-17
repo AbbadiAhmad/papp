@@ -1,5 +1,5 @@
 import { apiClient } from './httpClient';
-import type { ImportReport, PublicUser } from './types';
+import type { ImportReport, LandingPageOption, PublicUser } from './types';
 
 export interface CreateUserInput {
   email: string;
@@ -22,6 +22,9 @@ export interface UpdateUserInput {
 
 export const usersApi = {
   getMe: () => apiClient.get<PublicUser>('/users/me').then((r) => r.data),
+  getMyLandingPageOptions: () => apiClient.get<LandingPageOption[]>('/users/me/landing-page-options').then((r) => r.data),
+  setMyLandingPage: (landingPage: string | null) =>
+    apiClient.patch<PublicUser>('/users/me/landing-page', { landingPage }).then((r) => r.data),
   list: () => apiClient.get<PublicUser[]>('/users').then((r) => r.data),
   getById: (id: string) => apiClient.get<PublicUser>(`/users/${id}`).then((r) => r.data),
   create: (dto: CreateUserInput) => apiClient.post<PublicUser>('/users', dto).then((r) => r.data),

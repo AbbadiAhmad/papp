@@ -7,7 +7,9 @@ import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import { CreateUserDto } from './dto/create-user.dto';
+import { SetLandingPageDto } from './dto/set-landing-page.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { LandingPageOption } from './landing-page-option';
 import { PublicUser } from './user.presenter';
 import { UsersService } from './users.service';
 
@@ -43,6 +45,12 @@ import { UsersService } from './users.service';
 const fetchUserState = (prisma: PrismaService, req: Request) =>
   prisma.user.findUnique({ where: { id: req.params.id as string } });
 
+/** Same fetchState shape, but keyed off the CALLER's own id (self-scoped routes carry no `:id` param). */
+const fetchOwnUserState = (prisma: PrismaService, req: Request) => {
+  const userId = (req as Request & { user?: { userId: string } }).user?.userId;
+  return userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null);
+};
+
 @Controller('users')
 @UseGuards(MustChangePasswordGuard)
 export class UsersController {
@@ -52,6 +60,26 @@ export class UsersController {
   @AllowMustChangePassword()
   async getMe(@CurrentUser() user: AuthenticatedUser): Promise<PublicUser> {
     return this.usersService.findById(user.userId);
+  }
+
+  /**
+   * Feature: per-user default landing page. Self-scoped (no
+   * `@RequirePermission`, same rationale as `GET /me` above) — every role
+   * gets to pick where their own login lands, regardless of what else
+   * they're granted.
+   */
+  @Get('me/landing-page-options')
+  async getMyLandingPageOptions(@CurrentUser() user: AuthenticatedUser): Promise<LandingPageOption[]> {
+    return this.usersService.listLandingPageOptions(user.userId);
+  }
+
+  @Patch('me/landing-page')
+  @Audit({ category: 'core.users', entityType: 'User', action: 'update', fetchState: fetchOwnUserState })
+  async setMyLandingPage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetLandingPageDto,
+  ): Promise<PublicUser> {
+    return this.usersService.setDefaultLandingPage(user.userId, dto.landingPage);
   }
 
   @Get()

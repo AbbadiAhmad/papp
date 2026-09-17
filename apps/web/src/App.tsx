@@ -15,6 +15,9 @@ import { ForbiddenPage } from './core/ForbiddenPage';
 import { NotFoundPage } from './core/NotFoundPage';
 import { UsersListPage } from './core/users/UsersListPage';
 import { UsersImportPage } from './core/users/UsersImportPage';
+import { MyPreferencesPage } from './core/users/MyPreferencesPage';
+import { useGuardedQuery } from './shared/hooks/useGuardedQuery';
+import { usersApi } from './shared/api/users';
 import { RolesListPage } from './core/roles/RolesListPage';
 import { PermissionsMatrixPage } from './core/permissions/PermissionsMatrixPage';
 import { SessionsPage } from './core/sessions/SessionsPage';
@@ -31,6 +34,8 @@ import {
   AUTHENTICATED_LIBRARY_CATALOG_ROUTES,
   PUBLIC_LIBRARY_CATALOG_ROUTES,
 } from '../../../modules/library_catalog/frontend/routes';
+// library_circulation + library_finance module (D44) — same static-route-table pattern as library_catalog above.
+import { AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES } from '../../../modules/library_circulation/frontend/routes';
 // Survey module — same static-route-table pattern as library_catalog above
 // (no dynamic module-federation-style loading exists yet).
 import { AUTHENTICATED_SURVEY_ROUTES, PUBLIC_SURVEY_ROUTES } from '../../../modules/survey/frontend/routes';
@@ -44,6 +49,33 @@ function FullScreenLoader() {
       <CircularProgress />
     </Box>
   );
+}
+
+/**
+ * Feature: per-user default landing page. Renders at the authenticated root
+ * `/` in place of the old hardcoded `<DashboardPage/>`. Falls back to
+ * `DashboardPage` when the user has no preference set, AND when a
+ * preference exists but no longer resolves (its module was uninstalled, or
+ * the user lost the permission that used to grant it) — re-checked live
+ * against `GET /users/me/landing-page-options`, the same authoritative list
+ * `MyPreferencesPage` itself offers, rather than duplicating route/
+ * permission knowledge here.
+ */
+function LandingPageRedirect() {
+  const { user } = useAuth();
+  const { status, data } = useGuardedQuery(null, () => usersApi.getMyLandingPageOptions());
+
+  if (!user?.defaultLandingPage) {
+    return <DashboardPage />;
+  }
+  if (status === 'loading') {
+    return <FullScreenLoader />;
+  }
+  const stillValid = status === 'ready' && (data ?? []).some((option) => option.value === user.defaultLandingPage);
+  if (!stillValid) {
+    return <DashboardPage />;
+  }
+  return <Navigate to={user.defaultLandingPage} replace />;
 }
 
 /**
@@ -102,7 +134,8 @@ function AppRoutes() {
   return (
     <PageLayout>
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<LandingPageRedirect />} />
+        <Route path="/my-preferences" element={<MyPreferencesPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/force-password-change" element={<Navigate to="/" replace />} />
         <Route path="/users" element={<UsersListPage />} />
@@ -123,6 +156,10 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {/* library_circulation + library_finance module (D44) — no public routes. */}
+        {AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {/* Survey module — AUTHENTICATED_SURVEY_ROUTES first so PageLayout's

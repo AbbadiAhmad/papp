@@ -90,6 +90,9 @@
   "core.audit.purge_success": "Deleted {{count}} row(s) older than {{date}}.",
 
   "core.settings.saved": "Saved successfully.",
+
+  "core.myPreferences.landingPage": "Landing page after login",
+  "core.myPreferences.platformDefault": "Platform default (Dashboard)",
   "core.settings.min_length": "Minimum password length",
   "core.settings.require_letter": "Require at least one letter",
   "core.settings.require_number": "Require at least one number",

@@ -90,6 +90,9 @@
   "core.audit.purge_success": "تم حذف {{count}} سجل أقدم من {{date}}.",
 
   "core.settings.saved": "تم الحفظ بنجاح.",
+
+  "core.myPreferences.landingPage": "الصفحة الافتراضية بعد تسجيل الدخول",
+  "core.myPreferences.platformDefault": "الافتراضي في المنصة (لوحة التحكم)",
   "core.settings.min_length": "الحد الأدنى لطول كلمة المرور",
   "core.settings.require_letter": "يتطلب حرفاً واحداً على الأقل",
   "core.settings.require_number": "يتطلب رقماً واحداً على الأقل",

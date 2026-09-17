@@ -10,6 +10,7 @@ export interface PublicUser {
   mustChangePassword: boolean;
   isActive: boolean;
   lastLoginAt: Date | null;
+  defaultLandingPage: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -25,6 +26,7 @@ export function toPublicUser(user: User): PublicUser {
     mustChangePassword: user.mustChangePassword,
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,
+    defaultLandingPage: user.defaultLandingPage,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     createdBy: user.createdBy,

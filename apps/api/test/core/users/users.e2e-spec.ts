@@ -49,6 +49,63 @@ describe('Users (e2e)', () => {
     });
   });
 
+  describe('GET/PATCH /users/me/landing-page* — per-user default landing page', () => {
+    it('every role can list its own landing-page options with no permission grant needed', async () => {
+      for (const role of ALL_ROLE_CODES) {
+        const fixture = await fixtureForRole(app!, role);
+        const res = await request(app!.getHttpServer())
+          .get('/users/me/landing-page-options')
+          .set('Authorization', `Bearer ${fixture.token}`);
+        expect(res.status).toBe(200);
+        // Only "core" is installed in this fixture (bootstrap-app.ts) — the
+        // platform default is always present regardless of role/grants.
+        expect(res.body).toEqual([{ value: null, labelKey: 'core.myPreferences.platformDefault', moduleKey: null }]);
+      }
+    });
+
+    it('resetting to the platform default (null) persists, is reflected in GET /users/me, and is audited', async () => {
+      const target = await createUserWithRole(app!, 'reader', { label: 'landing-page-reset' });
+
+      const patchRes = await request(app!.getHttpServer())
+        .patch('/users/me/landing-page')
+        .set('Authorization', `Bearer ${target.token}`)
+        .send({ landingPage: null });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.defaultLandingPage).toBeNull();
+
+      const meRes = await request(app!.getHttpServer())
+        .get('/users/me')
+        .set('Authorization', `Bearer ${target.token}`);
+      expect(meRes.body.defaultLandingPage).toBeNull();
+
+      const prisma = app!.get(PrismaService);
+      const row = await prisma.auditLog.findFirst({
+        where: { category: 'core.users', action: 'update', entityId: target.userId },
+        orderBy: { occurredAt: 'desc' },
+      });
+      expect(row).not.toBeNull();
+      expect(row!.actorType).toBe('user');
+      expect(row!.actorUserId).toBe(target.userId); // self-scoped: actor === target
+    });
+
+    it('rejects a landing page that matches no currently-available option — never trusts the client', async () => {
+      const target = await createUserWithRole(app!, 'reader', { label: 'landing-page-reject' });
+
+      const res = await request(app!.getHttpServer())
+        .patch('/users/me/landing-page')
+        .set('Authorization', `Bearer ${target.token}`)
+        .send({ landingPage: '/library/books' }); // no module installed in this fixture — not a valid option
+      expect(res.status).toBe(400);
+    });
+
+    it('401s with no token on either route', async () => {
+      const optionsRes = await request(app!.getHttpServer()).get('/users/me/landing-page-options');
+      expect(optionsRes.status).toBe(401);
+      const patchRes = await request(app!.getHttpServer()).patch('/users/me/landing-page').send({ landingPage: null });
+      expect(patchRes.status).toBe(401);
+    });
+  });
+
   describe('permission matrix', () => {
     expectPermissionEnforced({ app: () => app!, method: 'get', path: '/users', requiredPermission: 'users.view' });
 

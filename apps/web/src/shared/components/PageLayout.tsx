@@ -22,9 +22,12 @@ import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import PaidIcon from '@mui/icons-material/Paid';
 import PollIcon from '@mui/icons-material/Poll';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
@@ -69,6 +72,35 @@ const MENU_ITEMS: MenuItemDef[] = [
     icon: <MenuBookIcon />,
     route: '/library/books',
     permissionCode: 'library_catalog.books.view',
+  },
+  // library_circulation + library_finance module (D44) — same documented gap as library_catalog above.
+  {
+    id: 'library_circulation.scan',
+    labelKey: 'library_circulation.menu.scan',
+    icon: <QrCodeScannerIcon />,
+    route: '/library-circulation/scan',
+    permissionCode: 'library_circulation.borrow',
+  },
+  {
+    id: 'library_circulation.students',
+    labelKey: 'library_circulation.menu.students',
+    icon: <GroupIcon />,
+    route: '/library-circulation/students',
+    permissionCode: 'library_circulation.students.view',
+  },
+  {
+    id: 'library_circulation.fines',
+    labelKey: 'library_circulation.menu.fines',
+    icon: <PaidIcon />,
+    route: '/library-circulation/fines',
+    permissionCode: 'library_circulation.fines.view',
+  },
+  {
+    id: 'library_circulation.finance',
+    labelKey: 'library_circulation.menu.finance',
+    icon: <PaidIcon />,
+    route: '/library-circulation/finance',
+    permissionCode: 'library_circulation.finance.view',
   },
   // Survey module — same documented gap as library_catalog above.
   {
@@ -190,6 +222,17 @@ export function TopBar() {
             <Menu anchorEl={userMenuAnchor} open={Boolean(userMenuAnchor)} onClose={() => setUserMenuAnchor(null)}>
               <MenuItem disabled>{user.email}</MenuItem>
               <Divider />
+              <MenuItem
+                onClick={() => {
+                  setUserMenuAnchor(null);
+                  navigate('/my-preferences');
+                }}
+              >
+                <ListItemIcon>
+                  <ManageAccountsIcon fontSize="small" />
+                </ListItemIcon>
+                {t('core.menu.myPreferences')}
+              </MenuItem>
               <MenuItem onClick={handleLogout}>
                 <ListItemIcon>
                   <LogoutIcon fontSize="small" />

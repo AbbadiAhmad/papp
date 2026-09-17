@@ -14,9 +14,17 @@ export interface PublicUser {
   mustChangePassword: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
+  defaultLandingPage: string | null;
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+}
+
+/** `GET /users/me/landing-page-options` entry — `value: null` is the platform default. */
+export interface LandingPageOption {
+  value: string | null;
+  labelKey: string;
+  moduleKey: string | null;
 }
 
 export interface PublicRole {

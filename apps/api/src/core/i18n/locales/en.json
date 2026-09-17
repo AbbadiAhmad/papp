@@ -41,6 +41,7 @@
   "core.menu.notifications": "Notifications",
   "core.menu.settings": "Settings",
   "core.menu.modules": "Modules",
+  "core.menu.myPreferences": "My Preferences",
 
   "core.auth.login": "Log in",
   "core.auth.logout": "Log out",
@@ -74,6 +75,7 @@
 
   "core.common.save": "Save",
   "core.common.cancel": "Cancel",
+  "core.common.close": "Close",
   "core.common.create": "Create",
   "core.common.edit": "Edit",
   "core.common.delete": "Delete",

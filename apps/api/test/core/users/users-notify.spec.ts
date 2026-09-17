@@ -36,6 +36,7 @@ function userRow(overrides: Record<string, unknown> = {}) {
 describe('UsersService.update — Notification Center wiring (Phase 4)', () => {
   let prisma: MockPrisma;
   let settings: { get: jest.Mock };
+  let permissions: { getEffectivePermissionCodes: jest.Mock };
   let notifications: { send: jest.Mock };
   let service: UsersService;
   let loggedErrors: jest.Spied<typeof Logger.prototype.error>;
@@ -70,7 +71,9 @@ describe('UsersService.update — Notification Center wiring (Phase 4)', () => {
     notifications = { send: jest.fn() };
     notifications.send.mockResolvedValue({ notification: { id: 'n1' }, recipientCount: 1, emailedCount: 0 });
 
-    service = new UsersService(prisma as never, settings as never, notifications as never);
+    permissions = { getEffectivePermissionCodes: jest.fn() };
+
+    service = new UsersService(prisma as never, settings as never, permissions as never, notifications as never);
   });
 
   it('an admin password reset sends the password_reset template as a system notification', async () => {
@@ -160,7 +163,7 @@ describe('UsersService.update — Notification Center wiring (Phase 4)', () => {
   });
 
   it('a fixture without NotificationsService wired logs but does not throw', async () => {
-    const bare = new UsersService(prisma as never, settings as never);
+    const bare = new UsersService(prisma as never, settings as never, permissions as never);
 
     const result = await bare.update('user-1', { password: 'NewPass123' });
 

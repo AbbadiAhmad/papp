@@ -41,6 +41,7 @@
   "core.menu.notifications": "الإشعارات",
   "core.menu.settings": "الإعدادات",
   "core.menu.modules": "الوحدات",
+  "core.menu.myPreferences": "تفضيلاتي",
 
   "core.auth.login": "تسجيل الدخول",
   "core.auth.logout": "تسجيل الخروج",
@@ -74,6 +75,7 @@
 
   "core.common.save": "حفظ",
   "core.common.cancel": "إلغاء",
+  "core.common.close": "إغلاق",
   "core.common.create": "إنشاء",
   "core.common.edit": "تعديل",
   "core.common.delete": "حذف",

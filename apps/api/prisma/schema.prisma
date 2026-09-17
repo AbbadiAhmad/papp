@@ -78,6 +78,10 @@ model User {
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
+  /// Route the user is redirected to right after login; null = platform
+  /// default. Validated against installed modules' frontend.landingPage
+  /// values in UsersService, never trusted as an arbitrary path.
+  defaultLandingPage  String?   @map("default_landing_page")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   createdBy           String?   @db.Uuid @map("created_by")
@@ -580,6 +584,138 @@ model TemplateItem {
   @@index([ownerUserId])
   @@index([status])
   @@map("template_items")
+}
+
+// --- library_circulation + library_finance module (D44) --------------------
+// See modules/library_circulation/migrations/001_create_library_circulation_tables.sql
+// for the raw DDL these mirror, and docs/LIBRARY_MODULE_REQUIREMENTS.md for
+// the domain spec. Depends on library_catalog's LibraryCatalogBookCopy.
+
+model LibraryAcademicYear {
+  id        String   @id @default(uuid()) @db.Uuid
+  label     String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isCurrent Boolean  @default(false) @map("is_current")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  students LibraryStudent[]
+
+  @@map("library_academic_years")
+}
+
+/// A "student" is a real platform User with the `reader` role (D41) — this
+/// only adds the library-specific fields Users doesn't have.
+model LibraryStudent {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @unique @map("user_id") @db.Uuid
+  code           String    @unique
+  className      String?   @map("class_name")
+  academicYearId String?   @map("academic_year_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  academicYear LibraryAcademicYear? @relation(fields: [academicYearId], references: [id])
+  borrowings   LibraryBorrowing[]
+  fines        LibraryFine[]
+
+  @@index([code])
+  @@map("library_students")
+}
+
+model LibraryFineType {
+  id            String  @id @default(uuid()) @db.Uuid
+  code          String  @unique
+  name          String
+  defaultAmount Decimal @default(0) @map("default_amount") @db.Decimal(10, 2)
+  isActive      Boolean @default(true) @map("is_active")
+
+  fines LibraryFine[]
+
+  @@map("library_fine_types")
+}
+
+/// Full history is NEVER deleted (§10, "reading passport") — deleting a
+/// student/book with history is rejected in the service layer (§22).
+model LibraryBorrowing {
+  id          String    @id @default(uuid()) @db.Uuid
+  bookCopyId  String    @map("book_copy_id") @db.Uuid
+  studentId   String    @map("student_id") @db.Uuid
+  status      String    @default("active")
+  borrowedAt  DateTime  @default(now()) @map("borrowed_at")
+  dueAt       DateTime  @map("due_at")
+  returnedAt  DateTime? @map("returned_at")
+  borrowedBy  String    @map("borrowed_by") @db.Uuid
+  returnedBy  String?   @map("returned_by") @db.Uuid
+
+  student LibraryStudent @relation(fields: [studentId], references: [id])
+  fines   LibraryFine[]
+
+  @@index([studentId])
+  @@index([bookCopyId])
+  @@index([status])
+  @@map("library_borrowings")
+}
+
+model LibraryFine {
+  id           String   @id @default(uuid()) @db.Uuid
+  studentId    String   @map("student_id") @db.Uuid
+  borrowingId  String?  @map("borrowing_id") @db.Uuid
+  fineTypeId   String   @map("fine_type_id") @db.Uuid
+  status       String   @default("unpaid")
+  amount       Decimal  @db.Decimal(10, 2)
+  amountPaid   Decimal  @default(0) @map("amount_paid") @db.Decimal(10, 2)
+  notes        String?
+  createdBy    String   @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  student   LibraryStudent    @relation(fields: [studentId], references: [id])
+  borrowing LibraryBorrowing? @relation(fields: [borrowingId], references: [id])
+  fineType  LibraryFineType   @relation(fields: [fineTypeId], references: [id])
+  transactions LibraryFinancialTransaction[]
+
+  @@index([studentId])
+  @@index([status])
+  @@map("library_fines")
+}
+
+/// Every fine creates exactly one transaction (§12) — the "charge" side of
+/// the ledger; LibraryPayment is the "money received" side.
+model LibraryFinancialTransaction {
+  id                String   @id @default(uuid()) @db.Uuid
+  fineId            String   @map("fine_id") @db.Uuid
+  transactionNumber String   @unique @map("transaction_number")
+  amount            Decimal  @db.Decimal(10, 2)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  fine     LibraryFine       @relation(fields: [fineId], references: [id])
+  payments LibraryPayment[]
+
+  @@map("library_financial_transactions")
+}
+
+model LibraryPayment {
+  id            String   @id @default(uuid()) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  amount        Decimal  @db.Decimal(10, 2)
+  paidAt        DateTime @default(now()) @map("paid_at")
+  receivedBy    String   @map("received_by") @db.Uuid
+
+  transaction LibraryFinancialTransaction @relation(fields: [transactionId], references: [id])
+  receipt     LibraryReceipt?
+
+  @@map("library_payments")
+}
+
+model LibraryReceipt {
+  id             String   @id @default(uuid()) @db.Uuid
+  paymentId      String   @unique @map("payment_id") @db.Uuid
+  receiptNumber  String   @unique @map("receipt_number")
+  issuedAt       DateTime @default(now()) @map("issued_at")
+
+  payment LibraryPayment @relation(fields: [paymentId], references: [id])
+
+  @@map("library_receipts")
 }
 
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
