@@ -1,5 +1,5 @@
 import type { Config } from 'jest';
-import { baseConfig } from './jest.base.config.ts';
+import { baseConfig, modulesRoot } from './jest.base.config.ts';
 
 /**
  * Backend unit layer (docs/TESTING_STRATEGY.md §1): pure logic, no DB, no
@@ -33,7 +33,11 @@ const COVERAGE_GATE_FILES = [
 const config: Config = {
   ...baseConfig,
   displayName: 'unit',
-  testMatch: ['<rootDir>/test/**/*.spec.ts', '<rootDir>/src/**/*.spec.ts'],
+  // Root DECISIONS.md D76: module-owned unit specs live at
+  // `modules/<key>/test/backend/*.spec.ts` (never `<rootDir>/test/modules/**`
+  // — that was the pre-D76 pattern, now migrated away from) so this platform
+  // project's own `<rootDir>/test/**` stays for CORE tests only.
+  testMatch: ['<rootDir>/test/**/*.spec.ts', '<rootDir>/src/**/*.spec.ts', `${modulesRoot}/*/test/backend/*.spec.ts`],
   // `library_catalog` (Phase 8) ships BOTH `backend/*.ts` source AND its own
   // pre-compiled `backend/*.js` output side by side (MODULE_SPEC.md §1/D56).
   // `baseConfig`'s default `moduleFileExtensions` order (`js` before `ts`,

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma } from '@prisma/client';
-import { PagesService } from '../../../../../modules/website/backend/pages.service';
-import type { BlockInputDto } from '../../../../../modules/website/backend/dto/replace-blocks.dto';
-import type { CreatePageDto } from '../../../../../modules/website/backend/dto/create-page.dto';
+import { PagesService } from '../../backend/pages.service';
+import type { BlockInputDto } from '../../backend/dto/replace-blocks.dto';
+import type { CreatePageDto } from '../../backend/dto/create-page.dto';
 
 interface MockPrisma {
   websitePage: {

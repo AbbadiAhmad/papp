@@ -45,6 +45,7 @@ Frontend (`basePath: /template`):
 - `backend/settings.service.ts` — the module's own minimal settings read/write; its docblock explains exactly why this exists instead of a generic core endpoint. Copy this file only if your module actually needs an editable setting — most won't.
 - `backend/platform.ts` — copy this file **verbatim** as the very first thing when starting a new module from this scaffold; see its own docblock.
 - `frontend/pages/TemplateItemsListPage.tsx` — the list + inline settings panel; `DefaultsPanel` inside it is the frontend half of the settings demonstration.
+- `test/backend/items.service.spec.ts` — this module's OWN unit spec, per `docs/MODULE_SPEC.md` §9.4 (root D76): a module's tests live inside the module, at `test/backend/` (Jest unit/e2e) and `test/frontend/` (Vitest component tests) — never under `apps/api/test/` or `apps/web/tests/`. Copy this file's shape (the D57 `(service as unknown as {prisma}).prisma = mockPrisma` reflection idiom) as the starting point for your own module's unit specs. This module has no `test/frontend/` example of its own — its pages all need `Router`/`i18n` context to render; see `modules/website/test/frontend/website-safe-markdown.test.tsx` for a real, self-contained frontend test example instead.
 
 ## Known gotchas
 

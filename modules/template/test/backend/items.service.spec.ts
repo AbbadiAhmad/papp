@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { ItemsService } from '../../../../../modules/template/backend/items.service';
-import type { CreateItemDto } from '../../../../../modules/template/backend/dto/create-item.dto';
-import type { UpdateItemDto } from '../../../../../modules/template/backend/dto/update-item.dto';
+import { ItemsService } from '../../backend/items.service';
+import type { CreateItemDto } from '../../backend/dto/create-item.dto';
+import type { UpdateItemDto } from '../../backend/dto/update-item.dto';
 
 interface MockPrisma {
   templateItem: {

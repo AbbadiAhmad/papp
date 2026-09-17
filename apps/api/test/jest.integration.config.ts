@@ -1,5 +1,5 @@
 import type { Config } from 'jest';
-import { baseConfig } from './jest.base.config.ts';
+import { baseConfig, modulesRoot } from './jest.base.config.ts';
 
 /**
  * Backend integration layer (docs/TESTING_STRATEGY.md §1): real PostgreSQL
@@ -14,7 +14,9 @@ import { baseConfig } from './jest.base.config.ts';
 const config: Config = {
   ...baseConfig,
   displayName: 'integration',
-  testMatch: ['<rootDir>/test/**/*.integration-spec.ts'],
+  // Root DECISIONS.md D76: module-owned integration specs (none exist yet)
+  // would live at `modules/<key>/test/backend/*.integration-spec.ts`.
+  testMatch: ['<rootDir>/test/**/*.integration-spec.ts', `${modulesRoot}/*/test/backend/*.integration-spec.ts`],
   testTimeout: 120_000,
   maxWorkers: 1,
   // Same fix as jest.unit.config.ts's "Known Tier 1 gotcha #2" (see

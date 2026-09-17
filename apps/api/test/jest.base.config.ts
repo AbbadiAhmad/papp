@@ -1,4 +1,5 @@
 import type { Config } from 'jest';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -15,8 +16,20 @@ import { fileURLToPath } from 'node:url';
  */
 export const rootDir = fileURLToPath(new URL('..', import.meta.url));
 
+/**
+ * `modules/<key>/test/backend/` (root DECISIONS.md D76) — module-owned unit
+ * and e2e specs live here, NOT under this project's own `test/`. Jest's
+ * `roots` defaults to `[rootDir]` (= apps/api), which would never be walked
+ * to discover a spec file living outside it — this entry is what makes
+ * `testMatch` patterns pointing at `modules/*\/test/backend/**` (added in
+ * jest.unit.config.ts/jest.e2e.config.ts/jest.integration.config.ts) actually
+ * reachable at all.
+ */
+export const modulesRoot = join(rootDir, '..', '..', 'modules');
+
 export const baseConfig: Config = {
   rootDir,
+  roots: [rootDir, modulesRoot],
   testEnvironment: 'node',
   // NestJS 12's packages (@nestjs/common, @nestjs/core, ...) ship as
   // ESM-only (`"type": "module"`, no CJS build) — see the ExecException

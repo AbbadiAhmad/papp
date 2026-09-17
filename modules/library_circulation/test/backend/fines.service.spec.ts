@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { FinesService } from '../../../../../modules/library_circulation/backend/fines.service';
+import { FinesService } from '../../backend/fines.service';
 
 interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };

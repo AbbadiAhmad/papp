@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from '@jest/globals';
-import { SurveysService } from '../../../../../modules/survey/backend/surveys.service';
-import type { SurveyStructureDto } from '../../../../../modules/survey/backend/dto/survey-structure.dto';
+import { SurveysService } from '../../backend/surveys.service';
+import type { SurveyStructureDto } from '../../backend/dto/survey-structure.dto';
 
 /**
  * Same reflection idiom as books.service.spec.ts: `SurveysService` owns its

@@ -12,7 +12,12 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
-      include: ['tests/**/*.test.{ts,tsx}'],
+      // `tests/**` is this project's OWN (core/platform) test tree.
+      // Module-owned frontend tests (root DECISIONS.md D76) live at
+      // `modules/<key>/test/frontend/*.test.{ts,tsx}` instead — kept out of
+      // `apps/web/tests` so a module stays self-contained the same way its
+      // `backend/`/`frontend/`/`locales/` already are.
+      include: ['tests/**/*.test.{ts,tsx}', '../../modules/*/test/frontend/**/*.test.{ts,tsx}'],
       setupFiles: ['./tests/setup.ts'],
       css: true,
       restoreMocks: true,

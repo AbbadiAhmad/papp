@@ -1,11 +1,11 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { LibraryCatalogBookCopyStatus } from '@prisma/client';
-import { BooksService } from '../../../../../modules/library_catalog/backend/books.service';
-import type { CreateBookCopyDto } from '../../../../../modules/library_catalog/backend/dto/create-book-copy.dto';
-import type { CreateBookDto } from '../../../../../modules/library_catalog/backend/dto/create-book.dto';
-import type { UpdateBookCopyDto } from '../../../../../modules/library_catalog/backend/dto/update-book-copy.dto';
-import type { UpdateBookDto } from '../../../../../modules/library_catalog/backend/dto/update-book.dto';
+import { BooksService } from '../../backend/books.service';
+import type { CreateBookCopyDto } from '../../backend/dto/create-book-copy.dto';
+import type { CreateBookDto } from '../../backend/dto/create-book.dto';
+import type { UpdateBookCopyDto } from '../../backend/dto/update-book-copy.dto';
+import type { UpdateBookDto } from '../../backend/dto/update-book.dto';
 
 interface MockPrisma {
   libraryCatalogBook: {

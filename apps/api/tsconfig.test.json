@@ -32,5 +32,12 @@
   // test/ this entire phase, a false-green signal for every "typecheck
   // clean" verification claimed against e2e/integration/unit spec files.
   "exclude": ["node_modules", "dist"],
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  // Module-owned tests (docs/MODULE_SPEC.md §1: `modules/<key>/test/{backend,frontend}/`)
+  // live outside apps/api/test — see root DECISIONS.md D76 for why platform
+  // tests (this project's own `test/**`) and module tests are split like
+  // this. Without this entry, ts-jest (which compiles against THIS tsconfig)
+  // throws "file is not listed within the file list of project" for any
+  // spec file under `modules/**` — same class of bug D62's comment above
+  // already fixed once for `test/**` itself.
+  "include": ["src/**/*.ts", "test/**/*.ts", "../../modules/*/test/backend/**/*.ts"]
 }

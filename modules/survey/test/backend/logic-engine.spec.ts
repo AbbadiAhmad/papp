@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { resolveVisibility, type SurveyLogicRuleLike } from '../../../../../modules/survey/backend/logic-engine';
+import { resolveVisibility, type SurveyLogicRuleLike } from '../../backend/logic-engine';
 
 const SECTIONS = [
   { id: 'sec-1', questions: [{ id: 'q-color' }, { id: 'q-why-red' }] },

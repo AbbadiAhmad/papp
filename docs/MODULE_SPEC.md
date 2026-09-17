@@ -9,6 +9,7 @@ How a feature (Library Catalog, Borrowing, Finance, …) plugs into the base pla
 - **The directory name must equal the manifest `key` literally, snake_case** (`modules/library_catalog/`, not a hyphenated name) — `ModuleRegistryService`/the module loader build the on-disk path directly from the key string.
 - **`backend.entry` must point to compiled CommonJS output (`*.js`), never raw `.ts`** — plain Node cannot `import()` NestJS-decorated TypeScript, even with type-stripping. Every module ships a small own `tsconfig.json` (extending the shared base config) that compiles `backend/*.ts` → `backend/*.js` in place; **both the TypeScript source and its compiled output are checked into git together**.
 - **A module cannot directly import `apps/api/src/common/**`'s real decorators/guards** (`@Public()`, `@RequirePermission()`, `@Audit()`, `@CurrentUser()`, `MustChangePasswordGuard`) — only `apps/api/dist/**` exists as loadable JS at runtime. Until a shared `@papp/platform-kit` package exists, every module ships a small local `backend/platform.ts` re-declaring these as thin metadata shims against the exact same literal string keys the real global guards read (see D57 in `docs/DECISIONS.md` for the full rationale and the current known keys). `PublicThrottlerGuard` is the one exception a module should import for real (from `apps/api/dist/...`), since it's genuine shared logic, not a metadata marker.
+- **A module's own tests live under its own `test/` directory, never under `apps/api/test/` or `apps/web/tests/`** (root D76) — see §9.4.
 
 ```
 modules/library_catalog/
@@ -32,9 +33,15 @@ modules/library_catalog/
 │   ├── pages/
 │   │   └── BooksListPage.tsx
 │   └── ...
-└── locales/
-    ├── ar.json
-    └── en.json
+├── locales/
+│   ├── ar.json
+│   └── en.json
+└── test/                               -- this module's OWN tests only (§9.4, root D76) — never apps/api/test or apps/web/tests
+    ├── backend/
+    │   ├── books.service.spec.ts       -- Jest unit spec (mocked PrismaClient, no DB)
+    │   └── library-catalog.e2e-spec.ts -- Jest e2e spec (real install, real Testcontainers Postgres)
+    └── frontend/
+        └── some-component.test.tsx     -- Vitest + React Testing Library component test
 ```
 
 ## 2. `manifest.json` schema
@@ -284,6 +291,24 @@ A technical reference for whoever (human or agent) next touches this module, wri
 - **Update `DOCUMENTATION.md`** whenever something it describes actually changes shape (a new table/entity, a new permission, a new route, a gotcha that no longer applies or a new one that does) — it is a living reference, not a one-time changelog.
 - A brand-new module scaffold (§1) starts both files non-empty: `DOCUMENTATION.md` with at least a real Purpose/Data model/Permissions/Routes section (even a v1 module has these), `DECISIONS.md` with whatever real calls were made getting it to a working state (there is always at least one — even "copied `modules/template` and renamed X/Y/Z" is worth one line if nothing else came up).
 - `modules/template/` (§10) is the canonical worked example of both files, kept intentionally minimal — copy its shape, not necessarily its length.
+
+### 9.4 Where a module's own tests live (root D76)
+
+**Platform tests and module tests are two different things, kept in two different places:**
+
+- **Platform tests** — this project's OWN test suite, covering core (`Users`, `Roles`, `Permissions`, `Audit`, `Notifications`, `ModuleRegistry`, `I18n`, `Auth`/`Sessions`) and cross-cutting concerns (the permission-matrix helper, the module-registry lifecycle itself). These live under `apps/api/test/**` (Jest: unit/`*.spec.ts`, integration/`*.integration-spec.ts`, e2e/`*.e2e-spec.ts`) and `apps/web/tests/**` (Vitest component tests, Playwright e2e under `tests/e2e/`).
+- **Module tests** — a module's OWN unit/e2e/component tests, covering ONLY that module's own services/controllers/pages. These live INSIDE the module, per §1's file tree:
+  - `modules/<key>/test/backend/*.spec.ts` — Jest unit specs (mocked `PrismaClient`, no DB — same `(service as unknown as {prisma}).prisma = mockPrisma` reflection idiom every module already uses).
+  - `modules/<key>/test/backend/*.e2e-spec.ts` — Jest e2e specs (real install via `ModuleRegistryService`, real Testcontainers Postgres, real HTTP via Supertest).
+  - `modules/<key>/test/backend/*.integration-spec.ts` — Jest integration specs, when a module needs one (none do yet).
+  - `modules/<key>/test/frontend/*.test.tsx` — Vitest + React Testing Library component tests (e.g. a rendering-safety guard like `modules/website/test/frontend/website-safe-markdown.test.tsx`).
+  - A Playwright end-to-end spec that drives a module's UI through a real running dev server (browser automation, full stack) is a platform-level test even when it only exercises one module's flow — it stays under `apps/web/tests/e2e/`, not inside the module (see `apps/web/tests/e2e/survey.spec.ts`).
+
+**Why split at all**, not just "put everything under `apps/api/test/modules/<key>/`" (the pattern every module used before root D76 — a real, if undocumented, gap flagged in root `docs/DECISIONS.md` D68): a module is meant to be self-contained (§1 — its own manifest, migrations, backend, frontend, locales, `DOCUMENTATION.md`/`DECISIONS.md`), and its tests are as much a part of "what this module is" as its own migrations are. Leaving them in the platform's own test tree means deleting or relocating a module (uninstall, extraction into its own package, a future module marketplace) silently orphans or forgets its tests, and a module's own `DOCUMENTATION.md`/`DECISIONS.md` can't honestly claim the module is self-contained while its test suite lives somewhere else entirely.
+
+**How the test runners find them** (so this doesn't silently stop working again): `apps/api/test/jest.base.config.ts` sets `roots: [rootDir, modulesRoot]` and exports `modulesRoot` (`<rootDir>/../../modules`); `jest.unit.config.ts`/`jest.integration.config.ts`/`jest.e2e.config.ts` each add a `${modulesRoot}/*/test/backend/*.<ext>` pattern to their own `testMatch` alongside their existing `<rootDir>/test/**` pattern. `apps/api/tsconfig.test.json`'s `include` has a matching `../../modules/*/test/backend/**/*.ts` entry (ts-jest compiles against this project; without it, ts-jest throws "file is not listed within the file list of project" for any spec file under `modules/**`, the exact class of bug D62 already fixed once for `apps/api/test/**` itself). `apps/web/vitest.config.ts`'s `test.include` has a matching `../../modules/*/test/frontend/**/*.test.{ts,tsx}` entry alongside its own `tests/**` pattern.
+
+**Every new module (§10) starts with this layout from scratch** — copy `modules/template/test/backend/items.service.spec.ts` as the worked example for a unit spec; there is currently no template frontend component test (template's own pages all need `Router`/`i18n` context to render — see `modules/website/test/frontend/website-safe-markdown.test.tsx` for a real, self-contained frontend test example instead).
 
 ## 10. `modules/template` — the canonical scaffold for a new module
 

@@ -1,8 +1,8 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it } from '@jest/globals';
-import { CreateBookCopyDto } from '../../../../../modules/library_catalog/backend/dto/create-book-copy.dto';
-import { CreateBookDto } from '../../../../../modules/library_catalog/backend/dto/create-book.dto';
+import { CreateBookCopyDto } from '../../backend/dto/create-book-copy.dto';
+import { CreateBookDto } from '../../backend/dto/create-book.dto';
 
 /**
  * DTO validation, Tier 1 (docs/FEATURE_TEMPLATE.md §6 / D37) — direct

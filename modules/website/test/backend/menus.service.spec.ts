@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { MenusService } from '../../../../../modules/website/backend/menus.service';
-import type { MenuItemInputDto } from '../../../../../modules/website/backend/dto/replace-menu-items.dto';
+import { MenusService } from '../../backend/menus.service';
+import type { MenuItemInputDto } from '../../backend/dto/replace-menu-items.dto';
 
 interface MockPrisma {
   websiteMenuItem: {

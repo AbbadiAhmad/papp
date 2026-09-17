@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { BlockRenderer } from '../../../modules/website/frontend/pages/BlockRenderer';
-import { SafeMarkdown } from '../../../modules/website/frontend/pages/SafeMarkdown';
-import type { WebsiteBlock } from '../../../modules/website/frontend/api';
+import { BlockRenderer } from '../../frontend/pages/BlockRenderer';
+import { SafeMarkdown } from '../../frontend/pages/SafeMarkdown';
+import type { WebsiteBlock } from '../../frontend/api';
 
 /**
  * Guards the module's safe-by-construction rendering claim (see

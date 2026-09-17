@@ -1,7 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Prisma } from '@prisma/client';
-import { StudentsService } from '../../../../../modules/library_circulation/backend/students.service';
+import { StudentsService } from '../../backend/students.service';
 
 interface MockPrisma {
   user: { create: jest.Mock };

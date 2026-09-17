@@ -6,18 +6,18 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import request from 'supertest';
-import { AppModule } from '../../../src/app.module';
-import { MigrationRunnerService } from '../../../src/core/module-registry/migration-runner.service';
-import { ModuleRegistryService } from '../../../src/core/module-registry/module-registry.service';
-import { PrismaService } from '../../../src/prisma/prisma.service';
-import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
+import { AppModule } from '../../../../apps/api/src/app.module';
+import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
+import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
+import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
 import {
   ALL_ROLE_CODES,
   RoleCode,
   expectPermissionEnforced,
   fixtureForRole,
   roleHasPermission,
-} from '../../../../../test/support/permission-matrix';
+} from '../../../../test/support/permission-matrix';
 
 /**
  * Tier 2 e2e for the `website` module — same real-install pattern as
@@ -30,8 +30,9 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(here, '..', '..', '..', '..', '..');
-const CORE_MIGRATIONS_DIR = join(here, '..', '..', '..', 'src', 'core', 'migrations');
+// this file lives at modules/website/test/backend/ — 4 levels under the repo root.
+const REPO_ROOT = join(here, '..', '..', '..', '..');
+const CORE_MIGRATIONS_DIR = join(REPO_ROOT, 'apps', 'api', 'src', 'core', 'migrations');
 const BOOTSTRAP_MIGRATION_FILENAME = '0000_bootstrap_registry.sql';
 
 async function bootstrapRegistryTables(): Promise<void> {
@@ -56,7 +57,7 @@ function buildRootModule(discoveredModuleClasses: unknown[]): Type<unknown> {
 async function createAppWithWebsiteInstalled(): Promise<INestApplication> {
   await bootstrapRegistryTables();
 
-  const { WebsiteModule } = (await import('../../../../../modules/website/backend/website.module.ts')) as {
+  const { WebsiteModule } = (await import('../../backend/website.module.ts')) as {
     WebsiteModule: Type<unknown>;
   };
 

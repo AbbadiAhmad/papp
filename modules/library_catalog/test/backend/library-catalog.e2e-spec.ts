@@ -7,11 +7,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import request from 'supertest';
-import { AppModule } from '../../../src/app.module';
-import { MigrationRunnerService } from '../../../src/core/module-registry/migration-runner.service';
-import { ModuleRegistryService } from '../../../src/core/module-registry/module-registry.service';
-import { PrismaService } from '../../../src/prisma/prisma.service';
-import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
+import { AppModule } from '../../../../apps/api/src/app.module';
+import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
+import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
+import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
 import {
   ALL_ROLE_CODES,
   RoleCode,
@@ -19,7 +19,7 @@ import {
   fixtureForRole,
   roleHasPermission,
   tokenFor,
-} from '../../../../../test/support/permission-matrix';
+} from '../../../../test/support/permission-matrix';
 
 /**
  * Tier 2 e2e for the `library_catalog` module (docs/BUILD_PLAN.md Phase 8,
@@ -49,9 +49,9 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-// apps/api/test/modules/library-catalog -> repo root (5 levels up).
-const REPO_ROOT = join(here, '..', '..', '..', '..', '..');
-const CORE_MIGRATIONS_DIR = join(here, '..', '..', '..', 'src', 'core', 'migrations');
+// this file lives at modules/library_catalog/test/backend/ — 4 levels under the repo root.
+const REPO_ROOT = join(here, '..', '..', '..', '..');
+const CORE_MIGRATIONS_DIR = join(REPO_ROOT, 'apps', 'api', 'src', 'core', 'migrations');
 const BOOTSTRAP_MIGRATION_FILENAME = '0000_bootstrap_registry.sql';
 const DIST_GUARD_PATH = join(REPO_ROOT, 'apps', 'api', 'dist', 'common', 'guards', 'public-throttler.guard.js');
 
@@ -104,7 +104,7 @@ async function createAppWithLibraryCatalogInstalled(): Promise<INestApplication>
   // ts-jest compiles it as real ESM, exactly like every other TS import in
   // this test suite.
   const { LibraryCatalogModule } = (await import(
-    '../../../../../modules/library_catalog/backend/library-catalog.module.ts'
+    '../../backend/library-catalog.module.ts'
   )) as { LibraryCatalogModule: Type<unknown> };
 
   const app = await NestFactory.create(buildRootModule([LibraryCatalogModule]), { logger: false });
@@ -159,7 +159,7 @@ async function createAppWithLibraryCatalogInstalled(): Promise<INestApplication>
 describe('library_catalog module import wiring (no DB needed)', () => {
   it('the dynamic import of LibraryCatalogModule resolves to a usable Nest module class', async () => {
     ensureApiIsBuilt();
-    const imported = (await import('../../../../../modules/library_catalog/backend/library-catalog.module.ts')) as {
+    const imported = (await import('../../backend/library-catalog.module.ts')) as {
       LibraryCatalogModule: Type<unknown>;
     };
     expect(typeof imported.LibraryCatalogModule).toBe('function');
@@ -347,7 +347,7 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
     });
 
     it('PublicThrottlerGuard really 429s a burst of anonymous requests over the per-IP limit', async () => {
-      const { SettingsService } = await import('../../../src/core/settings/settings.service');
+      const { SettingsService } = await import('../../../../apps/api/src/core/settings/settings.service');
       const settings = app!.get(SettingsService);
       const limitConfig = await settings.get<{ limit: number; windowSeconds: number }>(
         'security.public_endpoint_rate_limit',

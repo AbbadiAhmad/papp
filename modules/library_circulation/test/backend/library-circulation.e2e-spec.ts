@@ -7,12 +7,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import request from 'supertest';
-import { AppModule } from '../../../src/app.module';
-import { MigrationRunnerService } from '../../../src/core/module-registry/migration-runner.service';
-import { ModuleRegistryService } from '../../../src/core/module-registry/module-registry.service';
-import { PrismaService } from '../../../src/prisma/prisma.service';
-import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
-import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole, roleHasPermission, tokenFor } from '../../../../../test/support/permission-matrix';
+import { AppModule } from '../../../../apps/api/src/app.module';
+import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
+import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
+import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
+import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole, roleHasPermission, tokenFor } from '../../../../test/support/permission-matrix';
 
 /**
  * Tier 2 e2e for `library_circulation` (D44) — same real-install pattern as
@@ -25,8 +25,8 @@ import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole, roleHasPermis
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(here, '..', '..', '..', '..', '..');
-const CORE_MIGRATIONS_DIR = join(here, '..', '..', '..', 'src', 'core', 'migrations');
+const REPO_ROOT = join(here, '..', '..', '..', '..');
+const CORE_MIGRATIONS_DIR = join(REPO_ROOT, 'apps', 'api', 'src', 'core', 'migrations');
 const BOOTSTRAP_MIGRATION_FILENAME = '0000_bootstrap_registry.sql';
 const DIST_GUARD_PATH = join(REPO_ROOT, 'apps', 'api', 'dist', 'common', 'guards', 'public-throttler.guard.js');
 
@@ -58,11 +58,11 @@ async function createAppWithLibraryCirculationInstalled(): Promise<INestApplicat
   await bootstrapRegistryTables();
   ensureApiIsBuilt();
 
-  const { LibraryCatalogModule } = (await import('../../../../../modules/library_catalog/backend/library-catalog.module.ts')) as {
+  const { LibraryCatalogModule } = (await import('../../../library_catalog/backend/library-catalog.module.ts')) as {
     LibraryCatalogModule: Type<unknown>;
   };
   const { LibraryCirculationModule } = (await import(
-    '../../../../../modules/library_circulation/backend/library-circulation.module.ts'
+    '../../backend/library-circulation.module.ts'
   )) as { LibraryCirculationModule: Type<unknown> };
 
   const app = await NestFactory.create(buildRootModule([LibraryCatalogModule, LibraryCirculationModule]), { logger: false });

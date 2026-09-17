@@ -1,5 +1,5 @@
 import type { Config } from 'jest';
-import { baseConfig } from './jest.base.config.ts';
+import { baseConfig, modulesRoot } from './jest.base.config.ts';
 
 /**
  * Backend e2e layer (docs/TESTING_STRATEGY.md §1): boots the real Nest app
@@ -9,7 +9,9 @@ import { baseConfig } from './jest.base.config.ts';
 const config: Config = {
   ...baseConfig,
   displayName: 'e2e',
-  testMatch: ['<rootDir>/test/**/*.e2e-spec.ts'],
+  // Root DECISIONS.md D76: module-owned e2e specs live at
+  // `modules/<key>/test/backend/*.e2e-spec.ts`.
+  testMatch: ['<rootDir>/test/**/*.e2e-spec.ts', `${modulesRoot}/*/test/backend/*.e2e-spec.ts`],
   testTimeout: 120_000,
   maxWorkers: 1,
   // Same fix as jest.unit.config.ts's "Known Tier 1 gotcha #2"

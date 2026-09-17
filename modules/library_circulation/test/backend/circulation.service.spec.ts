@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { CirculationService } from '../../../../../modules/library_circulation/backend/circulation.service';
+import { CirculationService } from '../../backend/circulation.service';
 
 interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };

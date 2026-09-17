@@ -31,6 +31,8 @@ Any "Tester builds" bullet elsewhere in `BUILD_PLAN.md` that names Testcontainer
 
 ## 1. Tooling
 
+Core/platform tests live under `apps/api/test/**` (Jest) and `apps/web/tests/**` (Vitest, Playwright under `tests/e2e/`). A module's OWN tests live inside that module instead, at `modules/<key>/test/{backend,frontend}/` — see the D76 gotcha below and `docs/MODULE_SPEC.md` §9.4.
+
 | Layer | Tool | What it covers |
 |---|---|---|
 | Backend unit | Jest | Services, guards, interceptors, pure logic (permission resolution, audit diffing, JWT/session logic) |
@@ -39,6 +41,8 @@ Any "Tester builds" bullet elsewhere in `BUILD_PLAN.md` that names Testcontainer
 | Frontend unit/component | Vitest + React Testing Library | Components, hooks (`usePermission`, `useBooksQuery`), i18n rendering, RTL/LTR switch |
 | Frontend e2e | Playwright | Login flow, force-password-change flow, permission-driven UI (a `reader` truly can't see a `finance`-only page), language switch |
 | Static/lint checks | Custom scripts run in CI | Manifest ⇄ code permission-code consistency, `ar` locale completeness vs `en`, "no hardcoded role name" grep rule |
+
+**Known gotcha (D76) — a module's own tests do NOT live under `apps/api/test/` or `apps/web/tests/`:** every module built before this decision (`library_catalog`, `library_circulation`, `survey`, `template`, `website`) had its unit/e2e specs placed at `apps/api/test/modules/<key>/*.spec.ts`/`*.e2e-spec.ts` and its frontend component tests dropped flat into `apps/web/tests/` — an undocumented pattern root `docs/DECISIONS.md` D68 had already flagged as a real gap needing a decision. Fixed: a module's own tests now live INSIDE the module, at `modules/<key>/test/backend/*.spec.ts`/`*.e2e-spec.ts`/`*.integration-spec.ts` and `modules/<key>/test/frontend/*.test.tsx` — see `docs/MODULE_SPEC.md` §9.4 for the full layout, the reasoning, and exactly which config files make the test runners discover them (`apps/api/test/jest.base.config.ts`'s `modulesRoot`/`roots`, each `jest.*.config.ts`'s `testMatch`, `apps/api/tsconfig.test.json`'s `include`, `apps/web/vitest.config.ts`'s `test.include`). This project's OWN test tree (`apps/api/test/**`, `apps/web/tests/**`) is for CORE/platform tests and Playwright e2e only, going forward — never a module's.
 
 ## 2. The permission-matrix test pattern (the important one)
 
