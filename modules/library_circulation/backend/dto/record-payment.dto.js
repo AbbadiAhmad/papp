@@ -9,10 +9,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RecordPaymentDto = void 0;
+exports.RecordPaymentDto = exports.PAYMENT_METHODS = void 0;
 const class_validator_1 = require("class-validator");
+exports.PAYMENT_METHODS = ['cash', 'card', 'transfer'];
 class RecordPaymentDto {
     amount;
+    paymentMethod;
 }
 exports.RecordPaymentDto = RecordPaymentDto;
 __decorate([
@@ -20,3 +22,7 @@ __decorate([
     (0, class_validator_1.Min)(0.01),
     __metadata("design:type", Number)
 ], RecordPaymentDto.prototype, "amount", void 0);
+__decorate([
+    (0, class_validator_1.IsIn)(exports.PAYMENT_METHODS),
+    __metadata("design:type", String)
+], RecordPaymentDto.prototype, "paymentMethod", void 0);

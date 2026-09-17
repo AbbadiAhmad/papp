@@ -4,7 +4,7 @@ import { CirculationService } from '../../../../../modules/library_circulation/b
 
 interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };
-  libraryCatalogBookCopy: { findUnique: jest.Mock; update: jest.Mock };
+  libraryCatalogBookCopy: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
   libraryCatalogBook: { findUnique: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
   user: { findUnique: jest.Mock };
@@ -14,7 +14,7 @@ interface MockPrisma {
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
     libraryStudent: { findUnique: jest.fn() },
-    libraryCatalogBookCopy: { findUnique: jest.fn(), update: jest.fn() },
+    libraryCatalogBookCopy: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn() },
     libraryCatalogBook: { findUnique: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     user: { findUnique: jest.fn() },
@@ -24,8 +24,12 @@ function createMockPrisma(): MockPrisma {
   return prisma;
 }
 
-function buildService(prisma: MockPrisma, loanPolicy: { getLoanPolicy: jest.Mock }): CirculationService {
-  const service = new CirculationService(loanPolicy as never);
+function buildService(
+  prisma: MockPrisma,
+  loanPolicy: { getLoanPolicy: jest.Mock },
+  notifications: { send: jest.Mock } = { send: jest.fn() },
+): CirculationService {
+  const service = new CirculationService(loanPolicy as never, notifications as never);
   (service as unknown as { prisma: MockPrisma }).prisma = prisma;
   return service;
 }
@@ -166,6 +170,19 @@ describe('CirculationService', () => {
     it('404s when the copy has no active borrowing (nothing to return)', async () => {
       prisma.libraryBorrowing.findFirst.mockResolvedValue(null);
       await expect(service.findActiveBorrowingForCopy('copy-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getCopyStats', () => {
+    it('§18: returns real aggregate counts for the dashboard, never mock numbers', async () => {
+      prisma.libraryCatalogBookCopy.count
+        .mockResolvedValueOnce(100) // total
+        .mockResolvedValueOnce(60) // available
+        .mockResolvedValueOnce(40); // borrowed
+      prisma.libraryBorrowing.count.mockResolvedValue(5); // overdue
+
+      const stats = await service.getCopyStats();
+      expect(stats).toEqual({ totalCopies: 100, availableCopies: 60, borrowedCopies: 40, overdueBorrowings: 5 });
     });
   });
 });

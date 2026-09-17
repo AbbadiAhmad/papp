@@ -40,7 +40,7 @@ let FinesController = class FinesController {
         return this.fines.waive(id);
     }
     async recordPayment(id, dto, user) {
-        return this.fines.recordPayment(id, dto.amount, user.userId);
+        return this.fines.recordPayment(id, dto.amount, user.userId, dto.paymentMethod);
     }
     async listTransactions() {
         return this.fines.listTransactions();

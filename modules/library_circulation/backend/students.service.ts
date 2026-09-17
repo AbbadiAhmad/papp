@@ -54,6 +54,10 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
+  async count(): Promise<number> {
+    return this.prisma.libraryStudent.count();
+  }
+
   async findById(id: string) {
     const student = await this.getOrThrow(id);
     const [activeBorrowings, openFines] = await Promise.all([

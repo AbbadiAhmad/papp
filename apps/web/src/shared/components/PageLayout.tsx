@@ -75,6 +75,13 @@ const MENU_ITEMS: MenuItemDef[] = [
   },
   // library_circulation + library_finance module (D44) — same documented gap as library_catalog above.
   {
+    id: 'library_circulation.dashboard',
+    labelKey: 'library_circulation.menu.dashboard',
+    icon: <DashboardIcon />,
+    route: '/library-circulation/dashboard',
+    permissionCode: 'library_circulation.dashboard.view',
+  },
+  {
     id: 'library_circulation.scan',
     labelKey: 'library_circulation.menu.scan',
     icon: <QrCodeScannerIcon />,

@@ -27,7 +27,8 @@
     { "code": "library_circulation.fines.waive", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.waive" },
     { "code": "library_circulation.finance.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.finance.view" },
     { "code": "library_circulation.finance.record_payment", "category": "library_circulation", "descriptionKey": "library_circulation.perm.finance.record_payment" },
-    { "code": "library_circulation.settings.update", "category": "library_circulation", "descriptionKey": "library_circulation.perm.settings.update" }
+    { "code": "library_circulation.settings.update", "category": "library_circulation", "descriptionKey": "library_circulation.perm.settings.update" },
+    { "code": "library_circulation.dashboard.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.dashboard.view" }
   ],
 
   "defaultRolePermissions": {
@@ -43,7 +44,8 @@
       "library_circulation.fines.waive",
       "library_circulation.finance.view",
       "library_circulation.finance.record_payment",
-      "library_circulation.settings.update"
+      "library_circulation.settings.update",
+      "library_circulation.dashboard.view"
     ],
     "library_assistant": [
       "library_circulation.students.view",
@@ -51,12 +53,14 @@
       "library_circulation.students.update",
       "library_circulation.borrow",
       "library_circulation.return",
-      "library_circulation.fines.view"
+      "library_circulation.fines.view",
+      "library_circulation.dashboard.view"
     ],
     "finance": [
       "library_circulation.fines.view",
       "library_circulation.finance.view",
-      "library_circulation.finance.record_payment"
+      "library_circulation.finance.record_payment",
+      "library_circulation.dashboard.view"
     ],
     "reader": []
   },
@@ -83,6 +87,14 @@
       "order": 21,
       "route": "/library-circulation/scan",
       "requiredPermission": "library_circulation.borrow"
+    },
+    {
+      "id": "library_circulation.dashboard",
+      "labelKey": "library_circulation.menu.dashboard",
+      "parentId": "library_circulation.root",
+      "order": 0,
+      "route": "/library-circulation/dashboard",
+      "requiredPermission": "library_circulation.dashboard.view"
     },
     {
       "id": "library_circulation.scan",
@@ -119,6 +131,12 @@
   ],
 
   "routes": [
+    {
+      "pattern": "/library-circulation/dashboard",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.dashboard.view",
+      "component": "frontend/pages/DashboardPage.tsx"
+    },
     {
       "pattern": "/library-circulation/scan",
       "access": "authenticated",

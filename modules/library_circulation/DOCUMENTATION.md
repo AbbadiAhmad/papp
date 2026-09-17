@@ -18,12 +18,12 @@ library_borrowings(
   borrowed_at, due_at, returned_at, borrowed_by -> users(id), returned_by -> users(id)
 )
 library_fines(
-  id, student_id, borrowing_id, fine_type_id,
+  id, fine_number UNIQUE, student_id, borrowing_id, fine_type_id,
   status TEXT CHECK(unpaid|partially_paid|paid|waived|cancelled),
   amount, amount_paid, notes, created_by, created_at
 )
 library_financial_transactions(id, fine_id, transaction_number UNIQUE, amount, created_at)  -- one per fine, the "charge"
-library_payments(id, transaction_id, amount, paid_at, received_by)                          -- the "money received"
+library_payments(id, payment_number UNIQUE, transaction_id, amount, payment_method CHECK(cash|card|transfer), paid_at, received_by)  -- the "money received"
 library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)                   -- one per payment
 ```
 
@@ -31,6 +31,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - "Staff" needs no table: a staff member is a platform `User` with `library_assistant`/`finance` — every table above that needs "who did this" carries its own `borrowed_by`/`returned_by`/`created_by`/`received_by` pointing at `users(id)`, for direct display without an audit-log join.
 - Full history is never deleted (§10) — `StudentsService.remove()` rejects deleting a student with any borrowing history (§22); nothing deletes a `library_borrowings`/`library_fines` row, ever.
 - `status` columns are `TEXT` + `CHECK`, not a Postgres `ENUM` (unlike `library_catalog`'s `LIBRARY_CATALOG-D5`) — deliberate, see `DECISIONS.md`.
+- `fine_number`/`transaction_number`/`payment_number`/`receipt_number` are genuinely sequential (Postgres `SEQUENCE`s: `library_fine_number_seq` etc., migration `002`), formatted `<PREFIX>-000123` by `FinesService.nextNumber()` — matches the librarian's own worked example format (`LIBRARY_CIRCULATION-D8`).
 
 ## Permissions
 
@@ -41,8 +42,9 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 | `library_circulation.fines.view/record/waive` | Fines list/detail, manual fine creation, waiving |
 | `library_circulation.finance.view/record_payment` | Transactions/payments read, recording a payment |
 | `library_circulation.settings.update` | The `loan_policy` setting |
+| `library_circulation.dashboard.view` | `GET /dashboard` (§18's stat cards) |
 
-`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return + `fines.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*`; `reader` none.
+`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return + `fines.view` + `dashboard.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*` + `dashboard.view`; `reader` none.
 
 ## Settings
 
@@ -50,21 +52,27 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 
 ## Key files
 
-- `backend/circulation.service.ts` — scan (prefix-dispatch STU/BOOK, §6)/borrow/return, the per-student borrowing-limit protection rule (§22), late-day computation.
+- `backend/circulation.service.ts` — scan (prefix-dispatch STU/BOOK, §6)/borrow/return, the per-student borrowing-limit protection rule (§22), late-day computation, copy-stats aggregate for the dashboard, borrow/return notifications.
 - `backend/students.service.ts` — creates the linked `User` + `library_students` row together; blocks delete-with-history.
-- `backend/fines.service.ts` — fine creation (manual + auto-on-late-return) with duplicate-open-fine prevention (§14/§22), payments with the overpayment guard, receipt issuance.
-- `backend/*.controller.ts` — three controllers (`students`, `circulation`, `fines`) sharing one manifest/module, mirroring the manifest's own grouping.
-- `frontend/pages/ScanPage.tsx` — the daily-use screen (§6/§30): two scan slots (student/book), then one confirm action.
+- `backend/fines.service.ts` — fine creation (manual + auto-on-late-return) with duplicate-open-fine prevention (§14/§22), payments with the overpayment guard, receipt issuance, sequence-backed reference numbers (`nextNumber()`), finance-summary aggregate for the dashboard, fine/payment notifications.
+- `backend/notifications-sender.ts` — the `NOTIFICATIONS_SENDER` injection token + structural interface `circulation.service.ts`/`fines.service.ts` depend on instead of importing the real `NotificationsService` directly (keeps them unit-testable — root D74, read this file's own docblock before touching notification wiring).
+- `backend/dashboard.controller.ts` — `GET /dashboard` (§18), combining all three services' own stat methods.
+- `backend/*.controller.ts` — four controllers (`students`, `circulation`, `fines`, `dashboard`) plus `settings`, sharing one manifest/module.
+- `frontend/pages/ScanPage.tsx` — the daily-use screen (§6/§30): two scan slots (student/book), then one confirm action. All three of §6's input methods are real: `CameraScanDialog.tsx` (camera), a USB keyboard-wedge scanner (free — same text field), manual typing.
+- `frontend/pages/QrCodeImage.tsx` — client-side QR image rendering (`qrcode` npm package) for a student's own code.
+- `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)
 
-- **Camera/USB barcode capture is NOT implemented** — `ScanPage`'s input is a plain text field (works with any keyboard-wedge USB scanner already, since those just emit keystrokes + Enter, but there's no camera-based QR reading). A real camera integration is its own sizeable browser-permissions/library feature; add it as a fast-follow, not by growing this text field.
 - **`overdue` is a valid `library_borrowings.status` value but nothing proactively sets it** — no scheduler/cron infrastructure exists anywhere in this platform yet. Lateness is instead computed on demand at return time (`returnedAt - dueAt`) for the fine calculation; a "currently overdue" list would need to derive it live (`status = 'active' AND due_at < now()`), not query `status = 'overdue'`. Don't add a cron job to "fix" this without raising it with the user first — it's a platform-wide gap, not this module's alone.
 - **STAFF/FINE scan prefixes are not implemented** — only STU (student) and BOOK (copy) are recognized, because those are the only two the borrow/return flow actually needs (§7/§9) and no code scheme for staff or fines exists anywhere. Don't invent one silently if a future requirement needs it; raise it with the user.
 - **`library_academic_years` has a Prisma model and a nullable FK on `library_students`, but no CRUD endpoint** — §34 flags academic years as a genuinely new concept not required for the core borrow/return/fine/payment flow; the column exists so it isn't a breaking schema change later, but populating it today requires a direct DB insert. Build the CRUD surface when multi-year support is actually prioritized.
-- **No Excel import/export for students/history/fines/financial (§15-17, §19)** — D42's reused Phase-2 import pattern and the reporting/analytics dashboards (§18-20) are deferred; `FinancePage`/`FinesPage` are plain read tables, not the full reporting suite. This is a real, intentionally deferred follow-up phase, not an oversight — every flow that IS built (scan/borrow/return/fine/pay) is fully real, no mock data, no partial implementation.
+- **No `library_classes`/grades lookup entity** — `className` stays free text; add it together with Excel import (see `LIBRARY_CIRCULATION-D9`), not before.
+- **No Excel import/export for students/history/fines/financial (§15-17)** — D42's reused Phase-2 import pattern is deferred; this is a real, intentionally deferred follow-up phase, not an oversight.
+- **§19's deeper reading-analytics breakdowns and §20's per-staff activity report are not built** — the `GET /dashboard` endpoint covers §18's stat cards only, not a reporting suite.
 - **Global search across students/books/fines/transactions (§24) is not built** — each entity has its own list endpoint; a unified search endpoint is a follow-up.
-- **Batch QR/barcode + card/spine-label printing (§28) is not built.**
+- **Batch QR/barcode + card/spine-label printing (§28) is not built** — `QrCodeImage.tsx` renders one code at a time (student create dialog / detail page), not a batch/print layout.
+- **Notification content is hardcoded Arabic text**, not an operator-editable `system_settings` template like core's password-reset notice — root ASSUMPTIONS.md A15.
 
 ## How to extend
 

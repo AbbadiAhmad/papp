@@ -659,6 +659,7 @@ model LibraryBorrowing {
 
 model LibraryFine {
   id           String   @id @default(uuid()) @db.Uuid
+  fineNumber   String   @unique @map("fine_number")
   studentId    String   @map("student_id") @db.Uuid
   borrowingId  String?  @map("borrowing_id") @db.Uuid
   fineTypeId   String   @map("fine_type_id") @db.Uuid
@@ -696,8 +697,10 @@ model LibraryFinancialTransaction {
 
 model LibraryPayment {
   id            String   @id @default(uuid()) @db.Uuid
+  paymentNumber String   @unique @map("payment_number")
   transactionId String   @map("transaction_id") @db.Uuid
   amount        Decimal  @db.Decimal(10, 2)
+  paymentMethod String   @default("cash") @map("payment_method")
   paidAt        DateTime @default(now()) @map("paid_at")
   receivedBy    String   @map("received_by") @db.Uuid
 

@@ -76,6 +76,9 @@ let StudentsService = StudentsService_1 = class StudentsService {
     async list() {
         return this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
     }
+    async count() {
+        return this.prisma.libraryStudent.count();
+    }
     async findById(id) {
         const student = await this.getOrThrow(id);
         const [activeBorrowings, openFines] = await Promise.all([

@@ -1,5 +1,6 @@
 {
   "library_circulation.menu.root": "Circulation",
+  "library_circulation.menu.dashboard": "Dashboard",
   "library_circulation.menu.scan": "Scan",
   "library_circulation.menu.students": "Students",
   "library_circulation.menu.fines": "Fines",
@@ -17,11 +18,15 @@
   "library_circulation.perm.finance.view": "View finance",
   "library_circulation.perm.finance.record_payment": "Record payments",
   "library_circulation.perm.settings.update": "Update circulation settings",
+  "library_circulation.perm.dashboard.view": "View the circulation dashboard",
 
   "library_circulation.settings.loan_policy_label": "Borrowing policy",
 
   "library_circulation.scan.input_label": "Scan or type a code",
   "library_circulation.scan.scan_button": "Scan",
+  "library_circulation.scan.camera_button": "Scan with camera",
+  "library_circulation.scan.camera_title": "Point the camera at the code",
+  "library_circulation.scan.camera_error": "Could not access the camera — check permissions, or use the text field instead.",
   "library_circulation.scan.student_label": "Student",
   "library_circulation.scan.book_label": "Book",
   "library_circulation.scan.active_borrowings_count": "{{count}} book(s) currently borrowed",
@@ -54,6 +59,7 @@
   "library_circulation.borrowing_status.lost": "Lost",
   "library_circulation.borrowing_status.cancelled": "Cancelled",
 
+  "library_circulation.fines.fine_number": "Fine #",
   "library_circulation.fines.amount": "Amount",
   "library_circulation.fines.amount_paid": "Paid",
   "library_circulation.fines.status": "Status",
@@ -70,6 +76,19 @@
   "library_circulation.finance.transactions_tab": "Transactions",
   "library_circulation.finance.payments_tab": "Payments",
   "library_circulation.finance.transaction_number": "Transaction #",
+  "library_circulation.finance.payment_number": "Payment #",
   "library_circulation.finance.created_at": "Created",
-  "library_circulation.finance.paid_at": "Paid on"
+  "library_circulation.finance.paid_at": "Paid on",
+  "library_circulation.finance.payment_method": "Payment method",
+  "library_circulation.finance.payment_method.cash": "Cash",
+  "library_circulation.finance.payment_method.card": "Card",
+  "library_circulation.finance.payment_method.transfer": "Transfer",
+
+  "library_circulation.dashboard.students": "Students",
+  "library_circulation.dashboard.total_copies": "Books",
+  "library_circulation.dashboard.available_copies": "Available copies",
+  "library_circulation.dashboard.borrowed_copies": "Borrowed copies",
+  "library_circulation.dashboard.overdue_borrowings": "Overdue",
+  "library_circulation.dashboard.unpaid_fines": "Unpaid fines",
+  "library_circulation.dashboard.paid_fines": "Paid fines"
 }

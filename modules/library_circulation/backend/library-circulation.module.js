@@ -8,10 +8,22 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LibraryCirculationModule = void 0;
 const common_1 = require("@nestjs/common");
+// The REAL core module/service, imported from apps/api's BUILT output
+// (D57/D64 exception category — not @Global(), so it must be imported
+// explicitly). This is the ONLY file in this module allowed to import from
+// `apps/api/dist/...` for notifications — see `notifications-sender.ts`'s
+// own docblock for why `circulation.service.ts`/`fines.service.ts`
+// themselves must NOT (breaks their Jest unit tests, root D68 item 3).
+// eslint-disable-next-line import/no-unresolved
+const notifications_module_1 = require("../../../apps/api/dist/core/notifications/notifications.module");
+// eslint-disable-next-line import/no-unresolved
+const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const circulation_controller_1 = require("./circulation.controller");
 const circulation_service_1 = require("./circulation.service");
+const dashboard_controller_1 = require("./dashboard.controller");
 const fines_controller_1 = require("./fines.controller");
 const fines_service_1 = require("./fines.service");
+const notifications_sender_1 = require("./notifications-sender");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
 const students_controller_1 = require("./students.controller");
@@ -27,7 +39,14 @@ let LibraryCirculationModule = class LibraryCirculationModule {
 exports.LibraryCirculationModule = LibraryCirculationModule;
 exports.LibraryCirculationModule = LibraryCirculationModule = __decorate([
     (0, common_1.Module)({
-        controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController],
-        providers: [students_service_1.StudentsService, circulation_service_1.CirculationService, fines_service_1.FinesService, settings_service_1.SettingsService],
+        imports: [notifications_module_1.NotificationsModule],
+        controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController, dashboard_controller_1.DashboardController],
+        providers: [
+            students_service_1.StudentsService,
+            circulation_service_1.CirculationService,
+            fines_service_1.FinesService,
+            settings_service_1.SettingsService,
+            { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
+        ],
     })
 ], LibraryCirculationModule);

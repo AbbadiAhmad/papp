@@ -1,4 +1,4 @@
-import { Box, Chip, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
+import { Box, Chip, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
@@ -6,6 +6,7 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { libraryCirculationApi } from '../api';
+import { QrCodeImage } from './QrCodeImage';
 
 /** §25/§10 — the student's "reading passport": current loans + open fines. Full history export is a documented follow-up (DECISIONS.md). */
 export function StudentDetailPage() {
@@ -25,9 +26,12 @@ export function StudentDetailPage() {
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         {student ? (
           <>
-            <Typography variant="body1" sx={{ mb: 2 }}>
-              {t('library_circulation.students.class_name')}: {student.className ?? '—'}
-            </Typography>
+            <Stack direction="row" spacing={3} sx={{ alignItems: 'center', mb: 2 }}>
+              <QrCodeImage value={student.code} size={96} />
+              <Typography variant="body1">
+                {t('library_circulation.students.class_name')}: {student.className ?? '—'}
+              </Typography>
+            </Stack>
 
             <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
               {t('library_circulation.students.active_borrowings')}

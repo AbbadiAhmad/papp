@@ -1,3 +1,4 @@
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import { Alert, Box, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
@@ -5,16 +6,16 @@ import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
+import { CameraScanDialog } from './CameraScanDialog';
 
 /**
  * §6/§30 — "the most important screen" / "Quick Library": one scan input,
  * two slots (student + book copy) filled by successive scans, then a single
- * confirm action. Camera/USB-scanner capture is out of scope for this pass
- * (a barcode/QR camera reader is its own sizeable browser-integration
- * feature) — the input below accepts keyboard-wedge USB scanners AND manual
- * typing already, since both just emit ordinary keystrokes + Enter; a real
- * camera capture is flagged as a documented follow-up in this module's
- * DECISIONS.md, not silently dropped.
+ * confirm action. All three of §6's input methods are real here: (1) the
+ * camera dialog below (`CameraScanDialog`, `html5-qrcode`), (2) a USB
+ * barcode-scanner keyboard-wedge (works for free — those just emit ordinary
+ * keystrokes + Enter into the same text field), (3) manual typing as the
+ * fallback.
  */
 export function ScanPage() {
   const { t } = useTranslation();
@@ -25,6 +26,7 @@ export function ScanPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const reset = () => {
     setStudent(null);
@@ -34,13 +36,13 @@ export function ScanPage() {
     setMessage(null);
   };
 
-  const handleScan = async () => {
-    if (!code.trim()) return;
+  const scanCode = async (rawCode: string) => {
+    if (!rawCode.trim()) return;
     setError(null);
     setMessage(null);
     setBusy(true);
     try {
-      const result = await libraryCirculationApi.scan(code.trim());
+      const result = await libraryCirculationApi.scan(rawCode.trim());
       if (result.type === 'student') {
         setStudent(result);
       } else {
@@ -52,6 +54,13 @@ export function ScanPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleScan = () => scanCode(code);
+
+  const handleCameraDecoded = (decodedText: string) => {
+    setCameraOpen(false);
+    void scanCode(decodedText);
   };
 
   const confirmBorrow = async () => {
@@ -110,9 +119,14 @@ export function ScanPage() {
             <Button startIcon={<QrCodeScannerIcon />} variant="contained" onClick={handleScan} disabled={busy || !code.trim()}>
               {t('library_circulation.scan.scan_button')}
             </Button>
+            <Button startIcon={<CameraAltIcon />} variant="outlined" onClick={() => setCameraOpen(true)} disabled={busy}>
+              {t('library_circulation.scan.camera_button')}
+            </Button>
           </Stack>
         </CardContent>
       </Card>
+
+      <CameraScanDialog open={cameraOpen} onClose={() => setCameraOpen(false)} onDecoded={handleCameraDecoded} />
 
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }}>

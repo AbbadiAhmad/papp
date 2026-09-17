@@ -5,27 +5,32 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var FinesService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinesService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
-const node_crypto_1 = require("node:crypto");
+const notifications_sender_1 = require("./notifications-sender");
 const OPEN_FINE_STATUSES = ['unpaid', 'partially_paid'];
 const LATE_FINE_TYPE_CODE = 'FINE-LATE';
-/** `TXN-20260917-3f9a1c2b` / `RC-20260917-3f9a1c2b` — unique (§12/§14), no shared sequence table needed. */
-function generateNumber(prefix) {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `${prefix}-${date}-${(0, node_crypto_1.randomBytes)(4).toString('hex')}`;
-}
 /**
  * The library_finance half of this module (§11-14): fines, the
  * financial_transactions "charge" ledger, payments, and receipts. Own
  * dedicated `PrismaClient` (D57 pattern).
  */
 let FinesService = FinesService_1 = class FinesService {
+    notifications;
     logger = new common_1.Logger(FinesService_1.name);
     prisma = new client_1.PrismaClient();
+    constructor(notifications) {
+        this.notifications = notifications;
+    }
     async onModuleInit() {
         await this.prisma.$connect();
         this.logger.log('library_circulation (fines) Prisma client connected');
@@ -110,7 +115,7 @@ let FinesService = FinesService_1 = class FinesService {
         return this.prisma.libraryFine.update({ where: { id }, data: { status: 'waived' } });
     }
     /** §12-13: creates a payment against the fine's transaction, then a matching receipt. Guards overpayment (§22). */
-    async recordPayment(fineId, amount, receivedBy) {
+    async recordPayment(fineId, amount, receivedBy, paymentMethod) {
         const fine = await this.getOrThrow(fineId);
         if (fine.status === 'paid' || fine.status === 'waived' || fine.status === 'cancelled') {
             throw new common_1.ConflictException(`This fine is already "${fine.status}" — no further payment can be recorded.`);
@@ -123,12 +128,18 @@ let FinesService = FinesService_1 = class FinesService {
         if (!transaction) {
             throw new common_1.ConflictException('This fine has no financial transaction on record — data integrity issue, contact an admin.');
         }
-        return this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
             const payment = await tx.libraryPayment.create({
-                data: { transactionId: transaction.id, amount, receivedBy },
+                data: {
+                    paymentNumber: await this.nextNumber(tx, 'library_payment_number_seq', 'PAY'),
+                    transactionId: transaction.id,
+                    amount,
+                    paymentMethod,
+                    receivedBy,
+                },
             });
             const receipt = await tx.libraryReceipt.create({
-                data: { paymentId: payment.id, receiptNumber: generateNumber('RC') },
+                data: { paymentId: payment.id, receiptNumber: await this.nextNumber(tx, 'library_receipt_number_seq', 'REC') },
             });
             const newAmountPaid = Number(fine.amountPaid) + amount;
             const newStatus = newAmountPaid >= Number(fine.amount) - 0.0001 ? 'paid' : 'partially_paid';
@@ -138,6 +149,25 @@ let FinesService = FinesService_1 = class FinesService {
             });
             return { payment, receipt, fine: updatedFine };
         });
+        const student = await this.prisma.libraryStudent.findUnique({ where: { id: fine.studentId } });
+        if (student) {
+            await this.notifyStudent(student.userId, 'library_circulation.payment_recorded', 'تسجيل دفعة', 'تم تسجيل الدفع.');
+        }
+        return result;
+    }
+    /** §18's dashboard cards — real aggregates over `library_fines`, never mock data. */
+    async getFinanceSummary() {
+        const fines = await this.prisma.libraryFine.findMany({
+            where: { status: { in: ['unpaid', 'partially_paid', 'paid'] } },
+            select: { amount: true, amountPaid: true },
+        });
+        let unpaidTotal = 0;
+        let paidTotal = 0;
+        for (const fine of fines) {
+            paidTotal += Number(fine.amountPaid);
+            unpaidTotal += Number(fine.amount) - Number(fine.amountPaid);
+        }
+        return { unpaidTotal, paidTotal };
     }
     async listTransactions() {
         return this.prisma.libraryFinancialTransaction.findMany({ orderBy: { createdAt: 'desc' } });
@@ -147,9 +177,10 @@ let FinesService = FinesService_1 = class FinesService {
     }
     // --- internals -------------------------------------------------------
     async createFineWithTransaction(input) {
-        return this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
             const fine = await tx.libraryFine.create({
                 data: {
+                    fineNumber: await this.nextNumber(tx, 'library_fine_number_seq', 'FINE'),
                     studentId: input.studentId,
                     borrowingId: input.borrowingId,
                     fineTypeId: input.fineTypeId,
@@ -159,10 +190,33 @@ let FinesService = FinesService_1 = class FinesService {
                 },
             });
             const transaction = await tx.libraryFinancialTransaction.create({
-                data: { fineId: fine.id, transactionNumber: generateNumber('TXN'), amount: input.amount },
+                data: {
+                    fineId: fine.id,
+                    transactionNumber: await this.nextNumber(tx, 'library_transaction_number_seq', 'FIN'),
+                    amount: input.amount,
+                },
             });
             return { ...fine, transaction };
         });
+        const student = await this.prisma.libraryStudent.findUnique({ where: { id: input.studentId } });
+        if (student) {
+            await this.notifyStudent(student.userId, 'library_circulation.fine_created', 'غرامة جديدة', `تم إنشاء غرامة بقيمة ${input.amount} (${result.fineNumber}).`);
+        }
+        return result;
+    }
+    /** Never lets a notification failure fail the underlying fine/payment action (§23's UX addition, not a correctness requirement). */
+    async notifyStudent(userId, category, title, bodyMarkdown) {
+        try {
+            await this.notifications.send({ category, title, bodyMarkdown, targetType: 'user', targetId: userId, sentBy: null });
+        }
+        catch (error) {
+            this.logger.error(`Failed to notify student ${userId} ("${category}") — the underlying action itself succeeded.`, error);
+        }
+    }
+    /** Sequence-backed, genuinely unique-under-concurrency human-readable numbers (§12/§14) — e.g. "FINE-000087". */
+    async nextNumber(tx, sequenceName, prefix) {
+        const rows = await tx.$queryRawUnsafe(`SELECT nextval('${sequenceName}') AS nextval`);
+        return `${prefix}-${rows[0].nextval.toString().padStart(6, '0')}`;
     }
     async getOrThrow(id) {
         const fine = await this.prisma.libraryFine.findUnique({ where: { id } });
@@ -173,5 +227,7 @@ let FinesService = FinesService_1 = class FinesService {
 };
 exports.FinesService = FinesService;
 exports.FinesService = FinesService = FinesService_1 = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __param(0, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
+    __metadata("design:paramtypes", [Object])
 ], FinesService);

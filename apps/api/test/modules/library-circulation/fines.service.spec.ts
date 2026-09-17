@@ -10,9 +10,12 @@ interface MockPrisma {
   libraryPayment: { create: jest.Mock; findMany: jest.Mock };
   libraryReceipt: { create: jest.Mock };
   $transaction: jest.Mock;
+  $queryRawUnsafe: jest.Mock;
 }
 
+/** `nextNumber()` reads a real Postgres sequence via `$queryRawUnsafe` — mocked here as a simple incrementing counter, one per test. */
 function createMockPrisma(): MockPrisma {
+  let sequenceCounter = 0;
   const prisma: MockPrisma = {
     libraryStudent: { findUnique: jest.fn() },
     libraryFineType: { findUnique: jest.fn(), findMany: jest.fn() },
@@ -21,13 +24,18 @@ function createMockPrisma(): MockPrisma {
     libraryPayment: { create: jest.fn(), findMany: jest.fn() },
     libraryReceipt: { create: jest.fn() },
     $transaction: jest.fn(),
+    $queryRawUnsafe: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
+  prisma.$queryRawUnsafe.mockImplementation(() => {
+    sequenceCounter += 1;
+    return Promise.resolve([{ nextval: BigInt(sequenceCounter) }]);
+  });
   return prisma;
 }
 
-function buildService(prisma: MockPrisma): FinesService {
-  const service = new FinesService();
+function buildService(prisma: MockPrisma, notifications: { send: jest.Mock } = { send: jest.fn() }): FinesService {
+  const service = new FinesService(notifications as never);
   (service as unknown as { prisma: MockPrisma }).prisma = prisma;
   return service;
 }
@@ -71,7 +79,7 @@ describe('FinesService', () => {
       }));
 
       const result = await service.create(dto, 'staff-1');
-      expect(result.transaction.transactionNumber).toMatch(/^TXN-\d{8}-[0-9a-f]{8}$/);
+      expect(result.transaction.transactionNumber).toMatch(/^FIN-\d{6}$/);
     });
 
     it('§14/§22: rejects a duplicate open fine (same student+borrowing+type) unless confirmDuplicate is set', async () => {
@@ -120,9 +128,11 @@ describe('FinesService', () => {
       prisma.libraryReceipt.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ id: 'rc-1', ...data }));
       prisma.libraryFine.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ ...fineRow(), ...data }));
 
-      const result = await service.recordPayment('fine-1', 4, 'staff-1');
+      const result = await service.recordPayment('fine-1', 4, 'staff-1', 'cash');
       expect(result.fine.status).toBe('partially_paid');
-      expect(result.receipt.receiptNumber).toMatch(/^RC-\d{8}-[0-9a-f]{8}$/);
+      expect(result.receipt.receiptNumber).toMatch(/^REC-\d{6}$/);
+      expect(result.payment.paymentNumber).toMatch(/^PAY-\d{6}$/);
+      expect(result.payment.paymentMethod).toBe('cash');
     });
 
     it('a payment covering the full remaining balance moves the fine to paid', async () => {
@@ -132,24 +142,39 @@ describe('FinesService', () => {
       prisma.libraryReceipt.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ id: 'rc-2', ...data }));
       prisma.libraryFine.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ ...fineRow(), ...data }));
 
-      const result = await service.recordPayment('fine-1', 6, 'staff-1');
+      const result = await service.recordPayment('fine-1', 6, 'staff-1', 'card');
       expect(result.fine.status).toBe('paid');
+      expect(result.payment.paymentMethod).toBe('card');
     });
 
     it('§22: rejects a payment that would overpay the fine', async () => {
       prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ amount: 10, amountPaid: 8 }));
-      await expect(service.recordPayment('fine-1', 5, 'staff-1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.recordPayment('fine-1', 5, 'staff-1', 'cash')).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.libraryPayment.create).not.toHaveBeenCalled();
     });
 
     it('§22: rejects any further payment against an already-paid fine', async () => {
       prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'paid', amount: 10, amountPaid: 10 }));
-      await expect(service.recordPayment('fine-1', 1, 'staff-1')).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.recordPayment('fine-1', 1, 'staff-1', 'cash')).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('404s for a nonexistent fine', async () => {
       prisma.libraryFine.findUnique.mockResolvedValue(null);
-      await expect(service.recordPayment('missing', 1, 'staff-1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.recordPayment('missing', 1, 'staff-1', 'cash')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getFinanceSummary', () => {
+    it('§18: sums real fine rows into paid/unpaid totals, never mock numbers', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([
+        { amount: 10, amountPaid: 10 }, // fully paid
+        { amount: 20, amountPaid: 5 }, // partially paid
+        { amount: 8, amountPaid: 0 }, // unpaid
+      ]);
+
+      const summary = await service.getFinanceSummary();
+      expect(summary.paidTotal).toBe(15); // 10 + 5 + 0
+      expect(summary.unpaidTotal).toBe(23); // 0 + 15 + 8
     });
   });
 });

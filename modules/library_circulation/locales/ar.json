@@ -1,5 +1,6 @@
 {
   "library_circulation.menu.root": "الإعارة",
+  "library_circulation.menu.dashboard": "الرئيسية",
   "library_circulation.menu.scan": "مسح",
   "library_circulation.menu.students": "الطلاب",
   "library_circulation.menu.fines": "الغرامات",
@@ -17,11 +18,15 @@
   "library_circulation.perm.finance.view": "عرض المالية",
   "library_circulation.perm.finance.record_payment": "تسجيل المدفوعات",
   "library_circulation.perm.settings.update": "تعديل إعدادات الإعارة",
+  "library_circulation.perm.dashboard.view": "عرض لوحة تحكم الإعارة",
 
   "library_circulation.settings.loan_policy_label": "سياسة الإعارة",
 
   "library_circulation.scan.input_label": "امسح الرمز أو اكتبه",
   "library_circulation.scan.scan_button": "مسح",
+  "library_circulation.scan.camera_button": "مسح بالكاميرا",
+  "library_circulation.scan.camera_title": "وجّه الكاميرا نحو الكود",
+  "library_circulation.scan.camera_error": "تعذر الوصول إلى الكاميرا — تحقق من الصلاحيات، أو استخدم حقل الإدخال النصي بدلاً من ذلك.",
   "library_circulation.scan.student_label": "الطالب",
   "library_circulation.scan.book_label": "الكتاب",
   "library_circulation.scan.active_borrowings_count": "{{count}} كتاب مستعار حالياً",
@@ -54,6 +59,7 @@
   "library_circulation.borrowing_status.lost": "مفقودة",
   "library_circulation.borrowing_status.cancelled": "ملغاة",
 
+  "library_circulation.fines.fine_number": "رقم الغرامة",
   "library_circulation.fines.amount": "المبلغ",
   "library_circulation.fines.amount_paid": "المدفوع",
   "library_circulation.fines.status": "الحالة",
@@ -70,6 +76,19 @@
   "library_circulation.finance.transactions_tab": "المعاملات",
   "library_circulation.finance.payments_tab": "المدفوعات",
   "library_circulation.finance.transaction_number": "رقم المعاملة",
+  "library_circulation.finance.payment_number": "رقم الدفعة",
   "library_circulation.finance.created_at": "تاريخ الإنشاء",
-  "library_circulation.finance.paid_at": "تاريخ الدفع"
+  "library_circulation.finance.paid_at": "تاريخ الدفع",
+  "library_circulation.finance.payment_method": "طريقة الدفع",
+  "library_circulation.finance.payment_method.cash": "نقدًا",
+  "library_circulation.finance.payment_method.card": "بطاقة",
+  "library_circulation.finance.payment_method.transfer": "تحويل بنكي",
+
+  "library_circulation.dashboard.students": "الطلاب",
+  "library_circulation.dashboard.total_copies": "القصص",
+  "library_circulation.dashboard.available_copies": "النسخ المتاحة",
+  "library_circulation.dashboard.borrowed_copies": "النسخ المستعارة",
+  "library_circulation.dashboard.overdue_borrowings": "المتأخرة",
+  "library_circulation.dashboard.unpaid_fines": "الغرامات غير المدفوعة",
+  "library_circulation.dashboard.paid_fines": "الغرامات المدفوعة"
 }

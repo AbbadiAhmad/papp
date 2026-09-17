@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  MenuItem,
   Paper,
   Snackbar,
   Stack,
@@ -29,7 +30,9 @@ import { QueryStateGate } from '../../../../apps/web/src/shared/components/Query
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { libraryCirculationApi, type FineStatus, type LibraryFine } from '../api';
+import { libraryCirculationApi, type FineStatus, type LibraryFine, type PaymentMethod } from '../api';
+
+const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 
 const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'default'> = {
   unpaid: 'error',
@@ -74,6 +77,7 @@ export function FinesPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell>{t('library_circulation.fines.fine_number')}</TableCell>
                 <TableCell>{t('library_circulation.fines.amount')}</TableCell>
                 <TableCell>{t('library_circulation.fines.amount_paid')}</TableCell>
                 <TableCell>{t('library_circulation.fines.status')}</TableCell>
@@ -83,6 +87,7 @@ export function FinesPage() {
             <TableBody>
               {(fines ?? []).map((fine) => (
                 <TableRow key={fine.id} hover>
+                  <TableCell>{fine.fineNumber}</TableCell>
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>
                   <TableCell>
@@ -141,6 +146,7 @@ function PaymentDialog({ fine, onClose, onPaid }: { fine: LibraryFine | null; on
   const { t } = useTranslation();
   const gated = useGatedCall();
   const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -151,7 +157,9 @@ function PaymentDialog({ fine, onClose, onPaid }: { fine: LibraryFine | null; on
     setError(null);
     setSubmitting(true);
     try {
-      await gated('library_circulation.finance.record_payment', () => libraryCirculationApi.recordPayment(fine.id, Number(amount)));
+      await gated('library_circulation.finance.record_payment', () =>
+        libraryCirculationApi.recordPayment(fine.id, Number(amount), paymentMethod),
+      );
       setAmount('');
       onPaid();
     } catch (submitError) {
@@ -177,6 +185,18 @@ function PaymentDialog({ fine, onClose, onPaid }: { fine: LibraryFine | null; on
             onChange={(e) => setAmount(e.target.value)}
             autoFocus
           />
+          <TextField
+            select
+            label={t('library_circulation.finance.payment_method')}
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+          >
+            {PAYMENT_METHODS.map((method) => (
+              <MenuItem key={method} value={method}>
+                {t(`library_circulation.finance.payment_method.${method}`)}
+              </MenuItem>
+            ))}
+          </TextField>
         </Stack>
       </DialogContent>
       <DialogActions>

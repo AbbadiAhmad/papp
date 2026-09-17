@@ -7,7 +7,7 @@ interface MockPrisma {
   user: { create: jest.Mock };
   role: { findUnique: jest.Mock };
   userRole: { create: jest.Mock };
-  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
+  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
   libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
   libraryFine: { findMany: jest.Mock };
   $transaction: jest.Mock;
@@ -18,7 +18,7 @@ function createMockPrisma(): MockPrisma {
     user: { create: jest.fn() },
     role: { findUnique: jest.fn() },
     userRole: { create: jest.fn() },
-    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
     libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
     libraryFine: { findMany: jest.fn() },
     $transaction: jest.fn(),
@@ -126,6 +126,13 @@ describe('StudentsService', () => {
     it('404s when no student matches the scanned code', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
       await expect(service.findByCode('STU-999')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('count', () => {
+    it('§18: returns a real count for the dashboard, never a mock number', async () => {
+      prisma.libraryStudent.count.mockResolvedValue(42);
+      await expect(service.count()).resolves.toBe(42);
     });
   });
 });

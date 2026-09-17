@@ -3,6 +3,7 @@ import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
 
 export type BorrowingStatus = 'active' | 'returned' | 'overdue' | 'lost' | 'cancelled';
 export type FineStatus = 'unpaid' | 'partially_paid' | 'paid' | 'waived' | 'cancelled';
+export type PaymentMethod = 'cash' | 'card' | 'transfer';
 
 export interface LibraryStudent {
   id: string;
@@ -57,6 +58,7 @@ export interface LibraryFineType {
 
 export interface LibraryFine {
   id: string;
+  fineNumber: string;
   studentId: string;
   borrowingId: string | null;
   fineTypeId: string;
@@ -108,8 +110,10 @@ export interface LibraryFinancialTransaction {
 
 export interface LibraryPayment {
   id: string;
+  paymentNumber: string;
   transactionId: string;
   amount: string;
+  paymentMethod: PaymentMethod;
   paidAt: string;
   receivedBy: string;
 }
@@ -119,6 +123,16 @@ export interface LibraryReceipt {
   paymentId: string;
   receiptNumber: string;
   issuedAt: string;
+}
+
+export interface DashboardStats {
+  students: number;
+  totalCopies: number;
+  availableCopies: number;
+  borrowedCopies: number;
+  overdueBorrowings: number;
+  unpaidFinesTotal: number;
+  paidFinesTotal: number;
 }
 
 const BASE = '/api/library-circulation';
@@ -155,12 +169,18 @@ export const libraryCirculationApi = {
       .then((r) => r.data),
   createFine: (dto: CreateFineInput) => apiClient.post<LibraryFine>(`${BASE}/fines`, dto).then((r) => r.data),
   waiveFine: (id: string) => apiClient.post<LibraryFine>(`${BASE}/fines/${id}/waive`).then((r) => r.data),
-  recordPayment: (fineId: string, amount: number) =>
+  recordPayment: (fineId: string, amount: number, paymentMethod: PaymentMethod) =>
     apiClient
-      .post<{ payment: LibraryPayment; receipt: LibraryReceipt; fine: LibraryFine }>(`${BASE}/fines/${fineId}/payments`, { amount })
+      .post<{ payment: LibraryPayment; receipt: LibraryReceipt; fine: LibraryFine }>(`${BASE}/fines/${fineId}/payments`, {
+        amount,
+        paymentMethod,
+      })
       .then((r) => r.data),
   listTransactions: () => apiClient.get<LibraryFinancialTransaction[]>(`${BASE}/finance/transactions`).then((r) => r.data),
   listPayments: () => apiClient.get<LibraryPayment[]>(`${BASE}/finance/payments`).then((r) => r.data),
+
+  // Dashboard
+  getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
 
   // Settings
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),

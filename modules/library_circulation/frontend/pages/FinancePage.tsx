@@ -71,14 +71,18 @@ function PaymentsTab() {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell>{t('library_circulation.finance.payment_number')}</TableCell>
               <TableCell>{t('library_circulation.fines.amount')}</TableCell>
+              <TableCell>{t('library_circulation.finance.payment_method')}</TableCell>
               <TableCell>{t('library_circulation.finance.paid_at')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {(data ?? []).map((payment) => (
               <TableRow key={payment.id}>
+                <TableCell>{payment.paymentNumber}</TableCell>
                 <TableCell>{payment.amount}</TableCell>
+                <TableCell>{t(`library_circulation.finance.payment_method.${payment.paymentMethod}`)}</TableCell>
                 <TableCell>{formatDateOnly(payment.paidAt, language)}</TableCell>
               </TableRow>
             ))}

@@ -50,7 +50,7 @@ export class FinesController {
   @RequirePermission('library_circulation.finance.record_payment')
   @Audit({ category: 'library_circulation.finance', entityType: 'LibraryPayment', action: 'create' })
   async recordPayment(@Param('id') id: string, @Body() dto: RecordPaymentDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.fines.recordPayment(id, dto.amount, user.userId);
+    return this.fines.recordPayment(id, dto.amount, user.userId, dto.paymentMethod);
   }
 
   @Get('finance/transactions')

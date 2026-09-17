@@ -1,5 +1,6 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { NOTIFICATIONS_SENDER, NotificationsSender } from './notifications-sender';
 import { SettingsService } from './settings.service';
 
 const ACTIVE_BORROWING_STATUSES = ['active', 'overdue'] as const;
@@ -22,7 +23,10 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CirculationService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    @Inject(NOTIFICATIONS_SENDER) private readonly notifications: NotificationsSender,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -104,13 +108,23 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const dueAt = new Date();
     dueAt.setDate(dueAt.getDate() + policy.loanPeriodDays);
 
-    return this.prisma.$transaction(async (tx) => {
-      const borrowing = await tx.libraryBorrowing.create({
+    const borrowing = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.libraryBorrowing.create({
         data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active' },
       });
       await tx.libraryCatalogBookCopy.update({ where: { id: bookCopyId }, data: { status: 'borrowed' } });
-      return borrowing;
+      return created;
     });
+
+    const book = await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } });
+    await this.notifyStudent(
+      student.userId,
+      'library_circulation.borrow',
+      'إعارة كتاب',
+      `تمت إعارة القصة "${book?.title ?? ''}" بنجاح.`,
+    );
+
+    return borrowing;
   }
 
   /**
@@ -140,11 +154,42 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       return result;
     });
 
+    const student = await this.prisma.libraryStudent.findUnique({ where: { id: borrowing.studentId } });
+    if (student) {
+      const body =
+        daysLate > 0
+          ? `تم إرجاع القصة. يوجد تأخير لمدة ${daysLate} يوم.`
+          : 'تم إرجاع القصة.';
+      await this.notifyStudent(student.userId, 'library_circulation.return', 'إرجاع كتاب', body);
+    }
+
     return { borrowing: updated, daysLate };
+  }
+
+  /** Never lets a notification failure fail the underlying circulation action (§23's UX addition, not a correctness requirement). */
+  private async notifyStudent(userId: string, category: string, title: string, bodyMarkdown: string): Promise<void> {
+    try {
+      await this.notifications.send({ category, title, bodyMarkdown, targetType: 'user', targetId: userId, sentBy: null });
+    } catch (error) {
+      this.logger.error(`Failed to notify student ${userId} ("${category}") — the underlying action itself succeeded.`, error);
+    }
   }
 
   async getLoanPolicy() {
     return this.settings.getLoanPolicy();
+  }
+
+  /** §18's dashboard cards — real aggregate counts, never mock data. */
+  async getCopyStats(): Promise<{ totalCopies: number; availableCopies: number; borrowedCopies: number; overdueBorrowings: number }> {
+    const [totalCopies, availableCopies, borrowedCopies, overdueBorrowings] = await Promise.all([
+      this.prisma.libraryCatalogBookCopy.count(),
+      this.prisma.libraryCatalogBookCopy.count({ where: { status: 'available' } }),
+      this.prisma.libraryCatalogBookCopy.count({ where: { status: 'borrowed' } }),
+      this.prisma.libraryBorrowing.count({
+        where: { status: { in: [...ACTIVE_BORROWING_STATUSES] }, dueAt: { lt: new Date() } },
+      }),
+    ]);
+    return { totalCopies, availableCopies, borrowedCopies, overdueBorrowings };
   }
 
   async findBorrowing(id: string) {

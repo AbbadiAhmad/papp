@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
 import { ScanPage } from './pages/ScanPage';
@@ -12,6 +13,7 @@ export interface ModuleRouteEntry {
 }
 
 export const AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES: ModuleRouteEntry[] = [
+  { path: '/library-circulation/dashboard', element: <DashboardPage /> },
   { path: '/library-circulation/scan', element: <ScanPage /> },
   { path: '/library-circulation/students', element: <StudentsListPage /> },
   { path: '/library-circulation/students/:studentId', element: <StudentDetailPage /> },

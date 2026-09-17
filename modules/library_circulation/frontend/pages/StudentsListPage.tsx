@@ -37,6 +37,7 @@ import {
   type LibraryStudent,
   type UpdateStudentInput,
 } from '../api';
+import { QrCodeImage } from './QrCodeImage';
 import { StudentFormDialog } from './StudentFormDialog';
 
 export function StudentsListPage() {
@@ -163,6 +164,14 @@ export function StudentsListPage() {
           <Typography variant="body1">
             {t('library_circulation.students.temporary_password')}: <strong>{createdStudent?.temporaryPassword}</strong>
           </Typography>
+          {createdStudent ? (
+            <Stack sx={{ alignItems: 'center', mt: 2 }}>
+              <QrCodeImage value={createdStudent.code} />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                {createdStudent.code}
+              </Typography>
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreatedStudent(null)} variant="contained">

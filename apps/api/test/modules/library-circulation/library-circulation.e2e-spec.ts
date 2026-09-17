@@ -139,6 +139,12 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
       path: '/api/library-circulation/fines',
       requiredPermission: 'library_circulation.fines.view',
     });
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'get',
+      path: '/api/library-circulation/dashboard',
+      requiredPermission: 'library_circulation.dashboard.view',
+    });
   });
 
   describe('the full borrow -> late return -> auto-fine -> payment flow (§39 acceptance scenario, scoped)', () => {
@@ -219,15 +225,15 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
       const res = await request(app!.getHttpServer())
         .post(`/api/library-circulation/fines/${fineId}/payments`)
         .set('Authorization', `Bearer ${finance.token}`)
-        .send({ amount: fullAmount });
+        .send({ amount: fullAmount, paymentMethod: 'cash' });
       expect(res.status).toBe(201);
       expect(res.body.fine.status).toBe('paid');
-      expect(res.body.receipt.receiptNumber).toMatch(/^RC-/);
+      expect(res.body.receipt.receiptNumber).toMatch(/^REC-\d{6}$/);
 
       const overpay = await request(app!.getHttpServer())
         .post(`/api/library-circulation/fines/${fineId}/payments`)
         .set('Authorization', `Bearer ${finance.token}`)
-        .send({ amount: 1 });
+        .send({ amount: 1, paymentMethod: 'cash' });
       expect(overpay.status).toBe(409); // already paid — §22
     });
 
@@ -237,6 +243,17 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
         .delete(`/api/library-circulation/students/${studentId}`)
         .set('Authorization', `Bearer ${admin.token}`);
       expect(res.status).toBe(409);
+    });
+
+    it('§18: GET /dashboard reflects the real state produced by this flow — never mock numbers', async () => {
+      const admin = await fixtureForRole(app!, 'admin');
+      const res = await request(app!.getHttpServer())
+        .get('/api/library-circulation/dashboard')
+        .set('Authorization', `Bearer ${admin.token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.students).toBeGreaterThanOrEqual(1);
+      expect(res.body.availableCopies + res.body.borrowedCopies).toBeGreaterThanOrEqual(1);
+      expect(res.body.paidFinesTotal).toBeGreaterThan(0); // the fine paid above
     });
   });
 
