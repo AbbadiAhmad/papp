@@ -1,0 +1,32 @@
+{
+  "template.menu.root": "Template",
+  "template.menu.items": "Items",
+
+  "template.perm.items.view": "View items",
+  "template.perm.items.create": "Create items",
+  "template.perm.items.update": "Edit items",
+  "template.perm.items.delete": "Delete items",
+  "template.perm.settings.view": "View template settings",
+  "template.perm.settings.update": "Edit template settings",
+
+  "template.status.active": "Active",
+  "template.status.archived": "Archived",
+
+  "template.fields.title": "Title",
+  "template.fields.description": "Description",
+  "template.fields.status": "Status",
+  "template.fields.created_at": "Created",
+
+  "template.items.create_button": "New item",
+  "template.items.create_title": "Create item",
+  "template.items.edit_title": "Edit item",
+  "template.items.status_default_hint": "Leave blank to use the module default",
+  "template.items.copy_link": "Copy public link",
+  "template.items.link_copied": "Link copied to clipboard",
+  "template.items.delete_title": "Delete item",
+  "template.items.delete_confirm": "Delete \"{{title}}\"?",
+
+  "template.settings.defaults_label": "Default status for new items",
+
+  "template.public.not_found": "This item is not available."
+}

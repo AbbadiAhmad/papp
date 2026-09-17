@@ -1,0 +1,106 @@
+{
+  "key": "template",
+  "name": "Template",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0 <1.0.0",
+  "dependsOn": [],
+  "description": "A real, installable module that exercises every manifest.json option — copy this directory as the starting point for a new module (docs/MODULE_SPEC.md §10). Its own entity (Items) is deliberately simple; the plumbing around it is what's on display.",
+
+  "migrations": {
+    "dir": "migrations"
+  },
+
+  "locales": {
+    "supported": ["ar", "en"],
+    "dir": "locales"
+  },
+
+  "permissions": [
+    { "code": "template.items.view", "category": "template", "descriptionKey": "template.perm.items.view" },
+    { "code": "template.items.create", "category": "template", "descriptionKey": "template.perm.items.create" },
+    { "code": "template.items.update", "category": "template", "descriptionKey": "template.perm.items.update" },
+    { "code": "template.items.delete", "category": "template", "descriptionKey": "template.perm.items.delete" },
+    { "code": "template.settings.view", "category": "template", "descriptionKey": "template.perm.settings.view" },
+    { "code": "template.settings.update", "category": "template", "descriptionKey": "template.perm.settings.update" }
+  ],
+
+  "defaultRolePermissions": {
+    "admin": [
+      "template.items.view",
+      "template.items.create",
+      "template.items.update",
+      "template.items.delete",
+      "template.settings.view",
+      "template.settings.update"
+    ],
+    "library_assistant": [],
+    "finance": [],
+    "reader": ["template.items.view"]
+  },
+
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {
+    "finance": true
+  },
+
+  "settings": [
+    {
+      "key": "template.defaults",
+      "type": "json",
+      "default": { "defaultStatus": "active" },
+      "labelKey": "template.settings.defaults_label",
+      "requiredPermission": "template.settings.update"
+    }
+  ],
+
+  "menu": [
+    {
+      "id": "template.root",
+      "labelKey": "template.menu.root",
+      "icon": "Widgets",
+      "parentId": null,
+      "order": 40,
+      "route": "/template/items",
+      "requiredPermission": "template.items.view"
+    },
+    {
+      "id": "template.items.list",
+      "labelKey": "template.menu.items",
+      "parentId": "template.root",
+      "order": 1,
+      "route": "/template/items",
+      "requiredPermission": "template.items.view"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "/template/items",
+      "access": "authenticated",
+      "requiredPermission": "template.items.view",
+      "component": "frontend/pages/TemplateItemsListPage.tsx"
+    },
+    {
+      "pattern": "/template/public/items/:itemId",
+      "access": "public",
+      "component": "frontend/pages/TemplatePublicItemPage.tsx"
+    }
+  ],
+
+  "frontend": {
+    "basePath": "/template",
+    "entry": "frontend/routes.tsx",
+    "landingPage": "/template/items"
+  },
+
+  "backend": {
+    "entry": "backend/template.module.js",
+    "apiPrefix": "/api/template"
+  },
+
+  "lifecycle": {
+    "onInstall": null,
+    "onUpgrade": null,
+    "onUninstall": null
+  }
+}

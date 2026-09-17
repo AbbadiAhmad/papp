@@ -13,6 +13,8 @@ How a feature (Library Catalog, Borrowing, Finance, …) plugs into the base pla
 ```
 modules/library_catalog/
 ├── manifest.json
+├── DOCUMENTATION.md                    -- this module's own technical reference (§9) — read before touching it
+├── DECISIONS.md                        -- this module's own append-only decisions/gotchas log (§9)
 ├── tsconfig.json                       -- compiles backend/*.ts -> backend/*.js in place (D56)
 ├── migrations/
 │   ├── 001_create_books_table.sql
@@ -242,3 +244,54 @@ Read through the same cached `SettingsService` core already uses (`ARCHITECTURE.
 ### 8.3 Settings UI
 
 The core Settings screen (`ARCHITECTURE.md` §6.3, currently "Password Policy / Session Timing / Notification Templates" tabs) grows one additional section per **installed** module that declares any `settings` entries, rendered generically from each entry's `type`/`labelKey`/`default` shape rather than needing bespoke UI per module — an uninstalled module's settings section simply isn't shown (though its underlying `system_settings` rows are left in place on uninstall, per the same safe-by-default policy as everything else, D26).
+
+## 9. Per-module documentation & decisions (D69)
+
+Two real, uncommitted-to-nobody problems this section fixes: (1) `docs/DECISIONS.md` is one long, append-only, whole-platform file — after two modules it already mixes core architecture calls with module-specific gotchas nobody but that module's next editor needs, making both harder to scan; (2) nothing forced a future session/agent to actually go *read* what a module's own build already learned before changing it, so the same mistake (or the same design question) could get silently re-litigated per module per session. Every module — **including new ones from this point on** — ships two files at its root, alongside `manifest.json` (§1's file tree):
+
+```
+modules/<key>/
+├── manifest.json
+├── DOCUMENTATION.md   -- what this module IS: data model, permissions, routes, key files, gotchas, how to extend it
+├── DECISIONS.md       -- what was DECIDED building/fixing it: append-only, this module's own numbered log
+└── ...
+```
+
+### 9.1 `DOCUMENTATION.md` — required sections
+
+A technical reference for whoever (human or agent) next touches this module, written so they don't have to reconstruct it by re-reading every source file cold:
+
+1. **Purpose** — one or two sentences, what real-world problem this module solves.
+2. **Data model** — every table this module owns (its migration files are the source of truth; this is the human-readable map on top), with the non-obvious relationships/constraints called out (a partial index, an app-level-not-DB-level rule, a JSONB column's real shape).
+3. **Permissions** — a table of every code in its manifest, one line each: code, what it actually gates, which controller method(s) check it.
+4. **Routes** — backend (method, path, permission or `@Public()`) and frontend (pattern, access level, component) — call out anything public explicitly, per §7.
+5. **Key files** — a short map of the biggest/most load-bearing files and what each owns (not every file — the ones a newcomer would otherwise have to guess about).
+6. **Known gotchas** — non-obvious behavior a future editor would otherwise rediscover the hard way (an ordering dependency, a validation quirk, a thing that looks like a bug but isn't, or a thing that looks fine but was).
+7. **How to extend** — the concrete steps for the module's own most-likely-next change (a new question type, a new entity, a new report), not a generic restatement of `FEATURE_TEMPLATE.md`.
+
+### 9.2 `DECISIONS.md` — format and scope
+
+**Same append-only, numbered-entry table format as the root `docs/DECISIONS.md`** (never a silent edit of an old row — a correction is a new row), but scoped to decisions **specific to this module only**. Entry IDs are prefixed with the module key to stay unambiguous against the root file's plain `Dnn` ids, e.g. `SURVEY-D1`, `LIBRARY_CATALOG-D1`, `TEMPLATE-D1` — numbered independently per module, not a shared global counter.
+
+- **Never restate a platform-wide decision already in the root `docs/DECISIONS.md`** — cross-reference it by ID instead (`"per D57"`, `"see root D64"`). This file is for calls, gotchas, and bugs-found-and-fixed that only make sense in this module's own context.
+- A genuine bug found and fixed while building or maintaining the module (the kind root `docs/DECISIONS.md` D61-D63/D67 record) belongs here too, in the same "what broke, why, how it was found, how it was fixed, how it was verified" level of detail — this is exactly the log that prevents the same class of bug recurring the next time someone extends this module.
+- Status column uses the same values as the root file: `DECIDED` / `PROPOSED` / `ASSUMED`.
+
+### 9.3 When to read / write these
+
+- **Read both files, in full, before making any change to an existing module** — before `docs/ARCHITECTURE.md`/`MODULE_SPEC.md` even, since those are platform-wide and this module's own files are what tell you what's actually different about it. This is now step 0 of `.claude/skills/papp-add-feature/SKILL.md`'s checklist.
+- **Update `DECISIONS.md`** the moment you make a call, find a gotcha, or fix a bug — not batched at the end of a session, for the same reason the root file is append-as-you-go rather than reconstructed from memory afterward.
+- **Update `DOCUMENTATION.md`** whenever something it describes actually changes shape (a new table/entity, a new permission, a new route, a gotcha that no longer applies or a new one that does) — it is a living reference, not a one-time changelog.
+- A brand-new module scaffold (§1) starts both files non-empty: `DOCUMENTATION.md` with at least a real Purpose/Data model/Permissions/Routes section (even a v1 module has these), `DECISIONS.md` with whatever real calls were made getting it to a working state (there is always at least one — even "copied `modules/template` and renamed X/Y/Z" is worth one line if nothing else came up).
+- `modules/template/` (§10) is the canonical worked example of both files, kept intentionally minimal — copy its shape, not necessarily its length.
+
+## 10. `modules/template` — the canonical scaffold for a new module
+
+A real, installable, fully-working module whose only purpose is to be copied. It deliberately exercises **every** `manifest.json` option this spec defines (§2) — permissions, `defaultRolePermissions`, `roleAccessPolicy`/`roleAccessLocked`, a module-defined `settings` entry (§8, which neither `library_catalog` nor `survey` happened to need), a nested `menu` (a parent entry with a child), both an `authenticated` and a `public` route (§7), and the full backend/frontend/migrations/locales layout (§1) — backed by one deliberately simple entity (`TemplateItem`: title/description/status/owner) so the plumbing is what's on display, not domain complexity.
+
+To start a new module:
+1. Copy `modules/template/` to `modules/<your_key>/` (snake_case, matching §1's directory-equals-key rule).
+2. Rename every `template`/`Template`/`TEMPLATE` occurrence to your module's key (file names, class names, manifest `key`/permission codes/table prefix, route paths, locale keys) — there is no automated rename script; grep for `template` case-insensitively inside the copied directory and check every hit.
+3. Replace `TemplateItem` with your module's real entity/entities — the migration, Prisma mirror, DTOs, service, and controllers all follow the same shape, just with your real fields.
+4. Delete whichever of the demonstrated options you don't need (not every module needs a `settings` entry or a public route) — but keep the ones you do need shaped exactly like the template shows them; that shape is what's been verified to actually work end-to-end (real install, real browser/API smoke test — see `modules/template/DOCUMENTATION.md`).
+5. Replace `modules/template/DOCUMENTATION.md`/`DECISIONS.md` with your own from the start (§9.3) — don't leave the template's own placeholder content in a real module.

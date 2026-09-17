@@ -34,6 +34,9 @@ import {
 // Survey module — same static-route-table pattern as library_catalog above
 // (no dynamic module-federation-style loading exists yet).
 import { AUTHENTICATED_SURVEY_ROUTES, PUBLIC_SURVEY_ROUTES } from '../../../modules/survey/frontend/routes';
+// Template module (docs/MODULE_SPEC.md §10) — the canonical scaffold, wired
+// in exactly like every other module so it's a genuinely working example.
+import { AUTHENTICATED_TEMPLATE_ROUTES, PUBLIC_TEMPLATE_ROUTES } from '../../../modules/template/frontend/routes';
 
 function FullScreenLoader() {
   return (
@@ -70,6 +73,9 @@ function AppRoutes() {
         {PUBLIC_SURVEY_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
+        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -83,6 +89,9 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_SURVEY_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
@@ -124,6 +133,13 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_SURVEY_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {/* Template module — same authenticated-then-public pairing as survey above. */}
+        {AUTHENTICATED_TEMPLATE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />

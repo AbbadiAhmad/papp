@@ -1,0 +1,32 @@
+{
+  "template.menu.root": "القالب",
+  "template.menu.items": "العناصر",
+
+  "template.perm.items.view": "عرض العناصر",
+  "template.perm.items.create": "إنشاء العناصر",
+  "template.perm.items.update": "تعديل العناصر",
+  "template.perm.items.delete": "حذف العناصر",
+  "template.perm.settings.view": "عرض إعدادات القالب",
+  "template.perm.settings.update": "تعديل إعدادات القالب",
+
+  "template.status.active": "نشط",
+  "template.status.archived": "مؤرشف",
+
+  "template.fields.title": "العنوان",
+  "template.fields.description": "الوصف",
+  "template.fields.status": "الحالة",
+  "template.fields.created_at": "تاريخ الإنشاء",
+
+  "template.items.create_button": "عنصر جديد",
+  "template.items.create_title": "إنشاء عنصر",
+  "template.items.edit_title": "تعديل العنصر",
+  "template.items.status_default_hint": "اتركه فارغاً لاستخدام الإعداد الافتراضي للوحدة",
+  "template.items.copy_link": "نسخ الرابط العام",
+  "template.items.link_copied": "تم نسخ الرابط",
+  "template.items.delete_title": "حذف العنصر",
+  "template.items.delete_confirm": "حذف \"{{title}}\"؟",
+
+  "template.settings.defaults_label": "الحالة الافتراضية للعناصر الجديدة",
+
+  "template.public.not_found": "هذا العنصر غير متاح."
+}

@@ -1,0 +1,10 @@
+# Template module — decisions & gotchas log
+
+Append-only, same format as root `docs/DECISIONS.md` (see `docs/MODULE_SPEC.md` §9.2). Entries here are scoped to this module only — a platform-wide decision is cross-referenced by its root `Dnn` id, never restated.
+
+| # | Decision | Status |
+|---|---|---|
+| TEMPLATE-D1 | Chose one deliberately simple entity (`TemplateItem`: title/description/status/owner) rather than anything domain-realistic — this module's whole point is exercising the manifest/plumbing, not modeling a real business problem (`docs/MODULE_SPEC.md` §10). | DECIDED |
+| TEMPLATE-D2 | `roleAccessLocked: {"finance": true}` is set purely to show the manifest's correct shape — confirmed while building this that the field is not enforced anywhere in the codebase (root `D70`). Don't copy this value's *meaning* ("finance is locked") into a real module without checking whether enforcement has since been built; copy the *shape* only. | DECIDED |
+| TEMPLATE-D3 | The `template.defaults` setting is read/written through this module's OWN `SettingsController`/`SettingsService` (`GET/PUT /api/template/settings/defaults`), not a generic core Settings-screen surface — because that generic surface doesn't exist (root `D71`, confirmed by reading `apps/api/src/core/settings/settings.controller.ts`: only bespoke endpoints for core's own four settings). This is the working stand-in pattern for any module needing an actually-editable setting until the generic surface is built. | DECIDED |
+| TEMPLATE-D4 | `DefaultsPanel`'s status `<TextField select>` originally had no `label` prop (a sibling `<Typography>` carried the visible heading instead) — it looked fine to a sighted tester clicking through it, but had no real accessible name, caught immediately by a real Playwright `getByLabel(...)` walkthrough failing to find it. Fixed by moving the text into the `TextField`'s own `label` prop and dropping the separate `Typography`. General lesson (added to `.claude/skills/papp-add-feature/SKILL.md`'s gotchas): every form control needs its own real `label`/`aria-label`, never a nearby heading standing in for one. | DECIDED |

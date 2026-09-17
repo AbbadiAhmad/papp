@@ -28,6 +28,7 @@ import PollIcon from '@mui/icons-material/Poll';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
+import WidgetsIcon from '@mui/icons-material/Widgets';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
@@ -76,6 +77,15 @@ const MENU_ITEMS: MenuItemDef[] = [
     icon: <PollIcon />,
     route: '/survey/surveys',
     permissionCode: 'survey.surveys.view',
+  },
+  // Template module (docs/MODULE_SPEC.md §10) — the canonical scaffold, kept
+  // installed as a genuinely working example. Same documented gap as above.
+  {
+    id: 'template',
+    labelKey: 'template.menu.root',
+    icon: <WidgetsIcon />,
+    route: '/template/items',
+    permissionCode: 'template.items.view',
   },
 ];
 

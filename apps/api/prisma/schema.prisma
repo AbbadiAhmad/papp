@@ -556,6 +556,32 @@ model SurveyAnswer {
   @@map("survey_answers")
 }
 
+// --- template module ---------------------------------------------------
+// See modules/template/migrations/001_create_template_items_table.sql for
+// the raw DDL this mirrors. The one deliberately simple entity the
+// docs/MODULE_SPEC.md §10 scaffold exercises its plumbing on.
+
+enum TemplateItemStatus {
+  active
+  archived
+
+  @@map("template_item_status")
+}
+
+model TemplateItem {
+  id          String             @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  status      TemplateItemStatus @default(active)
+  ownerUserId String             @map("owner_user_id") @db.Uuid
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@map("template_items")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

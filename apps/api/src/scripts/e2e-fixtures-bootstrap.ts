@@ -59,6 +59,7 @@ const CORE_MODULE_KEY = 'core';
 const CORE_MODULE_VERSION = '0.0.1';
 const LIBRARY_CATALOG_KEY = 'library_catalog';
 const SURVEY_KEY = 'survey';
+const TEMPLATE_KEY = 'template';
 
 // Mirrors apps/web/tests/e2e/support/test-data.ts exactly — this is the one
 // place both sides of the fixture contract (what gets seeded, what the specs
@@ -73,8 +74,9 @@ const PWCHANGE_FIXTURE = {
 const SEEDED_BOOK_TITLE = 'Phase9 E2E Smoke Test Book';
 // Mirrors apps/web/tests/e2e/support/test-data.ts's SURVEY_ADMIN_USER —
 // holds the `admin` role since none of the other seeded roles get any
-// `survey.*` permission by default (module manifest's own
-// defaultRolePermissions).
+// `survey.*`/`template.*` permission by default (both modules' manifests'
+// own defaultRolePermissions). Reused as-is for `template`'s own e2e spec
+// too — one shared admin-role fixture, not a new one per module.
 const SURVEY_ADMIN_FIXTURE = { email: 'pw9e2e.surveyadmin@papp.local', name: 'Phase9 E2E Survey Admin', password: 'E2eSurveyAdmin2026!' };
 
 async function bootstrapRegistryTables(): Promise<void> {
@@ -147,6 +149,15 @@ async function main(): Promise<void> {
       logger.log('Installing survey (real ModuleRegistryService.install() flow)...');
       const moduleRegistry = app.get(ModuleRegistryService);
       await moduleRegistry.install(SURVEY_KEY);
+    }
+
+    const templateEntry = await prisma.moduleRegistryEntry.findUnique({ where: { key: TEMPLATE_KEY } });
+    if (templateEntry?.status === 'installed') {
+      logger.log('template already installed — skipping install.');
+    } else {
+      logger.log('Installing template (real ModuleRegistryService.install() flow)...');
+      const moduleRegistry = app.get(ModuleRegistryService);
+      await moduleRegistry.install(TEMPLATE_KEY);
     }
 
     logger.log('Seeding Playwright Tier 2 fixture users...');
