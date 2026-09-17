@@ -24,8 +24,17 @@ import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../..
 // Raw .ts import — Vite bundles this exactly like any other module file
 // (see logic-engine.ts's own docblock: framework-free by design so both
 // the backend's compiled sibling and this frontend import share one
-// evaluator, never two independently-drifting copies).
-import { resolveVisibility, type EnumerationAnswerValue } from '../../backend/logic-engine';
+// evaluator, never two independently-drifting copies). The explicit `.ts`
+// extension is load-bearing: `logic-engine.js` (the backend's own compiled
+// CommonJS sibling, D56) lives right next to it, and Vite's default
+// `resolve.extensions` order checks `.js` before `.ts` — an extensionless
+// specifier here silently resolves to that CJS build instead of this real
+// ESM source, which throws at runtime ("does not provide an export named
+// 'resolveVisibility'") the moment this page's code actually executes in a
+// browser (found via a live dev-server + Playwright check, root DECISIONS.md
+// D78 — `npm run build`'s Rollup-based resolution didn't surface it, only
+// `vite`'s dev-server did).
+import { resolveVisibility, type EnumerationAnswerValue } from '../../backend/logic-engine.ts';
 import { surveyApi, type AnswerInput, type FillableQuestion, type FillableSurvey } from '../api';
 
 // 'not_found' also covers "exists but not published" — the backend never

@@ -36,7 +36,14 @@ function baseManifest(overrides: Record<string, unknown> = {}) {
     roleAccessPolicy: 'grantable',
     roleAccessLocked: {},
     settings: [],
-    routes: [],
+    routes: [
+      {
+        pattern: `/${MODULE_KEY}`,
+        access: 'authenticated',
+        requiredPermission: `${MODULE_KEY}.items.view`,
+        component: 'index.tsx',
+      },
+    ],
     menu: [
       {
         id: `${MODULE_KEY}.root`,
@@ -150,6 +157,28 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
     expect((auditRow!.newValue as { key: string }).key).toBe(MODULE_KEY);
   });
 
+  it('GET /modules/frontend-manifest is reachable with NO Authorization header and exposes only the frontend-shell slice (root D78)', async () => {
+    const res = await request(app!.getHttpServer()).get('/modules/frontend-manifest');
+    expect(res.status).toBe(200);
+
+    const entry = (res.body as Array<{ key: string }>).find((m) => m.key === MODULE_KEY);
+    expect(entry).toBeDefined();
+    expect(entry).toEqual({
+      key: MODULE_KEY,
+      basePath: `/${MODULE_KEY}`,
+      routes: baseManifest().routes,
+      menu: baseManifest().menu,
+    });
+    // The whole point (root DECISIONS.md D78): no admin-only manifest
+    // internals leak through this public endpoint.
+    expect(entry).not.toHaveProperty('backend');
+    expect(entry).not.toHaveProperty('permissions');
+    expect(entry).not.toHaveProperty('version');
+
+    // 'core' is the platform itself, not a module — never listed here.
+    expect((res.body as Array<{ key: string }>).some((m) => m.key === 'core')).toBe(false);
+  });
+
   it('installing again while already installed is rejected — idempotent, no duplicate migration application', async () => {
     const admin = await fixtureForRole(app!, 'admin');
     const res = await request(app!.getHttpServer())
@@ -244,6 +273,12 @@ describe('Module Registry (e2e, real install/upgrade/uninstall lifecycle)', () =
 
     const remainingMenu = await prisma.moduleMenuEntry.findMany({ where: { moduleKey: MODULE_KEY } });
     expect(remainingMenu).toHaveLength(0);
+
+    // The whole point of D78: uninstalling makes the module vanish from the
+    // frontend-manifest feed with NO platform code change — the frontend
+    // shell just stops rendering its routes/menu on the next fetch.
+    const manifestAfterUninstall = await request(app!.getHttpServer()).get('/modules/frontend-manifest');
+    expect((manifestAfterUninstall.body as Array<{ key: string }>).some((m) => m.key === MODULE_KEY)).toBe(false);
   });
 
   it('installing a manifest that fails cross-platform validation is rejected and leaves no "installed" row', async () => {

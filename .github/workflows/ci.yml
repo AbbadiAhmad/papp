@@ -283,3 +283,5 @@ jobs:
         run: npm run lint:locales
       - name: lint:no-hardcoded-roles (D12 single-exception check)
         run: npm run lint:no-hardcoded-roles
+      - name: lint:no-module-specific-platform-code (D78 platform/module decoupling guard)
+        run: npm run lint:no-module-specific-platform-code

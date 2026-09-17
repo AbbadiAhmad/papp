@@ -9,7 +9,7 @@ How a feature (Library Catalog, Borrowing, Finance, …) plugs into the base pla
 - **The directory name must equal the manifest `key` literally, snake_case** (`modules/library_catalog/`, not a hyphenated name) — `ModuleRegistryService`/the module loader build the on-disk path directly from the key string.
 - **`backend.entry` must point to compiled CommonJS output (`*.js`), never raw `.ts`** — plain Node cannot `import()` NestJS-decorated TypeScript, even with type-stripping. Every module ships a small own `tsconfig.json` (extending the shared base config) that compiles `backend/*.ts` → `backend/*.js` in place; **both the TypeScript source and its compiled output are checked into git together**.
 - **A module cannot directly import `apps/api/src/common/**`'s real decorators/guards** (`@Public()`, `@RequirePermission()`, `@Audit()`, `@CurrentUser()`, `MustChangePasswordGuard`) — only `apps/api/dist/**` exists as loadable JS at runtime. Until a shared `@papp/platform-kit` package exists, every module ships a small local `backend/platform.ts` re-declaring these as thin metadata shims against the exact same literal string keys the real global guards read (see D57 in `docs/DECISIONS.md` for the full rationale and the current known keys). `PublicThrottlerGuard` is the one exception a module should import for real (from `apps/api/dist/...`), since it's genuine shared logic, not a metadata marker.
-- **A module's own tests live under its own `test/` directory, never under `apps/api/test/` or `apps/web/tests/`** (root D76) — see §9.4.
+- **A module's own tests live under its own `test/` directory, never under `apps/api/test/` or `apps/web/tests/`** (root D77) — see §9.4.
 
 ```
 modules/library_catalog/
@@ -29,14 +29,14 @@ modules/library_catalog/
 │   ├── books.service.ts / .js
 │   └── ...
 ├── frontend/
-│   ├── routes.tsx                      -- lazy-loaded route tree, mounted under the module's base path
+│   ├── routes.tsx                      -- exports authenticatedRoutes/publicRoutes (§7.6) — generically discovered, never imported by name
 │   ├── pages/
 │   │   └── BooksListPage.tsx
 │   └── ...
 ├── locales/
 │   ├── ar.json
 │   └── en.json
-└── test/                               -- this module's OWN tests only (§9.4, root D76) — never apps/api/test or apps/web/tests
+└── test/                               -- this module's OWN tests only (§9.4, root D77) — never apps/api/test or apps/web/tests
     ├── backend/
     │   ├── books.service.spec.ts       -- Jest unit spec (mocked PrismaClient, no DB)
     │   └── library-catalog.e2e-spec.ts -- Jest e2e spec (real install, real Testcontainers Postgres)
@@ -236,6 +236,29 @@ A public **read** (viewing a survey) is low-risk. A public **write** (submitting
 
 A module's `basePath` (§2) is still the single collision-checked namespace boundary — `/survey` belongs entirely to the survey module, public and authenticated routes alike. Nothing new is needed for uniqueness beyond what §4 step 2 already validates; `/survey/:surveyId` and `/survey/manage` simply both nest under the one already-reserved prefix.
 
+### 7.6 How a module's routes/menu actually get mounted — the generic loader (root DECISIONS.md D78)
+
+**Nothing in `apps/web/src/**` ever imports a specific module.** `App.tsx`/`PageLayout.tsx` mount every installed module's routes and sidebar entries through a fixed, generic contract — the platform accepts "whatever module is installed," it never needs its own code changed to add or remove one (same principle as backend module mounting, §4, which was already this way).
+
+**A module's own contract, unchanged from §1/§2:**
+- `frontend/routes.tsx` (the manifest's `frontend.entry`) exports exactly two arrays, under these EXACT names — no other export name is discovered:
+  ```ts
+  import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
+  export const authenticatedRoutes: ModuleRouteEntry[] = [ { path: '/your-module/x', element: <YourPage /> } ];
+  export const publicRoutes: ModuleRouteEntry[] = [];   // [] if the module has none — never omit the export
+  ```
+- `manifest.json`'s own `routes[]`/`menu[]` arrays (§2) are the single source of truth for WHICH of a module's routes/menu items are actually reachable once installed — `routes.tsx` only supplies the React element each `pattern`/`route` resolves to.
+
+**How the platform discovers and mounts them, with zero per-module code:**
+1. `apps/web/src/shared/modules/discovery.ts` uses Vite's `import.meta.glob('modules/*/frontend/routes.tsx', { eager: true })` — a WILDCARD glob, resolved at build time, that bundles every module physically present under `modules/*` without naming any of them.
+2. `GET /modules/frontend-manifest` (`@Public()`, no permission gate — same category as `GET /i18n/:lang`) returns, for every currently INSTALLED module, just `{key, basePath, routes, menu}` — never the full admin manifest (see `FrontendModuleManifest`'s own docblock for exactly why it's this narrow).
+3. `apps/web/src/shared/modules/useInstalledModules.ts`'s hooks cross-reference (1) against (2) at runtime: only an installed module's `authenticatedRoutes`/`publicRoutes` actually get spread into `App.tsx`'s `<Routes>` trees, and only its `menu[]` entries get flattened (via `buildModuleMenuEntries.ts`) into `PageLayout.tsx`'s sidebar.
+4. A menu entry's `icon` (a plain string) resolves through `shared/modules/menuIcons.tsx`'s small name→component map, falling back to a generic icon for any name not yet added there — the ONE deliberately-accepted, purely cosmetic exception to "zero platform edits" (a module is fully installable and usable without ever touching this map).
+
+**Guard**: `npm run lint:no-module-specific-platform-code` (`scripts/lint-no-module-specific-platform-code.ts`, part of `lint:manifests`) fails CI if any file under `apps/api/src/**`/`apps/web/src/**` imports a real module directory by literal path (`modules/<key>/...`) — the enforced version of "installing/uninstalling a module changes no platform file."
+
+**Known limitation** (documented, not silently accepted): `import.meta.glob(..., { eager: true })` ships every module's frontend JS in the main bundle regardless of install status — there is still no true runtime plugin-loading/module-federation mechanism (same accepted limitation as the backend's own dist-import exception, §1). Uninstalling a module makes it unreachable (no route, no menu item) immediately; it does not shrink the JS bundle until the next build.
+
 ## 8. Module-defined settings
 
 Raised as a gap by real domain input (a library module needing admin-editable `loan_period_days`/`fine_per_day`/`max_books_per_student` — see `docs/LIBRARY_MODULE_REQUIREMENTS.md` §8): permissions and menus were already data-driven per module (§2), but **settings were not** — only core had a way to declare and seed its own `system_settings` keys. This section closes that gap, matching Odoo's per-app settings pattern.
@@ -292,7 +315,7 @@ A technical reference for whoever (human or agent) next touches this module, wri
 - A brand-new module scaffold (§1) starts both files non-empty: `DOCUMENTATION.md` with at least a real Purpose/Data model/Permissions/Routes section (even a v1 module has these), `DECISIONS.md` with whatever real calls were made getting it to a working state (there is always at least one — even "copied `modules/template` and renamed X/Y/Z" is worth one line if nothing else came up).
 - `modules/template/` (§10) is the canonical worked example of both files, kept intentionally minimal — copy its shape, not necessarily its length.
 
-### 9.4 Where a module's own tests live (root D76)
+### 9.4 Where a module's own tests live (root D77)
 
 **Platform tests and module tests are two different things, kept in two different places:**
 
@@ -304,7 +327,7 @@ A technical reference for whoever (human or agent) next touches this module, wri
   - `modules/<key>/test/frontend/*.test.tsx` — Vitest + React Testing Library component tests (e.g. a rendering-safety guard like `modules/website/test/frontend/website-safe-markdown.test.tsx`).
   - A Playwright end-to-end spec that drives a module's UI through a real running dev server (browser automation, full stack) is a platform-level test even when it only exercises one module's flow — it stays under `apps/web/tests/e2e/`, not inside the module (see `apps/web/tests/e2e/survey.spec.ts`).
 
-**Why split at all**, not just "put everything under `apps/api/test/modules/<key>/`" (the pattern every module used before root D76 — a real, if undocumented, gap flagged in root `docs/DECISIONS.md` D68): a module is meant to be self-contained (§1 — its own manifest, migrations, backend, frontend, locales, `DOCUMENTATION.md`/`DECISIONS.md`), and its tests are as much a part of "what this module is" as its own migrations are. Leaving them in the platform's own test tree means deleting or relocating a module (uninstall, extraction into its own package, a future module marketplace) silently orphans or forgets its tests, and a module's own `DOCUMENTATION.md`/`DECISIONS.md` can't honestly claim the module is self-contained while its test suite lives somewhere else entirely.
+**Why split at all**, not just "put everything under `apps/api/test/modules/<key>/`" (the pattern every module used before root D77 — a real, if undocumented, gap flagged in root `docs/DECISIONS.md` D68): a module is meant to be self-contained (§1 — its own manifest, migrations, backend, frontend, locales, `DOCUMENTATION.md`/`DECISIONS.md`), and its tests are as much a part of "what this module is" as its own migrations are. Leaving them in the platform's own test tree means deleting or relocating a module (uninstall, extraction into its own package, a future module marketplace) silently orphans or forgets its tests, and a module's own `DOCUMENTATION.md`/`DECISIONS.md` can't honestly claim the module is self-contained while its test suite lives somewhere else entirely.
 
 **How the test runners find them** (so this doesn't silently stop working again): `apps/api/test/jest.base.config.ts` sets `roots: [rootDir, modulesRoot]` and exports `modulesRoot` (`<rootDir>/../../modules`); `jest.unit.config.ts`/`jest.integration.config.ts`/`jest.e2e.config.ts` each add a `${modulesRoot}/*/test/backend/*.<ext>` pattern to their own `testMatch` alongside their existing `<rootDir>/test/**` pattern. `apps/api/tsconfig.test.json`'s `include` has a matching `../../modules/*/test/backend/**/*.ts` entry (ts-jest compiles against this project; without it, ts-jest throws "file is not listed within the file list of project" for any spec file under `modules/**`, the exact class of bug D62 already fixed once for `apps/api/test/**` itself). `apps/web/vitest.config.ts`'s `test.include` has a matching `../../modules/*/test/frontend/**/*.test.{ts,tsx}` entry alongside its own `tests/**` pattern.
 

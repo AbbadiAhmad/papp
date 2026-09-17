@@ -26,26 +26,7 @@ import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
 import { ModulesAdminPage } from './core/modules/ModulesAdminPage';
-// Phase 8 — library_catalog module. No dynamic module-federation-style
-// loading exists yet (Phase 6 didn't build one; BUILD_PLAN.md Phase 8's own
-// note says a static addition to the route table is acceptable for now) —
-// see modules/library_catalog/frontend/routes.tsx's own docblock.
-import {
-  AUTHENTICATED_LIBRARY_CATALOG_ROUTES,
-  PUBLIC_LIBRARY_CATALOG_ROUTES,
-} from '../../../modules/library_catalog/frontend/routes';
-// library_circulation + library_finance module (D44) — same static-route-table pattern as library_catalog above.
-import { AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES } from '../../../modules/library_circulation/frontend/routes';
-// Survey module — same static-route-table pattern as library_catalog above
-// (no dynamic module-federation-style loading exists yet).
-import { AUTHENTICATED_SURVEY_ROUTES, PUBLIC_SURVEY_ROUTES } from '../../../modules/survey/frontend/routes';
-// Template module (docs/MODULE_SPEC.md §10) — the canonical scaffold, wired
-// in exactly like every other module so it's a genuinely working example.
-import { AUTHENTICATED_TEMPLATE_ROUTES, PUBLIC_TEMPLATE_ROUTES } from '../../../modules/template/frontend/routes';
-// Website module — public site builder. Same static-route-table pattern as
-// library_catalog above; PUBLIC_WEBSITE_ROUTES carries the visitor-facing
-// `/site` + `/site/:slug` pages, reachable with no login at all.
-import { AUTHENTICATED_WEBSITE_ROUTES, PUBLIC_WEBSITE_ROUTES } from '../../../modules/website/frontend/routes';
+import { useModuleFrontendManifests, useModuleRoutes } from './shared/modules/useInstalledModules';
 
 function FullScreenLoader() {
   return (
@@ -88,9 +69,22 @@ function LandingPageRedirect() {
  * check; anonymous (only /login reachable); or authenticated. Every branch
  * still renders `<TopBar/>` (see App() below) so the brand bar is present
  * from the very first paint, before any network round-trip resolves.
+ *
+ * Module routes (root DECISIONS.md D78) are resolved ONCE here, before any
+ * branch — `useModuleRoutes` is a hook and must not be called conditionally
+ * — then spread into whichever branch actually renders below. Nothing here
+ * imports a module by name: `authenticatedModuleRoutes`/`publicModuleRoutes`
+ * come entirely from `GET /modules/frontend-manifest` (installed modules)
+ * cross-referenced against whatever `modules/*\/frontend/routes.tsx` files
+ * Vite discovered at build time (`shared/modules/discovery.ts`). Adding or
+ * removing a module changes NEITHER array's construction — only what ends
+ * up in them at runtime.
  */
 function AppRoutes() {
   const { status, mustChangePassword } = useAuth();
+  const moduleManifests = useModuleFrontendManifests();
+  const authenticatedModuleRoutes = useModuleRoutes(moduleManifests, 'authenticated');
+  const publicModuleRoutes = useModuleRoutes(moduleManifests, 'public');
 
   if (status === 'initializing') {
     return <FullScreenLoader />;
@@ -103,16 +97,7 @@ function AppRoutes() {
         {/* MODULE_SPEC.md §7.1: a public route "never redirects to the login
             page" — mounted here too so a shared link works for a visitor
             with no session at all, not just an authenticated one. */}
-        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_SURVEY_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_WEBSITE_ROUTES.map((route) => (
+        {publicModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
@@ -124,16 +109,7 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/force-password-change" element={<ForcePasswordChangePage />} />
-        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_SURVEY_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_WEBSITE_ROUTES.map((route) => (
+        {publicModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
@@ -161,39 +137,12 @@ function AppRoutes() {
         <Route path="/notifications/compose" element={<NotificationsComposePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/modules" element={<ModulesAdminPage />} />
-        {/* Phase 8 — library_catalog module routes. */}
-        {AUTHENTICATED_LIBRARY_CATALOG_ROUTES.map((route) => (
+        {/* Every installed module's own routes (root DECISIONS.md D78) — see
+            this function's own docblock. */}
+        {authenticatedModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
-        {PUBLIC_LIBRARY_CATALOG_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {/* library_circulation + library_finance module (D44) — no public routes. */}
-        {AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {/* Survey module — AUTHENTICATED_SURVEY_ROUTES first so PageLayout's
-            menu-driven admin pages are always reachable; PUBLIC_SURVEY_ROUTES
-            too, so the same shareable /survey/:surveyId link also works for
-            an already-logged-in visitor, inside the app shell. */}
-        {AUTHENTICATED_SURVEY_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_SURVEY_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {/* Template module — same authenticated-then-public pairing as survey above. */}
-        {AUTHENTICATED_TEMPLATE_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_TEMPLATE_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {/* Website module — same authenticated-then-public pairing as survey above. */}
-        {AUTHENTICATED_WEBSITE_ROUTES.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
-        ))}
-        {PUBLIC_WEBSITE_ROUTES.map((route) => (
+        {publicModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />

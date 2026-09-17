@@ -1,20 +1,17 @@
-import type { ReactNode } from 'react';
+import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { TemplateItemsListPage } from './pages/TemplateItemsListPage';
 import { TemplatePublicItemPage } from './pages/TemplatePublicItemPage';
 
 /**
- * The module's `frontend.entry` target (manifest.json) — see
- * modules/library_catalog/frontend/routes.tsx's own docblock for why this is
- * a static import from apps/web/src/App.tsx rather than something
- * dynamically loaded (no module-federation-style mechanism exists yet).
+ * The module's `frontend.entry` target (manifest.json). Exports the two
+ * FIXED names (`authenticatedRoutes`/`publicRoutes`) every module's own
+ * routes.tsx exports — this is the contract `apps/web/src/shared/modules/
+ * discovery.ts` glob-imports generically (root DECISIONS.md D78), so
+ * `App.tsx` never imports this file, or names this module, directly. Copy
+ * this file's shape verbatim when starting a new module from this scaffold.
  */
-export interface ModuleRouteEntry {
-  path: string;
-  element: ReactNode;
-}
+export const authenticatedRoutes: ModuleRouteEntry[] = [{ path: '/template/items', element: <TemplateItemsListPage /> }];
 
-export const AUTHENTICATED_TEMPLATE_ROUTES: ModuleRouteEntry[] = [{ path: '/template/items', element: <TemplateItemsListPage /> }];
-
-export const PUBLIC_TEMPLATE_ROUTES: ModuleRouteEntry[] = [
+export const publicRoutes: ModuleRouteEntry[] = [
   { path: '/template/public/items/:itemId', element: <TemplatePublicItemPage /> },
 ];

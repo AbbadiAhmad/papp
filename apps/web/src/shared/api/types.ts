@@ -5,6 +5,8 @@
  * `shared/format.ts` (never a raw `toLocaleDateString()`).
  */
 
+import type { ModuleManifestMenuEntry, ModuleManifestRoute } from '@papp/shared-types';
+
 export interface PublicUser {
   id: string;
   email: string;
@@ -167,6 +169,21 @@ export interface PublicModuleEntry {
   installedAt: string | null;
   updatedAt: string;
   manifestSnapshot: unknown;
+}
+
+/**
+ * The narrow, non-sensitive slice of an installed module's manifest served
+ * by `GET /modules/frontend-manifest` (root DECISIONS.md D78) — mirrors
+ * `apps/api/src/core/module-registry/module-registry.presenter.ts`'s own
+ * `FrontendModuleManifest`. `routes`/`menu` reuse the real manifest schema
+ * types from `@papp/shared-types` rather than redeclaring them — this IS the
+ * manifest's own `routes`/`menu` arrays, not a reshaped copy.
+ */
+export interface FrontendModuleManifest {
+  key: string;
+  basePath: string;
+  routes: ModuleManifestRoute[];
+  menu: ModuleManifestMenuEntry[];
 }
 
 export interface ManifestValidationIssue {

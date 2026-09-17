@@ -492,6 +492,62 @@ describe('ModuleRegistryService', () => {
     });
   });
 
+  describe('listFrontendManifests()', () => {
+    it('queries only installed, non-core modules and projects just the frontend-shell slice', async () => {
+      const manifest = {
+        frontend: { basePath: '/site', entry: 'frontend/routes.tsx', landingPage: '/site/admin/pages' },
+        routes: [{ pattern: '/site', access: 'public', component: 'frontend/pages/PublicSitePage.tsx' }],
+        menu: [{ id: 'website.pages', labelKey: 'website.menu.pages', parentId: null, order: 1, route: '/site/admin/pages', requiredPermission: 'website.pages.view' }],
+      };
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+        { key: 'website', status: 'installed', manifestSnapshot: manifest },
+      ]);
+
+      const result = await service.listFrontendManifests();
+
+      expect(prisma.moduleRegistryEntry.findMany).toHaveBeenCalledWith({
+        where: { status: 'installed', key: { not: 'core' } },
+        orderBy: { key: 'asc' },
+      });
+      expect(result).toEqual([
+        { key: 'website', basePath: '/site', routes: manifest.routes, menu: manifest.menu },
+      ]);
+    });
+
+    it('never exposes version/status/permissions/settings/backend manifest internals', async () => {
+      const manifest = {
+        frontend: { basePath: '/site', entry: 'frontend/routes.tsx', landingPage: '/site' },
+        routes: [],
+        menu: [],
+        backend: { entry: 'backend/website.module.js', apiPrefix: '/api/website' },
+        permissions: [{ code: 'website.pages.view', category: 'website', descriptionKey: 'website.perm.pages.view' }],
+        settings: [{ key: 'website.site_config', type: 'json', default: {}, labelKey: 'x', requiredPermission: 'website.settings.update' }],
+      };
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+        { key: 'website', status: 'installed', manifestSnapshot: manifest },
+      ]);
+
+      const [result] = await service.listFrontendManifests();
+
+      expect(result).not.toHaveProperty('backend');
+      expect(result).not.toHaveProperty('permissions');
+      expect(result).not.toHaveProperty('settings');
+      expect(result).not.toHaveProperty('version');
+      expect(result).not.toHaveProperty('status');
+    });
+
+    it('drops a row whose stored manifestSnapshot is not a real manifest object (defensive only)', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+        { key: 'broken', status: 'installed', manifestSnapshot: null },
+        { key: 'also_broken', status: 'installed', manifestSnapshot: 'not-an-object' },
+      ]);
+
+      const result = await service.listFrontendManifests();
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('triggerOrchestratedRestart()', () => {
     it('logs the D15 rationale and calls process.exit(0)', () => {
       const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);

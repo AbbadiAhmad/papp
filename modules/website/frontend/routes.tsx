@@ -1,16 +1,17 @@
-import type { ReactNode } from 'react';
+import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { MenuEditorPage } from './pages/MenuEditorPage';
 import { PageEditorPage } from './pages/PageEditorPage';
 import { PagesListPage } from './pages/PagesListPage';
 import { PublicSitePage } from './pages/PublicSitePage';
 
-/** The module's `frontend.entry` target (manifest.json) — same static-route-table pattern as every other module (no dynamic module-federation-style loading exists yet). */
-export interface ModuleRouteEntry {
-  path: string;
-  element: ReactNode;
-}
-
-export const AUTHENTICATED_WEBSITE_ROUTES: ModuleRouteEntry[] = [
+/**
+ * The module's `frontend.entry` target (manifest.json). Exports the two
+ * FIXED names (`authenticatedRoutes`/`publicRoutes`) every module's own
+ * routes.tsx exports — this is the contract `apps/web/src/shared/modules/
+ * discovery.ts` glob-imports generically (root DECISIONS.md D78), so
+ * `App.tsx` never imports this file, or names this module, directly.
+ */
+export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/site/admin/pages', element: <PagesListPage /> },
   { path: '/site/admin/pages/:pageId', element: <PageEditorPage /> },
   { path: '/site/admin/menus', element: <MenuEditorPage /> },
@@ -23,7 +24,7 @@ export const AUTHENTICATED_WEBSITE_ROUTES: ModuleRouteEntry[] = [
  * page slug (the reserved-slug check in `create-page.dto.ts` is the
  * server-side belt to this client-side suspenders).
  */
-export const PUBLIC_WEBSITE_ROUTES: ModuleRouteEntry[] = [
+export const publicRoutes: ModuleRouteEntry[] = [
   { path: '/site/:slug', element: <PublicSitePage /> },
   { path: '/site', element: <PublicSitePage /> },
 ];

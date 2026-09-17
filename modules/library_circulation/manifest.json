@@ -91,6 +91,7 @@
     {
       "id": "library_circulation.dashboard",
       "labelKey": "library_circulation.menu.dashboard",
+      "icon": "Dashboard",
       "parentId": "library_circulation.root",
       "order": 0,
       "route": "/library-circulation/dashboard",
@@ -99,6 +100,7 @@
     {
       "id": "library_circulation.scan",
       "labelKey": "library_circulation.menu.scan",
+      "icon": "QrCodeScanner",
       "parentId": "library_circulation.root",
       "order": 1,
       "route": "/library-circulation/scan",
@@ -107,6 +109,7 @@
     {
       "id": "library_circulation.students",
       "labelKey": "library_circulation.menu.students",
+      "icon": "Group",
       "parentId": "library_circulation.root",
       "order": 2,
       "route": "/library-circulation/students",
@@ -115,6 +118,7 @@
     {
       "id": "library_circulation.fines",
       "labelKey": "library_circulation.menu.fines",
+      "icon": "Paid",
       "parentId": "library_circulation.root",
       "order": 3,
       "route": "/library-circulation/fines",
@@ -123,6 +127,7 @@
     {
       "id": "library_circulation.finance",
       "labelKey": "library_circulation.menu.finance",
+      "icon": "Paid",
       "parentId": "library_circulation.root",
       "order": 4,
       "route": "/library-circulation/finance",

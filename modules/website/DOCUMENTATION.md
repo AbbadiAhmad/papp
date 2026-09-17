@@ -57,7 +57,7 @@ The one design question this module had to answer explicitly (root chat: "is Mar
 - `frontend/pages/BlockEditor.tsx` — per-block-type admin form fields.
 - `frontend/pages/PagesListPage.tsx` / `PageEditorPage.tsx` / `MenuEditorPage.tsx` — admin screens.
 - `frontend/pages/PublicSitePage.tsx` + `SiteHeader.tsx` / `SiteFooter.tsx` — the visitor-facing `/site` and `/site/:slug` pages, resolving the header/footer menus and site config through the public read endpoints.
-- `frontend/routes.tsx` — `AUTHENTICATED_WEBSITE_ROUTES` (3 admin routes under `/site/admin/*`) and `PUBLIC_WEBSITE_ROUTES` (`/site`, `/site/:slug`).
+- `frontend/routes.tsx` — exports `authenticatedRoutes` (3 admin routes under `/site/admin/*`) and `publicRoutes` (`/site`, `/site/:slug`) — the fixed names every module's routes.tsx exports (root DECISIONS.md D78, `docs/MODULE_SPEC.md` §7.6); `App.tsx` discovers this generically, never by importing `website` by name.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)
 

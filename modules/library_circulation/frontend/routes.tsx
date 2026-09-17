@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
@@ -6,13 +6,14 @@ import { ScanPage } from './pages/ScanPage';
 import { StudentDetailPage } from './pages/StudentDetailPage';
 import { StudentsListPage } from './pages/StudentsListPage';
 
-/** The module's `frontend.entry` target (manifest.json) — same static-route-table pattern as every other module (no dynamic module-federation-style loading exists yet). */
-export interface ModuleRouteEntry {
-  path: string;
-  element: ReactNode;
-}
-
-export const AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES: ModuleRouteEntry[] = [
+/**
+ * The module's `frontend.entry` target (manifest.json). Exports the two
+ * FIXED names (`authenticatedRoutes`/`publicRoutes`) every module's own
+ * routes.tsx exports — this is the contract `apps/web/src/shared/modules/
+ * discovery.ts` glob-imports generically (root DECISIONS.md D78), so
+ * `App.tsx` never imports this file, or names this module, directly.
+ */
+export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/dashboard', element: <DashboardPage /> },
   { path: '/library-circulation/scan', element: <ScanPage /> },
   { path: '/library-circulation/students', element: <StudentsListPage /> },
@@ -22,4 +23,4 @@ export const AUTHENTICATED_LIBRARY_CIRCULATION_ROUTES: ModuleRouteEntry[] = [
 ];
 
 /** No public routes — every screen in this module needs an authenticated, permission-gated staff session. */
-export const PUBLIC_LIBRARY_CIRCULATION_ROUTES: ModuleRouteEntry[] = [];
+export const publicRoutes: ModuleRouteEntry[] = [];

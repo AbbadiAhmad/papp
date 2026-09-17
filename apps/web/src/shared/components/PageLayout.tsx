@@ -23,23 +23,20 @@ import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
-import PaidIcon from '@mui/icons-material/Paid';
-import PollIcon from '@mui/icons-material/Poll';
-import PublicIcon from '@mui/icons-material/Public';
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
-import WidgetsIcon from '@mui/icons-material/Widgets';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
+import { buildModuleMenuEntries } from '../modules/buildModuleMenuEntries';
+import { resolveMenuIcon } from '../modules/menuIcons';
+import { useModuleFrontendManifests } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
 
@@ -52,7 +49,13 @@ interface MenuItemDef {
   permissionCode: string | null;
 }
 
-const MENU_ITEMS: MenuItemDef[] = [
+/**
+ * The platform's OWN menu entries — this stays hardcoded, deliberately:
+ * these are core pages (Users, Roles, Audit, ...), not a module's, so there
+ * is nothing to "decouple" here (root DECISIONS.md D78 is about MODULE
+ * entries, added generically below via `buildModuleMenuEntries`).
+ */
+const CORE_MENU_ITEMS: MenuItemDef[] = [
   { id: 'dashboard', labelKey: 'core.menu.dashboard', icon: <DashboardIcon />, route: '/', permissionCode: null },
   { id: 'users', labelKey: 'core.menu.users', icon: <GroupIcon />, route: '/users', permissionCode: 'users.view' },
   { id: 'roles', labelKey: 'core.menu.roles', icon: <AssignmentIndIcon />, route: '/roles', permissionCode: 'roles.view' },
@@ -62,96 +65,33 @@ const MENU_ITEMS: MenuItemDef[] = [
   { id: 'notifications', labelKey: 'core.menu.notifications', icon: <NotificationsIcon />, route: '/notifications', permissionCode: null },
   { id: 'settings', labelKey: 'core.menu.settings', icon: <SettingsIcon />, route: '/settings', permissionCode: 'users.settings.view' },
   { id: 'modules', labelKey: 'core.menu.modules', icon: <ExtensionIcon />, route: '/modules', permissionCode: 'modules.view' },
-  // Phase 8 — library_catalog module. This sidebar list is a static array,
-  // not yet driven from the `module_menu_entries` table ModuleRegistryService
-  // populates at install time (no such generic-menu-rendering mechanism was
-  // built in Phase 5/6 — flagged in this Developer agent's report as a real
-  // gap: today, EVERY installed module needs this same manual addition here).
-  {
-    id: 'library_catalog',
-    labelKey: 'library_catalog.menu.books',
-    icon: <MenuBookIcon />,
-    route: '/library/books',
-    permissionCode: 'library_catalog.books.view',
-  },
-  // library_circulation + library_finance module (D44) — same documented gap as library_catalog above.
-  {
-    id: 'library_circulation.dashboard',
-    labelKey: 'library_circulation.menu.dashboard',
-    icon: <DashboardIcon />,
-    route: '/library-circulation/dashboard',
-    permissionCode: 'library_circulation.dashboard.view',
-  },
-  {
-    id: 'library_circulation.scan',
-    labelKey: 'library_circulation.menu.scan',
-    icon: <QrCodeScannerIcon />,
-    route: '/library-circulation/scan',
-    permissionCode: 'library_circulation.borrow',
-  },
-  {
-    id: 'library_circulation.students',
-    labelKey: 'library_circulation.menu.students',
-    icon: <GroupIcon />,
-    route: '/library-circulation/students',
-    permissionCode: 'library_circulation.students.view',
-  },
-  {
-    id: 'library_circulation.fines',
-    labelKey: 'library_circulation.menu.fines',
-    icon: <PaidIcon />,
-    route: '/library-circulation/fines',
-    permissionCode: 'library_circulation.fines.view',
-  },
-  {
-    id: 'library_circulation.finance',
-    labelKey: 'library_circulation.menu.finance',
-    icon: <PaidIcon />,
-    route: '/library-circulation/finance',
-    permissionCode: 'library_circulation.finance.view',
-  },
-  // Survey module — same documented gap as library_catalog above.
-  {
-    id: 'survey',
-    labelKey: 'survey.menu.root',
-    icon: <PollIcon />,
-    route: '/survey/surveys',
-    permissionCode: 'survey.surveys.view',
-  },
-  // Template module (docs/MODULE_SPEC.md §10) — the canonical scaffold, kept
-  // installed as a genuinely working example. Same documented gap as above.
-  {
-    id: 'template',
-    labelKey: 'template.menu.root',
-    icon: <WidgetsIcon />,
-    route: '/template/items',
-    permissionCode: 'template.items.view',
-  },
-  // Website module — same documented gap as above; the manifest's own menu
-  // entries nest `pages`/`menus` under a `website.root` parent, flattened
-  // here like every other module's nested menu already is.
-  {
-    id: 'website.pages',
-    labelKey: 'website.menu.pages',
-    icon: <PublicIcon />,
-    route: '/site/admin/pages',
-    permissionCode: 'website.pages.view',
-  },
-  {
-    id: 'website.menus',
-    labelKey: 'website.menu.menus',
-    icon: <PublicIcon />,
-    route: '/site/admin/menus',
-    permissionCode: 'website.menus.view',
-  },
 ];
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
+  const moduleManifests = useModuleFrontendManifests();
+
+  // Root DECISIONS.md D78: every installed module's own menu entries,
+  // flattened generically from its manifest — App.tsx/PageLayout.tsx never
+  // import or name a module directly. See buildModuleMenuEntries.ts's own
+  // docblock for the exact flattening rule.
+  const items = useMemo<MenuItemDef[]>(() => {
+    const moduleEntries = buildModuleMenuEntries(moduleManifests ?? []).map(
+      (entry): MenuItemDef => ({
+        id: entry.id,
+        labelKey: entry.labelKey,
+        icon: resolveMenuIcon(entry.iconName),
+        route: entry.route,
+        permissionCode: entry.requiredPermission,
+      }),
+    );
+    return [...CORE_MENU_ITEMS, ...moduleEntries];
+  }, [moduleManifests]);
+
   return (
     <List>
-      {MENU_ITEMS.map((item) => (
+      {items.map((item) => (
         <NavListItem key={item.id} item={item} active={location.pathname === item.route} onNavigate={onNavigate} t={t} />
       ))}
     </List>

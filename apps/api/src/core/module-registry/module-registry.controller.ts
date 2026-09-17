@@ -2,12 +2,13 @@ import { Body, Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/comm
 import type { Request, Response } from 'express';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { InstallModuleDto } from './dto/install-module.dto';
 import { UninstallModuleDto } from './dto/uninstall-module.dto';
-import { PublicModuleEntry } from './module-registry.presenter';
+import { FrontendModuleManifest, PublicModuleEntry } from './module-registry.presenter';
 import { ModuleRegistryService } from './module-registry.service';
 
 const fetchModuleStateByBodyKey = (prisma: PrismaService, req: Request) =>
@@ -35,6 +36,23 @@ export class ModuleRegistryController {
   @RequirePermission('modules.view')
   async list(): Promise<PublicModuleEntry[]> {
     return this.moduleRegistry.list();
+  }
+
+  /**
+   * `@Public()`, no `@RequirePermission` — same category as `GET /i18n/:lang`
+   * (i18n.controller.ts's own docblock): a structural read with no
+   * per-caller side effect and nothing sensitive in the payload (route
+   * patterns/menu labels, not manifest internals — see
+   * `FrontendModuleManifest`'s own docblock), needed by the anonymous route
+   * tree itself before any session exists. This is the ONE thing that lets
+   * `apps/web/src/App.tsx`/`PageLayout.tsx` mount a module's routes/menu
+   * without importing that module by name (root DECISIONS.md D78) — every
+   * caller, logged in or not, hits this same endpoint.
+   */
+  @Get('frontend-manifest')
+  @Public()
+  async frontendManifest(): Promise<FrontendModuleManifest[]> {
+    return this.moduleRegistry.listFrontendManifests();
   }
 
   @Post('install')

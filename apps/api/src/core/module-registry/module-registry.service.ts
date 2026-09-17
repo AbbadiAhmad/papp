@@ -17,7 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DEFAULT_LANGUAGE, I18nService } from '../i18n/i18n.service';
 import { PLATFORM_VERSION } from '../../platform-version';
 import { MigrationRunnerService } from './migration-runner.service';
-import { PublicModuleEntry, toPublicModuleEntry } from './module-registry.presenter';
+import { FrontendModuleManifest, PublicModuleEntry, toFrontendModuleManifest, toPublicModuleEntry } from './module-registry.presenter';
 import { resolveModulesDir } from './modules-dir';
 
 /** Registry statuses that mean "an install is already live or in flight". */
@@ -101,6 +101,22 @@ export class ModuleRegistryService {
   async list(): Promise<PublicModuleEntry[]> {
     const rows = await this.prisma.moduleRegistryEntry.findMany({ orderBy: { key: 'asc' } });
     return rows.map(toPublicModuleEntry);
+  }
+
+  /**
+   * The generic frontend-shell feed (root DECISIONS.md D78): every currently
+   * INSTALLED module's routes/menu, and nothing else — this is what lets
+   * `apps/web/src/App.tsx`/`PageLayout.tsx` mount a module's routes and
+   * sidebar entries without importing that module by name. `core` is
+   * excluded — its own routes/menu are the platform's, not a module's, and
+   * stay hardcoded in the shell same as always.
+   */
+  async listFrontendManifests(): Promise<FrontendModuleManifest[]> {
+    const rows = await this.prisma.moduleRegistryEntry.findMany({
+      where: { status: 'installed', key: { not: 'core' } },
+      orderBy: { key: 'asc' },
+    });
+    return rows.map(toFrontendModuleManifest).filter((m): m is FrontendModuleManifest => m !== null);
   }
 
   async install(key: string, installedBy?: string): Promise<PublicModuleEntry> {

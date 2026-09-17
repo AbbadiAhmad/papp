@@ -18,7 +18,23 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    // `paths: {}` deliberately CANCELS the `@papp/shared-types` -> TS-source
+    // mapping inherited from tsconfig.base.json (`extends` replaces `paths`
+    // wholesale, it doesn't merge) — same fix, same reason, as
+    // apps/api/tsconfig.json's own `paths: {}` (read that file's docblock
+    // for the full story). Resolving the alias to `packages/shared-types/
+    // src/*.ts` pulls a file outside this `composite: true` project's own
+    // `include` list into the program, which `tsc -b` rejects (TS6307:
+    // "File is not listed within the file list of project") the moment a
+    // second file (module-manifest.ts) is reached transitively. This
+    // project must resolve `@papp/shared-types` the normal way instead:
+    // real node_modules package resolution against the npm workspace
+    // symlink, reading its BUILT `dist/index.d.ts` (per its package.json
+    // `types` field) — which also matches what Vite's own bundler resolves
+    // at dev/build time, so TS and the real runtime never disagree.
+    "paths": {}
   },
   "include": [
     "src",
