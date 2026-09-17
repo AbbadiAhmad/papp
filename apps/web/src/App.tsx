@@ -42,6 +42,10 @@ import { AUTHENTICATED_SURVEY_ROUTES, PUBLIC_SURVEY_ROUTES } from '../../../modu
 // Template module (docs/MODULE_SPEC.md §10) — the canonical scaffold, wired
 // in exactly like every other module so it's a genuinely working example.
 import { AUTHENTICATED_TEMPLATE_ROUTES, PUBLIC_TEMPLATE_ROUTES } from '../../../modules/template/frontend/routes';
+// Website module — public site builder. Same static-route-table pattern as
+// library_catalog above; PUBLIC_WEBSITE_ROUTES carries the visitor-facing
+// `/site` + `/site/:slug` pages, reachable with no login at all.
+import { AUTHENTICATED_WEBSITE_ROUTES, PUBLIC_WEBSITE_ROUTES } from '../../../modules/website/frontend/routes';
 
 function FullScreenLoader() {
   return (
@@ -108,6 +112,9 @@ function AppRoutes() {
         {PUBLIC_TEMPLATE_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
+        {PUBLIC_WEBSITE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -124,6 +131,9 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_TEMPLATE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_WEBSITE_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
@@ -177,6 +187,13 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         {PUBLIC_TEMPLATE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {/* Website module — same authenticated-then-public pairing as survey above. */}
+        {AUTHENTICATED_WEBSITE_ROUTES.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
+        {PUBLIC_WEBSITE_ROUTES.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />

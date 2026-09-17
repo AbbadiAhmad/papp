@@ -1,0 +1,133 @@
+{
+  "key": "website",
+  "name": "Website",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0 <1.0.0",
+  "dependsOn": [],
+  "description": "A simple block-based public website builder — pages plus header/footer menus. Much simpler than Odoo's website module by design: a fixed set of safe content blocks, no raw-HTML/WYSIWYG editor. A text block's Markdown is rendered client-side via react-markdown with raw HTML disabled, never dangerouslySetInnerHTML.",
+
+  "migrations": {
+    "dir": "migrations"
+  },
+
+  "locales": {
+    "supported": ["ar", "en"],
+    "dir": "locales"
+  },
+
+  "permissions": [
+    { "code": "website.pages.view", "category": "website", "descriptionKey": "website.perm.pages.view" },
+    { "code": "website.pages.create", "category": "website", "descriptionKey": "website.perm.pages.create" },
+    { "code": "website.pages.update", "category": "website", "descriptionKey": "website.perm.pages.update" },
+    { "code": "website.pages.delete", "category": "website", "descriptionKey": "website.perm.pages.delete" },
+    { "code": "website.pages.publish", "category": "website", "descriptionKey": "website.perm.pages.publish" },
+    { "code": "website.menus.view", "category": "website", "descriptionKey": "website.perm.menus.view" },
+    { "code": "website.menus.update", "category": "website", "descriptionKey": "website.perm.menus.update" },
+    { "code": "website.settings.update", "category": "website", "descriptionKey": "website.perm.settings.update" }
+  ],
+
+  "defaultRolePermissions": {
+    "admin": [
+      "website.pages.view",
+      "website.pages.create",
+      "website.pages.update",
+      "website.pages.delete",
+      "website.pages.publish",
+      "website.menus.view",
+      "website.menus.update",
+      "website.settings.update"
+    ],
+    "library_assistant": [],
+    "finance": [],
+    "reader": []
+  },
+
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+
+  "settings": [
+    {
+      "key": "website.site_config",
+      "type": "json",
+      "default": { "siteTitle": "papp", "logoUrl": null },
+      "labelKey": "website.settings.site_config_label",
+      "requiredPermission": "website.settings.update"
+    }
+  ],
+
+  "menu": [
+    {
+      "id": "website.root",
+      "labelKey": "website.menu.root",
+      "icon": "Public",
+      "parentId": null,
+      "order": 30,
+      "route": "/site/admin/pages",
+      "requiredPermission": "website.pages.view"
+    },
+    {
+      "id": "website.pages",
+      "labelKey": "website.menu.pages",
+      "parentId": "website.root",
+      "order": 1,
+      "route": "/site/admin/pages",
+      "requiredPermission": "website.pages.view"
+    },
+    {
+      "id": "website.menus",
+      "labelKey": "website.menu.menus",
+      "parentId": "website.root",
+      "order": 2,
+      "route": "/site/admin/menus",
+      "requiredPermission": "website.menus.view"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "/site/admin/pages",
+      "access": "authenticated",
+      "requiredPermission": "website.pages.view",
+      "component": "frontend/pages/PagesListPage.tsx"
+    },
+    {
+      "pattern": "/site/admin/pages/:pageId",
+      "access": "authenticated",
+      "requiredPermission": "website.pages.view",
+      "component": "frontend/pages/PageEditorPage.tsx"
+    },
+    {
+      "pattern": "/site/admin/menus",
+      "access": "authenticated",
+      "requiredPermission": "website.menus.view",
+      "component": "frontend/pages/MenuEditorPage.tsx"
+    },
+    {
+      "pattern": "/site/:slug",
+      "access": "public",
+      "component": "frontend/pages/PublicSitePage.tsx"
+    },
+    {
+      "pattern": "/site",
+      "access": "public",
+      "component": "frontend/pages/PublicSitePage.tsx"
+    }
+  ],
+
+  "frontend": {
+    "basePath": "/site",
+    "entry": "frontend/routes.tsx",
+    "landingPage": "/site/admin/pages"
+  },
+
+  "backend": {
+    "entry": "backend/website.module.js",
+    "apiPrefix": "/api/website"
+  },
+
+  "lifecycle": {
+    "onInstall": null,
+    "onUpgrade": null,
+    "onUninstall": null
+  }
+}

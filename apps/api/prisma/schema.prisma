@@ -721,6 +721,50 @@ model LibraryReceipt {
   @@map("library_receipts")
 }
 
+// --- website module ---------------------------------------------------------
+// See modules/website/migrations/001_create_website_tables.sql for the raw
+// DDL these mirror. No raw-HTML block type exists on purpose — see the
+// module's own DOCUMENTATION.md for the rendering-safety design.
+
+model WebsitePage {
+  id         String   @id @default(uuid()) @db.Uuid
+  slug       String   @unique
+  title      String
+  status     String   @default("draft")
+  isHomepage Boolean  @default(false) @map("is_homepage")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  blocks WebsiteBlock[]
+
+  @@map("website_pages")
+}
+
+model WebsiteBlock {
+  id         String @id @default(uuid()) @db.Uuid
+  pageId     String @map("page_id") @db.Uuid
+  orderIndex Int    @map("order_index")
+  type       String
+  config     Json   @default("{}")
+
+  page WebsitePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, orderIndex])
+  @@map("website_blocks")
+}
+
+model WebsiteMenuItem {
+  id         String  @id @default(uuid()) @db.Uuid
+  location   String
+  label      String
+  urlOrSlug  String  @map("url_or_slug")
+  orderIndex Int     @map("order_index")
+  parentId   String? @map("parent_id") @db.Uuid
+
+  @@index([location, orderIndex])
+  @@map("website_menu_items")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

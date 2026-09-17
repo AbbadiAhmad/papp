@@ -27,6 +27,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import PaidIcon from '@mui/icons-material/Paid';
 import PollIcon from '@mui/icons-material/Poll';
+import PublicIcon from '@mui/icons-material/Public';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
@@ -125,6 +126,23 @@ const MENU_ITEMS: MenuItemDef[] = [
     icon: <WidgetsIcon />,
     route: '/template/items',
     permissionCode: 'template.items.view',
+  },
+  // Website module — same documented gap as above; the manifest's own menu
+  // entries nest `pages`/`menus` under a `website.root` parent, flattened
+  // here like every other module's nested menu already is.
+  {
+    id: 'website.pages',
+    labelKey: 'website.menu.pages',
+    icon: <PublicIcon />,
+    route: '/site/admin/pages',
+    permissionCode: 'website.pages.view',
+  },
+  {
+    id: 'website.menus',
+    labelKey: 'website.menu.menus',
+    icon: <PublicIcon />,
+    route: '/site/admin/menus',
+    permissionCode: 'website.menus.view',
   },
 ];
 
