@@ -7,8 +7,9 @@ Modular back-office platform: complete user/role/permission management + audit l
 ## Read these before touching anything in this repo
 
 - `docs/ARCHITECTURE.md` — system architecture (C4-style), security/session design, RBAC, audit logging, i18n/RTL.
-- `docs/DECISIONS.md` — every architectural decision and assumption, with status. **Append new entries here for any new architectural choice; never silently edit an old one.**
-- `docs/MODULE_SPEC.md` — the module manifest spec (Odoo/Gibbon-style), install/upgrade/uninstall flow.
+- `docs/DECISIONS.md` — every architectural decision, with status. **Append new entries here for any new architectural choice; never silently edit an old one.**
+- `docs/ASSUMPTIONS.md` — standing assumptions not yet explicitly confirmed by you; check before assuming something here is actually settled.
+- `docs/MODULE_SPEC.md` — the module manifest spec (Odoo/Gibbon-style), install/upgrade/uninstall flow. §9 also covers each module's own `DOCUMENTATION.md`/`DECISIONS.md`.
 - `docs/FEATURE_TEMPLATE.md` — worked example of how a feature page/endpoint/manifest entry/tests must be built.
 - `docs/TESTING_STRATEGY.md` — test tooling and the required permission-matrix/audit/i18n test patterns.
 - `docs/CHECKLIST.md` — open items awaiting the user's decision; check before assuming something is settled.
@@ -32,5 +33,5 @@ Core (always installed, never uninstallable): Auth, Sessions, Users (incl. Setti
 ## Working with the user
 
 - Do not silently make architectural decisions where a real alternative exists — use `AskUserQuestion` or otherwise surface the options, the way `docs/DECISIONS.md` records past ones.
-- Flag assumptions explicitly (see the Assumptions table in `DECISIONS.md`) rather than guessing quietly.
+- Flag assumptions explicitly (see `docs/ASSUMPTIONS.md`) rather than guessing quietly.
 - When a new feature request reveals a gap or needed change in the skill/template/docs, propose the specific edit and get confirmation before it becomes standing guidance for future work.

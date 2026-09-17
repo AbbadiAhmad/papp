@@ -1,0 +1,16 @@
+# Assumptions Log (papp)
+
+The single place every standing assumption lives — split out of `docs/DECISIONS.md` (which was starting to mix a growing, mostly-settled decision log with the much shorter list of things nobody has actually confirmed yet) and out of `docs/CHECKLIST.md` (which was restating the same two items in prose). One assumption, one place, one line to check.
+
+**Scope**: platform-wide assumptions only. A module's own local assumptions (something specific to `survey`/`library_catalog`/etc., never generalized to the rest of the platform) belong in that module's own `modules/<key>/DECISIONS.md` instead (`docs/MODULE_SPEC.md` §9.2) — that file already supports an `ASSUMED` status row for exactly this, scoped and numbered independently (`<KEY>-Dn`), so a module doesn't need a second file just for one or two assumptions.
+
+An assumption here is something the agent picked a sensible default for because it wasn't explicitly specified — not something you decided. If one below is wrong, say so; each is cheap to override and none block anything already built. Once you confirm or change one, move its row into `docs/DECISIONS.md` as a real `Dnn` entry (status `DECIDED`) and delete it from here — this file is only ever things still open, never a historical record of resolved ones (that's what `DECISIONS.md` is for).
+
+| # | Assumption | Why |
+|---|---|---|
+| A3 | "Location" for session tracking = IP-based geolocation (city/country via IP lookup), not GPS/browser geolocation. | This is a web back-office app; browser geolocation would require explicit user permission prompts and isn't standard for this use case. |
+| A10 | Backend also exposes OpenAPI/Swagger docs (auto-generated from NestJS decorators) since the API must support a future mobile client. | Reasonable default for an API meant to be consumed by another client later; costs little either way. |
+| A11 | Password hashing algorithm is Argon2id (already implemented and used throughout — `apps/api/src/core/**` and every module's own user-facing password/token hash, all call `argon2.hash(..., { type: argon2.argon2id })`), not bcrypt. | Argon2id is the current best-practice default for new systems; bcrypt was the only named alternative raised and never actually preferred over it. Flagging because the choice was never explicitly confirmed, even though the code already fully commits to it — switching now would mean re-hashing every stored password. |
+| A12 | The Library module requirements' "RLS" security item (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §36) is read as a general call for strict role-based access control — already provided by `PermissionGuard` + the per-module permission system (`ARCHITECTURE.md` §7) — not a literal requirement for Postgres Row-Level-Security policies (none exist anywhere in the schema). | The platform is single-tenant (D29), with no per-row multi-tenant isolation need for literal DB-level RLS to solve; every phase since has been built on the RBAC reading with no objection. |
+
+(A1, A2, A4–A9 from the original working list are superseded by real `Dnn` decisions in `docs/DECISIONS.md` and were already dropped from this table before this file existed — see that file's own "Confirmed by you" table for where each landed.)

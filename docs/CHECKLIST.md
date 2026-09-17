@@ -20,9 +20,7 @@ All items from the original checklist are resolved — see `docs/DECISIONS.md` (
 
 ## Still open (low-stakes defaults, not blocking)
 
-- **A3** — session "location" = IP-based geolocation only (no GPS/browser geolocation). Flag if you'd rather it be something else.
-- **A10** — backend exposes OpenAPI/Swagger docs automatically. Flag if you don't want that surface exposed.
-- Password hashing algorithm: Argon2id vs bcrypt (`ARCHITECTURE.md` §6.2) — either is fine; I'll default to Argon2id unless you object.
+See `docs/ASSUMPTIONS.md` for the full, current list (A3/A10/A11 as of this writing) — kept in one place rather than duplicated here so it can't drift out of sync with itself.
 
 ## Next step
 

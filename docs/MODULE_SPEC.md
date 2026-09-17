@@ -275,7 +275,7 @@ A technical reference for whoever (human or agent) next touches this module, wri
 
 - **Never restate a platform-wide decision already in the root `docs/DECISIONS.md`** — cross-reference it by ID instead (`"per D57"`, `"see root D64"`). This file is for calls, gotchas, and bugs-found-and-fixed that only make sense in this module's own context.
 - A genuine bug found and fixed while building or maintaining the module (the kind root `docs/DECISIONS.md` D61-D63/D67 record) belongs here too, in the same "what broke, why, how it was found, how it was fixed, how it was verified" level of detail — this is exactly the log that prevents the same class of bug recurring the next time someone extends this module.
-- Status column uses the same values as the root file: `DECIDED` / `PROPOSED` / `ASSUMED`.
+- Status column uses the same values as the root file: `DECIDED` / `PROPOSED` / `ASSUMED`. An `ASSUMED` row stays in this module's own file, scoped and numbered the same as everything else here — a module-local assumption doesn't get promoted to `docs/ASSUMPTIONS.md` (that file is platform-wide standing assumptions only, split out of `docs/DECISIONS.md` for the same reason this section exists: not mixing whole-platform concerns with one module's own).
 
 ### 9.3 When to read / write these
 

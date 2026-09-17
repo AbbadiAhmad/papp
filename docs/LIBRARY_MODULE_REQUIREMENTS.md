@@ -155,7 +155,7 @@ Wants a comprehensive backup/export mechanism (students, books, borrowings, retu
 
 Authentication, authorization, "RLS," route protection, input validation, no sensitive data exposed to the frontend, separate permissions for admin/librarian/finance.
 
-**Terminology note, not a new requirement** — see `DECISIONS.md`: "RLS" here is read as a general call for strict role-based access control (which the base platform already provides via `PermissionGuard` + the per-module permission system, `ARCHITECTURE.md` §7) rather than literally requiring Postgres Row-Level-Security policies, since the platform is single-tenant (D29) with no per-row multi-tenant isolation need. Flagged as an assumption to override if literal DB-level RLS was actually intended.
+**Terminology note, not a new requirement** — tracked as `docs/ASSUMPTIONS.md` A12: "RLS" here is read as a general call for strict role-based access control (which the base platform already provides via `PermissionGuard` + the per-module permission system, `ARCHITECTURE.md` §7) rather than literally requiring Postgres Row-Level-Security policies, since the platform is single-tenant (D29) with no per-row multi-tenant isolation need. Flagged as an assumption to override if literal DB-level RLS was actually intended.
 
 ## 37. Non-negotiable engineering quality bar
 

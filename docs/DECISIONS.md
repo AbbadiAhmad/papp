@@ -182,15 +182,10 @@ Checking Phase 7's actual CI runs (now that real CI exists) showed every run sin
 | D71 | **`docs/MODULE_SPEC.md` §8.3's "the core Settings screen grows one additional section per installed module that declares any `settings` entries, rendered generically" does not exist** — confirmed: `SettingsController` (`apps/api/src/core/settings/settings.controller.ts`) only has bespoke endpoints for core's own four known settings (password policy, session timing, notification templates, self-registration), no generic `GET/PUT /settings/:key`-shaped endpoint, and `apps/web`'s Settings screen has no generic per-module section renderer. What DOES work, confirmed end-to-end: a module's `settings` array entries ARE really seeded into `system_settings` at install time (`ModuleRegistryService.seedSettings`) — reading/writing them afterward is just entirely up to the module itself. `modules/template/backend/settings.service.ts`/`settings.controller.ts` demonstrate the working stand-in every module needing an editable setting should use until the generic surface is built: read/write `system_settings` directly via the module's own Prisma client (never a separate settings store, §8.2), gated by the module's own declared permission. Flagged, not fixed, for the same reason as D70 — building the real generic UI is a platform decision, not something `modules/template` should improvise on its own. | DECIDED (flagged) |
 
 
-## Assumptions still standing (flag any that are wrong)
+## Assumptions still standing
 
-| # | Assumption | Why |
-|---|---|---|
-| A3 | "Location" for session tracking = IP-based geolocation (city/country via IP lookup), not GPS/browser geolocation | This is a web back-office app; browser geolocation would require explicit user permission prompts and isn't standard for this use case. Not yet explicitly confirmed by you. |
-| A10 | Backend also exposes OpenAPI/Swagger docs (auto-generated from NestJS decorators) since the API must support a future mobile client | Reasonable default for an API meant to be consumed by another client later; costs little. Not yet explicitly confirmed by you. |
-
-(A1, A2, A4–A9 from the original list are now superseded by D20–D33 above and removed from this table to avoid duplication.)
+Moved to their own file: `docs/ASSUMPTIONS.md` — every standing platform-wide assumption (not yet explicitly confirmed by you, but not blocking anything either) now lives there instead of mixed into this decision log. Once you confirm or change one, it graduates into a real numbered entry here and is deleted from that file.
 
 ## Open items still needing your decision
 
-None blocking implementation start. A3 and A10 above are low-stakes defaults you can override any time without rework.
+None blocking implementation start. See `docs/ASSUMPTIONS.md` for the low-stakes defaults you can override any time without rework.
