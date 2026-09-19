@@ -18,6 +18,11 @@ RUN npm install --workspaces --include-workspace-root
 FROM deps AS build
 COPY packages/shared-types packages/shared-types
 COPY apps/api apps/api
+# Modules ship their compiled backend/**/*.js checked into git (no build step
+# needed here) — copied into this stage only so the runtime stage below can
+# copy it onward via --from=build, matching how prisma/node_modules/.prisma
+# already flow through this same stage.
+COPY modules modules
 RUN npm run build --workspace=@papp/shared-types
 RUN npm run --workspace=@papp/api prisma:generate
 RUN npm run build --workspace=@papp/api
@@ -39,6 +44,15 @@ COPY --from=build /repo/apps/api/prisma apps/api/prisma
 # `prisma generate`'s output is hoisted to the workspace root by npm, not
 # apps/api/node_modules — copy it from where it actually landed.
 COPY --from=build /repo/node_modules/.prisma node_modules/.prisma
+# Root DECISIONS.md A23: installable modules (manifest.json, migrations,
+# locales, and each module's ALREADY-COMPILED backend/**/*.js — modules ship
+# their compiled JS checked into git alongside the .ts source, no separate
+# build step needed here) were never copied into the runtime image at all,
+# so `resolveModulesDir()`'s default `<repo root>/modules` (modules-dir.ts)
+# resolved to a directory that didn't exist in the container — every module
+# install failed with "No manifest.json found" in any real docker-compose
+# deployment, even though it worked in this sandbox's non-Docker dev setup.
+COPY --from=build /repo/modules modules
 
 WORKDIR /repo/apps/api
 EXPOSE 3000

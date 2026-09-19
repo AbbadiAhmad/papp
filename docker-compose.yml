@@ -1,3 +1,4 @@
+name: P_app
 services:
   db:
     image: postgres:16-alpine
@@ -37,6 +38,18 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      # Dev convenience: bind-mounts the host's modules/ straight over the
+      # image's own baked-in copy (see apps/api/Dockerfile's `COPY modules
+      # modules`) so an edited manifest.json/backend/**/*.js is visible to
+      # the container immediately, with no `docker compose build`. This does
+      # NOT make a change take effect by itself — main.ts only discovers/
+      # imports modules once at boot (D15), and Node has already loaded
+      # whatever .js it imported — an edited module's code still needs
+      # `docker compose restart api` (see the Modules page's own note for
+      # the full picture, incl. why a FRONTEND module edit needs a real
+      # `docker compose build web` regardless of this mount).
+      - ./modules:/repo/modules
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 5s
