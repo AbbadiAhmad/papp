@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import '../src/app/i18n';
 import i18n from '../src/app/i18n';
-import { PermissionGateProvider } from '../src/shared/permissions';
 import { UsersImportPage } from '../src/core/users/UsersImportPage';
 import { usersApi } from '../src/shared/api/users';
 import type { ImportReport } from '../src/shared/api/types';
@@ -25,9 +24,7 @@ vi.mock('../src/shared/api/users', () => ({
 function renderPage() {
   return render(
     <MemoryRouter>
-      <PermissionGateProvider>
-        <UsersImportPage />
-      </PermissionGateProvider>
+      <UsersImportPage />
     </MemoryRouter>,
   );
 }

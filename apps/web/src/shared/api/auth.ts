@@ -23,3 +23,18 @@ export async function logout(): Promise<void> {
 export async function forcePasswordChange(newPassword: string): Promise<void> {
   await apiClient.post('/auth/force-password-change', { newPassword });
 }
+
+export interface SetupStatus {
+  setupNeeded: boolean;
+}
+
+/** GET /auth/setup-status — @Public(), no auth. Polled before routing to SetupPage vs LoginPage. */
+export async function getSetupStatus(): Promise<SetupStatus> {
+  const response = await apiClient.get<SetupStatus>('/auth/setup-status');
+  return response.data;
+}
+
+/** POST /auth/setup — @Public(), no auth. Creates the first (admin) account; the server rejects this once any user exists. */
+export async function createFirstAdmin(email: string, name: string, password: string): Promise<void> {
+  await apiClient.post('/auth/setup', { email, name, password });
+}

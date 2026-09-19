@@ -16,15 +16,25 @@ interface MockPrisma {
   userRole: {
     upsert: jest.Mock;
     deleteMany: jest.Mock;
+    findMany: jest.Mock;
   };
+  $transaction: jest.Mock;
+  $executeRaw: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
-  return {
+  const prisma: MockPrisma = {
     role: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     user: { findUnique: jest.fn() },
-    userRole: { upsert: jest.fn(), deleteMany: jest.fn() },
+    userRole: { upsert: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+    // Real RolesService code only ever calls tx.$executeRaw (the advisory
+    // lock)/tx.userRole.findMany/tx.userRole.deleteMany inside the
+    // callback — handing back the SAME mock object as `tx` is enough here,
+    // matching the pattern already established in auth.service.spec.ts.
+    $transaction: jest.fn((callback: (tx: unknown) => unknown) => callback(prisma)),
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
   };
+  return prisma;
 }
 
 function roleRow(overrides: Record<string, unknown> = {}) {
@@ -141,11 +151,83 @@ describe('RolesService', () => {
   });
 
   describe('unassignFromUser', () => {
-    it('deletes by the userId+roleId pair and is a no-op when nothing matches', async () => {
+    it('deletes by the userId+roleId pair and is a no-op when nothing matches (non-admin role: no transaction/lock needed)', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow({ code: 'custom_role' }));
       prisma.userRole.deleteMany.mockResolvedValue({ count: 0 });
 
       await expect(service.unassignFromUser('role-1', 'user-1')).resolves.toBeUndefined();
       expect(prisma.userRole.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1', roleId: 'role-1' } });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown role before attempting any delete', async () => {
+      prisma.role.findUnique.mockResolvedValue(null);
+
+      await expect(service.unassignFromUser('missing', 'user-1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.userRole.deleteMany).not.toHaveBeenCalled();
+    });
+
+    describe('when unassigning the admin role — last-active-admin guard', () => {
+      it('rejects with ForbiddenException when the target user is the ONLY active admin, and deletes nothing', async () => {
+        prisma.role.findUnique.mockResolvedValue(roleRow({ id: 'role-admin', code: 'admin' }));
+        prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }]);
+
+        await expect(service.unassignFromUser('role-admin', 'user-1')).rejects.toBeInstanceOf(ForbiddenException);
+        expect(prisma.userRole.deleteMany).not.toHaveBeenCalled();
+        expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+      });
+
+      it('succeeds when at least one OTHER active admin remains', async () => {
+        prisma.role.findUnique.mockResolvedValue(roleRow({ id: 'role-admin', code: 'admin' }));
+        prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+        prisma.userRole.deleteMany.mockResolvedValue({ count: 1 });
+
+        await expect(service.unassignFromUser('role-admin', 'user-1')).resolves.toBeUndefined();
+        expect(prisma.userRole.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1', roleId: 'role-admin' } });
+      });
+
+      it('is a no-op (never throws) when the target user does not even hold admin — nothing to unassign, nothing to orphan', async () => {
+        prisma.role.findUnique.mockResolvedValue(roleRow({ id: 'role-admin', code: 'admin' }));
+        prisma.userRole.findMany.mockResolvedValue([{ userId: 'someone-else' }]);
+        prisma.userRole.deleteMany.mockResolvedValue({ count: 0 });
+
+        await expect(service.unassignFromUser('role-admin', 'user-1')).resolves.toBeUndefined();
+      });
+    });
+  });
+
+  describe('assertNotLastActiveAdmin', () => {
+    it('takes the advisory lock BEFORE counting admins', async () => {
+      const callOrder: string[] = [];
+      prisma.$executeRaw.mockImplementation(() => {
+        callOrder.push('lock');
+        return Promise.resolve(undefined);
+      });
+      prisma.userRole.findMany.mockImplementation(() => {
+        callOrder.push('count');
+        return Promise.resolve([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      });
+
+      await service.assertNotLastActiveAdmin(prisma as never, 'user-1');
+
+      expect(callOrder).toEqual(['lock', 'count']);
+    });
+
+    it('only counts admins where user.isActive is true (queried via the join filter)', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-2' }]);
+
+      await service.assertNotLastActiveAdmin(prisma as never, 'user-1');
+
+      expect(prisma.userRole.findMany).toHaveBeenCalledWith({
+        where: { role: { code: 'admin' }, user: { isActive: true } },
+        select: { userId: true },
+      });
+    });
+
+    it('does not throw for a candidate who never held admin in the first place', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-2' }, { userId: 'user-3' }]);
+
+      await expect(service.assertNotLastActiveAdmin(prisma as never, 'user-1')).resolves.toBeUndefined();
     });
   });
 });

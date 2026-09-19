@@ -70,6 +70,24 @@ export class PermissionsService {
   }
 
   /**
+   * The caller's own effective permissions, as full catalog rows (code +
+   * category + description key) rather than bare codes — backs the
+   * reduced "My Permissions" page (`permissions.view_my`, migration 0010),
+   * a self-scoped read distinct from the full admin matrix (`GET
+   * /permissions`, `permissions.view`): a user sees only what THEY hold,
+   * never every role's grants or another role's editor. Resolved fresh,
+   * same "never cached, a grant change is visible on the very next
+   * request" guarantee as `getEffectivePermissionCodes`.
+   */
+  async getMyPermissionDetails(userId: string): Promise<PublicPermission[]> {
+    const permissions = await this.prisma.permission.findMany({
+      where: { rolePermissions: { some: { role: { userRoles: { some: { userId } } } } } },
+      orderBy: [{ category: 'asc' }, { code: 'asc' }],
+    });
+    return permissions.map(toPublicPermission);
+  }
+
+  /**
    * The role CODES (not permissions) the user currently holds, resolved
    * fresh. Used only by `PermissionsPageGuard` — the single, explicitly
    * sanctioned D12 exception (ARCHITECTURE.md §7.4) — and nowhere else.

@@ -31,11 +31,15 @@ import { useGatedCall } from '../../shared/permissions';
 import type { PublicSession } from '../../shared/api/types';
 
 /**
- * `GET /sessions/me` is self-scoped (no permission required, every role can
- * see its own sessions — sessions.controller.ts). The "look up another
- * user's sessions" form below calls `GET /sessions/user/:userId`, which
- * DOES require `sessions.view` — a real 403 there is handled inline, not
- * pre-hidden.
+ * `GET /sessions/me` is self-scoped but still gated by `sessions.view_my`
+ * (migration 0010, granted to all 4 base roles by default) — root
+ * DECISIONS.md: no authenticated page/action is ever gate-free, only truly
+ * `@Public()` anonymous routes are exempt; an admin can now revoke it from
+ * a custom role, which the old hardcoded "no check" never could. The route
+ * itself is wrapped in `RequirePermissionRoute code="sessions.view_my"`
+ * (App.tsx). The "look up another user's sessions" form below calls `GET
+ * /sessions/user/:userId`, which requires the SEPARATE `sessions.view` code
+ * — a real 403 there is handled inline, not pre-hidden.
  */
 export function SessionsPage() {
   const { t } = useTranslation();
@@ -54,7 +58,7 @@ export function SessionsPage() {
     data: mySessions,
     errorMessage,
     reload,
-  } = useGuardedQuery(null, () => sessionsApi.getMine());
+  } = useGuardedQuery(() => sessionsApi.getMine());
 
   const handleLookup = async () => {
     setLookupError(null);

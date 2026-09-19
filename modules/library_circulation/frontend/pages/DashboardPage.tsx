@@ -7,7 +7,7 @@ import { libraryCirculationApi } from '../api';
 /** §18's dashboard cards — real aggregate counts from GET /dashboard, never mock data. */
 export function DashboardPage() {
   const { t } = useTranslation();
-  const { status, data, errorMessage, reload } = useGuardedQuery('library_circulation.dashboard.view', () =>
+  const { status, data, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.getDashboardStats(),
   );
 

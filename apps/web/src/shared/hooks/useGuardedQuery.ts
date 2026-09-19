@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isForbiddenError, isUnauthorizedError, extractErrorMessage } from '../api/httpClient';
-import { useReportPermissionOutcome } from '../permissions';
 
 export type GuardedQueryStatus = 'loading' | 'ready' | 'forbidden' | 'error';
 
@@ -12,15 +11,19 @@ export interface GuardedQueryResult<T> {
 }
 
 /**
- * The real gate for every "list/view" page (Users, Roles, Permissions
- * catalog, Sessions, Audit, Modules, ...): performs the REAL backend call
- * the page needs anyway, and turns a 403 into a `forbidden` status the page
- * renders as an inline Forbidden notice / redirect — never a pre-computed
- * guess about what the caller can do (see shared/permissions.tsx's
- * docblock for the full reasoning). Also reports the outcome into the
- * permission-gate cache under `permissionCode`, so `usePermission`/`<Can>`
- * elsewhere on the page (e.g. hiding an "Add" button once the list itself
- * is known-forbidden) reflect a REAL, not guessed, outcome.
+ * Performs the REAL backend call a "list/view" page needs anyway, and
+ * turns a 403 into a `forbidden` status the page renders as a redirect via
+ * `QueryStateGate` (see that component). Route-level permission guarding
+ * (`RequirePermissionRoute` in App.tsx, backed by `AuthContext`'s real
+ * `GET /users/me/permissions` fetch) is what actually prevents an
+ * unauthorized page from rendering at all now — this hook's `forbidden`
+ * status is a live-backend-rejection safety net for the rarer case where
+ * client-side permission state is stale (e.g. a grant was revoked
+ * mid-session, before the next full permission refresh), not the primary
+ * gating mechanism the way it used to be. (Superseded: this hook used to
+ * also report every outcome into a client-side "confirmed denied by a real
+ * 403" cache via a `permissionCode` parameter — removed now that real
+ * permission state is known upfront; see `shared/permissions.tsx`.)
  *
  * Deliberately never calls `setState` synchronously from inside the effect
  * that triggers a (re)fetch — only from `reload()` itself (invoked by a
@@ -32,11 +35,10 @@ export interface GuardedQueryResult<T> {
  * during render) so callers can pass a plain inline arrow every render
  * without retriggering the effect — only `reload()` does that.
  */
-export function useGuardedQuery<T>(permissionCode: string | null, fetcher: () => Promise<T>): GuardedQueryResult<T> {
+export function useGuardedQuery<T>(fetcher: () => Promise<T>): GuardedQueryResult<T> {
   const [status, setStatus] = useState<GuardedQueryStatus>('loading');
   const [data, setData] = useState<T | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const reportOutcome = useReportPermissionOutcome();
   const [reloadToken, setReloadToken] = useState(0);
 
   const fetcherRef = useRef(fetcher);
@@ -50,14 +52,12 @@ export function useGuardedQuery<T>(permissionCode: string | null, fetcher: () =>
     fetcherRef.current()
       .then((result) => {
         if (cancelled) return;
-        if (permissionCode) reportOutcome(permissionCode, true);
         setData(result);
         setStatus('ready');
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         if (isForbiddenError(error)) {
-          if (permissionCode) reportOutcome(permissionCode, false);
           setStatus('forbidden');
           return;
         }
@@ -76,7 +76,7 @@ export function useGuardedQuery<T>(permissionCode: string | null, fetcher: () =>
     return () => {
       cancelled = true;
     };
-  }, [permissionCode, reportOutcome, reloadToken]);
+  }, [reloadToken]);
 
   const reload = useCallback(() => {
     // Called from a caller's event handler (a Retry button, a filter-change

@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { assertPasswordMeetsPolicy } from '../auth/password-policy.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { toPublicRole } from '../roles/role.presenter';
+import { RolesService } from '../roles/roles.service';
 import { SettingsService } from '../settings/settings.service';
 import {
   FORCE_PASSWORD_CHANGE_TEMPLATE_KEY,
@@ -38,10 +40,12 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly permissions: PermissionsService,
+    private readonly roles: RolesService,
     // @Optional + appended last: same fixture-friendliness rule as
     // SettingsService's AuditLogWriter — lightweight unit fixtures may
-    // construct UsersService(prisma, settings, permissions) without the
-    // notification pipeline; in the real app UsersModule always provides it.
+    // construct UsersService(prisma, settings, permissions, roles) without
+    // the notification pipeline; in the real app UsersModule always
+    // provides it.
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
@@ -50,8 +54,32 @@ export class UsersService {
   }
 
   async list(): Promise<PublicUser[]> {
-    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
-    return users.map(toPublicUser);
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { userRoles: { include: { role: true } } },
+    });
+    return users.map((user) => toPublicUser(user, user.userRoles.map((ur) => toPublicRole(ur.role))));
+  }
+
+  /**
+   * The caller's own real effective permission codes — the frontend's
+   * `usePermission`/`<Can>`/sidebar-filtering source of truth (replaces the
+   * old "optimistic until a real 403" client cache; see root
+   * `apps/web/src/shared/permissions.tsx`'s pre-fix docblock for why that
+   * fallback existed and what this endpoint closes). Self-scoped, no
+   * `@RequirePermission` — same "logged in is enough" category as `GET
+   * /users/me`/`GET /users/me/landing-page-options`: every role needs to
+   * know its OWN grants to render its OWN UI correctly, regardless of what
+   * else it's authorized to see. Delegates straight to the same
+   * `PermissionsService.getEffectivePermissionCodes` the backend's own
+   * landing-page-options logic already uses — resolved fresh from
+   * `role_permissions` on every call, never cached server-side (same "a
+   * grant change is visible on the very next request" guarantee as
+   * everywhere else this method is used).
+   */
+  async getMyPermissionCodes(userId: string): Promise<string[]> {
+    const codes = await this.permissions.getEffectivePermissionCodes(userId);
+    return [...codes];
   }
 
   async findById(id: string): Promise<PublicUser> {
@@ -85,6 +113,16 @@ export class UsersService {
     }
   }
 
+  /**
+   * `dto.isActive === false` (deactivating the account) is guarded against
+   * deactivating the platform's last active `admin`-role user — a
+   * deactivated admin can no longer log in (`AuthService.login` rejects
+   * `!user.isActive`), so this is functionally the same "zero active admins
+   * left" outcome as deleting them. See
+   * `RolesService.assertNotLastActiveAdmin`'s docblock for why this check
+   * runs inside a transaction with an advisory lock rather than a bare
+   * count-then-write.
+   */
   async update(id: string, dto: UpdateUserDto): Promise<PublicUser> {
     const before = await this.findById(id); // 404s consistently before attempting the write
 
@@ -111,7 +149,14 @@ export class UsersService {
 
     let user;
     try {
-      user = await this.prisma.user.update({ where: { id }, data });
+      if (dto.isActive === false) {
+        user = await this.prisma.$transaction(async (tx) => {
+          await this.roles.assertNotLastActiveAdmin(tx, id);
+          return tx.user.update({ where: { id }, data });
+        });
+      } else {
+        user = await this.prisma.user.update({ where: { id }, data });
+      }
     } catch (error) {
       throw this.translateUniqueConstraintError(error);
     }
@@ -167,9 +212,20 @@ export class UsersService {
     }
   }
 
+  /**
+   * Guarded against deleting the platform's last active `admin`-role user
+   * (see `RolesService.assertNotLastActiveAdmin`'s docblock for the full
+   * reasoning) — a delete cascades to that user's `user_roles` rows
+   * (schema.prisma's `onDelete: Cascade`), so without this check the last
+   * admin could be removed with zero warning, locking every admin-only
+   * screen (including Permissions/Roles themselves) for everyone.
+   */
   async remove(id: string): Promise<void> {
     await this.findById(id);
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await this.roles.assertNotLastActiveAdmin(tx, id);
+      await tx.user.delete({ where: { id } });
+    });
   }
 
   /**

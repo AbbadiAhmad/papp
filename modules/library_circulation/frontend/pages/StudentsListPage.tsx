@@ -43,7 +43,7 @@ import { StudentFormDialog } from './StudentFormDialog';
 export function StudentsListPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: students, errorMessage, reload } = useGuardedQuery('library_circulation.students.view', () =>
+  const { status, data: students, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.listStudents(),
   );
 

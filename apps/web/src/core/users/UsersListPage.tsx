@@ -38,7 +38,7 @@ export function UsersListPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
-  const { status, data: users, errorMessage, reload } = useGuardedQuery('users.view', () => usersApi.list());
+  const { status, data: users, errorMessage, reload } = useGuardedQuery(() => usersApi.list());
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<PublicUser | null>(null);
@@ -117,6 +117,7 @@ export function UsersListPage() {
                 <TableCell>{t('core.auth.name')}</TableCell>
                 <TableCell>{t('core.auth.email')}</TableCell>
                 <TableCell>{t('core.users.department')}</TableCell>
+                <TableCell>{t('core.users.roles')}</TableCell>
                 <TableCell>{t('core.users.status')}</TableCell>
                 <TableCell>{t('core.users.last_login')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
@@ -128,6 +129,13 @@ export function UsersListPage() {
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.department ?? '—'}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                      {(user.roles ?? []).length > 0
+                        ? user.roles?.map((role) => <Chip key={role.id} size="small" label={role.code} />)
+                        : '—'}
+                    </Stack>
+                  </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5}>
                       <Chip
@@ -160,7 +168,13 @@ export function UsersListPage() {
         </TableContainer>
       </QueryStateGate>
 
-      <UserFormDialog open={formOpen} user={editingUser} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
+      <UserFormDialog
+        open={formOpen}
+        user={editingUser}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleSubmit}
+        onRolesChanged={reload}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

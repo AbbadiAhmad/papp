@@ -1,121 +1,124 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import {
-  Can,
-  PermissionGateProvider,
-  useGatedCall,
-  usePermission,
-  useResetPermissionGate,
-} from '../src/shared/permissions';
+import { render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthProvider } from '../src/app/AuthContext';
+import { Can, usePermission, usePermissionsLoaded } from '../src/shared/permissions';
+import { usersApi } from '../src/shared/api/users';
+import * as httpClient from '../src/shared/api/httpClient';
+import type { PublicUser } from '../src/shared/api/types';
 
 /**
- * shared/permissions.tsx's own docblock: permission state is learned ONLY
- * from a real API call's outcome, never precomputed. These tests exercise
- * that contract directly — `usePermission`/`<Can>` render optimistically
- * until `useGatedCall`'s wrapped call reports a real 403, denial then
- * persists per-code until `reset()` (login/logout) clears it, and two codes
- * are tracked independently of each other.
+ * `shared/permissions.tsx`'s own docblock: permission state is now real,
+ * fetched once from `GET /users/me/permissions` via `AuthContext` right
+ * after login — never a client-side guess, never "optimistic until a real
+ * 403" the way this file used to test. These tests exercise that contract
+ * directly against a real `AuthProvider`, with only the underlying API
+ * calls mocked (never the hooks themselves).
  */
 
-function forbiddenError() {
-  // Duck-typed to satisfy `axios.isAxiosError` (checks `isAxiosError === true`
-  // and an object shape), without making a real network call.
-  return { isAxiosError: true, response: { status: 403 } };
-}
+vi.mock('../src/shared/api/users', () => ({
+  usersApi: {
+    getMe: vi.fn(),
+    getMyPermissions: vi.fn(),
+  },
+}));
+
+const USER: PublicUser = {
+  id: 'user-1',
+  email: 'user@example.com',
+  name: 'User',
+  externalId: null,
+  department: null,
+  mustChangePassword: false,
+  isActive: true,
+  lastLoginAt: null,
+  defaultLandingPage: null,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+  createdBy: null,
+};
+
+const mockedGetMe = vi.mocked(usersApi.getMe);
+const mockedGetMyPermissions = vi.mocked(usersApi.getMyPermissions);
 
 function Harness() {
-  const gated = useGatedCall();
-  const reset = useResetPermissionGate();
+  const loaded = usePermissionsLoaded();
   const fooAllowed = usePermission('foo.action');
   const barAllowed = usePermission('bar.action');
 
-  const deny = (code: string) => async () => {
-    try {
-      await gated(code, () => Promise.reject(forbiddenError()));
-    } catch {
-      // The component's own error handling (snackbar, etc.) isn't this
-      // hook's concern — swallow here, same as a real caller would do
-      // after showing its own error UI.
-    }
-  };
-
-  const allow = (code: string) => async () => {
-    await gated(code, () => Promise.resolve('ok'));
-  };
-
   return (
     <div>
+      <div>{loaded ? 'loaded' : 'loading'}</div>
       {fooAllowed ? <button>foo-control</button> : null}
       <Can permission="bar.action">{barAllowed ? <button>bar-control</button> : null}</Can>
-      <button onClick={deny('foo.action')}>deny-foo</button>
-      <button onClick={deny('bar.action')}>deny-bar</button>
-      <button onClick={allow('foo.action')}>allow-foo</button>
-      <button onClick={() => reset()}>reset</button>
     </div>
   );
 }
 
 function renderHarness() {
   return render(
-    <PermissionGateProvider>
+    <AuthProvider>
       <Harness />
-    </PermissionGateProvider>,
+    </AuthProvider>,
   );
 }
 
-describe('usePermission / <Can> / useGatedCall', () => {
-  it('renders a gated control optimistically before any outcome is reported', () => {
+describe('usePermission / <Can> — backed by real GET /users/me/permissions', () => {
+  beforeEach(() => {
+    mockedGetMe.mockReset();
+    mockedGetMyPermissions.mockReset();
+    // AuthProvider's mount effect always tries a silent refresh first — make
+    // it fail fast for every test that doesn't override it, matching "no
+    // valid refresh cookie" (a fresh, un-authenticated test render).
+    vi.spyOn(httpClient, 'refreshAccessToken').mockRejectedValue(new Error('no session'));
+  });
+
+  it('hides every gated control while permissions are still loading (never optimistic)', () => {
+    // refreshAccessToken() never resolves in this test — status stays
+    // 'initializing' briefly, then 'anonymous'; either way, nothing gated
+    // is ever shown before real data says so.
     renderHarness();
+
+    expect(screen.queryByText('foo-control')).not.toBeInTheDocument();
+    expect(screen.queryByText('bar-control')).not.toBeInTheDocument();
+  });
+
+  it('shows only the controls the real permission set actually grants, once loaded', async () => {
+    vi.spyOn(httpClient, 'refreshAccessToken').mockResolvedValue('access-token');
+    mockedGetMe.mockResolvedValue(USER);
+    mockedGetMyPermissions.mockResolvedValue(['foo.action']);
+
+    renderHarness();
+
+    await waitFor(() => expect(screen.getByText('loaded')).toBeInTheDocument());
+    expect(screen.getByText('foo-control')).toBeInTheDocument();
+    expect(screen.queryByText('bar-control')).not.toBeInTheDocument();
+  });
+
+  it('grants both controls when both codes are in the real permission set', async () => {
+    vi.spyOn(httpClient, 'refreshAccessToken').mockResolvedValue('access-token');
+    mockedGetMe.mockResolvedValue(USER);
+    mockedGetMyPermissions.mockResolvedValue(['foo.action', 'bar.action']);
+
+    renderHarness();
+
+    await waitFor(() => expect(screen.getByText('loaded')).toBeInTheDocument());
     expect(screen.getByText('foo-control')).toBeInTheDocument();
     expect(screen.getByText('bar-control')).toBeInTheDocument();
   });
 
-  it('hides the control for a code once runGated reports a real 403 for it', async () => {
-    renderHarness();
-    fireEvent.click(screen.getByText('deny-foo'));
+  it('grants neither when the real permission set is empty (zero-grant account)', async () => {
+    vi.spyOn(httpClient, 'refreshAccessToken').mockResolvedValue('access-token');
+    mockedGetMe.mockResolvedValue(USER);
+    mockedGetMyPermissions.mockResolvedValue([]);
 
-    await waitFor(() => expect(screen.queryByText('foo-control')).not.toBeInTheDocument());
-    // The other code is untouched.
-    expect(screen.getByText('bar-control')).toBeInTheDocument();
+    renderHarness();
+
+    await waitFor(() => expect(screen.getByText('loaded')).toBeInTheDocument());
+    expect(screen.queryByText('foo-control')).not.toBeInTheDocument();
+    expect(screen.queryByText('bar-control')).not.toBeInTheDocument();
   });
 
-  it('tracks two different codes independently', async () => {
-    renderHarness();
-    fireEvent.click(screen.getByText('deny-bar'));
-
-    await waitFor(() => expect(screen.queryByText('bar-control')).not.toBeInTheDocument());
-    // foo.action was never denied — still visible.
-    expect(screen.getByText('foo-control')).toBeInTheDocument();
-  });
-
-  it('reset() clears every denied code (login/logout)', async () => {
-    renderHarness();
-    fireEvent.click(screen.getByText('deny-foo'));
-    fireEvent.click(screen.getByText('deny-bar'));
-
-    await waitFor(() => {
-      expect(screen.queryByText('foo-control')).not.toBeInTheDocument();
-      expect(screen.queryByText('bar-control')).not.toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('reset'));
-
-    await waitFor(() => {
-      expect(screen.getByText('foo-control')).toBeInTheDocument();
-      expect(screen.getByText('bar-control')).toBeInTheDocument();
-    });
-  });
-
-  it('a later successful call for the same code clears an earlier denial', async () => {
-    renderHarness();
-    fireEvent.click(screen.getByText('deny-foo'));
-    await waitFor(() => expect(screen.queryByText('foo-control')).not.toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('allow-foo'));
-    await waitFor(() => expect(screen.getByText('foo-control')).toBeInTheDocument());
-  });
-
-  it('usePermission()/<Can> throw outside a PermissionGateProvider', () => {
+  it('usePermission()/<Can> throw outside an AuthProvider', () => {
     // Guards against accidentally rendering a gated page/control outside the
     // app shell's provider tree; React logs the error to the console — that
     // is expected and not asserted on here.
@@ -124,6 +127,6 @@ describe('usePermission / <Can> / useGatedCall', () => {
       return null;
     }
     const spy = () => render(<Bare />);
-    expect(spy).toThrow(/PermissionGateProvider/);
+    expect(spy).toThrow(/AuthProvider/);
   });
 });

@@ -90,7 +90,7 @@ export function SurveyResponsesPage() {
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
   const gated = useGatedCall();
-  const { status, data: responses, errorMessage, reload } = useGuardedQuery('survey.responses.view', () =>
+  const { status, data: responses, errorMessage, reload } = useGuardedQuery(() =>
     surveyApi.listResponses(surveyId as string),
   );
 

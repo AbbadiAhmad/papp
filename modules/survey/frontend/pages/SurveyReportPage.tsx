@@ -227,7 +227,7 @@ export function SurveyReportPage() {
   const { t } = useTranslation();
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
-  const { status, data: summary, errorMessage, reload } = useGuardedQuery('survey.responses.view', () =>
+  const { status, data: summary, errorMessage, reload } = useGuardedQuery(() =>
     surveyApi.getSummary(surveyId as string),
   );
   const [dataset, setDataset] = useState<SurveyDataset | null>(null);

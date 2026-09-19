@@ -22,6 +22,8 @@ export interface UpdateUserInput {
 
 export const usersApi = {
   getMe: () => apiClient.get<PublicUser>('/users/me').then((r) => r.data),
+  /** The caller's own real effective permission codes — see AuthContext.tsx's docblock for how this replaces the old client-side "optimistic until a real 403" cache. */
+  getMyPermissions: () => apiClient.get<string[]>('/users/me/permissions').then((r) => r.data),
   getMyLandingPageOptions: () => apiClient.get<LandingPageOption[]>('/users/me/landing-page-options').then((r) => r.data),
   setMyLandingPage: (landingPage: string | null) =>
     apiClient.patch<PublicUser>('/users/me/landing-page', { landingPage }).then((r) => r.data),

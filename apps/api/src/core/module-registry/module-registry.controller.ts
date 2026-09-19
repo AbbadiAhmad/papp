@@ -7,7 +7,7 @@ import { MustChangePasswordGuard } from '../../common/guards/must-change-passwor
 import type { PrismaService } from '../../prisma/prisma.service';
 import { InstallModuleDto } from './dto/install-module.dto';
 import { UninstallModuleDto } from './dto/uninstall-module.dto';
-import { FrontendModuleManifest, PublicModuleEntry } from './module-registry.presenter';
+import { AvailableModuleEntry, FrontendModuleManifest, PublicModuleEntry } from './module-registry.presenter';
 import { ModuleRegistryService } from './module-registry.service';
 
 const fetchModuleStateByBodyKey = (prisma: PrismaService, req: Request) =>
@@ -35,6 +35,18 @@ export class ModuleRegistryController {
   @RequirePermission('modules.view')
   async list(): Promise<PublicModuleEntry[]> {
     return this.moduleRegistry.list();
+  }
+
+  /**
+   * Every module package on disk not currently installed/installing/
+   * upgrading — feeds the Modules admin page's install dropdown (replacing
+   * a free-text key field). Same `modules.view` gate as the plain list
+   * above; no `@Audit` (read-only, discloses nothing about another user).
+   */
+  @Get('available')
+  @RequirePermission('modules.view')
+  async available(): Promise<AvailableModuleEntry[]> {
+    return this.moduleRegistry.listAvailableToInstall();
   }
 
   /**

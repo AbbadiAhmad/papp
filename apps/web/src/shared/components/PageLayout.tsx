@@ -2,6 +2,7 @@ import {
   AppBar,
   Avatar,
   Box,
+  Collapse,
   Divider,
   Drawer,
   IconButton,
@@ -17,6 +18,8 @@ import {
 } from '@mui/material';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
@@ -34,38 +37,61 @@ import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
-import { buildModuleMenuEntries } from '../modules/buildModuleMenuEntries';
+import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
 import { resolveMenuIcon } from '../modules/menuIcons';
 import { useModuleFrontendManifests } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
 
-interface MenuItemDef {
-  id: string;
-  labelKey: string;
-  icon: ReactNode;
-  route: string;
-  /** null = always shown (self-scoped page, or the D12 Permissions page). */
-  permissionCode: string | null;
-}
+/** `requiredPermission: '__always__'` means "always shown once authenticated" (self-scoped page, or the D12 Permissions page) — mirrors `ResolvedMenuLeaf`'s shape exactly so both core and module leaves render through the same `NavLeafItem`. */
+const ALWAYS_ALLOWED = '__always__';
 
 /**
  * The platform's OWN menu entries — this stays hardcoded, deliberately:
  * these are core pages (Users, Roles, Audit, ...), not a module's, so there
  * is nothing to "decouple" here (root DECISIONS.md D78 is about MODULE
- * entries, added generically below via `buildModuleMenuEntries`).
+ * entries, added generically below via `buildModuleMenuEntries`). Wrapped
+ * as one foldable "Platform" group (user's explicit request) — same
+ * collapsible treatment as a module's own 2+-child group, for visual
+ * consistency, even though core has no manifest-driven parent/child
+ * structure of its own to derive one from.
  */
-const CORE_MENU_ITEMS: MenuItemDef[] = [
-  { id: 'dashboard', labelKey: 'core.menu.dashboard', icon: <DashboardIcon />, route: '/', permissionCode: null },
-  { id: 'users', labelKey: 'core.menu.users', icon: <GroupIcon />, route: '/users', permissionCode: 'users.view' },
-  { id: 'roles', labelKey: 'core.menu.roles', icon: <AssignmentIndIcon />, route: '/roles', permissionCode: 'roles.view' },
-  { id: 'permissions', labelKey: 'core.menu.permissions', icon: <ShieldIcon />, route: '/permissions', permissionCode: null },
-  { id: 'sessions', labelKey: 'core.menu.sessions', icon: <LockPersonIcon />, route: '/sessions', permissionCode: null },
-  { id: 'audit', labelKey: 'core.menu.audit', icon: <HistoryIcon />, route: '/audit', permissionCode: 'audit.view' },
-  { id: 'notifications', labelKey: 'core.menu.notifications', icon: <NotificationsIcon />, route: '/notifications', permissionCode: null },
-  { id: 'settings', labelKey: 'core.menu.settings', icon: <SettingsIcon />, route: '/settings', permissionCode: 'users.settings.view' },
-  { id: 'modules', labelKey: 'core.menu.modules', icon: <ExtensionIcon />, route: '/modules', permissionCode: 'modules.view' },
+const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
+  { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED },
+  { type: 'leaf', id: 'users', labelKey: 'core.menu.users', iconName: undefined, route: '/users', requiredPermission: 'users.view' },
+  { type: 'leaf', id: 'roles', labelKey: 'core.menu.roles', iconName: undefined, route: '/roles', requiredPermission: 'roles.view' },
+  // requiredPermission stays ALWAYS_ALLOWED deliberately (D12, ARCHITECTURE.md
+  // §7.4): the admin role must reach this page even with every grant
+  // stripped — the PAGE's own real calls (gated `permissions.view`/
+  // `roles.view` with a PermissionsPageGuard admin bypass) are the actual
+  // boundary, never a client-side pre-check. See PermissionsMatrixPage's
+  // own docblock.
+  { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: ALWAYS_ALLOWED },
+  { type: 'leaf', id: 'my-permissions', labelKey: 'core.menu.myPermissions', iconName: undefined, route: '/my-permissions', requiredPermission: 'permissions.view_my' },
+  { type: 'leaf', id: 'sessions', labelKey: 'core.menu.sessions', iconName: undefined, route: '/sessions', requiredPermission: 'sessions.view_my' },
+  { type: 'leaf', id: 'audit', labelKey: 'core.menu.audit', iconName: undefined, route: '/audit', requiredPermission: 'audit.view' },
+  { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: ALWAYS_ALLOWED },
+  { type: 'leaf', id: 'settings', labelKey: 'core.menu.settings', iconName: undefined, route: '/settings', requiredPermission: 'users.settings.view' },
+  { type: 'leaf', id: 'modules', labelKey: 'core.menu.modules', iconName: undefined, route: '/modules', requiredPermission: 'modules.view' },
 ];
+
+/** Fixed icon per core leaf id — kept separate from `CORE_MENU_LEAVES` (a plain, JSX-free data array) so that array can be shared/tested the same way a module's resolved leaves are. */
+const CORE_ICONS: Record<string, ReactNode> = {
+  dashboard: <DashboardIcon />,
+  users: <GroupIcon />,
+  roles: <AssignmentIndIcon />,
+  permissions: <ShieldIcon />,
+  'my-permissions': <ShieldIcon />,
+  sessions: <LockPersonIcon />,
+  audit: <HistoryIcon />,
+  notifications: <NotificationsIcon />,
+  settings: <SettingsIcon />,
+  modules: <ExtensionIcon />,
+};
+
+function iconFor(node: ResolvedMenuLeaf | { id: string; iconName: string | undefined }): ReactNode {
+  return CORE_ICONS[node.id] ?? resolveMenuIcon(node.iconName);
+}
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
@@ -76,52 +102,127 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const moduleManifests = useModuleFrontendManifests(true);
 
   // Root DECISIONS.md D78: every installed module's own menu entries,
-  // flattened generically from its manifest — App.tsx/PageLayout.tsx never
-  // import or name a module directly. See buildModuleMenuEntries.ts's own
-  // docblock for the exact flattening rule.
-  const items = useMemo<MenuItemDef[]>(() => {
-    const moduleEntries = buildModuleMenuEntries(moduleManifests ?? []).map(
-      (entry): MenuItemDef => ({
-        id: entry.id,
-        labelKey: entry.labelKey,
-        icon: resolveMenuIcon(entry.iconName),
-        route: entry.route,
-        permissionCode: entry.requiredPermission,
-      }),
-    );
-    return [...CORE_MENU_ITEMS, ...moduleEntries];
-  }, [moduleManifests]);
+  // resolved generically from its manifest into group/leaf nodes —
+  // App.tsx/PageLayout.tsx never import or name a module directly. See
+  // buildModuleMenuEntries.ts's own docblock for the exact grouping rule.
+  const moduleNodes = useMemo<ResolvedMenuNode[]>(() => buildModuleMenuEntries(moduleManifests ?? []), [moduleManifests]);
+
+  const platformGroup: ResolvedMenuNode = useMemo(
+    () => ({ type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }),
+    [],
+  );
+
+  const nodes = useMemo<ResolvedMenuNode[]>(() => [platformGroup, ...moduleNodes], [platformGroup, moduleNodes]);
 
   return (
     <List>
-      {items.map((item) => (
-        <NavListItem key={item.id} item={item} active={location.pathname === item.route} onNavigate={onNavigate} t={t} />
-      ))}
+      {nodes.map((node) =>
+        node.type === 'group' ? (
+          <NavGroup key={node.id} group={node} activePath={location.pathname} onNavigate={onNavigate} t={t} />
+        ) : (
+          <NavLeafItem key={node.id} leaf={node} active={location.pathname === node.route} onNavigate={onNavigate} t={t} />
+        ),
+      )}
     </List>
   );
 }
 
-function NavListItem({
-  item,
-  active,
+/**
+ * A foldable group heading (the user's explicit request — previously a
+ * module's 2+-child parent rendered nothing at all, D78; core's own items
+ * were a flat list). `open` follows `containsActiveRoute` (auto-open
+ * whenever one of this group's own pages is the current route — a
+ * bookmark, deep link, or `RequirePermissionRoute` redirect never leaves
+ * its own nav entry hidden behind a closed group) UNTIL the user actually
+ * clicks the heading once, at which point their explicit choice wins from
+ * then on, in either direction, for the rest of the session — no "auto-open
+ * fights the user's manual close" tug-of-war. The heading itself is hidden
+ * entirely when NONE of its children are currently visible (every child's
+ * real permission check denied) — never an empty, clickable-but-pointless
+ * group.
+ */
+function NavGroup({
+  group,
+  activePath,
   onNavigate,
   t,
 }: {
-  item: MenuItemDef;
-  active: boolean;
+  group: Extract<ResolvedMenuNode, { type: 'group' }>;
+  activePath: string;
   onNavigate?: () => void;
   t: (key: string) => string;
 }) {
-  // usePermission is a UX convenience that only reflects a REAL prior 403
-  // (see shared/permissions.tsx) — it never pre-hides from a guessed list,
-  // so every item is visible until the user has actually visited it once
-  // and been denied.
-  const allowed = usePermission(item.permissionCode ?? '__always__');
-  if (item.permissionCode && !allowed) return null;
+  // `hasPermission` (from the single `useAuth()` call here) is a plain
+  // function, not a hook — calling it inside `.some`/`.map` below is safe
+  // and does NOT violate the rules of hooks, unlike calling `usePermission`
+  // itself in a loop would (that hook wraps this same function but is only
+  // meant to be called at a fixed, top-level position per component).
+  const { hasPermission } = useAuth();
+  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
+
+  const containsActiveRoute = group.children.some((child) => child.route === activePath);
+  // `forcedState` is `null` until the user actually clicks the heading —
+  // while null, `open` simply follows `containsActiveRoute` (auto-open
+  // when one of this group's own pages is active, closed otherwise, with
+  // no separate "was it active before" tracking needed at all). Once the
+  // user clicks, their explicit choice wins from then on, in either
+  // direction — this replaces an earlier ref-based "did containsActiveRoute
+  // just turn true" approach that read/wrote a ref during render, which
+  // this project's stricter react-hooks/refs lint rule (no ref access
+  // outside effects/handlers) correctly rejected.
+  const [forcedState, setForcedState] = useState<boolean | null>(null);
+  const open = forcedState ?? containsActiveRoute;
+
+  const anyVisible = group.children.some(isVisible);
+  if (!anyVisible) return null;
+
   return (
-    <ListItemButton component={RouterLink} to={item.route} selected={active} onClick={onNavigate}>
-      <ListItemIcon>{item.icon}</ListItemIcon>
-      <ListItemText primary={t(item.labelKey)} />
+    <>
+      <ListItemButton onClick={() => setForcedState(!open)}>
+        <ListItemIcon>{iconFor(group)}</ListItemIcon>
+        <ListItemText primary={t(group.labelKey)} />
+        {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+      </ListItemButton>
+      <Collapse in={open} timeout="auto" unmountOnExit>
+        <List component="div" disablePadding>
+          {group.children.map((child) =>
+            isVisible(child) ? (
+              <NavLeafItem key={child.id} leaf={child} active={activePath === child.route} onNavigate={onNavigate} t={t} indent />
+            ) : null,
+          )}
+        </List>
+      </Collapse>
+    </>
+  );
+}
+
+function NavLeafItem({
+  leaf,
+  active,
+  onNavigate,
+  t,
+  indent,
+}: {
+  leaf: ResolvedMenuLeaf;
+  active: boolean;
+  onNavigate?: () => void;
+  t: (key: string) => string;
+  indent?: boolean;
+}) {
+  // usePermission is a UX convenience backed by AuthContext's real,
+  // upfront-fetched permission set (shared/permissions.tsx) — never a
+  // guessed/optimistic list. A grouped leaf's visibility was ALREADY
+  // checked by `NavGroup` (via `hasPermission`, a plain function, not a
+  // hook) before deciding to render this component at all — this is a
+  // defensive second check, keeping `NavLeafItem` correct and self-hiding
+  // even if ever rendered standalone, same as before this file's rework.
+  const allowed = usePermission(leaf.requiredPermission);
+  const visible = leaf.requiredPermission === ALWAYS_ALLOWED || allowed;
+  if (!visible) return null;
+  return (
+    <ListItemButton component={RouterLink} to={leaf.route} selected={active} onClick={onNavigate} sx={indent ? { pl: 4 } : undefined}>
+      <ListItemIcon>{iconFor(leaf)}</ListItemIcon>
+      <ListItemText primary={t(leaf.labelKey)} />
     </ListItemButton>
   );
 }

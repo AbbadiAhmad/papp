@@ -62,7 +62,7 @@ function SavedBanner({ saved }: { saved: boolean }) {
  * docblock for why that pattern replaces "effect resets state from data").
  */
 function PasswordPolicyTab() {
-  const { status, data, errorMessage, reload } = useGuardedQuery('users.settings.view', () => settingsApi.getPasswordPolicy());
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => settingsApi.getPasswordPolicy());
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
       {data ? <PasswordPolicyForm initial={data} /> : null}
@@ -129,7 +129,7 @@ function PasswordPolicyForm({ initial }: { initial: PasswordPolicy }) {
 }
 
 function SessionTimingTab() {
-  const { status, data, errorMessage, reload } = useGuardedQuery('users.settings.view', () => settingsApi.getSessionTiming());
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => settingsApi.getSessionTiming());
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
       {data ? <SessionTimingForm initial={data} /> : null}
@@ -196,7 +196,7 @@ function SessionTimingForm({ initial }: { initial: TokenLifetimes }) {
 const TEMPLATE_KEYS = ['password_reset', 'force_password_change'];
 
 function NotificationTemplatesTab() {
-  const { status, data, errorMessage, reload } = useGuardedQuery('users.settings.view', () =>
+  const { status, data, errorMessage, reload } = useGuardedQuery(() =>
     settingsApi.getNotificationTemplates(),
   );
   return (
@@ -261,7 +261,7 @@ function NotificationTemplatesForm({ initial }: { initial: Record<string, Notifi
 }
 
 function RegistrationTab() {
-  const { status, data, errorMessage, reload } = useGuardedQuery('users.settings.view', () => settingsApi.getRegistration());
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => settingsApi.getRegistration());
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
       {data ? <RegistrationForm initial={data.allowSelfRegistration} /> : null}

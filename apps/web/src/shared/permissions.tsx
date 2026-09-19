@@ -1,94 +1,45 @@
-import { createContext, useCallback, useContext, useMemo, useState, type PropsWithChildren, type ReactNode } from 'react';
-import { isForbiddenError } from './api/httpClient';
+import { useCallback, type ReactNode } from 'react';
+import { useAuth } from '../app/AuthContext';
 
 /**
- * Permission-gating design decision (see this Developer agent's final
- * report for the full write-up):
+ * Real permission gating (root DECISIONS.md — supersedes the earlier
+ * "optimistic until a real 403" client cache this file used to implement).
  *
- * ARCHITECTURE.md §7.2/BUILD_PLAN.md Phase 6 call for a `usePermission(code)`
- * hook backed by "the caller's effective permissions" fetched once and
- * cached. The committed backend (Phases 0-5) exposes NO such endpoint —
- * there is no `GET /permissions/me/effective`, and `GET /users/me` returns
- * no role/permission info (checked: users.controller.ts, permissions.
- * controller.ts, roles.controller.ts — every listing endpoint is itself
- * gated by a real permission code, so even "list my roles" needs
- * `roles.view`, which a low-privilege user by definition may not hold).
+ * That earlier design existed because the committed backend had no
+ * "caller's effective permissions" endpoint at all (every listing endpoint
+ * was itself gated, so even "list my own roles" needed `roles.view`, which
+ * a low-privilege caller might not hold) — inventing one client-side would
+ * have meant guessing/hardcoding role->permission defaults that drift from
+ * whatever an admin actually grants at runtime. `GET /users/me/permissions`
+ * (backed by the same `PermissionsService.getEffectivePermissionCodes` the
+ * backend's own landing-page-options logic already used internally) closes
+ * that gap for real: `AuthContext` fetches it once right after login and
+ * exposes it as `permissions`/`hasPermission`, so this file is now a thin
+ * wrapper around real, server-confirmed state instead of a client-side
+ * cache of past 403s.
  *
- * Inventing a client-side "effective permission set" from nothing would
- * mean either (a) guessing/hardcoding role->permission defaults (exactly
- * the kind of fake local permission list CLAUDE.md/SKILL.md warn against,
- * and it WOULD drift from whatever an admin actually grants at runtime), or
- * (b) calling a mutating endpoint just to see if it 403s (unacceptable —
- * that create/delete/grant call would have a real side effect).
- *
- * So this hook takes the literal fallback the task spec allows: permission
- * state is learned ONLY from a REAL API call's outcome, never precomputed.
- * Concretely:
- *   - Every page that needs `<code>.view` makes its own real GET call to
- *     render at all; a 403 from THAT call is reported here and the page
- *     shows a Forbidden state (see ForbiddenNotice/ProtectedPage).
- *   - Every mutating action (create/update/delete/grant/send/...) is wrapped
- *     in `runGated(code, fn)` below: it performs the REAL call; a 403
- *     reports `code` as denied and the control disappears from then on for
- *     the rest of the session (cleared on login/logout, see AuthProvider's
- *     `resetPermissionGate` call).
- *   - Until a code has been confirmed denied, every gated control is shown
- *     OPTIMISTICALLY (never pre-hidden from a guessed list) — clicking it
- *     performs the real backend check, which remains the actual security
- *     boundary regardless of what the UI shows.
- *
- * This is a real, deliberate fork from "cache a fetched effective-permission
- * set" — flagged explicitly per CLAUDE.md's "flag assumptions" rule.
+ * The backend `PermissionGuard` remains the actual security boundary
+ * regardless of what this shows — a stale/mid-session-revoked grant would
+ * still be correctly rejected server-side; this only controls what the UI
+ * renders.
  */
 
-interface PermissionGateContextValue {
-  isDenied: (code: string) => boolean;
-  reportOutcome: (code: string, allowed: boolean) => void;
-  reset: () => void;
-}
-
-const PermissionGateContext = createContext<PermissionGateContextValue | null>(null);
-
-export function PermissionGateProvider({ children }: PropsWithChildren): ReactNode {
-  const [deniedCodes, setDeniedCodes] = useState<Record<string, boolean>>({});
-
-  const reportOutcome = useCallback((code: string, allowed: boolean) => {
-    setDeniedCodes((prev) => {
-      const nextDenied = !allowed;
-      if (prev[code] === nextDenied) return prev;
-      return { ...prev, [code]: nextDenied };
-    });
-  }, []);
-
-  const reset = useCallback(() => setDeniedCodes({}), []);
-
-  const value = useMemo<PermissionGateContextValue>(
-    () => ({
-      isDenied: (code) => deniedCodes[code] === true,
-      reportOutcome,
-      reset,
-    }),
-    [deniedCodes, reportOutcome, reset],
-  );
-
-  return <PermissionGateContext.Provider value={value}>{children}</PermissionGateContext.Provider>;
-}
-
-function usePermissionGateContext(): PermissionGateContextValue {
-  const ctx = useContext(PermissionGateContext);
-  if (!ctx) throw new Error('usePermission()/<Can> must be rendered inside <PermissionGateProvider>');
-  return ctx;
-}
-
 /**
- * UX convenience only (ARCHITECTURE.md §7.2) — true until proven otherwise
- * by a real 403 from the matching backend endpoint. The backend
- * PermissionGuard is always the actual boundary; this only controls whether
- * a control is shown/enabled.
+ * `true`/`false` once the caller's real permission set has loaded; `false`
+ * (hidden) during the brief window before it has — never `true` by
+ * default, so a control/page a role doesn't hold is never shown even
+ * momentarily (this is the fix for "an unauthorized page briefly renders
+ * before redirecting to Forbidden").
  */
 export function usePermission(code: string): boolean {
-  const { isDenied } = usePermissionGateContext();
-  return !isDenied(code);
+  const { hasPermission } = useAuth();
+  return hasPermission(code);
+}
+
+/** `true` once the caller's real permission set has loaded — lets a route guard distinguish "still loading" from "loaded and denied" (see `RequirePermissionRoute`). */
+export function usePermissionsLoaded(): boolean {
+  const { permissions } = useAuth();
+  return permissions !== null;
 }
 
 export function Can({ permission, children }: { permission: string; children: ReactNode }): ReactNode {
@@ -96,38 +47,15 @@ export function Can({ permission, children }: { permission: string; children: Re
   return allowed ? children : null;
 }
 
-export function useResetPermissionGate(): () => void {
-  const { reset } = usePermissionGateContext();
-  return reset;
-}
-
 /**
- * Wraps a real API call with permission-outcome reporting: success reports
- * `code` as allowed (in case an earlier optimistic-denial needs clearing —
- * e.g. an admin who granted themselves the code mid-session and retries),
- * a 403 reports it denied and the error is re-thrown for the caller's own
- * error handling (a snackbar, a form error, etc).
+ * Wraps a mutating action with no extra bookkeeping beyond what the call
+ * itself already does — the permission state driving `usePermission`/`Can`
+ * is already real (fetched upfront), so there is nothing left to "learn"
+ * from an action's outcome the way the old cache-based `useGatedCall` did.
+ * Kept as a thin passthrough (rather than deleted outright) so every
+ * existing `gated(code, fn)` call site needs no rewrite — `code` is
+ * accepted and ignored.
  */
 export function useGatedCall(): <T>(code: string, fn: () => Promise<T>) => Promise<T> {
-  const { reportOutcome } = usePermissionGateContext();
-  return useCallback(
-    async <T,>(code: string, fn: () => Promise<T>): Promise<T> => {
-      try {
-        const result = await fn();
-        reportOutcome(code, true);
-        return result;
-      } catch (error) {
-        if (isForbiddenError(error)) {
-          reportOutcome(code, false);
-        }
-        throw error;
-      }
-    },
-    [reportOutcome],
-  );
-}
-
-export function useReportPermissionOutcome(): (code: string, allowed: boolean) => void {
-  const { reportOutcome } = usePermissionGateContext();
-  return reportOutcome;
+  return useCallback(<T,>(_code: string, fn: () => Promise<T>): Promise<T> => fn(), []);
 }

@@ -9,6 +9,7 @@ import {
   Chip,
   FormControlLabel,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -27,7 +28,7 @@ import { useGuardedQuery } from '../../shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../shared/api/httpClient';
 import { modulesApi } from '../../shared/api/modules';
 import { useGatedCall, Can } from '../../shared/permissions';
-import type { ModuleStatus, PublicModuleEntry } from '../../shared/api/types';
+import type { AvailableModuleEntry, ModuleStatus, PublicModuleEntry } from '../../shared/api/types';
 
 const STATUS_COLOR: Record<ModuleStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   installed: 'success',
@@ -49,7 +50,11 @@ const STATUS_COLOR: Record<ModuleStatus, 'default' | 'success' | 'warning' | 'er
 export function ModulesAdminPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: modules, errorMessage, reload } = useGuardedQuery('modules.view', () => modulesApi.list());
+  const { status, data: modules, errorMessage, reload } = useGuardedQuery(() => modulesApi.list());
+  const {
+    data: availableModules,
+    reload: reloadAvailable,
+  } = useGuardedQuery(() => modulesApi.listAvailable());
 
   const [installKey, setInstallKey] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +67,7 @@ export function ModulesAdminPage() {
       await gated('modules.install', () => modulesApi.install(installKey));
       setInstallKey('');
       reload();
+      reloadAvailable();
     } catch (err) {
       setError(extractErrorMessage(err));
     }
@@ -83,6 +89,7 @@ export function ModulesAdminPage() {
     try {
       await gated('modules.uninstall', () => modulesApi.uninstall(uninstallTarget.key, dropData));
       reload();
+      reloadAvailable();
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -98,14 +105,28 @@ export function ModulesAdminPage() {
       </Typography>
 
       <Can permission="modules.install">
-        <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+        <Alert severity="info" sx={{ mb: 3 }}>
+          {t('core.modules.deployment_note')}
+        </Alert>
+        <Stack direction="row" spacing={2} sx={{ mb: 3, alignItems: 'flex-start' }}>
           <TextField
+            select
             label={t('core.modules.install_key')}
             value={installKey}
             onChange={(e) => setInstallKey(e.target.value)}
             size="small"
-            helperText={t('core.modules.install_key_help')}
-          />
+            sx={{ minWidth: 320 }}
+            helperText={
+              (availableModules ?? []).length === 0 ? t('core.modules.install_key_empty') : t('core.modules.install_key_help')
+            }
+            disabled={(availableModules ?? []).length === 0}
+          >
+            {(availableModules ?? []).map((entry: AvailableModuleEntry) => (
+              <MenuItem key={entry.key} value={entry.key}>
+                {entry.name} ({entry.key})
+              </MenuItem>
+            ))}
+          </TextField>
           <Button startIcon={<AddIcon />} variant="contained" onClick={handleInstall} disabled={!installKey}>
             {t('core.modules.install')}
           </Button>

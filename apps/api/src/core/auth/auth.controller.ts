@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AllowMustChangePassword } from '../../common/decorators/allow-must-change-password.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -10,6 +10,7 @@ import { AuthService, IssuedTokens, RegisteredUser } from './auth.service';
 import { ForcePasswordChangeDto } from './dto/force-password-change.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SetupCreateAdminDto } from './dto/setup.dto';
 import { REFRESH_TOKEN_COOKIE_NAME } from './jwt.constants';
 import { extractRequestMeta } from './request-meta.util';
 
@@ -133,6 +134,37 @@ export class AuthController {
   @Audit({ category: 'core.auth', entityType: 'User', action: 'register' })
   async register(@Body() body: RegisterDto): Promise<RegisteredUser> {
     return this.authService.register(body);
+  }
+
+  /**
+   * Root D60/A27 (UI-wizard option): read-only, `@Public()` (no session can
+   * exist yet on a fresh install), no `PublicThrottlerGuard` — it's a GET
+   * with no side effect, not a write endpoint (MODULE_SPEC.md §7.3's
+   * mandatory throttle applies to public WRITEs). The frontend polls this
+   * before deciding whether to route to SetupPage or LoginPage.
+   */
+  @Get('setup-status')
+  @Public()
+  async getSetupStatus(): Promise<{ setupNeeded: boolean }> {
+    return { setupNeeded: await this.authService.isSetupNeeded() };
+  }
+
+  /**
+   * Root D60/A27: creates the first admin account on a fresh install.
+   * `@Public()` + `PublicThrottlerGuard` (a public WRITE — never optional,
+   * same as `register()`). The real "only when no users exist yet" guard is
+   * server-side inside `AuthService.setupCreateFirstAdmin`'s transaction —
+   * `getSetupStatus()` above is a UX convenience for the frontend, not the
+   * enforcement point. `@Audit` here mirrors `register()`: `@Public()` with
+   * no `req.user` makes AuditInterceptor record `actor_type='anonymous'`.
+   */
+  @Post('setup')
+  @HttpCode(HttpStatus.CREATED)
+  @Public()
+  @UseGuards(PublicThrottlerGuard)
+  @Audit({ category: 'core.auth', entityType: 'User', action: 'setup_create_first_admin' })
+  async setup(@Body() body: SetupCreateAdminDto): Promise<RegisteredUser> {
+    return this.authService.setupCreateFirstAdmin(body);
   }
 
   private setRefreshCookie(res: Response, tokens: IssuedTokens): void {

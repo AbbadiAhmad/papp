@@ -1,4 +1,4 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
 import { AuthController } from '../../../src/core/auth/auth.controller';
@@ -6,6 +6,7 @@ import { IssuedTokens, RegisteredUser } from '../../../src/core/auth/auth.servic
 import { ForcePasswordChangeDto } from '../../../src/core/auth/dto/force-password-change.dto';
 import { LoginDto } from '../../../src/core/auth/dto/login.dto';
 import { RegisterDto } from '../../../src/core/auth/dto/register.dto';
+import { SetupCreateAdminDto } from '../../../src/core/auth/dto/setup.dto';
 import { REFRESH_TOKEN_COOKIE_NAME } from '../../../src/core/auth/jwt.constants';
 import { AuthenticatedUser } from '../../../src/common/decorators/current-user.decorator';
 
@@ -25,6 +26,8 @@ interface MockAuthService {
   logout: jest.Mock;
   forcePasswordChange: jest.Mock;
   register: jest.Mock;
+  isSetupNeeded: jest.Mock;
+  setupCreateFirstAdmin: jest.Mock;
 }
 
 interface MockAuditLogWriter {
@@ -38,6 +41,8 @@ function createMockAuthService(): MockAuthService {
     logout: jest.fn(),
     forcePasswordChange: jest.fn(),
     register: jest.fn(),
+    isSetupNeeded: jest.fn(),
+    setupCreateFirstAdmin: jest.fn(),
   };
 }
 
@@ -237,6 +242,48 @@ describe('AuthController', () => {
       const dto = Object.assign(new RegisterDto(), { email: 'x@example.com', name: 'X', password: 'ValidPass1' });
 
       await expect(controller.register(dto)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('getSetupStatus', () => {
+    it('reports setupNeeded verbatim from AuthService', async () => {
+      authService.isSetupNeeded.mockResolvedValue(true);
+
+      await expect(controller.getSetupStatus()).resolves.toEqual({ setupNeeded: true });
+    });
+
+    it('reports setupNeeded: false once a user exists', async () => {
+      authService.isSetupNeeded.mockResolvedValue(false);
+
+      await expect(controller.getSetupStatus()).resolves.toEqual({ setupNeeded: false });
+    });
+  });
+
+  describe('setup', () => {
+    it('delegates to AuthService.setupCreateFirstAdmin and returns its result verbatim (no tokens/session)', async () => {
+      const created: RegisteredUser = { id: 'user-new', email: 'admin@example.com', name: 'First Admin' };
+      authService.setupCreateFirstAdmin.mockResolvedValue(created);
+      const dto = Object.assign(new SetupCreateAdminDto(), {
+        email: 'admin@example.com',
+        name: 'First Admin',
+        password: 'AdminPass1',
+      });
+
+      const result = await controller.setup(dto);
+
+      expect(authService.setupCreateFirstAdmin).toHaveBeenCalledWith(dto);
+      expect(result).toEqual(created);
+    });
+
+    it('propagates a ConflictException when setup has already been completed', async () => {
+      authService.setupCreateFirstAdmin.mockRejectedValue(new ConflictException('Setup has already been completed'));
+      const dto = Object.assign(new SetupCreateAdminDto(), {
+        email: 'admin@example.com',
+        name: 'First Admin',
+        password: 'AdminPass1',
+      });
+
+      await expect(controller.setup(dto)).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

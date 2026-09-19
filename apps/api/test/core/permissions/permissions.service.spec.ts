@@ -8,12 +8,28 @@ interface MockPrisma {
   userRole: {
     findMany: jest.Mock;
   };
+  permission: {
+    findMany: jest.Mock;
+  };
 }
 
 function createMockPrisma(): MockPrisma {
   return {
     rolePermission: { findMany: jest.fn() },
     userRole: { findMany: jest.fn() },
+    permission: { findMany: jest.fn() },
+  };
+}
+
+function permissionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'perm-1',
+    code: 'sessions.view_my',
+    moduleKey: 'core',
+    category: 'sessions',
+    descriptionI18nKey: 'core.perm.sessions.view_my',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
   };
 }
 
@@ -72,6 +88,44 @@ describe('PermissionsService', () => {
       await service.getEffectivePermissionCodes('user-1');
 
       expect(prisma.rolePermission.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getMyPermissionDetails', () => {
+    it('queries permissions whose role_permissions link back to a role this user holds', async () => {
+      prisma.permission.findMany.mockResolvedValue([]);
+
+      await service.getMyPermissionDetails('user-1');
+
+      expect(prisma.permission.findMany).toHaveBeenCalledWith({
+        where: { rolePermissions: { some: { role: { userRoles: { some: { userId: 'user-1' } } } } } },
+        orderBy: [{ category: 'asc' }, { code: 'asc' }],
+      });
+    });
+
+    it('returns full catalog rows (code/category/description), not bare codes', async () => {
+      prisma.permission.findMany.mockResolvedValue([
+        permissionRow({ id: 'perm-1', code: 'sessions.view_my' }),
+        permissionRow({
+          id: 'perm-2',
+          code: 'notifications.view',
+          category: 'notifications',
+          descriptionI18nKey: 'core.perm.notifications.view',
+        }),
+      ]);
+
+      const result = await service.getMyPermissionDetails('user-1');
+
+      expect(result).toEqual([
+        { id: 'perm-1', code: 'sessions.view_my', moduleKey: 'core', category: 'sessions', descriptionI18nKey: 'core.perm.sessions.view_my' },
+        { id: 'perm-2', code: 'notifications.view', moduleKey: 'core', category: 'notifications', descriptionI18nKey: 'core.perm.notifications.view' },
+      ]);
+    });
+
+    it('returns an empty array for a zero-grant user', async () => {
+      prisma.permission.findMany.mockResolvedValue([]);
+
+      await expect(service.getMyPermissionDetails('user-1')).resolves.toEqual([]);
     });
   });
 

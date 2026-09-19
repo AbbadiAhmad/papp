@@ -107,7 +107,7 @@ export function SurveysListPage() {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const gated = useGatedCall();
-  const { status, data: surveys, errorMessage, reload } = useGuardedQuery('survey.surveys.view', () => surveyApi.list());
+  const { status, data: surveys, errorMessage, reload } = useGuardedQuery(() => surveyApi.list());
 
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SurveySummary | null>(null);

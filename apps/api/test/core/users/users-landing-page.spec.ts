@@ -50,7 +50,7 @@ describe('UsersService — per-user default landing page', () => {
       moduleRegistryEntry: { findMany: jest.fn() },
     };
     permissions = { getEffectivePermissionCodes: jest.fn() };
-    service = new UsersService(prisma as never, {} as never, permissions as never);
+    service = new UsersService(prisma as never, {} as never, permissions as never, {} as never);
   });
 
   describe('listLandingPageOptions', () => {

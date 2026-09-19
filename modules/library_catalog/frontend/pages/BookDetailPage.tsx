@@ -35,7 +35,7 @@ export function BookDetailPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
-  const { status, data: book, errorMessage, reload } = useGuardedQuery('library_catalog.books.view', () =>
+  const { status, data: book, errorMessage, reload } = useGuardedQuery(() =>
     libraryCatalogApi.getBook(bookId as string),
   );
 

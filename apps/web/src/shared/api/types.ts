@@ -20,6 +20,8 @@ export interface PublicUser {
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+  /** Populated only by GET /users (the list endpoint) — undefined elsewhere (GET /users/me, single-user create/update). */
+  roles?: PublicRole[];
 }
 
 /** `GET /users/me/landing-page-options` entry — `value: null` is the platform default. */
@@ -184,6 +186,14 @@ export interface FrontendModuleManifest {
   basePath: string;
   routes: ModuleManifestRoute[];
   menu: ModuleManifestMenuEntry[];
+}
+
+/** A module package on disk (`GET /modules/available`) not yet installed/installing/upgrading — feeds the Modules admin page's install dropdown. */
+export interface AvailableModuleEntry {
+  key: string;
+  name: string;
+  description: string;
+  version: string;
 }
 
 export interface ManifestValidationIssue {

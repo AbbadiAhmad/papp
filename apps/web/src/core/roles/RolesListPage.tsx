@@ -34,7 +34,7 @@ import { RoleAssignDialog } from './RoleAssignDialog';
 export function RolesListPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: roles, errorMessage, reload } = useGuardedQuery('roles.view', () => rolesApi.list());
+  const { status, data: roles, errorMessage, reload } = useGuardedQuery(() => rolesApi.list());
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<PublicRole | null>(null);

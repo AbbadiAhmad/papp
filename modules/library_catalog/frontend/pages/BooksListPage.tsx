@@ -49,7 +49,7 @@ export function BooksListPage() {
   const { language } = useLanguage();
   const gated = useGatedCall();
   const [search, setSearch] = useState('');
-  const { status, data: books, errorMessage, reload } = useGuardedQuery('library_catalog.books.view', () =>
+  const { status, data: books, errorMessage, reload } = useGuardedQuery(() =>
     libraryCatalogApi.listBooks(search ? { search } : undefined),
   );
 

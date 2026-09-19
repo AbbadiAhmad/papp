@@ -30,7 +30,7 @@ export function FinancePage() {
 function TransactionsTab() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { status, data, errorMessage, reload } = useGuardedQuery('library_circulation.finance.view', () =>
+  const { status, data, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.listTransactions(),
   );
   return (
@@ -62,7 +62,7 @@ function TransactionsTab() {
 function PaymentsTab() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { status, data, errorMessage, reload } = useGuardedQuery('library_circulation.finance.view', () =>
+  const { status, data, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.listPayments(),
   );
   return (

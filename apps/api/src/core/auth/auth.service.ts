@@ -13,11 +13,19 @@ import {
   TokenLifetimes,
 } from '../settings/settings.types';
 import { RegisterDto } from './dto/register.dto';
+import { SetupCreateAdminDto } from './dto/setup.dto';
 import { getJwtSecret } from './jwt.constants';
 import { assertPasswordMeetsPolicy } from './password-policy.util';
 
 /** D9/D41: the role every self-registered account is auto-assigned. */
 const SELF_REGISTRATION_ROLE_CODE = 'reader';
+/** Root D60/A27: the role the very first account on a fresh install gets. */
+const FIRST_ADMIN_ROLE_CODE = 'admin';
+/**
+ * Arbitrary fixed key for `pg_advisory_xact_lock` — see `setupCreateFirstAdmin`.
+ * Any int8 works; this one has no other meaning.
+ */
+const SETUP_ADVISORY_LOCK_KEY = 8_411_960_027n;
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 export interface RegisteredUser {
@@ -269,6 +277,88 @@ export class AuthService {
           },
         });
         await tx.userRole.create({ data: { userId: created.id, roleId: readerRole.id } });
+        return created;
+      });
+      return { id: user.id, email: user.email, name: user.name };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Root D60/A27: whether a fresh install still needs its first admin
+   * account. Deliberately just `users` row count — not module_registry or
+   * any other signal — matching MODULE_SPEC.md's own framing of "no
+   * mechanism creates the first admin account" as purely about the `users`
+   * table being empty. Safe to call with no session (see controller).
+   */
+  async isSetupNeeded(): Promise<boolean> {
+    const userCount = await this.prisma.user.count();
+    return userCount === 0;
+  }
+
+  /**
+   * Root D60/A27 (UI-wizard option, confirmed over the env-seed/CLI/init-
+   * container alternatives): creates the very first user on a fresh install
+   * and assigns EXACTLY the `admin` role — never a choice the caller makes,
+   * same pattern as `register()`'s hardcoded `reader`. Reachable with
+   * `@Public()` (no session exists yet) and safe to call directly (curl,
+   * repeated attempts, concurrent requests) without ever going through
+   * `GET /auth/setup-status` first — that endpoint is a pure frontend-
+   * routing convenience, never the actual gate.
+   *
+   * The emptiness check is re-done INSIDE the transaction (not just trusting
+   * a prior `isSetupNeeded()` call), guarded by `pg_advisory_xact_lock`
+   * (auto-released on commit/rollback) taken BEFORE the count. Postgres's
+   * default `READ COMMITTED` isolation does NOT by itself make
+   * "count, then insert if zero" atomic across two truly concurrent
+   * transactions — both could read `count() === 0` before either commits,
+   * both would then insert, and both would return 201 with an
+   * `admin`-role account instead of the second failing with 409. There is
+   * no unique constraint to fall back on here (unlike `register()`, where
+   * the `email` unique index is what actually prevents a duplicate
+   * regardless of isolation level) — "at most one row may ever exist" has
+   * no natural column to key a unique index on. The advisory lock serializes
+   * just this one critical section: only one transaction holds it at a
+   * time, so its count-then-insert is effectively atomic, and every other
+   * concurrent caller blocks until the first commits, then sees the real
+   * post-insert count and 409s. Cost is negligible — this section runs at
+   * most a handful of times ever, on a fresh install.
+   */
+  async setupCreateFirstAdmin(dto: SetupCreateAdminDto): Promise<RegisteredUser> {
+    const policy = await this.getPasswordPolicy();
+    assertPasswordMeetsPolicy(dto.password, policy);
+
+    const adminRole = await this.prisma.role.findUnique({ where: { code: FIRST_ADMIN_ROLE_CODE } });
+    if (!adminRole) {
+      // Seeded by 0004_create_roles_permissions.sql — its absence means the
+      // core migrations never ran, a deployment bug, not a user error.
+      throw new InternalServerErrorException(`Base role "${FIRST_ADMIN_ROLE_CODE}" is missing`);
+    }
+
+    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SETUP_ADVISORY_LOCK_KEY})`;
+        const userCount = await tx.user.count();
+        if (userCount > 0) {
+          throw new ConflictException('Setup has already been completed');
+        }
+        const created = await tx.user.create({
+          data: {
+            email: dto.email,
+            name: dto.name,
+            passwordHash,
+            // The operator chose their own password interactively — no
+            // forced change, same reasoning as self-registration.
+            mustChangePassword: false,
+          },
+        });
+        await tx.userRole.create({ data: { userId: created.id, roleId: adminRole.id } });
         return created;
       });
       return { id: user.id, email: user.email, name: user.name };

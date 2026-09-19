@@ -30,7 +30,7 @@ export function MenuEditorPage() {
 }
 
 function MenuLocationEditor({ location }: { location: MenuLocation }) {
-  const { status, data, errorMessage, reload } = useGuardedQuery('website.menus.view', () => websiteApi.listMenu(location));
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => websiteApi.listMenu(location));
 
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>

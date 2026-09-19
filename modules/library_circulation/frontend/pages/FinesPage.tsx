@@ -46,7 +46,7 @@ const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'defaul
 export function FinesPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: fines, errorMessage, reload } = useGuardedQuery('library_circulation.fines.view', () =>
+  const { status, data: fines, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.listFines(),
   );
 

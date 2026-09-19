@@ -18,7 +18,7 @@ import type { LandingPageOption } from '../../shared/api/types';
 export function MyPreferencesPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { status, data, errorMessage, reload } = useGuardedQuery(null, () => usersApi.getMyLandingPageOptions());
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => usersApi.getMyLandingPageOptions());
 
   return (
     <Box>

@@ -100,7 +100,7 @@ export function TemplateItemsListPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
-  const { status, data: items, errorMessage, reload } = useGuardedQuery('template.items.view', () => templateApi.list());
+  const { status, data: items, errorMessage, reload } = useGuardedQuery(() => templateApi.list());
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TemplateItem | null>(null);

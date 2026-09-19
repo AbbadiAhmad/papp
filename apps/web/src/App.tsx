@@ -1,14 +1,16 @@
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { CacheProvider } from '@emotion/react';
 import { Box, CircularProgress } from '@mui/material';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
 import { TopBar, PageLayout } from './shared/components/PageLayout';
-import { PermissionGateProvider } from './shared/permissions';
+import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
+import * as authApi from './shared/api/auth';
 import { LoginPage } from './core/auth/LoginPage';
+import { SetupPage } from './core/auth/SetupPage';
 import { ForcePasswordChangePage } from './core/auth/ForcePasswordChangePage';
 import { DashboardPage } from './core/DashboardPage';
 import { ForbiddenPage } from './core/ForbiddenPage';
@@ -20,6 +22,7 @@ import { useGuardedQuery } from './shared/hooks/useGuardedQuery';
 import { usersApi } from './shared/api/users';
 import { RolesListPage } from './core/roles/RolesListPage';
 import { PermissionsMatrixPage } from './core/permissions/PermissionsMatrixPage';
+import { MyPermissionsPage } from './core/permissions/MyPermissionsPage';
 import { SessionsPage } from './core/sessions/SessionsPage';
 import { AuditPage } from './core/audit/AuditPage';
 import { SettingsPage } from './core/settings/SettingsPage';
@@ -52,7 +55,7 @@ function FullScreenLoader() {
  */
 function LandingPageRedirect() {
   const { user } = useAuth();
-  const { status, data } = useGuardedQuery(null, () => usersApi.getMyLandingPageOptions());
+  const { status, data } = useGuardedQuery(() => usersApi.getMyLandingPageOptions());
 
   if (!user?.defaultLandingPage) {
     return <DashboardPage />;
@@ -68,11 +71,40 @@ function LandingPageRedirect() {
 }
 
 /**
+ * Root D60/A27 (UI-wizard option): whether a fresh install still needs its
+ * first admin account, per `GET /auth/setup-status` (`@Public()`). Checked
+ * ONLY while anonymous — an authenticated session already proves setup is
+ * done, so this never runs in the authenticated/must-change-password
+ * branches. `null` while loading (never defaults to `false`), so the
+ * anonymous branch below can show a loader instead of flashing LoginPage
+ * before redirecting to SetupPage on a genuinely fresh install.
+ */
+function useSetupNeeded(shouldCheck: boolean): { loading: boolean; setupNeeded: boolean; markSetupComplete: () => void } {
+  const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!shouldCheck) return;
+    authApi
+      .getSetupStatus()
+      .then((result) => setSetupNeeded(result.setupNeeded))
+      // A transient failure (network hiccup, api not up yet) is treated as
+      // "no setup needed" rather than getting stuck — the normal login flow
+      // then surfaces the real error if the api is genuinely unreachable.
+      .catch(() => setSetupNeeded(false));
+  }, [shouldCheck]);
+
+  const markSetupComplete = useCallback(() => setSetupNeeded(false), []);
+
+  return { loading: shouldCheck && setupNeeded === null, setupNeeded: setupNeeded ?? false, markSetupComplete };
+}
+
+/**
  * The three mutually-exclusive shells (ARCHITECTURE.md §6.1 / the
  * must-change-password flow): still resolving the silent-refresh-on-load
- * check; anonymous (only /login reachable); or authenticated. Every branch
- * still renders `<TopBar/>` (see App() below) so the brand bar is present
- * from the very first paint, before any network round-trip resolves.
+ * check; anonymous (only /login reachable, or /setup on a fresh install);
+ * or authenticated. Every branch still renders `<TopBar/>` (see App() below)
+ * so the brand bar is present from the very first paint, before any network
+ * round-trip resolves.
  *
  * Module routes (root DECISIONS.md D78/D79) are resolved ONCE here, before
  * any branch — these are hooks and must not be called conditionally — then
@@ -95,12 +127,28 @@ function AppRoutes() {
   const moduleManifests = useModuleFrontendManifests(status === 'authenticated' && !mustChangePassword);
   const authenticatedModuleRoutes = useAuthenticatedModuleRoutes(moduleManifests);
   const publicModuleRoutes = usePublicModuleRoutes();
+  const { loading: setupStatusLoading, setupNeeded, markSetupComplete } = useSetupNeeded(status === 'anonymous');
 
   if (status === 'initializing') {
     return <FullScreenLoader />;
   }
 
   if (status === 'anonymous') {
+    if (setupStatusLoading) {
+      return <FullScreenLoader />;
+    }
+    if (setupNeeded) {
+      // No `<Route>` needed: a fresh install has no session and no other
+      // reachable page yet, so this IS the whole anonymous shell until an
+      // admin account exists. `markSetupComplete` flips local state so the
+      // very next render falls through to the normal LoginPage branch below
+      // — no page reload, no re-fetch of setup-status.
+      return (
+        <Routes>
+          <Route path="*" element={<SetupPage onSetupComplete={markSetupComplete} />} />
+        </Routes>
+      );
+    }
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -134,21 +182,102 @@ function AppRoutes() {
         <Route path="/my-preferences" element={<MyPreferencesPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/force-password-change" element={<Navigate to="/" replace />} />
-        <Route path="/users" element={<UsersListPage />} />
-        <Route path="/users/import" element={<UsersImportPage />} />
-        <Route path="/roles" element={<RolesListPage />} />
-        {/* D12 (ARCHITECTURE.md §7.4): reachable by any authenticated user,
-            no client-side pre-check — the page's own real calls decide what
-            it can show (see PermissionsMatrixPage's docblock). */}
-        <Route path="/permissions" element={<PermissionsMatrixPage />} />
-        <Route path="/sessions" element={<SessionsPage />} />
-        <Route path="/audit" element={<AuditPage />} />
-        <Route path="/notifications" element={<NotificationsInboxPage />} />
-        <Route path="/notifications/compose" element={<NotificationsComposePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/modules" element={<ModulesAdminPage />} />
-        {/* Every installed module's own routes (root DECISIONS.md D78) — see
-            this function's own docblock. */}
+        <Route
+          path="/users"
+          element={
+            <RequirePermissionRoute code="users.view">
+              <UsersListPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/users/import"
+          element={
+            <RequirePermissionRoute code="users.import">
+              <UsersImportPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/roles"
+          element={
+            <RequirePermissionRoute code="roles.view">
+              <RolesListPage />
+            </RequirePermissionRoute>
+          }
+        />
+        {/* D12 (ARCHITECTURE.md §7.4): reachable by any authenticated user —
+            code={null} always allows once permissions have loaded (see
+            PermissionsMatrixPage's own docblock for why the PAGE itself
+            still has no client-side pre-check beyond that). */}
+        <Route
+          path="/permissions"
+          element={
+            <RequirePermissionRoute code={null}>
+              <PermissionsMatrixPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/sessions"
+          element={
+            <RequirePermissionRoute code="sessions.view_my">
+              <SessionsPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/my-permissions"
+          element={
+            <RequirePermissionRoute code="permissions.view_my">
+              <MyPermissionsPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/audit"
+          element={
+            <RequirePermissionRoute code="audit.view">
+              <AuditPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <RequirePermissionRoute code={null}>
+              <NotificationsInboxPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/notifications/compose"
+          element={
+            <RequirePermissionRoute code="notifications.send">
+              <NotificationsComposePage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequirePermissionRoute code="users.settings.view">
+              <SettingsPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/modules"
+          element={
+            <RequirePermissionRoute code="modules.view">
+              <ModulesAdminPage />
+            </RequirePermissionRoute>
+          }
+        />
+        {/* Every installed module's own routes (root DECISIONS.md D78) —
+            each already wrapped in its own RequirePermissionRoute by
+            useAuthenticatedModuleRoutes, matched against that module's
+            manifest — see this function's own docblock. */}
         {authenticatedModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
@@ -187,19 +316,19 @@ function ThemedShell() {
 /**
  * Root shell (docs/BUILD_PLAN.md Phase 6 item 1): React Router, MUI
  * `ThemeProvider` with `direction` driven by the active language,
- * `react-i18next` bootstrap, and the auth/session context. Provider order
- * matters: `PermissionGateProvider` must wrap `AuthProvider` (it resets the
- * gate on login/logout — see AuthContext.tsx), and `LanguageProvider` must
- * wrap `ThemedShell` (the theme/emotion cache are derived from its
- * direction).
+ * `react-i18next` bootstrap, and the auth/session context. Real permission
+ * state now lives entirely inside `AuthProvider` (`GET
+ * /users/me/permissions`, fetched alongside `GET /users/me`) — no separate
+ * permission-gate provider is needed any more (superseded the old
+ * `PermissionGateProvider`, which existed only to cache/reset "confirmed
+ * denied by a real 403" codes across login/logout; `AuthProvider` already
+ * resets its own `permissions` state on logout/auth-expiry).
  */
 function App() {
   return (
-    <PermissionGateProvider>
-      <LanguageProvider>
-        <ThemedShell />
-      </LanguageProvider>
-    </PermissionGateProvider>
+    <LanguageProvider>
+      <ThemedShell />
+    </LanguageProvider>
   );
 }
 

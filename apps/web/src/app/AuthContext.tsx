@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import * as authApi from '../shared/api/auth';
 import { usersApi } from '../shared/api/users';
 import { isMustChangePasswordError, onAuthExpired, refreshAccessToken } from '../shared/api/httpClient';
-import { useResetPermissionGate } from '../shared/permissions';
 import type { PublicUser } from '../shared/api/types';
 
 export type AuthStatus = 'initializing' | 'anonymous' | 'authenticated';
@@ -11,6 +10,18 @@ interface AuthContextValue {
   status: AuthStatus;
   user: PublicUser | null;
   mustChangePassword: boolean;
+  /**
+   * The caller's REAL effective permission codes (`GET
+   * /users/me/permissions`), fetched once alongside `GET /users/me` and
+   * re-fetched on every login/force-password-change completion — never a
+   * client-side guess. `null` while still loading (distinct from an empty
+   * set) so `hasPermission` can distinguish "not yet known" from "known and
+   * denied" — see `shared/permissions.tsx`'s `usePermission` for how that
+   * distinction is used to avoid a flash of hidden content before the real
+   * grants are known.
+   */
+  permissions: Set<string> | null;
+  hasPermission: (code: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   completeForcePasswordChange: (newPassword: string) => Promise<void>;
@@ -41,12 +52,25 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * retrying is what caused the infinite request loop this agent observed
  * and fixed), and `mustChangePassword` is tracked as its own piece of state
  * rather than only ever read off a successfully-fetched `PublicUser`.
+ *
+ * Real permission-gating (superseding the old client-side "optimistic
+ * until a real 403" cache that used to live in `shared/permissions.tsx`):
+ * `GET /users/me/permissions` is fetched right after `getMe()` succeeds,
+ * giving the whole app the caller's REAL effective grants upfront —
+ * `PageLayout`'s sidebar and every route guard now filter against this set
+ * directly, so an unauthorized page is never rendered even momentarily
+ * (previously it rendered optimistically until its own data call 403'd).
+ * Deliberately NOT parallelized with `getMe()` via `Promise.all` — if
+ * `getMe()` itself 403s with the must-change-password shape, there is no
+ * point fetching permissions at all (the app never renders the sidebar/
+ * routes in that state), and doing them sequentially keeps this file's
+ * existing, already-tricky control flow easy to follow.
  */
 export function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>('initializing');
   const [user, setUser] = useState<PublicUser | null>(null);
   const [mustChangePasswordPending, setMustChangePasswordPending] = useState(false);
-  const resetPermissionGate = useResetPermissionGate();
+  const [permissions, setPermissions] = useState<Set<string> | null>(null);
 
   const loadCurrentUser = useCallback(async () => {
     try {
@@ -54,6 +78,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setUser(me);
       setMustChangePasswordPending(false);
       setStatus('authenticated');
+      const codes = await usersApi.getMyPermissions();
+      setPermissions(new Set(codes));
     } catch (error) {
       if (isMustChangePasswordError(error)) {
         // Authenticated (the token/session is valid — JwtAuthGuard already
@@ -62,6 +88,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // directly; do NOT call loadCurrentUser() again here.
         setUser(null);
         setMustChangePasswordPending(true);
+        setPermissions(null);
         setStatus('authenticated');
         return;
       }
@@ -89,10 +116,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       onAuthExpired(() => {
         setUser(null);
         setMustChangePasswordPending(false);
+        setPermissions(null);
         setStatus('anonymous');
-        resetPermissionGate();
       }),
-    [resetPermissionGate],
+    [],
   );
 
   const login = useCallback(
@@ -107,31 +134,36 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await authApi.logout();
     setUser(null);
     setMustChangePasswordPending(false);
+    setPermissions(null);
     setStatus('anonymous');
-    resetPermissionGate();
-  }, [resetPermissionGate]);
+  }, []);
 
   const completeForcePasswordChange = useCallback(
     async (newPassword: string) => {
       await authApi.forcePasswordChange(newPassword);
       // The guard now lets `/users/me` through — this call succeeds for
-      // real and returns the fresh `mustChangePassword: false` user.
+      // real and returns the fresh `mustChangePassword: false` user, then
+      // fetches real permissions same as any other successful load.
       await loadCurrentUser();
     },
     [loadCurrentUser],
   );
+
+  const hasPermission = useCallback((code: string) => permissions?.has(code) ?? false, [permissions]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
       user,
       mustChangePassword: user?.mustChangePassword ?? mustChangePasswordPending,
+      permissions,
+      hasPermission,
       login,
       logout,
       completeForcePasswordChange,
       refreshUser: loadCurrentUser,
     }),
-    [status, user, mustChangePasswordPending, login, logout, completeForcePasswordChange, loadCurrentUser],
+    [status, user, mustChangePasswordPending, permissions, hasPermission, login, logout, completeForcePasswordChange, loadCurrentUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

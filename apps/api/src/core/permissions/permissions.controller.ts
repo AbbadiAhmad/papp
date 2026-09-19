@@ -44,6 +44,21 @@ const fetchRoleGrantsState = async (prisma: PrismaService, req: Request) => {
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
+  /**
+   * The reduced "My Permissions" view: the caller's OWN effective grants,
+   * as full catalog rows — distinct from the admin `GET /permissions`
+   * matrix above (`permissions.view`, D12 admin-bypass-eligible). Gated by
+   * `permissions.view_my` (migration 0010), seeded to all 4 base roles by
+   * default — every account can see what it itself is allowed to do,
+   * without needing `permissions.view` (which would also let it see every
+   * OTHER role's grants and isn't meant to be universal).
+   */
+  @Get('me')
+  @RequirePermission('permissions.view_my')
+  async listMine(@CurrentUser() user: AuthenticatedUser): Promise<PublicPermission[]> {
+    return this.permissionsService.getMyPermissionDetails(user.userId);
+  }
+
   @Get()
   @UseGuards(PermissionsPageGuard)
   @PermissionCheckDelegatedToPermissionsPageGuard()

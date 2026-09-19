@@ -16,15 +16,16 @@ import { UsersService } from './users.service';
 /**
  * Retrofitted in Phase 2 with `@RequirePermission(...)` now that
  * `PermissionGuard`/the permission catalog exist (per docs/BUILD_PLAN.md
- * Phase 2 step 7). `GET /users/me` deliberately carries NO
- * `@RequirePermission` — it is self-scoped (a user reading their own
- * profile) and must stay reachable by every role regardless of grants,
- * exactly like `notifications.view` is granted to everyone by default per
- * ARCHITECTURE.md §12.4. Gating it behind `users.view` would lock `reader`
- * (which gets no user-management grants by default) out of seeing its own
- * account. See `PermissionGuard`'s docblock for why an undecorated handler
- * is allowed through once authenticated. Excel import/export live in
- * `excel-import.controller.ts` (separate file/permission codes).
+ * Phase 2 step 7). `GET /users/me` and `GET /users/me/permissions` are the
+ * only two endpoints in this controller with NO `@RequirePermission` at
+ * all — both are bootstrap plumbing every other page depends on (see each
+ * one's own docblock for why gating either would be circular). Every OTHER
+ * self-scoped endpoint here (`me/landing-page*`) carries a real, admin-
+ * grantable code seeded to all base roles by default, same pattern as
+ * `notifications.view` (migration 0006) — root DECISIONS.md: no
+ * authenticated page/action is ever gate-free except that bootstrap pair.
+ * Excel import/export live in `excel-import.controller.ts` (separate file/
+ * permission codes).
  *
  * Phase 3 retrofit: every mutating endpoint carries `@Audit(...)`. The
  * `fetchState` callbacks fetch the RAW Prisma row (passwordHash included) —
@@ -63,17 +64,38 @@ export class UsersController {
   }
 
   /**
-   * Feature: per-user default landing page. Self-scoped (no
-   * `@RequirePermission`, same rationale as `GET /me` above) — every role
-   * gets to pick where their own login lands, regardless of what else
-   * they're granted.
+   * The frontend's real permission-gating source of truth (replaces the
+   * old client-side "optimistic until a real 403" cache — see
+   * `apps/web/src/shared/permissions.tsx`). Deliberately carries NO
+   * `@RequirePermission` — this is the one genuine exception to "no
+   * authenticated page/action is ever gate-free" (root DECISIONS.md):
+   * gating the endpoint that TELLS the app what a user is allowed to do
+   * would be circular (the app can't know whether it may ask what it may
+   * do without already knowing what it may do), same bootstrap reasoning
+   * as `GET /me` above and `POST /auth/logout`/`force-password-change`.
+   * This is plumbing every other page depends on, not a page of its own.
+   */
+  @Get('me/permissions')
+  async getMyPermissions(@CurrentUser() user: AuthenticatedUser): Promise<string[]> {
+    return this.usersService.getMyPermissionCodes(user.userId);
+  }
+
+  /**
+   * Feature: per-user default landing page. Self-scoped but still under
+   * the real permission umbrella (root DECISIONS.md — no authenticated
+   * page/action is ever gate-free, only truly `@Public()` anonymous routes
+   * are exempt): `users.preferences.view_my`/`update_my` (migration 0010)
+   * are real, admin-grantable/revocable codes seeded to all 4 base roles
+   * by default, same pattern as `notifications.view` (migration 0006).
    */
   @Get('me/landing-page-options')
+  @RequirePermission('users.preferences.view_my')
   async getMyLandingPageOptions(@CurrentUser() user: AuthenticatedUser): Promise<LandingPageOption[]> {
     return this.usersService.listLandingPageOptions(user.userId);
   }
 
   @Patch('me/landing-page')
+  @RequirePermission('users.preferences.update_my')
   @Audit({ category: 'core.users', entityType: 'User', action: 'update', fetchState: fetchOwnUserState })
   async setMyLandingPage(
     @CurrentUser() user: AuthenticatedUser,

@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as argon2 from 'argon2';
 import { createHash } from 'node:crypto';
@@ -31,6 +31,7 @@ interface MockPrisma {
     findUnique: jest.Mock;
     update: jest.Mock;
     findUniqueOrThrow: jest.Mock;
+    count: jest.Mock;
   };
   userSession: {
     create: jest.Mock;
@@ -38,6 +39,14 @@ interface MockPrisma {
     update: jest.Mock;
     updateMany: jest.Mock;
   };
+  role: {
+    findUnique: jest.Mock;
+  };
+  userRole: {
+    create: jest.Mock;
+  };
+  $transaction: jest.Mock;
+  $executeRaw: jest.Mock;
 }
 
 interface MockJwtService {
@@ -49,10 +58,20 @@ interface MockSettings {
 }
 
 function createMockPrisma(): MockPrisma {
-  return {
-    user: { findUnique: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
+  const prisma: MockPrisma = {
+    user: { findUnique: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn(), count: jest.fn() },
     userSession: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    role: { findUnique: jest.fn() },
+    userRole: { create: jest.fn() },
+    // Real AuthService code only ever calls tx.$executeRaw (the advisory
+    // lock) and tx.user.count/create + tx.userRole.create inside the
+    // callback — handing back the SAME mock object as `tx` (rather than a
+    // separate double) is enough for every test below, since none of them
+    // assert transaction isolation itself.
+    $transaction: jest.fn((callback: (tx: unknown) => unknown) => callback(prisma)),
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
   };
+  return prisma;
 }
 
 function createMockSettings(policy: PasswordPolicy = POLICY, lifetimes: TokenLifetimes = LIFETIMES): MockSettings {
@@ -365,6 +384,95 @@ describe('AuthService', () => {
       expect(typeof call.data.passwordHash).toBe('string');
       expect(call.data.passwordHash).toMatch(/^\$argon2id\$/);
       expect(call.data.passwordHash).not.toBe('NewPassw0rd');
+    });
+  });
+
+  describe('isSetupNeeded', () => {
+    it('reports true when the users table is empty', async () => {
+      prisma.user.count.mockResolvedValue(0);
+      await expect(service.isSetupNeeded()).resolves.toBe(true);
+    });
+
+    it('reports false once at least one user exists', async () => {
+      prisma.user.count.mockResolvedValue(1);
+      await expect(service.isSetupNeeded()).resolves.toBe(false);
+    });
+  });
+
+  describe('setupCreateFirstAdmin', () => {
+    const ADMIN_ROLE = { id: 'role-admin', code: 'admin' };
+    const SETUP_DTO = { email: 'admin@example.com', name: 'First Admin', password: 'AdminPass1' };
+
+    it('rejects a policy-violating password before checking anything else', async () => {
+      await expect(service.setupCreateFirstAdmin({ ...SETUP_DTO, password: 'short' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.role.findUnique).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws InternalServerErrorException when the admin role is missing (core migrations never ran)', async () => {
+      prisma.role.findUnique.mockResolvedValue(null);
+
+      await expect(service.setupCreateFirstAdmin(SETUP_DTO)).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('creates the user, assigns EXACTLY the admin role, and never auto-logs-in (no session/tokens issued)', async () => {
+      prisma.role.findUnique.mockResolvedValue(ADMIN_ROLE);
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.create = jest.fn().mockResolvedValue({ id: 'user-new', email: SETUP_DTO.email, name: SETUP_DTO.name });
+      prisma.userRole.create.mockResolvedValue({});
+
+      const result = await service.setupCreateFirstAdmin(SETUP_DTO);
+
+      expect(prisma.role.findUnique).toHaveBeenCalledWith({ where: { code: 'admin' } });
+      const createArgs = (prisma.user.create as jest.Mock).mock.calls[0][0];
+      expect(createArgs.data.email).toBe(SETUP_DTO.email);
+      expect(createArgs.data.mustChangePassword).toBe(false);
+      expect(createArgs.data.passwordHash).toMatch(/^\$argon2id\$/);
+      expect(prisma.userRole.create).toHaveBeenCalledWith({ data: { userId: 'user-new', roleId: 'role-admin' } });
+      expect(result).toEqual({ id: 'user-new', email: SETUP_DTO.email, name: SETUP_DTO.name });
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+      expect(prisma.userSession.create).not.toHaveBeenCalled();
+    });
+
+    it('takes the advisory lock BEFORE re-counting users, inside the transaction', async () => {
+      prisma.role.findUnique.mockResolvedValue(ADMIN_ROLE);
+      const callOrder: string[] = [];
+      prisma.$executeRaw.mockImplementation(() => {
+        callOrder.push('lock');
+        return Promise.resolve(undefined);
+      });
+      prisma.user.count.mockImplementation(() => {
+        callOrder.push('count');
+        return Promise.resolve(0);
+      });
+      prisma.user.create = jest.fn().mockResolvedValue({ id: 'user-new', email: SETUP_DTO.email, name: SETUP_DTO.name });
+      prisma.userRole.create.mockResolvedValue({});
+
+      await service.setupCreateFirstAdmin(SETUP_DTO);
+
+      // Real concurrency safety depends on the lock being held for the
+      // ENTIRE count-then-insert window, not just called at some point —
+      // this only proves ordering, not real cross-connection blocking
+      // (impossible to exercise with a mock Prisma), but it does guard
+      // against a future refactor silently reordering or dropping the lock.
+      expect(callOrder).toEqual(['lock', 'count']);
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects with ConflictException when a user already exists by the time the transaction runs (race-safe re-check)', async () => {
+      prisma.role.findUnique.mockResolvedValue(ADMIN_ROLE);
+      // Simulates a concurrent request (or a stale isSetupNeeded() check on
+      // the frontend) that already created the first user before this
+      // transaction's own re-check runs.
+      prisma.user.count.mockResolvedValue(1);
+      prisma.user.create = jest.fn();
+
+      await expect(service.setupCreateFirstAdmin(SETUP_DTO)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.userRole.create).not.toHaveBeenCalled();
     });
   });
 });

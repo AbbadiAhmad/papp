@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { modulesApi } from '../api/modules';
+import { RequirePermissionRoute } from '../components/RequirePermissionRoute';
 import type { FrontendModuleManifest } from '../api/types';
 import { getAllDiscoveredModuleRoutes } from './discovery';
 import type { ModuleRouteEntry } from './types';
@@ -67,11 +68,20 @@ export function usePublicModuleRoutes(): ModuleRouteEntry[] {
  * module discovered on disk but not installed, or installed but missing on
  * disk (a stale registry row), is silently skipped — never a crash,
  * matching `module-loader.ts`'s own missing-entry-skip behavior on the
- * backend. Unlike public routes, these genuinely need the installed-module
- * list — an authenticated page a reader can't use is a 403 from its own
- * real API calls (D12's philosophy), not a route that shouldn't exist, but
- * a module that was never installed at all shouldn't clutter the
- * authenticated route table (or the sidebar) either.
+ * backend.
+ *
+ * Each route's `element` is wrapped in `RequirePermissionRoute`, matched
+ * against that module's OWN manifest `routes[]` entry by `pattern === path`
+ * — the manifest is the authoritative source for a route's
+ * `requiredPermission` (validated at install time against the module's
+ * declared `permissions[]`), never re-declared in the `.tsx` file itself.
+ * This is what makes a module page (e.g. library_circulation's ScanPage)
+ * behave the same as a core page: an unauthorized user is redirected to
+ * `/forbidden` before the page ever mounts, not after its own API call
+ * 403s. A route with no matching manifest entry (shouldn't happen — install
+ * validation requires every `.tsx`-side route to have a manifest entry, but
+ * defensive here the same way `module-loader.ts` treats a malformed module)
+ * renders unwrapped (`code: null`) rather than crashing.
  */
 export function useAuthenticatedModuleRoutes(manifests: FrontendModuleManifest[] | null): ModuleRouteEntry[] {
   return useMemo(() => {
@@ -80,7 +90,15 @@ export function useAuthenticatedModuleRoutes(manifests: FrontendModuleManifest[]
     const entries: ModuleRouteEntry[] = [];
     for (const manifest of manifests) {
       const routesModule = discovered.get(manifest.key);
-      if (routesModule?.authenticatedRoutes) entries.push(...routesModule.authenticatedRoutes);
+      if (!routesModule?.authenticatedRoutes) continue;
+      for (const route of routesModule.authenticatedRoutes) {
+        const manifestRoute = manifest.routes.find((r) => r.pattern === route.path);
+        const requiredPermission = manifestRoute?.requiredPermission ?? null;
+        entries.push({
+          path: route.path,
+          element: <RequirePermissionRoute code={requiredPermission}>{route.element}</RequirePermissionRoute>,
+        });
+      }
     }
     return entries;
   }, [manifests]);

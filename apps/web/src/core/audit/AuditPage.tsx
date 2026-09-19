@@ -58,7 +58,7 @@ function AuditLogViewer() {
   const [category, setCategory] = useState('');
   const [entityType, setEntityType] = useState('');
 
-  const { status, data, errorMessage, reload } = useGuardedQuery('audit.view', () => auditApi.query(filters));
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => auditApi.query(filters));
 
   // useGuardedQuery's own effect already fetches once on mount; this only
   // needs to force a NEW fetch when `filters` changes afterward (its

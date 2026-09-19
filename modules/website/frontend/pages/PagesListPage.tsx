@@ -41,7 +41,7 @@ export function PagesListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const gated = useGatedCall();
-  const { status, data: pages, errorMessage, reload } = useGuardedQuery('website.pages.view', () => websiteApi.listPages());
+  const { status, data: pages, errorMessage, reload } = useGuardedQuery(() => websiteApi.listPages());
 
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<WebsitePage | null>(null);

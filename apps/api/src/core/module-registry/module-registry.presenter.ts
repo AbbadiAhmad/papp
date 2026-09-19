@@ -23,6 +23,23 @@ export function toPublicModuleEntry(row: ModuleRegistryEntry): PublicModuleEntry
 }
 
 /**
+ * One module package found on disk (`modules/<key>/manifest.json`) that
+ * isn't currently active in `module_registry` — i.e. a real candidate for
+ * `POST /modules/install`. Feeds the Modules admin page's install dropdown
+ * (replacing a free-text key field a caller had to already know/spell
+ * correctly) — `modules.view`-gated same as the registry list itself, since
+ * `name`/`description`/`version` come straight from each module's own
+ * manifest.json and carry the same sensitivity as `PublicModuleEntry`'s
+ * `manifestSnapshot`.
+ */
+export interface AvailableModuleEntry {
+  key: string;
+  name: string;
+  description: string;
+  version: string;
+}
+
+/**
  * The narrow slice of an installed module's manifest the frontend SHELL
  * needs to mount routes and render the sidebar menu WITHOUT hardcoding any
  * module's name (root DECISIONS.md D78) — never the full `manifestSnapshot`

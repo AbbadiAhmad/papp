@@ -17,6 +17,7 @@
   "core.users.inactive": "غير نشط",
   "core.users.last_login": "آخر تسجيل دخول",
   "core.users.department": "القسم",
+  "core.users.roles": "الأدوار",
   "core.users.external_id": "الرقم التعريفي",
   "core.users.must_change_password": "يتطلب تغيير كلمة المرور",
   "core.users.is_active": "نشط",
@@ -93,6 +94,8 @@
 
   "core.myPreferences.landingPage": "الصفحة الافتراضية بعد تسجيل الدخول",
   "core.myPreferences.platformDefault": "الافتراضي في المنصة (لوحة التحكم)",
+  "core.myPermissions.category": "الفئة",
+  "core.myPermissions.empty": "لا توجد صلاحيات ممنوحة لك.",
   "core.settings.min_length": "الحد الأدنى لطول كلمة المرور",
   "core.settings.require_letter": "يتطلب حرفاً واحداً على الأقل",
   "core.settings.require_number": "يتطلب رقماً واحداً على الأقل",
@@ -125,9 +128,11 @@
   "core.modules.key": "المفتاح",
   "core.modules.version": "الإصدار",
   "core.modules.status_label": "الحالة",
-  "core.modules.install_key": "مفتاح الوحدة",
-  "core.modules.install_key_help": "المفتاح المطابق لمجلد modules/<key>/ في الخادم.",
+  "core.modules.install_key": "الوحدة المراد تثبيتها",
+  "core.modules.install_key_help": "اختر حزمة وحدة موجودة على الخادم ولم يتم تثبيتها بعد.",
+  "core.modules.install_key_empty": "لم يتم العثور على أي حزم وحدات غير مثبتة على الخادم.",
   "core.modules.uninstall_confirm_title": "إزالة الوحدة \"{{key}}\"",
   "core.modules.uninstall_data_kept_notice": "سيتم الاحتفاظ ببيانات الوحدة وإعداداتها ما لم تختر أيضاً حذف البيانات صراحةً.",
-  "core.modules.drop_data_checkbox": "حذف بيانات الوحدة أيضاً (drop-data) — إجراء لا يمكن التراجع عنه"
+  "core.modules.drop_data_checkbox": "حذف بيانات الوحدة أيضاً (drop-data) — إجراء لا يمكن التراجع عنه",
+  "core.modules.deployment_note": "ملاحظة النشر: مجلد modules/ مربوط مباشرة (live-mounted) داخل حاوية api، لذا يظهر أي تعديل على manifest.json أو ملفات الخلفية داخلها فوراً — لكنه لا يصبح فعّالاً إلا بعد تنفيذ \"docker compose restart api\" (كود الوحدة يُحمَّل مرة واحدة فقط عند بدء التشغيل). أي تعديل في واجهة الوحدة (frontend) يتطلب إعادة بناء حقيقية عبر \"docker compose build web\" — حاوية web ليس لديها ربط مباشر؛ ملفاتها تُجمَّع وقت البناء. تثبيت أو ترقية أو إزالة وحدة من هذه الصفحة يعيد تشغيل حاوية api تلقائياً — لست بحاجة لتنفيذ تلك الخطوة يدوياً لهذه الإجراءات."
 }

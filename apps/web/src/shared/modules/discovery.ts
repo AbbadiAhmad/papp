@@ -7,7 +7,7 @@ import type { ModuleRoutesExport } from './types';
  * import statement anywhere in platform code. Which of these are actually
  * MOUNTED (rendered as real routes/menu items) is decided at RUNTIME by
  * `useInstalledModuleKeys()`/`useModuleFrontendManifests()` (see
- * `useInstalledModules.ts`), fed by `GET /modules/frontend-manifest`.
+ * `useInstalledModules.tsx`), fed by `GET /modules/frontend-manifest`.
  *
  * `eager: true` bundles every discovered module's route code into the main
  * chunk (no true runtime plugin loading/module-federation exists yet — see

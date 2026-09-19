@@ -8,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ModuleManifest, parseModuleManifest } from '@papp/shared-types';
-import { Prisma } from '@prisma/client';
+import { ModuleStatus, Prisma } from '@prisma/client';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
@@ -17,11 +17,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DEFAULT_LANGUAGE, I18nService } from '../i18n/i18n.service';
 import { PLATFORM_VERSION } from '../../platform-version';
 import { MigrationRunnerService } from './migration-runner.service';
-import { FrontendModuleManifest, PublicModuleEntry, toFrontendModuleManifest, toPublicModuleEntry } from './module-registry.presenter';
+import {
+  AvailableModuleEntry,
+  FrontendModuleManifest,
+  PublicModuleEntry,
+  toFrontendModuleManifest,
+  toPublicModuleEntry,
+} from './module-registry.presenter';
 import { resolveModulesDir } from './modules-dir';
 
 /** Registry statuses that mean "an install is already live or in flight". */
-const ACTIVE_STATUSES = new Set(['installed', 'installing', 'upgrading']);
+const ACTIVE_STATUSES = new Set<ModuleStatus>(['installed', 'installing', 'upgrading']);
 /** Registry statuses a module may be upgraded FROM. */
 const UPGRADABLE_STATUSES = new Set(['installed', 'disabled']);
 /** Registry statuses a module may be uninstalled FROM. */
@@ -117,6 +123,70 @@ export class ModuleRegistryService {
       orderBy: { key: 'asc' },
     });
     return rows.map(toFrontendModuleManifest).filter((m): m is FrontendModuleManifest => m !== null);
+  }
+
+  /**
+   * Every module package physically present under `resolveModulesDir()`
+   * (`modules/<key>/manifest.json`, or `MODULES_DIR` — same directory
+   * `install()` itself reads from) that is NOT currently `ACTIVE_STATUSES`
+   * in `module_registry` — i.e. a real candidate for `POST /modules/
+   * install`. Feeds the Modules admin page's dropdown so an admin picks
+   * from what's actually deployed instead of free-typing a key (a typo
+   * there previously surfaced as a raw "No manifest.json found" 404 with no
+   * way to discover the correct spelling from the UI itself).
+   *
+   * Deliberately tolerant of a malformed module directory (missing/invalid
+   * manifest.json) — logs and skips it rather than failing the whole list,
+   * matching `discoverInstalledModules()`'s own "never let one bad module
+   * take down a platform-wide listing" convention. A module already
+   * `disabled`/`failed` in the registry (uninstalled-without-drop-data, or
+   * a past failed install) IS included here — re-installing from that state
+   * is exactly what `install()` already supports (see its own
+   * `ACTIVE_STATUSES` check), so it belongs in "available to install", not
+   * excluded as if it were still active.
+   */
+  async listAvailableToInstall(): Promise<AvailableModuleEntry[]> {
+    const modulesDir = resolveModulesDir();
+    if (!existsSync(modulesDir)) return [];
+
+    const activeKeys = new Set(
+      (
+        await this.prisma.moduleRegistryEntry.findMany({
+          where: { status: { in: [...ACTIVE_STATUSES] } },
+          select: { key: true },
+        })
+      ).map((row) => row.key),
+    );
+
+    const candidates: AvailableModuleEntry[] = [];
+    for (const entryName of readdirSync(modulesDir, { withFileTypes: true })) {
+      if (!entryName.isDirectory() || activeKeys.has(entryName.name)) continue;
+
+      const manifestPath = this.manifestPathFor(entryName.name);
+      if (!existsSync(manifestPath)) continue;
+
+      let raw: unknown;
+      try {
+        raw = this.readManifestJson(manifestPath);
+      } catch (error) {
+        this.logger.warn(`Skipping "${entryName.name}" in listAvailableToInstall(): ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      const parsed = parseModuleManifest(raw);
+      if (!parsed.success) {
+        this.logger.warn(`Skipping "${entryName.name}" in listAvailableToInstall(): manifest.json failed schema validation.`);
+        continue;
+      }
+
+      candidates.push({
+        key: parsed.manifest.key,
+        name: parsed.manifest.name,
+        description: parsed.manifest.description,
+        version: parsed.manifest.version,
+      });
+    }
+
+    return candidates.sort((a, b) => a.key.localeCompare(b.key));
   }
 
   async install(key: string, installedBy?: string): Promise<PublicModuleEntry> {

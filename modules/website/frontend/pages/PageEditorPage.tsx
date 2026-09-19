@@ -31,7 +31,7 @@ const BLOCK_TYPES: BlockType[] = ['hero', 'text', 'image', 'columns', 'button', 
 
 export function PageEditorPage() {
   const { pageId } = useParams<{ pageId: string }>();
-  const { status, data: page, errorMessage, reload } = useGuardedQuery('website.pages.view', () => websiteApi.getPage(pageId!));
+  const { status, data: page, errorMessage, reload } = useGuardedQuery(() => websiteApi.getPage(pageId!));
 
   return (
     <Box>

@@ -17,6 +17,7 @@
   "core.users.inactive": "Inactive",
   "core.users.last_login": "Last login",
   "core.users.department": "Department",
+  "core.users.roles": "Roles",
   "core.users.external_id": "External ID",
   "core.users.must_change_password": "Must change password",
   "core.users.is_active": "Active",
@@ -93,6 +94,8 @@
 
   "core.myPreferences.landingPage": "Landing page after login",
   "core.myPreferences.platformDefault": "Platform default (Dashboard)",
+  "core.myPermissions.category": "Category",
+  "core.myPermissions.empty": "You have no permissions granted.",
   "core.settings.min_length": "Minimum password length",
   "core.settings.require_letter": "Require at least one letter",
   "core.settings.require_number": "Require at least one number",
@@ -125,9 +128,11 @@
   "core.modules.key": "Key",
   "core.modules.version": "Version",
   "core.modules.status_label": "Status",
-  "core.modules.install_key": "Module key",
-  "core.modules.install_key_help": "The key matching a modules/<key>/ folder on the server.",
+  "core.modules.install_key": "Module to install",
+  "core.modules.install_key_help": "Pick a module package found on the server that isn't installed yet.",
+  "core.modules.install_key_empty": "No uninstalled module packages were found on the server.",
   "core.modules.uninstall_confirm_title": "Uninstall module \"{{key}}\"",
   "core.modules.uninstall_data_kept_notice": "The module's data and settings are kept unless you also explicitly choose to drop the data.",
-  "core.modules.drop_data_checkbox": "Also drop the module's data (drop-data) — cannot be undone"
+  "core.modules.drop_data_checkbox": "Also drop the module's data (drop-data) — cannot be undone",
+  "core.modules.deployment_note": "Deployment note: modules/ is live-mounted into the api container, so an edited manifest.json or backend file appears inside it immediately — but it only takes effect after \"docker compose restart api\" (module code loads once at startup). A frontend module change needs a real \"docker compose build web\" instead — the web container has no live mount; its files are bundled at build time. Installing, upgrading or uninstalling a module through this page restarts the api container automatically — you never need to do that step yourself for those actions."
 }

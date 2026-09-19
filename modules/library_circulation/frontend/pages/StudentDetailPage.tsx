@@ -13,7 +13,7 @@ export function StudentDetailPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const { studentId } = useParams<{ studentId: string }>();
-  const { status, data: student, errorMessage, reload } = useGuardedQuery('library_circulation.students.view', () =>
+  const { status, data: student, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.getStudent(studentId!),
   );
 

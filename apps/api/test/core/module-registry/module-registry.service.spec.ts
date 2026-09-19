@@ -165,6 +165,58 @@ describe('ModuleRegistryService', () => {
     jest.restoreAllMocks();
   });
 
+  describe('listAvailableToInstall()', () => {
+    it('lists every module directory with a valid manifest.json that is NOT currently active in the registry', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.listAvailableToInstall();
+      const keys = result.map((m) => m.key);
+
+      // valid_module/depends_module/empty_down_module all ship real,
+      // schema-valid manifests — included. malformed_json_module (invalid
+      // JSON), invalid_schema_module (fails Zod validation), and
+      // fake_module (no manifest.json at all) are all real fixture
+      // directories that must be silently SKIPPED, not thrown.
+      expect(keys).toContain('valid_module');
+      expect(keys).not.toContain('malformed_json_module');
+      expect(keys).not.toContain('invalid_schema_module');
+      expect(keys).not.toContain('fake_module');
+    });
+
+    it('excludes a module whose registry row is already installed/installing/upgrading', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([{ key: 'valid_module' }]);
+
+      const result = await service.listAvailableToInstall();
+
+      expect(result.map((m) => m.key)).not.toContain('valid_module');
+      expect(prisma.moduleRegistryEntry.findMany).toHaveBeenCalledWith({
+        where: { status: { in: ['installed', 'installing', 'upgrading'] } },
+        select: { key: true },
+      });
+    });
+
+    it('reports the manifest key/name/description/version for each candidate', async () => {
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([]);
+
+      const result = await service.listAvailableToInstall();
+      const validModule = result.find((m) => m.key === 'valid_module');
+
+      expect(validModule).toEqual({
+        key: 'valid_module',
+        name: 'Valid Module',
+        description: 'Fixture module for ModuleRegistryService unit tests',
+        version: '1.0.0',
+      });
+    });
+
+    it('returns an empty array (never throws) when the modules directory does not exist at all', async () => {
+      process.env.MODULES_DIR = join(FIXTURES_MODULES_DIR, 'does-not-exist');
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([]);
+
+      await expect(service.listAvailableToInstall()).resolves.toEqual([]);
+    });
+  });
+
   describe('install()', () => {
     it('happy path: registers permissions, grants defaults, seeds settings and menu, in that order, ending "installed"', async () => {
       // First call ("already registered?") must be null; every later call —

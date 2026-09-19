@@ -12,7 +12,7 @@ import { Can } from '../../shared/permissions';
 export function NotificationsInboxPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { status, data, errorMessage, reload } = useGuardedQuery('notifications.view', () => notificationsApi.getInbox());
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => notificationsApi.getInbox());
 
   const handleMarkRead = async (id: string) => {
     await notificationsApi.markRead(id);

@@ -16,10 +16,13 @@ const fetchSessionState = (prisma: PrismaService, req: Request) =>
 
 /**
  * Retrofitted in Phase 2 with `@RequirePermission(...)` (docs/BUILD_PLAN.md
- * Phase 2 step 7). `GET /sessions/me` deliberately carries no
- * `@RequirePermission` for the same self-scoped reason as `GET /users/me` —
- * every role must be able to see their own active sessions regardless of
- * grants.
+ * Phase 2 step 7). `GET /sessions/me` carries `sessions.view_my` — a real,
+ * admin-grantable/revocable code, seeded to all 4 base roles by default
+ * (migration 0010) rather than left permission-check-free: every self-
+ * scoped page must still sit under the permission umbrella (root
+ * DECISIONS.md — no authenticated page is ever gate-free, only truly
+ * `@Public()` anonymous routes are exempt). Same pattern as
+ * `notifications.view` (migration 0006) for `GET /notifications/me`.
  *
  * Phase 5 global-guard switch: `JwtAuthGuard`/`PermissionGuard` are now
  * global (app.module.ts) — only `MustChangePasswordGuard` stays
@@ -31,6 +34,7 @@ export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
   @Get('me')
+  @RequirePermission('sessions.view_my')
   async getMine(@CurrentUser() user: AuthenticatedUser): Promise<PublicSession[]> {
     return this.sessionsService.listForUser(user.userId);
   }

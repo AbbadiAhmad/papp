@@ -1,11 +1,16 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PublicRole, toPublicRole } from './role.presenter';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+
+/** The one role every "must always have at least one holder" guard below protects. Matches the `role.code === 'admin'` convention documented in `permissions-page.guard.ts` — never `isSystem` (that flag also covers `library_assistant`/`finance`/`reader`, which have no such invariant). */
+const PROTECTED_ROLE_CODE = 'admin';
+/** Arbitrary fixed key for `pg_advisory_xact_lock`, same pattern/reasoning as `auth.service.ts`'s `SETUP_ADVISORY_LOCK_KEY` — serializes the count-then-act window for the last-admin guard below so concurrent requests can't both see "2 left" and both proceed. Any int8 works; this one has no other meaning. */
+const LAST_ADMIN_GUARD_ADVISORY_LOCK_KEY = 8_411_960_028n;
 
 @Injectable()
 export class RolesService {
@@ -64,9 +69,60 @@ export class RolesService {
     });
   }
 
-  /** Idempotent: unassigning a role the user doesn't hold is a no-op. */
+  /**
+   * Idempotent: unassigning a role the user doesn't hold is a no-op.
+   * Guarded against orphaning the platform (see `assertNotLastActiveAdmin`
+   * below) when the role being removed is `admin` — everything else
+   * (reader/finance/library_assistant, or any admin-created role) has no
+   * such invariant and is removed unconditionally.
+   */
   async unassignFromUser(roleId: string, userId: string): Promise<void> {
-    await this.prisma.userRole.deleteMany({ where: { userId, roleId } });
+    const role = await this.findRoleOrThrow(roleId);
+    if (role.code !== PROTECTED_ROLE_CODE) {
+      await this.prisma.userRole.deleteMany({ where: { userId, roleId } });
+      return;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertNotLastActiveAdmin(tx, userId);
+      await tx.userRole.deleteMany({ where: { userId, roleId } });
+    });
+  }
+
+  /**
+   * Throws `ForbiddenException` if `candidateUserId` is CURRENTLY one of the
+   * platform's remaining active `admin`-role users and removing them (by
+   * deletion, deactivation, or role unassignment — this helper doesn't care
+   * which) would leave zero. Callers run this INSIDE the same `tx` as the
+   * actual mutation, guarded by `pg_advisory_xact_lock` taken first — same
+   * concurrency reasoning as `AuthService.setupCreateFirstAdmin` (root
+   * D60/A27/D80): plain "count, then act" is not atomic under Postgres's
+   * default READ COMMITTED isolation, so two concurrent requests removing
+   * two DIFFERENT admins could both see "more than one left" and both
+   * proceed, together zeroing out the role. The lock serializes this one
+   * critical section platform-wide (a single fixed key, not per-user) —
+   * acceptable cost since removing an admin is a rare admin-console action,
+   * never a hot path.
+   *
+   * Deliberately counts by `role.code === 'admin'`, not `isSystem` — the
+   * one documented exception to "never hardcode a role name" in this
+   * codebase (`permissions-page.guard.ts`'s own docblock), because this is
+   * fundamentally the same "platform bootstrap/safety" concern as that
+   * guard, not a feature-permission check a future role could opt into.
+   */
+  async assertNotLastActiveAdmin(tx: Prisma.TransactionClient | PrismaClient, candidateUserId: string): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LAST_ADMIN_GUARD_ADVISORY_LOCK_KEY})`;
+
+    const activeAdminUserIds = await tx.userRole.findMany({
+      where: { role: { code: PROTECTED_ROLE_CODE }, user: { isActive: true } },
+      select: { userId: true },
+    });
+    const remainingAfter = activeAdminUserIds.filter((ur) => ur.userId !== candidateUserId);
+
+    if (activeAdminUserIds.some((ur) => ur.userId === candidateUserId) && remainingAfter.length === 0) {
+      throw new ForbiddenException(
+        'This is the last active admin account. At least one active admin must always exist — assign another user the admin role first.',
+      );
+    }
   }
 
   private async findRoleOrThrow(id: string) {
