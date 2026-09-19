@@ -1,14 +1,13 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isProtectedAdminRoleCode, PROTECTED_ADMIN_ROLE_CODE } from '../permissions/permissions-page.guard';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PublicRole, toPublicRole } from './role.presenter';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
-/** The one role every "must always have at least one holder" guard below protects. Matches the `role.code === 'admin'` convention documented in `permissions-page.guard.ts` — never `isSystem` (that flag also covers `library_assistant`/`finance`/`reader`, which have no such invariant). */
-const PROTECTED_ROLE_CODE = 'admin';
 /** Arbitrary fixed key for `pg_advisory_xact_lock`, same pattern/reasoning as `auth.service.ts`'s `SETUP_ADVISORY_LOCK_KEY` — serializes the count-then-act window for the last-admin guard below so concurrent requests can't both see "2 left" and both proceed. Any int8 works; this one has no other meaning. */
 const LAST_ADMIN_GUARD_ADVISORY_LOCK_KEY = 8_411_960_028n;
 
@@ -78,7 +77,7 @@ export class RolesService {
    */
   async unassignFromUser(roleId: string, userId: string): Promise<void> {
     const role = await this.findRoleOrThrow(roleId);
-    if (role.code !== PROTECTED_ROLE_CODE) {
+    if (!isProtectedAdminRoleCode(role.code)) {
       await this.prisma.userRole.deleteMany({ where: { userId, roleId } });
       return;
     }
@@ -103,17 +102,20 @@ export class RolesService {
    * acceptable cost since removing an admin is a rare admin-console action,
    * never a hot path.
    *
-   * Deliberately counts by `role.code === 'admin'`, not `isSystem` — the
-   * one documented exception to "never hardcode a role name" in this
-   * codebase (`permissions-page.guard.ts`'s own docblock), because this is
-   * fundamentally the same "platform bootstrap/safety" concern as that
-   * guard, not a feature-permission check a future role could opt into.
+   * Deliberately counts by the `admin` role code, not `isSystem` — imported
+   * from `permissions-page.guard.ts` (`PROTECTED_ADMIN_ROLE_CODE`/
+   * `isProtectedAdminRoleCode`), the ONE sanctioned D12 file allowed to
+   * name a role by code at all (`scripts/lint-no-hardcoded-roles.ts`'s own
+   * allowlist) — this platform-bootstrap/safety invariant is the same
+   * category of concern as that file's own exception, so the actual
+   * role-name comparison lives there, imported by value here rather than
+   * re-implemented as a second hardcoded check.
    */
   async assertNotLastActiveAdmin(tx: Prisma.TransactionClient | PrismaClient, candidateUserId: string): Promise<void> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LAST_ADMIN_GUARD_ADVISORY_LOCK_KEY})`;
 
     const activeAdminUserIds = await tx.userRole.findMany({
-      where: { role: { code: PROTECTED_ROLE_CODE }, user: { isActive: true } },
+      where: { role: { code: PROTECTED_ADMIN_ROLE_CODE }, user: { isActive: true } },
       select: { userId: true },
     });
     const remainingAfter = activeAdminUserIds.filter((ur) => ur.userId !== candidateUserId);

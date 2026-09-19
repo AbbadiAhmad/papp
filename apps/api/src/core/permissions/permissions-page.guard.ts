@@ -6,6 +6,24 @@ import { AuthenticatedUser } from '../../common/decorators/current-user.decorato
 import { PermissionsService } from './permissions.service';
 
 /**
+ * The `admin` role CODE, as a named export — the one other place in the
+ * codebase allowed to compare against it is `RolesService`/`UsersService`'s
+ * last-active-admin guard (see their own docblocks): "the platform must
+ * always keep at least one active admin" is the same category of
+ * platform-bootstrap/safety concern this file's own D12 exception is, so
+ * the role-name-shaped comparison itself lives HERE (the one sanctioned
+ * file, scripts/lint-no-hardcoded-roles.ts's own allowlist) as a plain,
+ * exported constant + helper, imported by value everywhere else needs it —
+ * never re-compared against a literal in a second file.
+ */
+export const PROTECTED_ADMIN_ROLE_CODE = 'admin';
+
+/** `true` iff `code` is the one role every "must always have a holder" invariant protects. The only place outside this file allowed to CALL this is the last-active-admin guard (RolesService/UsersService) — never re-implement the comparison itself elsewhere. */
+export function isProtectedAdminRoleCode(code: string): boolean {
+  return code === PROTECTED_ADMIN_ROLE_CODE;
+}
+
+/**
  * *** THE single hard-coded D12 exception in the entire codebase. ***
  *
  * ARCHITECTURE.md §7.4 / docs/DECISIONS.md D12: "Admin always has access to

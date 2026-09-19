@@ -19,10 +19,7 @@ export function useModuleFrontendManifests(enabled: boolean): FrontendModuleMani
   const [manifests, setManifests] = useState<FrontendModuleManifest[] | null>(null);
 
   useEffect(() => {
-    if (!enabled) {
-      setManifests(null);
-      return;
-    }
+    if (!enabled) return;
     let cancelled = false;
     modulesApi
       .getFrontendManifest()
@@ -37,7 +34,14 @@ export function useModuleFrontendManifests(enabled: boolean): FrontendModuleMani
     };
   }, [enabled]);
 
-  return manifests;
+  // `!enabled` reports `null` directly at read time rather than clearing
+  // `manifests` via a synchronous setState inside the effect above (which
+  // eslint's react-hooks/set-state-in-effect rule flags as an avoidable
+  // extra render) — this hook already treats "disabled" and "no manifests
+  // yet" identically to every caller, so there is nothing lost by not
+  // actually resetting the underlying state: the moment `enabled` flips
+  // back to true, the effect re-fetches and overwrites it anyway.
+  return enabled ? manifests : null;
 }
 
 /**
