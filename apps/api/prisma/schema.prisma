@@ -353,6 +353,7 @@ model LibraryCatalogBookCopy {
   acquisitionDate DateTime?                     @map("acquisition_date") @db.Date
   createdAt       DateTime                      @default(now()) @map("created_at")
   updatedAt       DateTime                      @updatedAt @map("updated_at")
+  history         Json                          @default("[]")
 
   book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
@@ -638,16 +639,17 @@ model LibraryFineType {
 /// Full history is NEVER deleted (§10, "reading passport") — deleting a
 /// student/book with history is rejected in the service layer (§22).
 model LibraryBorrowing {
-  id          String    @id @default(uuid()) @db.Uuid
-  bookCopyId  String    @map("book_copy_id") @db.Uuid
-  studentId   String    @map("student_id") @db.Uuid
-  status      String    @default("active")
-  borrowedAt  DateTime  @default(now()) @map("borrowed_at")
-  dueAt       DateTime  @map("due_at")
-  returnedAt  DateTime? @map("returned_at")
-  borrowedBy  String    @map("borrowed_by") @db.Uuid
-  returnedBy  String?   @map("returned_by") @db.Uuid
-  comments    String?
+  id                  String    @id @default(uuid()) @db.Uuid
+  bookCopyId          String    @map("book_copy_id") @db.Uuid
+  studentId           String    @map("student_id") @db.Uuid
+  status              String    @default("active")
+  borrowedAt          DateTime  @default(now()) @map("borrowed_at")
+  dueAt               DateTime  @map("due_at")
+  returnedAt          DateTime? @map("returned_at")
+  borrowedBy          String    @map("borrowed_by") @db.Uuid
+  returnedBy          String?   @map("returned_by") @db.Uuid
+  comments            String?
+  circulationHistory  Json      @default("[]") @map("circulation_history")
 
   student LibraryStudent @relation(fields: [studentId], references: [id])
   fines   LibraryFine[]

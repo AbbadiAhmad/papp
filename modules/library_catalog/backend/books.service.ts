@@ -142,10 +142,44 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
   async updateCopy(bookId: string, copyId: string, dto: UpdateBookCopyDto) {
     const copy = await this.findCopyOrThrow(bookId, copyId);
+
+    const changes: Record<string, { before: unknown; after: unknown }> = {};
+    if (dto.status !== undefined && dto.status !== copy.status) {
+      changes.status = { before: copy.status, after: dto.status };
+    }
+    if (dto.condition !== undefined && dto.condition !== copy.condition) {
+      changes.condition = { before: copy.condition, after: dto.condition };
+    }
+    if (dto.location !== undefined && dto.location !== copy.location) {
+      changes.location = { before: copy.location, after: dto.location };
+    }
+
+    let historyEntry: Record<string, unknown> | null = null;
+    if (Object.keys(changes).length > 0) {
+      historyEntry = {
+        timestamp: new Date().toISOString(),
+        changes,
+      };
+    }
+
+    const history = (copy.history as Record<string, unknown>[]) || [];
+    const updatedHistory = historyEntry ? [...history, historyEntry].slice(-100) : history;
+
     return this.prisma.libraryCatalogBookCopy.update({
       where: { id: copy.id },
-      data: dto,
+      data: { ...dto, history: updatedHistory },
     });
+  }
+
+  // --- History (Feature 2.1) --------------------------------------------------
+
+  async getCopyHistory(copyId: string, limit: number = 10) {
+    const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: copyId } });
+    if (!copy) {
+      throw new NotFoundException(`Copy "${copyId}" not found`);
+    }
+    const history = (copy.history as Record<string, unknown>[]) || [];
+    return history.slice(-limit);
   }
 
   // --- Public availability (MODULE_SPEC.md §7 / BUILD_PLAN.md Phase 8) -----

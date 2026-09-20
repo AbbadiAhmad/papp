@@ -203,6 +203,61 @@ describe('CirculationService', () => {
     });
   });
 
+  describe('getCirculationHistory', () => {
+    it('Feature 2.2: returns borrowing history for a copy, ordered by date descending', async () => {
+      const borrowings = [
+        {
+          id: 'b-1',
+          studentId: 'student-1',
+          student: { code: 'STU-001' },
+          bookCopyId: 'copy-1',
+          borrowedAt: new Date('2026-09-01'),
+          dueAt: new Date('2026-09-15'),
+          returnedAt: new Date('2026-09-12'),
+          status: 'returned',
+          comments: null,
+          borrowedBy: 'staff-1',
+          returnedBy: 'staff-2',
+        },
+        {
+          id: 'b-2',
+          studentId: 'student-2',
+          student: { code: 'STU-002' },
+          bookCopyId: 'copy-1',
+          borrowedAt: new Date('2026-09-10'),
+          dueAt: new Date('2026-09-24'),
+          returnedAt: null,
+          status: 'active',
+          comments: 'Keep longer if possible',
+          borrowedBy: 'staff-1',
+          returnedBy: null,
+        },
+      ];
+      prisma.libraryBorrowing.findMany.mockResolvedValue(borrowings);
+
+      const result = await service.getCirculationHistory('copy-1');
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith({
+        where: { bookCopyId: 'copy-1' },
+        orderBy: { borrowedAt: 'desc' },
+        take: 10,
+        include: { student: true },
+      });
+      expect(result).toHaveLength(2);
+      expect(result[0]).toHaveProperty('studentCode', 'STU-001');
+    });
+
+    it('respects the limit parameter when fetching history', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      await service.getCirculationHistory('copy-1', undefined, 5);
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 5 }),
+      );
+    });
+  });
+
   describe('getCopyStats', () => {
     it('§18: returns real aggregate counts for the dashboard, never mock numbers', async () => {
       prisma.libraryCatalogBookCopy.count

@@ -217,4 +217,35 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     }
     return borrowing;
   }
+
+  /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
+  async getCirculationHistory(bookCopyId?: string, borrowingId?: string, limit: number = 10) {
+    const where: Record<string, unknown> = {};
+    if (bookCopyId) {
+      where.bookCopyId = bookCopyId;
+    }
+    if (borrowingId) {
+      where.id = borrowingId;
+    }
+
+    const borrowings = await this.prisma.libraryBorrowing.findMany({
+      where,
+      orderBy: { borrowedAt: 'desc' },
+      take: limit,
+      include: { student: true },
+    });
+
+    return borrowings.map((b) => ({
+      id: b.id,
+      studentId: b.studentId,
+      studentCode: b.student.code,
+      borrowedAt: b.borrowedAt,
+      dueAt: b.dueAt,
+      returnedAt: b.returnedAt,
+      status: b.status,
+      comments: b.comments,
+      borrowedBy: b.borrowedBy,
+      returnedBy: b.returnedBy,
+    }));
+  }
 }

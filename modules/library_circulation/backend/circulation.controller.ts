@@ -37,6 +37,13 @@ export class CirculationController {
     return this.circulation.findActiveBorrowingForCopy(copyId);
   }
 
+  @Get('copies/:copyId/circulation-history')
+  @RequirePermission('library_circulation.borrow')
+  async getCopyCirculationHistory(@Param('copyId') copyId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
+  }
+
   @Post('borrow')
   @RequirePermission('library_circulation.borrow')
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'create' })

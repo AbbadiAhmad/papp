@@ -95,6 +95,13 @@ export class BooksController {
     return this.books.listCopies(bookId);
   }
 
+  @Get(':bookId/copies/:copyId/catalog-history')
+  @RequirePermission('library_catalog.books.view')
+  async getCopyHistory(@Param('bookId') bookId: string, @Param('copyId') copyId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.books.getCopyHistory(copyId, limitNumber);
+  }
+
   @Post(':bookId/copies')
   @RequirePermission('library_catalog.books.create')
   @Audit({ category: 'library_catalog.copies', entityType: 'LibraryCatalogBookCopy', action: 'create' })
