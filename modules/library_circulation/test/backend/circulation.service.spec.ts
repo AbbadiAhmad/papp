@@ -194,6 +194,18 @@ describe('CirculationService', () => {
       prisma.libraryBorrowing.findUnique.mockResolvedValue(null);
       await expect(service.returnBorrowing('missing', 'staff-1')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('backdating: an explicit returnedAtOverride is used for both the stored returnedAt and the daysLate calculation, not "now"', async () => {
+      const dueAt = new Date('2026-01-01T00:00:00Z');
+      const backdated = new Date('2026-01-04T00:00:00Z'); // 3 days late as of the backdated date
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({ id: 'b-1', status: 'active', dueAt, bookCopyId: 'copy-1', studentId: 'student-1' });
+      prisma.libraryBorrowing.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ id: 'b-1', ...data }));
+
+      const { daysLate, borrowing } = await service.returnBorrowing('b-1', 'staff-1', undefined, undefined, backdated);
+
+      expect(daysLate).toBe(3);
+      expect((borrowing as { returnedAt: Date }).returnedAt).toEqual(backdated);
+    });
   });
 
   describe('findActiveBorrowingForCopy', () => {

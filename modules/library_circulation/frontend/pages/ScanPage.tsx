@@ -34,6 +34,7 @@ import {
   type LibraryBorrowing,
   type LibraryFine,
   type LibraryFineType,
+  type ReturnFineInput,
   type ScanBookCopyResult,
   type ScanStudentResult,
   type StudentSearchResult,
@@ -68,6 +69,7 @@ export function ScanPage() {
   const [borrowDialogOpen, setBorrowDialogOpen] = useState(false);
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
+  const [returnBookLabel, setReturnBookLabel] = useState<string | null>(null);
   const [returnFromActiveList, setReturnFromActiveList] = useState(false);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
@@ -207,34 +209,38 @@ export function ScanPage() {
     }
   };
 
-  const openReturnDialog = (borrowing: LibraryBorrowing) => {
+  const openReturnDialog = (borrowing: LibraryBorrowing, bookLabel: string | null) => {
     setCurrentBorrowingForReturn(borrowing);
+    setReturnBookLabel(bookLabel);
     setReturnDialogOpen(true);
   };
 
   /** Active-borrowings section's per-row Return button: ReturnDialog only ever reads id/borrowedAt/dueAt off `borrowing`, so a light adapter is enough — no second fetch needed. */
   const openReturnDialogFromActive = (activeBorrowing: ActiveBorrowingForStudent) => {
     setReturnFromActiveList(true);
-    openReturnDialog({
-      id: activeBorrowing.id,
-      bookCopyId: activeBorrowing.bookCopyId,
-      studentId: student?.student.id ?? '',
-      status: activeBorrowing.status,
-      borrowedAt: activeBorrowing.borrowedAt,
-      dueAt: activeBorrowing.dueAt,
-      returnedAt: null,
-      borrowedBy: '',
-      returnedBy: null,
-    });
+    openReturnDialog(
+      {
+        id: activeBorrowing.id,
+        bookCopyId: activeBorrowing.bookCopyId,
+        studentId: student?.student.id ?? '',
+        status: activeBorrowing.status,
+        borrowedAt: activeBorrowing.borrowedAt,
+        dueAt: activeBorrowing.dueAt,
+        returnedAt: null,
+        borrowedBy: '',
+        returnedBy: null,
+      },
+      activeBorrowing.bookTitle ?? activeBorrowing.qrCode,
+    );
   };
 
-  const confirmReturn = async (returnStatus: string, returnNotes?: string) => {
+  const confirmReturn = async (returnStatus: string, returnNotes?: string, returnedAt?: string, fine?: ReturnFineInput) => {
     if (!currentBorrowingForReturn) return;
     setBusy(true);
     setError(null);
     try {
       const result = await gated('library_circulation.return', () =>
-        libraryCirculationApi.returnBorrowing(currentBorrowingForReturn.id, returnStatus, returnNotes),
+        libraryCirculationApi.returnBorrowing(currentBorrowingForReturn.id, returnStatus, returnNotes, returnedAt, fine),
       );
       setMessage(
         result.daysLate > 0
@@ -482,7 +488,7 @@ export function ScanPage() {
                             variant="contained"
                             color="secondary"
                             fullWidth
-                            onClick={() => openReturnDialog(bookCopy.activeBorrowing!)}
+                            onClick={() => openReturnDialog(bookCopy.activeBorrowing!, bookCopy.book?.title ?? bookCopy.copy.qrCode)}
                             disabled={busy}
                           >
                             {t('library_circulation.scan.confirm_return')}
@@ -525,10 +531,12 @@ export function ScanPage() {
       <ReturnDialog
         open={returnDialogOpen}
         borrowing={currentBorrowingForReturn}
+        bookLabel={returnBookLabel}
         onReturn={confirmReturn}
         onClose={() => {
           setReturnDialogOpen(false);
           setCurrentBorrowingForReturn(null);
+          setReturnBookLabel(null);
         }}
         loading={busy}
       />

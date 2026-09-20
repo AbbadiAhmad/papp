@@ -153,6 +153,35 @@ export interface CreateFineInput {
   confirmDuplicate?: boolean;
 }
 
+export interface UpdateFineInput {
+  amount?: number;
+  notes?: string;
+}
+
+/** FinesService.findById()'s enrichment — book/return context a raw LibraryFine can't show on its own (it only stores borrowingId), and both createdBy/receivedBy resolved to real names. */
+export interface FineBorrowingContext {
+  bookTitle: string | null;
+  qrCode: string | null;
+  returnStatus: string | null;
+  dueAt: string;
+  returnedAt: string | null;
+  daysLate: number;
+}
+
+export interface LibraryFineDetail extends LibraryFine {
+  createdByName: string | null;
+  transaction: LibraryFinancialTransaction | null;
+  payments: (LibraryPayment & { receivedByName: string | null })[];
+  borrowingContext: FineBorrowingContext | null;
+}
+
+/** Return dialog's inline extendable "add fine" checkbox. */
+export interface ReturnFineInput {
+  fineTypeId: string;
+  amount: number;
+  notes?: string;
+}
+
 export interface ScanStudentResult {
   type: 'student';
   student: LibraryStudent & { name: string | null; email: string | null };
@@ -218,12 +247,15 @@ export const libraryCirculationApi = {
     apiClient.get<LibraryBorrowing>(`${BASE}/book-copies/${copyId}/active-borrowing`).then((r) => r.data),
   borrow: (studentId: string, bookCopyId: string, expectedReturnDate?: string, comments?: string) =>
     apiClient.post<LibraryBorrowing>(`${BASE}/borrow`, { studentId, bookCopyId, expectedReturnDate, comments }).then((r) => r.data),
-  returnBorrowing: (borrowingId: string, returnStatus?: string, returnNotes?: string) =>
+  returnBorrowing: (borrowingId: string, returnStatus?: string, returnNotes?: string, returnedAt?: string, fine?: ReturnFineInput) =>
     apiClient
-      .post<{ borrowing: LibraryBorrowing; daysLate: number; lateFine: LibraryFine | null; damageFine?: { suggested: boolean; reason: string } }>(
-        `${BASE}/return`,
-        { borrowingId, returnStatus, returnNotes },
-      )
+      .post<{
+        borrowing: LibraryBorrowing;
+        daysLate: number;
+        lateFine: LibraryFine | null;
+        recordedFine: LibraryFine | null;
+        damageFine?: { suggested: boolean; reason: string };
+      }>(`${BASE}/return`, { borrowingId, returnStatus, returnNotes, returnedAt, fine })
       .then((r) => r.data),
 
   // History (§2.1/§2.2, docs/LIBRARY_IMPROVEMENTS.md)
@@ -252,11 +284,13 @@ export const libraryCirculationApi = {
     const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined));
     return apiClient.get<LibraryFine[]>(`${BASE}/fines`, { params }).then((r) => r.data);
   },
-  getFine: (id: string) =>
-    apiClient
-      .get<LibraryFine & { transaction: LibraryFinancialTransaction | null; payments: LibraryPayment[] }>(`${BASE}/fines/${id}`)
-      .then((r) => r.data),
+  getFine: (id: string) => apiClient.get<LibraryFineDetail>(`${BASE}/fines/${id}`).then((r) => r.data),
   createFine: (dto: CreateFineInput) => apiClient.post<LibraryFine>(`${BASE}/fines`, dto).then((r) => r.data),
+  /** Editable while unpaid/partially_paid, under the same permission that creates a fine. */
+  updateFine: (id: string, dto: UpdateFineInput) => apiClient.patch<LibraryFine>(`${BASE}/fines/${id}`, dto).then((r) => r.data),
+  /** Editing an already-fully-paid fine — a distinct, more privileged permission than updateFine above. */
+  updateFineAfterPayment: (id: string, dto: UpdateFineInput) =>
+    apiClient.patch<LibraryFine>(`${BASE}/fines/${id}/after-payment`, dto).then((r) => r.data),
   waiveFine: (id: string) => apiClient.post<LibraryFine>(`${BASE}/fines/${id}/waive`).then((r) => r.data),
   recordPayment: (fineId: string, amount: number, paymentMethod: PaymentMethod) =>
     apiClient

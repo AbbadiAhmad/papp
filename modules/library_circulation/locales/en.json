@@ -16,6 +16,7 @@
   "library_circulation.perm.fines.view": "View fines",
   "library_circulation.perm.fines.record": "Record fines",
   "library_circulation.perm.fines.waive": "Waive fines",
+  "library_circulation.perm.fines.update_after_payment": "Edit fines after payment",
   "library_circulation.perm.finance.view": "View finance",
   "library_circulation.perm.finance.record_payment": "Record payments",
   "library_circulation.perm.settings.update": "Update circulation settings",
@@ -85,6 +86,7 @@
   "library_circulation.return.notes_placeholder": "Optional notes about the return condition",
   "library_circulation.return.complete_return": "Complete return",
   "library_circulation.return.suggest_fine": "A fine may be needed for {{reason}} books",
+  "library_circulation.return.add_fine": "Add a fine for this return",
 
   "library_circulation.books.status": "Status",
 
@@ -140,6 +142,8 @@
   "library_circulation.fines.amount_paid": "Paid",
   "library_circulation.fines.status": "Status",
   "library_circulation.fines.record_payment": "Record payment",
+  "library_circulation.fines.recorded_by": "Recorded by",
+  "library_circulation.fines.payments_title": "Payments",
   "library_circulation.fines.remaining_balance": "Remaining balance: {{amount}}",
   "library_circulation.fines.waive": "Waive",
   "library_circulation.fines.waive_confirm": "Are you sure you want to waive this fine? This cannot be undone.",

@@ -16,6 +16,7 @@ exports.FinesController = void 0;
 const common_1 = require("@nestjs/common");
 const create_fine_dto_1 = require("./dto/create-fine.dto");
 const record_payment_dto_1 = require("./dto/record-payment.dto");
+const update_fine_dto_1 = require("./dto/update-fine.dto");
 const fines_service_1 = require("./fines.service");
 const platform_1 = require("./platform");
 const fetchFineState = (prisma, req) => prisma.libraryFine.findUnique({ where: { id: req.params.id } });
@@ -35,6 +36,14 @@ let FinesController = class FinesController {
     }
     async create(dto, user) {
         return this.fines.create(dto, user.userId);
+    }
+    /** Editable while unpaid/partially_paid — same permission that creates a fine (§ AskUserQuestion: pre-payment edit gate). */
+    async update(id, dto) {
+        return this.fines.update(id, dto, false);
+    }
+    /** Editing a fine that's already fully paid — a distinct, more privileged permission than the pre-payment edit above. */
+    async updateAfterPayment(id, dto) {
+        return this.fines.update(id, dto, true);
     }
     async waive(id) {
         return this.fines.waive(id);
@@ -84,6 +93,26 @@ __decorate([
     __metadata("design:paramtypes", [create_fine_dto_1.CreateFineDto, Object]),
     __metadata("design:returntype", Promise)
 ], FinesController.prototype, "create", null);
+__decorate([
+    (0, common_1.Patch)('fines/:id'),
+    (0, platform_1.RequirePermission)('library_circulation.fines.record'),
+    (0, platform_1.Audit)({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_fine_dto_1.UpdateFineDto]),
+    __metadata("design:returntype", Promise)
+], FinesController.prototype, "update", null);
+__decorate([
+    (0, common_1.Patch)('fines/:id/after-payment'),
+    (0, platform_1.RequirePermission)('library_circulation.fines.update_after_payment'),
+    (0, platform_1.Audit)({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_fine_dto_1.UpdateFineDto]),
+    __metadata("design:returntype", Promise)
+], FinesController.prototype, "updateAfterPayment", null);
 __decorate([
     (0, common_1.Post)('fines/:id/waive'),
     (0, platform_1.RequirePermission)('library_circulation.fines.waive'),

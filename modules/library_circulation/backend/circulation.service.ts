@@ -145,12 +145,18 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
    * own tables are.
    *
    * Feature D18: supports return status (returned/damaged/lost/other) and notes
+   *
+   * `returnedAtOverride`: the librarian backdating the return (book was
+   * physically back yesterday, only scanned today) — defaults to "now" when
+   * omitted, same as before. Days-late/fine calculations use whichever date
+   * actually applies, never a hardcoded "now".
    */
   async returnBorrowing(
     borrowingId: string,
     returnedBy: string,
     returnStatus?: string,
     returnNotes?: string,
+    returnedAtOverride?: Date,
   ): Promise<{ borrowing: unknown; daysLate: number }> {
     const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
     if (!borrowing) throw new NotFoundException('Borrowing not found');
@@ -158,7 +164,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException(`This borrowing is already "${borrowing.status}" and cannot be returned (§22).`);
     }
 
-    const returnedAt = new Date();
+    const returnedAt = returnedAtOverride ?? new Date();
     const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
 
     // Map return status to copy status

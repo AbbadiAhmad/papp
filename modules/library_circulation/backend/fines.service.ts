@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, Logger, Not
 import { Prisma, PrismaClient } from '@prisma/client';
 import { CreateFineDto } from './dto/create-fine.dto';
 import { PaymentMethod } from './dto/record-payment.dto';
+import { UpdateFineDto } from './dto/update-fine.dto';
 import { NOTIFICATIONS_SENDER, NotificationsSender } from './notifications-sender';
 
 const OPEN_FINE_STATUSES = ['unpaid', 'partially_paid'] as const;
@@ -41,13 +42,58 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Fine details — who recorded it and who received each payment against
+   * it are resolved to real names here (`createdBy`/`receivedBy` are just
+   * User UUIDs on the raw rows), plus the book/borrowing context (title,
+   * return status, days late) a librarian actually needs to make sense of
+   * WHY this fine exists, none of which the raw LibraryFine row carries on
+   * its own (it only stores `borrowingId`).
+   */
   async findById(id: string) {
     const fine = await this.getOrThrow(id);
     const transaction = await this.prisma.libraryFinancialTransaction.findFirst({ where: { fineId: id } });
     const payments = transaction
       ? await this.prisma.libraryPayment.findMany({ where: { transactionId: transaction.id }, orderBy: { paidAt: 'asc' } })
       : [];
-    return { ...fine, transaction, payments };
+
+    const userIds = [...new Set([fine.createdBy, ...payments.map((p) => p.receivedBy)])];
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    let borrowingContext: {
+      bookTitle: string | null;
+      qrCode: string | null;
+      returnStatus: string | null;
+      dueAt: Date;
+      returnedAt: Date | null;
+      daysLate: number;
+    } | null = null;
+    if (fine.borrowingId) {
+      const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: fine.borrowingId } });
+      if (borrowing) {
+        const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: borrowing.bookCopyId } });
+        const book = copy ? await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } }) : null;
+        const referenceDate = borrowing.returnedAt ?? new Date();
+        const daysLate = Math.max(0, Math.ceil((referenceDate.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
+        borrowingContext = {
+          bookTitle: book?.title ?? null,
+          qrCode: copy?.qrCode ?? null,
+          returnStatus: borrowing.returnStatus,
+          dueAt: borrowing.dueAt,
+          returnedAt: borrowing.returnedAt,
+          daysLate,
+        };
+      }
+    }
+
+    return {
+      ...fine,
+      createdByName: nameById.get(fine.createdBy) ?? null,
+      transaction,
+      payments: payments.map((p) => ({ ...p, receivedByName: nameById.get(p.receivedBy) ?? null })),
+      borrowingContext,
+    };
   }
 
   /**
@@ -102,6 +148,54 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     return this.createFineWithTransaction({ studentId, borrowingId, fineTypeId: fineType.id, amount, createdBy });
+  }
+
+  /**
+   * Editing a fine's amount/notes. Two routes call this (FinesController):
+   * PATCH /fines/:id (gated `fines.record`, the same permission that creates
+   * a fine) only while the fine is still unpaid/partially_paid, and PATCH
+   * /fines/:id/after-payment (gated the more privileged
+   * `fines.update_after_payment`) once it's `paid` — a waived/cancelled fine
+   * is never editable either way, it's already a closed/void record.
+   * `allowAfterPayment` is which of those two routes called in, so this one
+   * method enforces the right precondition for each rather than duplicating
+   * the update logic per route.
+   */
+  async update(id: string, dto: UpdateFineDto, allowAfterPayment: boolean) {
+    const fine = await this.getOrThrow(id);
+    if (fine.status === 'waived' || fine.status === 'cancelled') {
+      throw new ConflictException(`A "${fine.status}" fine cannot be edited.`);
+    }
+    if (fine.status === 'paid' && !allowAfterPayment) {
+      throw new ConflictException('This fine is already paid — editing it requires the fines.update_after_payment permission.');
+    }
+    if (dto.amount !== undefined && dto.amount < Number(fine.amountPaid)) {
+      throw new BadRequestException(
+        `New amount (${dto.amount}) cannot be less than what's already been paid (${fine.amountPaid}).`,
+      );
+    }
+
+    // Status is always re-derived from the (possibly new) amount vs. what's
+    // already been paid — never left stale. Only unpaid/partially_paid/paid
+    // are reachable here (waived/cancelled were already rejected above).
+    const newStatus = (() => {
+      if (dto.amount === undefined) return undefined;
+      const paid = Number(fine.amountPaid);
+      if (paid <= 0) return 'unpaid';
+      return paid >= dto.amount - 0.0001 ? 'paid' : 'partially_paid';
+    })();
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.libraryFine.update({
+        where: { id },
+        data: { amount: dto.amount, notes: dto.notes, status: newStatus },
+      });
+      if (dto.amount !== undefined) {
+        // The ledger transaction amount mirrors the fine's own amount (§12) — keep them in sync, never let them drift apart.
+        await tx.libraryFinancialTransaction.updateMany({ where: { fineId: id }, data: { amount: dto.amount } });
+      }
+      return updated;
+    });
   }
 
   async waive(id: string) {

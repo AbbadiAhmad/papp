@@ -9,7 +9,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
+  Link,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   Paper,
   Snackbar,
@@ -26,12 +31,22 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { libraryCirculationApi, type FineStatus, type LibraryFine, type LibraryFineType, type PaymentMethod, type StudentSearchResult } from '../api';
+import { Can, useGatedCall, usePermission } from '../../../../apps/web/src/shared/permissions';
+import {
+  libraryCirculationApi,
+  type FineStatus,
+  type LibraryFine,
+  type LibraryFineDetail,
+  type LibraryFineType,
+  type PaymentMethod,
+  type StudentSearchResult,
+} from '../api';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
@@ -55,6 +70,7 @@ export function FinesPage() {
   const [pendingWaive, setPendingWaive] = useState<LibraryFine | null>(null);
   const [payingFine, setPayingFine] = useState<LibraryFine | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailFineId, setDetailFineId] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const handleWaive = async () => {
@@ -97,7 +113,11 @@ export function FinesPage() {
             <TableBody>
               {(fines ?? []).map((fine) => (
                 <TableRow key={fine.id} hover>
-                  <TableCell>{fine.fineNumber}</TableCell>
+                  <TableCell>
+                    <Link component="button" onClick={() => setDetailFineId(fine.id)}>
+                      {fine.fineNumber}
+                    </Link>
+                  </TableCell>
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>
                   <TableCell>
@@ -154,6 +174,12 @@ export function FinesPage() {
           setCreateOpen(false);
           reload();
         }}
+      />
+
+      <FineDetailDialog
+        fineId={detailFineId}
+        onClose={() => setDetailFineId(null)}
+        onChanged={() => reload()}
       />
 
       <Snackbar open={snackbar !== null} autoHideDuration={4000} onClose={() => setSnackbar(null)} message={snackbar} />
@@ -326,6 +352,207 @@ function PaymentDialog({ fine, onClose, onPaid }: { fine: LibraryFine | null; on
         <Button onClick={handleSubmit} variant="contained" disabled={submitting || !amount}>
           {t('core.common.save')}
         </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/**
+ * Fine detail: book/return context (title, status, days late), who
+ * recorded it and who received each payment, and — the two things
+ * previously missing entirely — an editable amount/notes. Editing is
+ * gated by TWO different permissions depending on the fine's current
+ * status: `fines.record` while still unpaid/partially_paid (the same
+ * permission that creates a fine), or the more privileged
+ * `fines.update_after_payment` once it's fully paid. A waived/cancelled
+ * fine is never editable — it's already a closed/void record.
+ */
+function FineDetailDialog({ fineId, onClose, onChanged }: { fineId: string | null; onClose: () => void; onChanged: () => void }) {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const gated = useGatedCall();
+  const canRecord = usePermission('library_circulation.fines.record');
+  const canUpdateAfterPayment = usePermission('library_circulation.fines.update_after_payment');
+  const [fine, setFine] = useState<LibraryFineDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = () => {
+    if (!fineId) return;
+    setLoading(true);
+    libraryCirculationApi
+      .getFine(fineId)
+      .then((result) => {
+        setFine(result);
+        setAmount(result.amount);
+        setNotes(result.notes ?? '');
+      })
+      .catch((err) => setError(extractErrorMessage(err)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setFine(null);
+    setEditing(false);
+    setError(null);
+    if (fineId) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fineId]);
+
+  if (!fineId) return null;
+
+  const canEdit = fine ? (fine.status === 'paid' ? canUpdateAfterPayment : (fine.status === 'unpaid' || fine.status === 'partially_paid') && canRecord) : false;
+
+  const handleSave = async () => {
+    if (!fine) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const dto = { amount: Number(amount), notes: notes || undefined };
+      if (fine.status === 'paid') {
+        await gated('library_circulation.fines.update_after_payment', () => libraryCirculationApi.updateFineAfterPayment(fine.id, dto));
+      } else {
+        await gated('library_circulation.fines.record', () => libraryCirculationApi.updateFine(fine.id, dto));
+      }
+      setEditing(false);
+      load();
+      onChanged();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={fineId !== null} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{fine?.fineNumber ?? t('library_circulation.fines.create_title')}</DialogTitle>
+      <DialogContent>
+        {loading || !fine ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('core.common.loading')}
+          </Typography>
+        ) : (
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+
+            {/* Book / return context — the "why does this fine exist" a raw fine row can't show. */}
+            {fine.borrowingContext ? (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  {t('library_circulation.scan.book_label')}
+                </Typography>
+                <Typography variant="body2">{fine.borrowingContext.bookTitle ?? fine.borrowingContext.qrCode ?? '—'}</Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                  {fine.borrowingContext.returnStatus ? (
+                    <Chip size="small" label={t(`library_circulation.return.status_${fine.borrowingContext.returnStatus}`)} />
+                  ) : null}
+                  <Chip
+                    size="small"
+                    color={fine.borrowingContext.daysLate > 0 ? 'error' : 'default'}
+                    label={`${t('library_circulation.return.days_late')}: ${fine.borrowingContext.daysLate}`}
+                  />
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`${t('library_circulation.borrowings.due_at')}: ${formatDateOnly(fine.borrowingContext.dueAt, language)}`}
+                  />
+                  {fine.borrowingContext.returnedAt ? (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`${t('library_circulation.borrowings.returned_at')}: ${formatDateOnly(fine.borrowingContext.returnedAt, language)}`}
+                    />
+                  ) : null}
+                </Stack>
+                <Divider sx={{ mt: 2 }} />
+              </Box>
+            ) : null}
+
+            {/* Amount / notes — editable when the current status + the viewer's permission allow it. */}
+            {editing ? (
+              <Stack spacing={2}>
+                <TextField
+                  label={t('library_circulation.fines.amount')}
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  autoFocus
+                />
+                <TextField
+                  label={t('library_circulation.return.notes')}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  multiline
+                  minRows={2}
+                />
+                <Stack direction="row" spacing={1}>
+                  <Button variant="contained" onClick={handleSave} disabled={submitting || !amount}>
+                    {t('core.common.save')}
+                  </Button>
+                  <Button onClick={() => setEditing(false)} disabled={submitting}>
+                    {t('core.common.cancel')}
+                  </Button>
+                </Stack>
+              </Stack>
+            ) : (
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Typography variant="body1">
+                    {t('library_circulation.fines.amount')}: {fine.amount}
+                  </Typography>
+                  {canEdit ? (
+                    <Button size="small" onClick={() => setEditing(true)}>
+                      {t('core.common.edit')}
+                    </Button>
+                  ) : null}
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  {t('library_circulation.fines.amount_paid')}: {fine.amountPaid}
+                </Typography>
+                {fine.notes ? <Typography variant="body2">{fine.notes}</Typography> : null}
+                <Chip size="small" color={STATUS_COLOR[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} sx={{ alignSelf: 'flex-start' }} />
+              </Stack>
+            )}
+
+            <Divider />
+
+            {/* Who recorded it, and who closed it by recording each payment. */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                {t('library_circulation.fines.recorded_by')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {fine.createdByName ?? '—'} · {formatDateTime(fine.createdAt, language)}
+              </Typography>
+            </Box>
+
+            {fine.payments.length > 0 ? (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                  {t('library_circulation.fines.payments_title')}
+                </Typography>
+                <List dense disablePadding>
+                  {fine.payments.map((payment) => (
+                    <ListItem key={payment.id} disableGutters>
+                      <ListItemText
+                        primary={`${payment.amount} (${t(`library_circulation.finance.payment_method.${payment.paymentMethod}`)})`}
+                        secondary={`${payment.receivedByName ?? '—'} · ${formatDateTime(payment.paidAt, language)}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            ) : null}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t('core.common.close')}</Button>
       </DialogActions>
     </Dialog>
   );

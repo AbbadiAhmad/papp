@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateFineDto } from './dto/create-fine.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { UpdateFineDto } from './dto/update-fine.dto';
 import { FinesService } from './fines.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
@@ -37,6 +38,22 @@ export class FinesController {
   @Audit({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'create' })
   async create(@Body() dto: CreateFineDto, @CurrentUser() user: AuthenticatedUser) {
     return this.fines.create(dto, user.userId);
+  }
+
+  /** Editable while unpaid/partially_paid — same permission that creates a fine (§ AskUserQuestion: pre-payment edit gate). */
+  @Patch('fines/:id')
+  @RequirePermission('library_circulation.fines.record')
+  @Audit({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState })
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateFineDto) {
+    return this.fines.update(id, dto, false);
+  }
+
+  /** Editing a fine that's already fully paid — a distinct, more privileged permission than the pre-payment edit above. */
+  @Patch('fines/:id/after-payment')
+  @RequirePermission('library_circulation.fines.update_after_payment')
+  @Audit({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState })
+  async updateAfterPayment(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateFineDto) {
+    return this.fines.update(id, dto, true);
   }
 
   @Post('fines/:id/waive')

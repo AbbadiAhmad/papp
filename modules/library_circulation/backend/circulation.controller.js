@@ -59,24 +59,28 @@ let CirculationController = class CirculationController {
     }
     async returnBorrowing(dto, user) {
         const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
-        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId, dto.returnStatus, dto.returnNotes);
+        const returnedAtOverride = dto.returnedAt ? new Date(dto.returnedAt) : undefined;
+        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId, dto.returnStatus, dto.returnNotes, returnedAtOverride);
         let lateFine = null;
-        // Auto-create fines for late returns or damage/loss
-        if (daysLate > 0) {
+        // Auto-create fines for late returns — skipped when the librarian already added an inline fine covering this same return (dto.fine below), to avoid double-charging.
+        if (daysLate > 0 && !dto.fine) {
             const policy = await this.circulation.getLoanPolicy();
             const amount = daysLate * policy.finePerDay;
             if (amount > 0) {
                 lateFine = await this.fines.createLateFine(borrowingBefore.studentId, dto.borrowingId, amount, user.userId);
             }
         }
-        // Auto-suggest fine for damage/loss (caller decides whether to create it)
+        // The librarian's own explicit fine, entered inline in the return dialog (checkbox + amount/type), created in this same request.
+        let recordedFine = null;
+        if (dto.fine) {
+            recordedFine = await this.fines.create({ studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes }, user.userId);
+        }
+        // Auto-suggest fine for damage/loss (caller decides whether to create it) — only still relevant if the librarian didn't already add one inline above.
         let damageFine = null;
-        if (dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') {
-            // Fine amount would be determined by FinesService based on fine type
-            // For now, just return indicator that a fine should be considered
+        if ((dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') && !dto.fine) {
             damageFine = { suggested: true, reason: dto.returnStatus };
         }
-        return { borrowing, daysLate, lateFine, damageFine };
+        return { borrowing, daysLate, lateFine, recordedFine, damageFine };
     }
 };
 exports.CirculationController = CirculationController;

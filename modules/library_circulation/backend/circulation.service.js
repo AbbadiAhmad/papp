@@ -134,15 +134,20 @@ let CirculationService = CirculationService_1 = class CirculationService {
      * own tables are.
      *
      * Feature D18: supports return status (returned/damaged/lost/other) and notes
+     *
+     * `returnedAtOverride`: the librarian backdating the return (book was
+     * physically back yesterday, only scanned today) — defaults to "now" when
+     * omitted, same as before. Days-late/fine calculations use whichever date
+     * actually applies, never a hardcoded "now".
      */
-    async returnBorrowing(borrowingId, returnedBy, returnStatus, returnNotes) {
+    async returnBorrowing(borrowingId, returnedBy, returnStatus, returnNotes, returnedAtOverride) {
         const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
         if (!borrowing)
             throw new common_1.NotFoundException('Borrowing not found');
         if (borrowing.status !== 'active' && borrowing.status !== 'overdue') {
             throw new common_1.ConflictException(`This borrowing is already "${borrowing.status}" and cannot be returned (§22).`);
         }
-        const returnedAt = new Date();
+        const returnedAt = returnedAtOverride ?? new Date();
         const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
         // Map return status to copy status
         const copyStatusMap = {
