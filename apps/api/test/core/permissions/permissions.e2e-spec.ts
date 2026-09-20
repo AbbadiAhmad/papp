@@ -73,11 +73,13 @@ describe('Permissions (e2e)', () => {
         orderBy: { occurredAt: 'desc' },
       });
       expect(row).not.toBeNull();
-      // finance holds `notifications.view` by default (0006_create_notifications.sql
-      // seeds it for library_assistant/finance/reader) — the real "before"
+      // finance holds notifications.view (0006_create_notifications.sql) plus the four
+      // D83 self-scoped permission codes added by 0010 — the real "before"
       // state, not an empty set; this PUT is a full replace, which is why
-      // it disappears from newValue below.
-      expect((row!.oldValue as { permissionCodes: string[] }).permissionCodes).toEqual(['notifications.view']);
+      // all of them disappear from newValue below.
+      expect((row!.oldValue as { permissionCodes: string[] }).permissionCodes).toEqual(
+        expect.arrayContaining(['notifications.view', 'permissions.view_my', 'sessions.view_my', 'users.preferences.update_my', 'users.preferences.view_my']),
+      );
       expect((row!.newValue as { permissionCodes: string[] }).permissionCodes).toEqual(['audit.view']);
 
       // Revoke again so it doesn't leak into other tests in this file.

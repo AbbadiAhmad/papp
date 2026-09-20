@@ -50,6 +50,7 @@ export class PagesController {
   }
 
   @Post(':id/publish')
+  @HttpCode(HttpStatus.OK)
   @RequirePermission('website.pages.publish')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
   async publish(@Param('id') id: string) {
@@ -57,6 +58,7 @@ export class PagesController {
   }
 
   @Post(':id/unpublish')
+  @HttpCode(HttpStatus.OK)
   @RequirePermission('website.pages.publish')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
   async unpublish(@Param('id') id: string) {

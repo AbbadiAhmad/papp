@@ -44,8 +44,37 @@ const config: Config = {
   // require(esm) support and never hit this at all.
   moduleNameMapper: {
     ...baseConfig.moduleNameMapper,
+    // Redirect dist imports to TypeScript source to avoid CJS/ESM loading
+    // issues when CommonJS-compiled modules try to import ESM-only packages
+    // (like @nestjs/common). This is only needed for e2e tests that load the
+    // compiled dist output; actual dev/production use the real CommonJS output
+    // on Node 22.12+ which has native require(esm) support.
     '^.*/apps/api/dist/common/guards/public-throttler\\.guard$':
       '<rootDir>/src/common/guards/public-throttler.guard.ts',
+    '^.*/apps/api/dist/core/notifications/':
+      '<rootDir>/src/core/notifications/$1',
+    '^.*/apps/api/dist/core/audit/':
+      '<rootDir>/src/core/audit/$1',
+    '^.*/apps/api/dist/core/auth/':
+      '<rootDir>/src/core/auth/$1',
+    '^.*/apps/api/dist/core/permissions/':
+      '<rootDir>/src/core/permissions/$1',
+    '^.*/apps/api/dist/core/roles/':
+      '<rootDir>/src/core/roles/$1',
+    '^.*/apps/api/dist/core/sessions/':
+      '<rootDir>/src/core/sessions/$1',
+    '^.*/apps/api/dist/core/settings/':
+      '<rootDir>/src/core/settings/$1',
+    '^.*/apps/api/dist/core/users/':
+      '<rootDir>/src/core/users/$1',
+    '^.*/apps/api/dist/core/i18n/':
+      '<rootDir>/src/core/i18n/$1',
+    '^.*/apps/api/dist/core/module-registry/':
+      '<rootDir>/src/core/module-registry/$1',
+    '^.*/apps/api/dist/common/':
+      '<rootDir>/src/common/$1',
+    '^.*/apps/api/dist/prisma/':
+      '<rootDir>/src/prisma/$1',
   },
 };
 
