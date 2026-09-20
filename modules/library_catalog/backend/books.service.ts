@@ -55,13 +55,22 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const books = await this.prisma.libraryCatalogBook.findMany({
       where,
       orderBy: { title: 'asc' },
-      include: { _count: { select: { copies: true } } },
+      include: {
+        _count: { select: { copies: true } },
+        copies: { select: { status: true } }
+      },
     });
-    return books.map((book) => ({
-      ...book,
-      totalCopies: book._count.copies,
-      _count: undefined,
-    }));
+    return books.map((book) => {
+      const totalCopies = book._count.copies;
+      const availableCopies = book.copies.filter((c) => c.status === LibraryCatalogBookCopyStatus.available).length;
+      return {
+        ...book,
+        totalCopies,
+        availableCopies,
+        copies: undefined,
+        _count: undefined,
+      };
+    });
   }
 
   async findById(id: string) {

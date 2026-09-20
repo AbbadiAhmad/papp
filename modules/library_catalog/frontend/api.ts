@@ -24,6 +24,7 @@ export interface LibraryBook {
   createdAt: string;
   updatedAt: string;
   totalCopies?: number;
+  availableCopies?: number;
   copies?: LibraryBookCopy[];
 }
 
