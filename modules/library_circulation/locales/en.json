@@ -35,6 +35,10 @@
   "library_circulation.scan.borrow_success": "Book borrowed successfully.",
   "library_circulation.scan.return_success": "Book returned successfully.",
   "library_circulation.scan.return_success_late": "Book returned — {{days}} day(s) late, a fine was created.",
+  "library_circulation.scan.view_borrow_history": "View borrow history",
+  "library_circulation.scan.view_copy_history": "View history",
+  "library_circulation.scan.previous_borrow": "Previous borrow",
+  "library_circulation.scan.previous_borrow_returned": "Returned {{date}}, marked {{status}}",
 
   "library_circulation.borrow.dialog_title": "Borrow book",
   "library_circulation.borrow.borrow_date": "Borrow date",

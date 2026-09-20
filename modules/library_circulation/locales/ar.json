@@ -35,6 +35,10 @@
   "library_circulation.scan.borrow_success": "تمت إعارة الكتاب بنجاح.",
   "library_circulation.scan.return_success": "تم إرجاع الكتاب بنجاح.",
   "library_circulation.scan.return_success_late": "تم إرجاع الكتاب متأخراً بمقدار {{days}} يوم — تم تسجيل غرامة.",
+  "library_circulation.scan.view_borrow_history": "عرض سجل الإعارات",
+  "library_circulation.scan.view_copy_history": "عرض السجل",
+  "library_circulation.scan.previous_borrow": "إعارة سابقة",
+  "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
 
   "library_circulation.borrow.dialog_title": "إعارة كتاب",
   "library_circulation.borrow.borrow_date": "تاريخ الإعارة",
