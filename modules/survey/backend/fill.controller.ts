@@ -29,7 +29,7 @@ export class FillController {
   }
 
   @Post(':id/fill')
-  async submit(@Param('id') id: string, @Body() dto: SubmitResponseDto, @CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
+  async submit(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SubmitResponseDto, @CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
     // No @Audit here — ResponsesService writes its own audit_log row
     // directly (see responses.service.ts's writeResponse docblock).
     return this.responses.submitAuthenticated(id, user.userId, user.sessionId, dto.answers, extractRequestMeta(req));

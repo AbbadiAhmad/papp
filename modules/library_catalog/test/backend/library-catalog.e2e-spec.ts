@@ -181,7 +181,13 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
     const bookRes = await request(app!.getHttpServer())
       .post('/api/library/books')
       .set('Authorization', `Bearer ${admin.token}`)
-      .send({ title: 'Fixture Book for e2e' });
+      .send({
+        title: 'Fixture Book for e2e',
+        copy: {
+          qrCode: `E2E-INITIAL-${Date.now()}`,
+          status: 'available',
+        },
+      });
     expect(bookRes.status).toBe(201);
     bookId = bookRes.body.id;
 
