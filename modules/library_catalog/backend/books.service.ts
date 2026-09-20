@@ -150,10 +150,33 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateCopy(bookId: string, copyId: string, dto: UpdateBookCopyDto) {
-    await this.findCopyOrThrow(bookId, copyId);
+    const copy = await this.findCopyOrThrow(bookId, copyId);
+
+    const changes: Record<string, { before: unknown; after: unknown }> = {};
+    if (dto.status !== undefined && dto.status !== copy.status) {
+      changes.status = { before: copy.status, after: dto.status };
+    }
+    if (dto.condition !== undefined && dto.condition !== copy.condition) {
+      changes.condition = { before: copy.condition, after: dto.condition };
+    }
+    if (dto.location !== undefined && dto.location !== copy.location) {
+      changes.location = { before: copy.location, after: dto.location };
+    }
+
+    let historyEntry: Record<string, unknown> | null = null;
+    if (Object.keys(changes).length > 0) {
+      historyEntry = {
+        timestamp: new Date().toISOString(),
+        changes,
+      };
+    }
+
+    const history = (copy.history as Record<string, unknown>[]) || [];
+    const updatedHistory = historyEntry ? [...history, historyEntry].slice(-100) : history;
+
     return this.prisma.libraryCatalogBookCopy.update({
-      where: { id: copyId },
-      data: dto,
+      where: { id: copy.id },
+      data: { ...dto, history: updatedHistory },
     });
   }
 

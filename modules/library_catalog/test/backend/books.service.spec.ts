@@ -345,10 +345,10 @@ describe('BooksService', () => {
 
         const result = await service.updateCopy('book-1', 'copy-1', dto);
 
-        expect(prisma.libraryCatalogBookCopy.update).toHaveBeenCalledWith({
-          where: { id: 'copy-1' },
-          data: dto,
-        });
+        const callData = (prisma.libraryCatalogBookCopy.update as jest.Mock).mock.calls[0][0];
+        expect(callData.where).toEqual({ id: 'copy-1' });
+        expect(callData.data.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
+        expect(callData.data.history).toEqual(expect.any(Array));
         expect(result.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
       });
 
@@ -377,6 +377,32 @@ describe('BooksService', () => {
 
         await expect(service.updateCopy('book-1', 'missing', {})).rejects.toBeInstanceOf(NotFoundException);
         expect(prisma.libraryCatalogBookCopy.update).not.toHaveBeenCalled();
+      });
+
+      it('Feature 2.1: tracks status/condition/location changes in history', async () => {
+        const existingHistory = [
+          { timestamp: '2026-09-10T10:00:00Z', changes: { status: { before: 'available', after: 'borrowed' } } },
+        ];
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(
+          copyRow({ status: LibraryCatalogBookCopyStatus.borrowed, history: existingHistory }),
+        );
+        prisma.libraryCatalogBookCopy.update.mockResolvedValue(
+          copyRow({
+            status: LibraryCatalogBookCopyStatus.damaged,
+            history: [
+              ...existingHistory,
+              { timestamp: expect.any(String), changes: { status: { before: 'borrowed', after: 'damaged' } } },
+            ],
+          }),
+        );
+
+        const dto: UpdateBookCopyDto = { status: LibraryCatalogBookCopyStatus.damaged };
+        await service.updateCopy('book-1', 'copy-1', dto);
+
+        const callData = (prisma.libraryCatalogBookCopy.update as jest.Mock).mock.calls[0][0];
+        const history = callData.data.history as Record<string, unknown>[];
+        expect(history).toHaveLength(2);
+        expect(history[1]).toHaveProperty('changes.status');
       });
     });
 
