@@ -1,7 +1,7 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatDate } from '../../../../apps/web/src/shared/utils/format';
+import { formatDate } from '../../../../apps/web/src/shared/format';
 import { type ScanBookCopyResult, type ScanStudentResult } from '../api';
 
 interface BorrowDialogProps {
