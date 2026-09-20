@@ -184,11 +184,11 @@ describe('StudentsService', () => {
   });
 
   describe('getReadingHistory (§3.2)', () => {
-    it('returns every borrowing ever, ordered most-recent-first, each enriched with its book title/reading level/qrCode', async () => {
+    it('returns every borrowing ever, ordered most-recent-first, each enriched with its book title/reading level/category/qrCode', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
       prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1', bookCopyId: 'copy-1' }]);
       prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'copy-1', bookId: 'book-1', qrCode: 'BOOK-001' }]);
-      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna', readingLevel: 'B2' }]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna', readingLevel: 'B2', category: 'Fiction' }]);
 
       const result = await service.getReadingHistory('student-1');
 
@@ -197,7 +197,7 @@ describe('StudentsService', () => {
         orderBy: { borrowedAt: 'desc' },
       });
       expect(result).toEqual([
-        { id: 'b-1', bookCopyId: 'copy-1', qrCode: 'BOOK-001', bookTitle: 'Kalila wa Dimna', readingLevel: 'B2' },
+        { id: 'b-1', bookCopyId: 'copy-1', qrCode: 'BOOK-001', bookTitle: 'Kalila wa Dimna', readingLevel: 'B2', category: 'Fiction' },
       ]);
     });
 

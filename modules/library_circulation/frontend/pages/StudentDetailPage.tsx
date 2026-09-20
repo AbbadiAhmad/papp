@@ -1,9 +1,12 @@
 import {
   Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
+  Grid,
+  MenuItem,
   Paper,
   Stack,
   Tab,
@@ -14,9 +17,10 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
@@ -24,8 +28,10 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { libraryCirculationApi, type BookInfo, type LibraryBorrowing, type StudentActionHistoryEntry } from '../api';
+import { libraryCirculationApi, type BookInfo, type BorrowingStatus, type LibraryBorrowing, type StudentActionHistoryEntry } from '../api';
 import { QrCodeImage } from './QrCodeImage';
+
+const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
 
 /** Mirrors StudentsService.STUDENT_FIELD_LABELS on the backend — keep in sync if a new LibraryStudent field is ever added to that map. */
 const CHANGE_FIELD_LABEL_KEYS: Record<string, string> = {
@@ -153,48 +159,7 @@ export function StudentDetailPage() {
               )}
 
               {/* Tab 1: Reading History — §3.2, full history, never deleted */}
-              {selectedTab === 1 && (
-                <Box sx={{ p: 2 }}>
-                  {readingHistory === null ? (
-                    <Typography variant="body2" color="text.secondary">
-                      {t('core.common.loading')}
-                    </Typography>
-                  ) : readingHistory.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      {t('core.common.no_data')}
-                    </Typography>
-                  ) : (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>{t('library_circulation.scan.book_label')}</TableCell>
-                            <TableCell>{t('library_catalog.fields.reading_level')}</TableCell>
-                            <TableCell>{t('library_circulation.borrowings.borrowed_at')}</TableCell>
-                            <TableCell>{t('library_circulation.borrowings.due_at')}</TableCell>
-                            <TableCell>{t('library_circulation.borrowings.returned_at')}</TableCell>
-                            <TableCell>{t('library_circulation.borrowings.status')}</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {readingHistory.map((b) => (
-                            <TableRow key={b.id}>
-                              <TableCell>{b.bookTitle ?? b.qrCode ?? '—'}</TableCell>
-                              <TableCell>{b.readingLevel ?? '—'}</TableCell>
-                              <TableCell>{formatDateOnly(b.borrowedAt, language)}</TableCell>
-                              <TableCell>{formatDateOnly(b.dueAt, language)}</TableCell>
-                              <TableCell>{b.returnedAt ? formatDateOnly(b.returnedAt, language) : '—'}</TableCell>
-                              <TableCell>
-                                <Chip size="small" label={t(`library_circulation.borrowing_status.${b.status}`)} />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  )}
-                </Box>
-              )}
+              {selectedTab === 1 && <ReadingHistoryTab readingHistory={readingHistory} />}
 
               {/* Tab 2: Fines */}
               {selectedTab === 2 && (
@@ -277,6 +242,216 @@ export function StudentDetailPage() {
           </Stack>
         ) : null}
       </QueryStateGate>
+    </Box>
+  );
+}
+
+interface ReadingHistoryFilter {
+  readingLevel: string;
+  category: string;
+  status: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const EMPTY_READING_FILTER: ReadingHistoryFilter = { readingLevel: '', category: '', status: '', dateFrom: '', dateTo: '' };
+
+/**
+ * Reading History tab: filters (level/category/status/date range) over the
+ * already-fetched full history — no new backend filter endpoint, since the
+ * page already loads the reader's entire history in one call and it's a
+ * per-reader list, not something that needs server-side pagination. The
+ * stats summary ("how many books at each level") counts only `returned`
+ * borrowings — a book still checked out isn't "read" yet.
+ */
+function ReadingHistoryTab({ readingHistory }: { readingHistory: (LibraryBorrowing & BookInfo)[] | null }) {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const [filter, setFilter] = useState<ReadingHistoryFilter>(EMPTY_READING_FILTER);
+
+  const handleFieldChange = (field: keyof ReadingHistoryFilter, value: string) => {
+    setFilter((prev) => ({ ...prev, [field]: value }));
+  };
+  const clearFilters = () => setFilter(EMPTY_READING_FILTER);
+
+  const { levels, categories } = useMemo(() => {
+    const levelSet = new Set<string>();
+    const categorySet = new Set<string>();
+    for (const b of readingHistory ?? []) {
+      if (b.readingLevel) levelSet.add(b.readingLevel);
+      if (b.category) categorySet.add(b.category);
+    }
+    return { levels: [...levelSet].sort(), categories: [...categorySet].sort() };
+  }, [readingHistory]);
+
+  const filtered = useMemo(() => {
+    if (!readingHistory) return [];
+    return readingHistory.filter((b) => {
+      if (filter.readingLevel && b.readingLevel !== filter.readingLevel) return false;
+      if (filter.category && b.category !== filter.category) return false;
+      if (filter.status && b.status !== filter.status) return false;
+      if (filter.dateFrom && new Date(b.borrowedAt) < new Date(filter.dateFrom)) return false;
+      if (filter.dateTo) {
+        const end = new Date(filter.dateTo);
+        end.setHours(23, 59, 59, 999);
+        if (new Date(b.borrowedAt) > end) return false;
+      }
+      return true;
+    });
+  }, [readingHistory, filter]);
+
+  // "How many books read at level X" — completed reads only (§ per user's
+  // own clarification: a still-active borrowing isn't "read" yet), counted
+  // over the CURRENTLY FILTERED set so the summary stays consistent with
+  // whatever the table below is showing.
+  const levelCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const b of filtered) {
+      if (b.status !== 'returned') continue;
+      const key = b.readingLevel ?? t('library_circulation.students.reading_level_unknown');
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [filtered, t]);
+
+  const completedCount = filtered.filter((b) => b.status === 'returned').length;
+
+  if (readingHistory === null) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          {t('core.common.loading')}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent>
+          <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                select
+                label={t('library_catalog.fields.reading_level')}
+                value={filter.readingLevel}
+                onChange={(e) => handleFieldChange('readingLevel', e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{t('library_circulation.students.filter_any_level')}</MenuItem>
+                {levels.map((lvl) => (
+                  <MenuItem key={lvl} value={lvl}>
+                    {lvl}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                select
+                label={t('library_catalog.fields.category')}
+                value={filter.category}
+                onChange={(e) => handleFieldChange('category', e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{t('library_circulation.students.filter_any_category')}</MenuItem>
+                {categories.map((cat) => (
+                  <MenuItem key={cat} value={cat}>
+                    {cat}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                select
+                label={t('library_circulation.borrowings.status')}
+                value={filter.status}
+                onChange={(e) => handleFieldChange('status', e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{t('library_circulation.fines.filter_any_status')}</MenuItem>
+                {BORROWING_STATUSES.map((s) => (
+                  <MenuItem key={s} value={s}>
+                    {t(`library_circulation.borrowing_status.${s}`)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 1.5 }}>
+              <TextField
+                label={t('library_circulation.finance.filter_date_from')}
+                type="date"
+                value={filter.dateFrom}
+                onChange={(e) => handleFieldChange('dateFrom', e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 1.5 }}>
+              <TextField
+                label={t('library_circulation.finance.filter_date_to')}
+                type="date"
+                value={filter.dateTo}
+                onChange={(e) => handleFieldChange('dateTo', e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={12}>
+              <Button onClick={clearFilters}>{t('library_circulation.finance.clear_filters')}</Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Stats: how many books read (completed/returned only) at each level, over the current filter. */}
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
+          {t('library_circulation.students.completed_reads_count', { count: completedCount })}
+        </Typography>
+        {levelCounts.map(([level, count]) => (
+          <Chip key={level} size="small" variant="outlined" label={`${level}: ${count}`} />
+        ))}
+      </Stack>
+
+      {filtered.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {t('core.common.no_data')}
+        </Typography>
+      ) : (
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('library_circulation.scan.book_label')}</TableCell>
+                <TableCell>{t('library_catalog.fields.category')}</TableCell>
+                <TableCell>{t('library_catalog.fields.reading_level')}</TableCell>
+                <TableCell>{t('library_circulation.borrowings.borrowed_at')}</TableCell>
+                <TableCell>{t('library_circulation.borrowings.due_at')}</TableCell>
+                <TableCell>{t('library_circulation.borrowings.returned_at')}</TableCell>
+                <TableCell>{t('library_circulation.borrowings.status')}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filtered.map((b) => (
+                <TableRow key={b.id}>
+                  <TableCell>{b.bookTitle ?? b.qrCode ?? '—'}</TableCell>
+                  <TableCell>{b.category ?? '—'}</TableCell>
+                  <TableCell>{b.readingLevel ?? '—'}</TableCell>
+                  <TableCell>{formatDateOnly(b.borrowedAt, language)}</TableCell>
+                  <TableCell>{formatDateOnly(b.dueAt, language)}</TableCell>
+                  <TableCell>{b.returnedAt ? formatDateOnly(b.returnedAt, language) : '—'}</TableCell>
+                  <TableCell>
+                    <Chip size="small" label={t(`library_circulation.borrowing_status.${b.status}`)} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   );
 }

@@ -180,6 +180,7 @@ let StudentsService = class StudentsService {
                 qrCode: copy?.qrCode ?? null,
                 bookTitle: book?.title ?? null,
                 readingLevel: book?.readingLevel ?? null,
+                category: book?.category ?? null,
             };
         });
     }

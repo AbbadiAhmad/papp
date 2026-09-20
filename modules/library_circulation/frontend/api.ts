@@ -63,6 +63,7 @@ export interface BookInfo {
   qrCode: string | null;
   bookTitle: string | null;
   readingLevel: string | null;
+  category: string | null;
 }
 
 export interface CreatedStudent extends LibraryStudent {

@@ -151,7 +151,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
   /** Shared by findById()'s activeBorrowings and getReadingHistory() — both show the SAME "which book" gap otherwise (bookCopyId is the only thing libraryBorrowing itself stores). */
   private async enrichBorrowingsWithBookInfo<T extends { bookCopyId: string }>(
     borrowings: T[],
-  ): Promise<(T & { qrCode: string | null; bookTitle: string | null; readingLevel: string | null })[]> {
+  ): Promise<(T & { qrCode: string | null; bookTitle: string | null; readingLevel: string | null; category: string | null })[]> {
     if (borrowings.length === 0) return [];
     const copyIds = [...new Set(borrowings.map((b) => b.bookCopyId))];
     const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { id: { in: copyIds } } });
@@ -168,6 +168,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
         qrCode: copy?.qrCode ?? null,
         bookTitle: book?.title ?? null,
         readingLevel: book?.readingLevel ?? null,
+        category: book?.category ?? null,
       };
     });
   }
