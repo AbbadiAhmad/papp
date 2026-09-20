@@ -51,30 +51,12 @@ const config: Config = {
     // on Node 22.12+ which has native require(esm) support.
     '^.*/apps/api/dist/common/guards/public-throttler\\.guard$':
       '<rootDir>/src/common/guards/public-throttler.guard.ts',
-    '^.*/apps/api/dist/core/notifications/':
-      '<rootDir>/src/core/notifications/$1',
-    '^.*/apps/api/dist/core/audit/':
-      '<rootDir>/src/core/audit/$1',
-    '^.*/apps/api/dist/core/auth/':
-      '<rootDir>/src/core/auth/$1',
-    '^.*/apps/api/dist/core/permissions/':
-      '<rootDir>/src/core/permissions/$1',
-    '^.*/apps/api/dist/core/roles/':
-      '<rootDir>/src/core/roles/$1',
-    '^.*/apps/api/dist/core/sessions/':
-      '<rootDir>/src/core/sessions/$1',
-    '^.*/apps/api/dist/core/settings/':
-      '<rootDir>/src/core/settings/$1',
-    '^.*/apps/api/dist/core/users/':
-      '<rootDir>/src/core/users/$1',
-    '^.*/apps/api/dist/core/i18n/':
-      '<rootDir>/src/core/i18n/$1',
-    '^.*/apps/api/dist/core/module-registry/':
-      '<rootDir>/src/core/module-registry/$1',
-    '^.*/apps/api/dist/common/':
-      '<rootDir>/src/common/$1',
-    '^.*/apps/api/dist/prisma/':
-      '<rootDir>/src/prisma/$1',
+    '^.*/apps/api/dist/core/notifications/notifications\\.module$':
+      '<rootDir>/src/core/notifications/notifications.module.ts',
+    '^.*/apps/api/dist/core/notifications/notifications\\.service$':
+      '<rootDir>/src/core/notifications/notifications.service.ts',
+    '^.*/apps/api/dist/core/notifications/notification-email\\.service$':
+      '<rootDir>/src/core/notifications/notification-email.service.ts',
   },
 };
 
