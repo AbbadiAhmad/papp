@@ -15,7 +15,8 @@
     "lint:no-hardcoded-roles": "tsx scripts/lint-no-hardcoded-roles.ts",
     "lint:no-module-specific-platform-code": "tsx scripts/lint-no-module-specific-platform-code.ts",
     "lint:manifests": "npm run lint:permissions && npm run lint:locales && npm run lint:no-hardcoded-roles && npm run lint:no-module-specific-platform-code",
-    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json"
+    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "engines": {
     "node": ">=20"
