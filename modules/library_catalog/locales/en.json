@@ -29,6 +29,9 @@
   "library_catalog.books.delete_title": "Delete book",
   "library_catalog.books.delete_confirm": "Delete \"{{title}}\"? This cannot be undone.",
 
+  "library_catalog.book.copies_section": "First copy",
+  "library_catalog.book.add_copies_label": "Every book needs at least one physical copy — enter its QR code below. You can add more copies later from the book's page.",
+
   "library_catalog.copies.title": "Copies",
   "library_catalog.copies.qr_code": "QR code",
   "library_catalog.copies.status": "Status",
