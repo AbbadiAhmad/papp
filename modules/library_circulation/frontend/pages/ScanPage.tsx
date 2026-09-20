@@ -1,14 +1,23 @@
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
-import { Alert, Box, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material';
-import { useState } from 'react';
+import { Alert, Box, Button, Card, CardContent, Chip, Grid, Stack, TextField, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
+import {
+  libraryCirculationApi,
+  type CopyCirculationHistoryEntry,
+  type LibraryBorrowing,
+  type ScanBookCopyResult,
+  type ScanStudentResult,
+} from '../api';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
+import { ReaderHistoryDialog } from './ReaderHistoryDialog';
 import { ReturnDialog } from './ReturnDialog';
 
 /**
@@ -22,6 +31,7 @@ import { ReturnDialog } from './ReturnDialog';
  */
 export function ScanPage() {
   const { t } = useTranslation();
+  const { language } = useLanguage();
   const gated = useGatedCall();
   const [code, setCode] = useState('');
   const [student, setStudent] = useState<ScanStudentResult | null>(null);
@@ -35,6 +45,33 @@ export function ScanPage() {
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
+  const [readerHistoryOpen, setReaderHistoryOpen] = useState(false);
+  // §4.4: this reader's own PAST (non-active) borrowing(s) of THIS exact
+  // copy — a real history lookup, not just "is it checked out right now"
+  // (which bookCopy.activeBorrowing already covers on its own, regardless
+  // of who has it). Computed once both slots are filled.
+  const [priorBorrowByThisReader, setPriorBorrowByThisReader] = useState<CopyCirculationHistoryEntry | null>(null);
+
+  useEffect(() => {
+    if (!student || !bookCopy) {
+      setPriorBorrowByThisReader(null);
+      return;
+    }
+    let cancelled = false;
+    libraryCirculationApi
+      .getCopyCirculationHistory(bookCopy.copy.id, 20)
+      .then((history) => {
+        if (cancelled) return;
+        const priorReturned = history.find((entry) => entry.studentId === student.student.id && entry.status === 'returned');
+        setPriorBorrowByThisReader(priorReturned ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPriorBorrowByThisReader(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [student, bookCopy]);
 
   const reset = () => {
     setStudent(null);
@@ -127,7 +164,7 @@ export function ScanPage() {
   };
 
   return (
-    <Box sx={{ maxWidth: 640 }}>
+    <Box sx={{ maxWidth: 960 }}>
       <Typography variant="h4" component="h2" gutterBottom>
         {t('library_circulation.menu.scan')}
       </Typography>
@@ -169,95 +206,113 @@ export function ScanPage() {
         </Alert>
       ) : null}
 
-      {/* Reader Section */}
-      {student ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  {t('library_circulation.scan.student_label')}
-                </Typography>
-                <Typography variant="h5">{student.student.name ?? student.student.code}</Typography>
-              </Box>
-              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                <Chip
-                  label={`${t('library_circulation.students.code')}: ${student.student.code}`}
-                  size="small"
-                  variant="outlined"
-                />
-                {student.student.className && (
-                  <Chip
-                    label={`${t('library_circulation.students.class')}: ${student.student.className}`}
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-              </Stack>
-              <Chip
-                label={t('library_circulation.scan.active_borrowings_count', { count: student.activeBorrowingsCount })}
-                color="primary"
-                size="small"
-              />
-              <Button variant="text" size="small">
-                {t('library_circulation.scan.view_borrow_history')}
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Book Section */}
-      {bookCopy ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  {t('library_circulation.scan.book_label')}
-                </Typography>
-                <Typography variant="h5">{bookCopy.book?.title ?? bookCopy.copy.qrCode}</Typography>
-              </Box>
-              <Chip
-                label={bookCopy.copy.status}
-                color={bookCopy.copy.status === 'available' ? 'success' : 'warning'}
-                size="small"
-              />
-              {bookCopy.activeBorrowing && student ? (
-                <Box sx={{ p: 1.5, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
-                  <Stack spacing={1}>
-                    <Typography variant="caption" color="text.secondary">
-                      {t('library_circulation.scan.previous_borrow')}
-                    </Typography>
-                    <Typography variant="body2">
-                      {t('library_circulation.students.code')}: {student.student.code}
-                    </Typography>
-                    {bookCopy.activeBorrowing.returnedAt ? (
-                      <Typography variant="caption" color="text.secondary">
-                        {t('library_circulation.scan.previous_borrow_returned', {
-                          date: new Date(bookCopy.activeBorrowing.returnedAt).toLocaleDateString(),
-                          status: bookCopy.activeBorrowing.status,
-                        })}
+      {/* §4.1: two clear sections, side by side on wide viewports (stacked below sm). */}
+      {student || bookCopy ? (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            {/* Reader Section */}
+            {student ? (
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        {t('library_circulation.scan.student_label')}
                       </Typography>
+                      <Typography variant="h5">{student.student.name ?? student.student.code}</Typography>
+                    </Box>
+                    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Chip
+                        label={`${t('library_circulation.students.code')}: ${student.student.code}`}
+                        size="small"
+                        variant="outlined"
+                      />
+                      {student.student.className && (
+                        <Chip
+                          label={`${t('library_circulation.students.class')}: ${student.student.className}`}
+                          size="small"
+                          variant="outlined"
+                        />
+                      )}
+                    </Stack>
+                    <Chip
+                      label={t('library_circulation.scan.active_borrowings_count', { count: student.activeBorrowingsCount })}
+                      color="primary"
+                      size="small"
+                    />
+                    <Button variant="text" size="small" onClick={() => setReaderHistoryOpen(true)}>
+                      {t('library_circulation.scan.view_borrow_history')}
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            ) : null}
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6 }}>
+            {/* Book Section */}
+            {bookCopy ? (
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        {t('library_circulation.scan.book_label')}
+                      </Typography>
+                      <Typography variant="h5">{bookCopy.book?.title ?? bookCopy.copy.qrCode}</Typography>
+                    </Box>
+                    <Chip
+                      label={bookCopy.copy.status}
+                      color={bookCopy.copy.status === 'available' ? 'success' : 'warning'}
+                      size="small"
+                    />
+                    {bookCopy.activeBorrowing && student ? (
+                      <Box sx={{ p: 1.5, bgcolor: 'warning.lighter', borderRadius: 1, border: '1px solid', borderColor: 'warning.light' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {t('library_circulation.scan.currently_borrowed_by', { code: student.student.code })}
+                        </Typography>
+                      </Box>
+                    ) : null}
+                    {/* §4.4: a REAL history lookup — has THIS reader borrowed THIS exact copy before (returned, not the current active loan above). */}
+                    {priorBorrowByThisReader ? (
+                      <Box sx={{ p: 1.5, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
+                        <Stack spacing={1}>
+                          <Typography variant="caption" color="text.secondary">
+                            {t('library_circulation.scan.previous_borrow')}
+                          </Typography>
+                          <Typography variant="body2">
+                            {t('library_circulation.scan.previous_borrow_returned', {
+                              date: formatDateOnly(priorBorrowByThisReader.returnedAt ?? priorBorrowByThisReader.borrowedAt, language),
+                              status: t(`library_circulation.borrowing_status.${priorBorrowByThisReader.status}`, priorBorrowByThisReader.status),
+                            })}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    ) : null}
+                    <Button variant="text" size="small" onClick={() => setCopyHistoryOpen(true)}>
+                      {t('library_circulation.scan.view_copy_history')}
+                    </Button>
+                    {bookCopy.activeBorrowing ? (
+                      <Box sx={{ mt: 2 }}>
+                        <Can permission="library_circulation.return">
+                          <Button
+                            variant="contained"
+                            color="secondary"
+                            fullWidth
+                            onClick={() => openReturnDialog(bookCopy.activeBorrowing!)}
+                            disabled={busy}
+                          >
+                            {t('library_circulation.scan.confirm_return')}
+                          </Button>
+                        </Can>
+                      </Box>
                     ) : null}
                   </Stack>
-                </Box>
-              ) : null}
-              <Button variant="text" size="small" onClick={() => setCopyHistoryOpen(true)}>
-                {t('library_circulation.scan.view_copy_history')}
-              </Button>
-              {bookCopy.activeBorrowing ? (
-                <Box sx={{ mt: 2 }}>
-                  <Can permission="library_circulation.return">
-                    <Button variant="contained" color="secondary" fullWidth onClick={() => openReturnDialog(bookCopy.activeBorrowing!)} disabled={busy}>
-                      {t('library_circulation.scan.confirm_return')}
-                    </Button>
-                  </Can>
-                </Box>
-              ) : null}
-            </Stack>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            ) : null}
+          </Grid>
+        </Grid>
       ) : null}
 
       {student && bookCopy && !bookCopy.activeBorrowing ? (
@@ -301,6 +356,8 @@ export function ScanPage() {
         qrCode={bookCopy?.copy.qrCode}
         onClose={() => setCopyHistoryOpen(false)}
       />
+
+      <ReaderHistoryDialog open={readerHistoryOpen} studentId={student?.student.id ?? null} onClose={() => setReaderHistoryOpen(false)} />
     </Box>
   );
 }

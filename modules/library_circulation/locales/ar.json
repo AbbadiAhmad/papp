@@ -38,9 +38,11 @@
   "library_circulation.scan.view_borrow_history": "عرض سجل الإعارات",
   "library_circulation.scan.view_copy_history": "عرض السجل",
   "library_circulation.scan.copy_history_title": "السجل — {{qrCode}}",
+  "library_circulation.scan.reader_history_title": "الإعارات الأخيرة",
   "library_circulation.scan.no_history": "لا يوجد سجل إعارة بعد.",
   "library_circulation.scan.history_borrowed_returned": "أُعيرت {{borrowed}}، وأُعيدت {{returned}} ({{status}})",
   "library_circulation.scan.history_borrowed_active": "أُعيرت {{borrowed}} ({{status}})",
+  "library_circulation.scan.currently_borrowed_by": "مُعارة حالياً للقارئ {{code}}",
   "library_circulation.scan.previous_borrow": "إعارة سابقة",
   "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
 
