@@ -1,39 +1,35 @@
 # Library Module Improvements — Enhancement Proposal
 
-**Status: Mixed — several items were partially or fully built since this was written; see the implementation audit below for the real per-item state as of 2026-09-20.**
+**Status: All 14 sub-items implemented as of 2026-09-20 — see the implementation history below.**
 
 This document captures refinement requests to improve the user experience and functionality of the existing library modules. These are informed by usage patterns and gaps discovered after the initial implementation.
 
-## Implementation audit (2026-09-20)
+## Implementation history (2026-09-20)
 
-Verified against real source (backend services/controllers/DTOs, frontend pages/dialogs, locale JSON, migrations) — module `DECISIONS.md` status labels (`PROPOSED`/`DECIDED`) were **not** trusted at face value; several turned out to overstate what was actually built. Each section below is now tagged with its real status and, where a real commit did the work, its short SHA.
+An earlier pass through this codebase found the state below inconsistent with what the module `DECISIONS.md` files claimed (several entries marked `DECIDED`/`PROPOSED` didn't match real code — verified independently against actual source, not doc labels). All 14 sub-items were then implemented on branch `claude/library-improvements`, each with its own commit, Tier 1 (unit) coverage, and the full local CI pipeline (lint, build, backend unit/coverage/integration/e2e, frontend Playwright e2e) run twice — once at the midpoint and once at the end — both fully green.
 
-| Item | Status | Commit |
+| Item | Status | Commit(s) |
 |---|---|---|
-| 1.1 Combined Book + Copy Add Flow | ⚠️ Partial — backend done, frontend form broken | `e9a491f` |
+| 1.1 Combined Book + Copy Add Flow | ✅ Implemented — backend (`e9a491f`) + the frontend form that was missing it | `0d9d852` |
 | 1.2 Total/Available Copies columns | ✅ Implemented (single combined column, not two) | `ea4c5bc` |
-| 1.3 Copies tab — Actions & Status | ❌ Not implemented | `1ef9222` (misleading title) |
-| 2.1 Book History (via circulation) | ❌ Not implemented | — |
-| 2.2 Copy History (via circulation) | ⚠️ Partial — backend done, never wired to UI | `8221f3b` |
-| 3.1 Rename Student → Reader | ⚠️ Partial — UI copy mostly renamed, permission labels missed | `118f2b1` |
-| 3.2 Reader Detail Page enrichment | ⚠️ Partial — 2 of 4 tabs, no photo/counts/summary | `4a830d2` |
-| 3.3 Reader Actions & History | ❌ Not implemented | — |
-| 4.1 Divide Scan Page into sections | ⚠️ Partial — sections exist but stacked, not two-column | `6d32b38` |
-| 4.2 Reader — View Borrow History button | ❌ Not implemented — button rendered, no `onClick` (dead) | `6d32b38` |
-| 4.3 Book — View Copy History popup | ❌ Not implemented — button rendered, no `onClick` (dead) | `6d32b38` |
-| 4.4 Previous Borrow Indicator | ⚠️ Partial — only reflects currently-active borrow, not real history lookup | `6d32b38` |
+| 1.3 Copies tab — Actions & Status | ✅ Implemented — action menu (View History/Update Status/Mark Damaged/Mark Lost/Remove) + status color coding | `6a731e2` |
+| 2.1 Book History (via circulation) | ✅ Implemented — new endpoint + BookHistoryPage in library_circulation, linked from BookDetailPage | `9a18e1c`, `a0d4f8f` |
+| 2.2 Copy History (via circulation) | ✅ Implemented — backend existed, CopyHistoryDialog now wires the previously-dead button | `9a18e1c` |
+| 3.1 Rename Student → Reader | ✅ Implemented — UI copy + the permission labels the first pass missed | `54d0682` |
+| 3.2 Reader Detail Page enrichment | ✅ Implemented — name/avatar/counts/status header + Reading History tab | `1be36de` |
+| 3.3 Reader Actions & History | ✅ Implemented — Actions tab backed by audit_log | `1be36de` |
+| 4.1 Divide Scan Page into sections | ✅ Implemented — real two-column MUI Grid | `3097e3a` |
+| 4.2 Reader — View Borrow History button | ✅ Implemented — ReaderHistoryDialog wired to the previously-dead button | `3097e3a` |
+| 4.3 Book — View Copy History popup | ✅ Implemented | `9a18e1c` |
+| 4.4 Previous Borrow Indicator | ✅ Implemented — real per-reader-per-copy history lookup, not just "checked out right now" | `3097e3a` |
 | 5.1 Borrow Dialog — Info & Comments | ✅ Implemented | `e9a491f` |
-| 6.1 Return Dialog — Info & Status | ⚠️ Mostly implemented — no auto fine-creation/[Create Fine] button | `4456ebf` |
+| 6.1 Return Dialog — Info & Status | ✅ Implemented — CreateFineDialog closes the auto-suggest-but-never-create gap | `c0a1c2e` |
 
-**Most important finding — a real, currently-shipped bug, not just a missing enhancement:** `CreateBookDto.copy` is mandatory server-side (`modules/library_catalog/backend/dto/create-book.dto.ts`, per D11), but `BookFormDialog.tsx` (the "New Book" form) collects no copy fields at all and `BooksListPage.tsx`'s `handleSubmit` sends the DTO straight through with no client-side default injected. **Submitting the New Book form in the UI today fails validation.** This isn't item 1.1 being "unimplemented" — it's the backend half of 1.1 shipping without its frontend half, leaving the feature broken in a way a user will hit immediately. Fix this before anything else in this document.
+**The one real bug found along the way (fixed in `0d9d852`):** `CreateBookDto.copy` was mandatory server-side but `BookFormDialog.tsx` never collected it — the New Book form failed validation on every submission. Not a missing enhancement, a live regression; fixed first, before anything else in this pass.
 
-**Discrepancies with the modules' own `DECISIONS.md` worth knowing about:**
-- `LIBRARY_CATALOG-D12`'s "catalog-history" endpoint is cited as covering §2.1, but it's copy-level status/condition/location history, not the book-level *who-borrowed-this* history §2.1 actually asks for — §2.1 is genuinely unbuilt, no `HistoryTab.tsx` exists anywhere.
-- `LIBRARY_CATALOG-D11` (marked `DECIDED`, superseding D8 `PROPOSED`) is accurate for the backend only — the frontend half was never done, per the bug above.
-- `LIBRARY_CIRCULATION-D14`/`D15`/`D16` are still labeled `PROPOSED` in their own decisions table but real commits exist for all three (`118f2b1`, `4a830d2`, `6d32b38`) — the commit messages overstate scope relative to what actually shipped (e.g. D15's "enriched information" added a `Tabs` shell with 2 of the spec's 4 tabs; D16's "two clear sections" is a vertical stack, not the two-column mockup, and its two "View History" buttons are unwired stubs).
-- D18 (catalog copy-history JSONB column) was reverted (`0676922`) then restored (`336567f`) the same day — current `HEAD` has it applied and matching `apps/api/prisma/schema.prisma`, so treat it as live despite the back-and-forth in the log.
+**Module-boundary note (2.1):** the book-level borrowing-history view lives in `library_circulation` (`BookHistoryPage.tsx`), not as a tab on `library_catalog`'s `BookDetailPage.tsx` as the original sketch implied — `library_catalog` must never import from `library_circulation` (one-directional `dependsOn`, LIBRARY_CATALOG-D4/D7: the catalog module stands alone and is installable without circulation ever being present). `BookDetailPage.tsx` shows a plain link into the circulation page instead, shown only once `GET /modules/frontend-manifest` confirms circulation is actually installed.
 
-Per-section detail and the original proposal follow below; each heading now carries its own real-status tag inline.
+Per-section detail and the original proposal follow below; each heading still carries its per-item status tag inline.
 
 ---
 
@@ -52,7 +48,7 @@ The enhancements are organized into four feature areas:
 
 ### 1.1 Combined Book + Copy Add Flow
 
-**Status:** ⚠️ **PARTIAL** — backend done (`e9a491f`), frontend form broken (see audit above)
+**Status:** ✅ **IMPLEMENTED** — backend (`e9a491f`) + the frontend form that was missing it (`0d9d852`)
 
 **Current state:** Adding a book is a two-step process: create the book, then add copies separately.
 
@@ -97,7 +93,7 @@ The enhancements are organized into four feature areas:
 
 ### 1.3 Book Copies — Actions and Status Visibility
 
-**Status:** ❌ **NOT IMPLEMENTED** (commit `1ef9222` only adds an edit button, not a tab)
+**Status:** ✅ **IMPLEMENTED** (`6a731e2`) — action menu (View History/Update Status/Mark Damaged/Mark Lost/Remove) + status color coding
 
 **Current state:** Book copies are visible only via `/library/books/:bookId/copies` (a nested list); no actions or status context at a glance.
 
@@ -134,7 +130,7 @@ The enhancements are organized into four feature areas:
 
 ### 2.1 Book History (via Circulation Module)
 
-**Status:** ❌ **NOT IMPLEMENTED**
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`, `a0d4f8f`) — lives in library_circulation's own BookHistoryPage, linked from BookDetailPage (see module-boundary note above)
 
 **Current state:** No history view for a book.
 
@@ -162,7 +158,7 @@ The enhancements are organized into four feature areas:
 
 ### 2.2 Copy History (via Circulation Module)
 
-**Status:** ⚠️ **PARTIAL** — backend done (`8221f3b`), never wired to any UI
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`) — CopyHistoryDialog wires the previously-dead button
 
 **Current state:** Copy status changes are only recorded in the audit log; no user-facing history.
 
@@ -190,7 +186,7 @@ The enhancements are organized into four feature areas:
 
 ### 3.1 Rename "Student" to "Reader"
 
-**Status:** ⚠️ **PARTIAL** — mostly done (`118f2b1`), permission-label strings missed
+**Status:** ✅ **IMPLEMENTED** (`118f2b1`, permission labels finished in `54d0682`)
 
 **Current state:** The UI labels the entity "Student".
 
@@ -214,7 +210,7 @@ The enhancements are organized into four feature areas:
 
 ### 3.2 Reader List & Detail Page — Show More Information
 
-**Status:** ⚠️ **PARTIAL** — 2 of 4 tabs built (`4a830d2`), no photo/counts/fines summary
+**Status:** ✅ **IMPLEMENTED** (`4a830d2`, enriched header + Reading History tab in `1be36de`)
 
 **Current state:** Reader list likely shows basic info (code, name, class); detail page shows borrowings.
 
@@ -257,7 +253,7 @@ The enhancements are organized into four feature areas:
 
 ### 3.3 Reader Actions & History
 
-**Status:** ❌ **NOT IMPLEMENTED**
+**Status:** ✅ **IMPLEMENTED** (`1be36de`) — Actions tab backed by audit_log
 
 **Current state:** No dedicated "Actions" view for a reader.
 
@@ -282,7 +278,7 @@ The enhancements are organized into four feature areas:
 
 ### 4.1 Divide Scan Page into Reader and Books Sections
 
-**Status:** ⚠️ **PARTIAL** — sections exist (`6d32b38`) but stacked vertically, not two-column
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — real two-column MUI Grid
 
 **Current state:** `ScanPage.tsx` has slots for scanning a student and a book in sequence.
 
@@ -323,7 +319,7 @@ The enhancements are organized into four feature areas:
 
 ### 4.2 Reader Section — View Borrow History Button
 
-**Status:** ❌ **NOT IMPLEMENTED** — button rendered but has no `onClick` (dead), `6d32b38`
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — ReaderHistoryDialog wires the previously-dead button
 
 **Current state:** No quick way to see a reader's borrowing history from the scan page.
 
@@ -349,7 +345,7 @@ With a "View Full History" link to the reader's detail page (§3.2).
 
 ### 4.3 Book Section — View Copy History Popup
 
-**Status:** ❌ **NOT IMPLEMENTED** — button rendered but has no `onClick` (dead), `6d32b38`
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`)
 
 **Current state:** No history visibility for a copy on the scan page.
 
@@ -380,7 +376,7 @@ Last 10 Actions:
 
 ### 4.4 Notice: Previous Borrow Indicator
 
-**Status:** ⚠️ **PARTIAL** — only reflects currently-active borrow, not a real history lookup (`6d32b38`)
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — real per-reader-per-copy history lookup, not just "checked out right now"
 
 **Current state:** When a librarian scans a reader then a book, there's no indication if they've borrowed it before.
 
@@ -438,7 +434,7 @@ Last 10 Actions:
 
 ### 6.1 Return Dialog — Information & Status
 
-**Status:** ⚠️ **MOSTLY IMPLEMENTED** — no auto fine-creation/[Create Fine] button (`4456ebf`)
+**Status:** ✅ **IMPLEMENTED** (`4456ebf`, [Create Fine] flow added in `c0a1c2e`)
 
 **Current state:** Return probably shows minimal info and a confirm button.
 
