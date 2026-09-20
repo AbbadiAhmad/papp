@@ -1,8 +1,39 @@
 # Library Module Improvements — Enhancement Proposal
 
-**Status: Proposed enhancements to `library_catalog` and `library_circulation` modules.**
+**Status: Mixed — several items were partially or fully built since this was written; see the implementation audit below for the real per-item state as of 2026-09-20.**
 
 This document captures refinement requests to improve the user experience and functionality of the existing library modules. These are informed by usage patterns and gaps discovered after the initial implementation.
+
+## Implementation audit (2026-09-20)
+
+Verified against real source (backend services/controllers/DTOs, frontend pages/dialogs, locale JSON, migrations) — module `DECISIONS.md` status labels (`PROPOSED`/`DECIDED`) were **not** trusted at face value; several turned out to overstate what was actually built. Each section below is now tagged with its real status and, where a real commit did the work, its short SHA.
+
+| Item | Status | Commit |
+|---|---|---|
+| 1.1 Combined Book + Copy Add Flow | ⚠️ Partial — backend done, frontend form broken | `e9a491f` |
+| 1.2 Total/Available Copies columns | ✅ Implemented (single combined column, not two) | `ea4c5bc` |
+| 1.3 Copies tab — Actions & Status | ❌ Not implemented | `1ef9222` (misleading title) |
+| 2.1 Book History (via circulation) | ❌ Not implemented | — |
+| 2.2 Copy History (via circulation) | ⚠️ Partial — backend done, never wired to UI | `8221f3b` |
+| 3.1 Rename Student → Reader | ⚠️ Partial — UI copy mostly renamed, permission labels missed | `118f2b1` |
+| 3.2 Reader Detail Page enrichment | ⚠️ Partial — 2 of 4 tabs, no photo/counts/summary | `4a830d2` |
+| 3.3 Reader Actions & History | ❌ Not implemented | — |
+| 4.1 Divide Scan Page into sections | ⚠️ Partial — sections exist but stacked, not two-column | `6d32b38` |
+| 4.2 Reader — View Borrow History button | ❌ Not implemented — button rendered, no `onClick` (dead) | `6d32b38` |
+| 4.3 Book — View Copy History popup | ❌ Not implemented — button rendered, no `onClick` (dead) | `6d32b38` |
+| 4.4 Previous Borrow Indicator | ⚠️ Partial — only reflects currently-active borrow, not real history lookup | `6d32b38` |
+| 5.1 Borrow Dialog — Info & Comments | ✅ Implemented | `e9a491f` |
+| 6.1 Return Dialog — Info & Status | ⚠️ Mostly implemented — no auto fine-creation/[Create Fine] button | `4456ebf` |
+
+**Most important finding — a real, currently-shipped bug, not just a missing enhancement:** `CreateBookDto.copy` is mandatory server-side (`modules/library_catalog/backend/dto/create-book.dto.ts`, per D11), but `BookFormDialog.tsx` (the "New Book" form) collects no copy fields at all and `BooksListPage.tsx`'s `handleSubmit` sends the DTO straight through with no client-side default injected. **Submitting the New Book form in the UI today fails validation.** This isn't item 1.1 being "unimplemented" — it's the backend half of 1.1 shipping without its frontend half, leaving the feature broken in a way a user will hit immediately. Fix this before anything else in this document.
+
+**Discrepancies with the modules' own `DECISIONS.md` worth knowing about:**
+- `LIBRARY_CATALOG-D12`'s "catalog-history" endpoint is cited as covering §2.1, but it's copy-level status/condition/location history, not the book-level *who-borrowed-this* history §2.1 actually asks for — §2.1 is genuinely unbuilt, no `HistoryTab.tsx` exists anywhere.
+- `LIBRARY_CATALOG-D11` (marked `DECIDED`, superseding D8 `PROPOSED`) is accurate for the backend only — the frontend half was never done, per the bug above.
+- `LIBRARY_CIRCULATION-D14`/`D15`/`D16` are still labeled `PROPOSED` in their own decisions table but real commits exist for all three (`118f2b1`, `4a830d2`, `6d32b38`) — the commit messages overstate scope relative to what actually shipped (e.g. D15's "enriched information" added a `Tabs` shell with 2 of the spec's 4 tabs; D16's "two clear sections" is a vertical stack, not the two-column mockup, and its two "View History" buttons are unwired stubs).
+- D18 (catalog copy-history JSONB column) was reverted (`0676922`) then restored (`336567f`) the same day — current `HEAD` has it applied and matching `apps/api/prisma/schema.prisma`, so treat it as live despite the back-and-forth in the log.
+
+Per-section detail and the original proposal follow below; each heading now carries its own real-status tag inline.
 
 ---
 
@@ -20,6 +51,8 @@ The enhancements are organized into four feature areas:
 ## 1. Book Catalog & Copies UI Improvements
 
 ### 1.1 Combined Book + Copy Add Flow
+
+**Status:** ⚠️ **PARTIAL** — backend done (`e9a491f`), frontend form broken (see audit above)
 
 **Current state:** Adding a book is a two-step process: create the book, then add copies separately.
 
@@ -44,6 +77,8 @@ The enhancements are organized into four feature areas:
 
 ### 1.2 Book Catalog List — Available vs. Total Copies
 
+**Status:** ✅ **IMPLEMENTED** (single combined column, `ea4c5bc`)
+
 **Current state:** The books table shows only the list of books, no copy information.
 
 **Improvement:** Add two columns to the `BooksListPage` table:
@@ -61,6 +96,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 1.3 Book Copies — Actions and Status Visibility
+
+**Status:** ❌ **NOT IMPLEMENTED** (commit `1ef9222` only adds an edit button, not a tab)
 
 **Current state:** Book copies are visible only via `/library/books/:bookId/copies` (a nested list); no actions or status context at a glance.
 
@@ -97,6 +134,8 @@ The enhancements are organized into four feature areas:
 
 ### 2.1 Book History (via Circulation Module)
 
+**Status:** ❌ **NOT IMPLEMENTED**
+
 **Current state:** No history view for a book.
 
 **Improvement:** When viewing a book (`BookDetailPage`), show a "History" tab that lists:
@@ -122,6 +161,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 2.2 Copy History (via Circulation Module)
+
+**Status:** ⚠️ **PARTIAL** — backend done (`8221f3b`), never wired to any UI
 
 **Current state:** Copy status changes are only recorded in the audit log; no user-facing history.
 
@@ -149,6 +190,8 @@ The enhancements are organized into four feature areas:
 
 ### 3.1 Rename "Student" to "Reader"
 
+**Status:** ⚠️ **PARTIAL** — mostly done (`118f2b1`), permission-label strings missed
+
 **Current state:** The UI labels the entity "Student".
 
 **Improvement:** Rename throughout to "Reader" to be more inclusive (staff, teachers, or anyone who borrows books).
@@ -170,6 +213,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 3.2 Reader List & Detail Page — Show More Information
+
+**Status:** ⚠️ **PARTIAL** — 2 of 4 tabs built (`4a830d2`), no photo/counts/fines summary
 
 **Current state:** Reader list likely shows basic info (code, name, class); detail page shows borrowings.
 
@@ -212,6 +257,8 @@ The enhancements are organized into four feature areas:
 
 ### 3.3 Reader Actions & History
 
+**Status:** ❌ **NOT IMPLEMENTED**
+
 **Current state:** No dedicated "Actions" view for a reader.
 
 **Improvement:** Add an "Actions" section to the reader's detail page showing an audit trail of operations on their account:
@@ -234,6 +281,8 @@ The enhancements are organized into four feature areas:
 ## 4. Borrowing & Return Workflow — Enhanced Scan Page
 
 ### 4.1 Divide Scan Page into Reader and Books Sections
+
+**Status:** ⚠️ **PARTIAL** — sections exist (`6d32b38`) but stacked vertically, not two-column
 
 **Current state:** `ScanPage.tsx` has slots for scanning a student and a book in sequence.
 
@@ -274,6 +323,8 @@ The enhancements are organized into four feature areas:
 
 ### 4.2 Reader Section — View Borrow History Button
 
+**Status:** ❌ **NOT IMPLEMENTED** — button rendered but has no `onClick` (dead), `6d32b38`
+
 **Current state:** No quick way to see a reader's borrowing history from the scan page.
 
 **Improvement:** On the reader section (after scanning a reader QR), show a blue "View Borrow History" button that opens a side panel or modal showing:
@@ -297,6 +348,8 @@ With a "View Full History" link to the reader's detail page (§3.2).
 ---
 
 ### 4.3 Book Section — View Copy History Popup
+
+**Status:** ❌ **NOT IMPLEMENTED** — button rendered but has no `onClick` (dead), `6d32b38`
 
 **Current state:** No history visibility for a copy on the scan page.
 
@@ -327,6 +380,8 @@ Last 10 Actions:
 
 ### 4.4 Notice: Previous Borrow Indicator
 
+**Status:** ⚠️ **PARTIAL** — only reflects currently-active borrow, not a real history lookup (`6d32b38`)
+
 **Current state:** When a librarian scans a reader then a book, there's no indication if they've borrowed it before.
 
 **Improvement:** If a reader has previously borrowed this book (same book, different copy, or same copy), show a notice banner:
@@ -349,6 +404,8 @@ Last 10 Actions:
 ## 5. Borrowing Flow Enhancements
 
 ### 5.1 Borrow Dialog — Information & Comments Fields
+
+**Status:** ✅ **IMPLEMENTED** (`e9a491f`)
 
 **Current state:** Borrowing probably shows minimal info (copy, reader, confirm button).
 
@@ -380,6 +437,8 @@ Last 10 Actions:
 ## 6. Return Flow Enhancements
 
 ### 6.1 Return Dialog — Information & Status
+
+**Status:** ⚠️ **MOSTLY IMPLEMENTED** — no auto fine-creation/[Create Fine] button (`4456ebf`)
 
 **Current state:** Return probably shows minimal info and a confirm button.
 
