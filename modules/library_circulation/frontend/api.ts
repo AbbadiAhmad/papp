@@ -46,6 +46,7 @@ export interface LibraryBorrowing {
   returnedAt: string | null;
   borrowedBy: string;
   returnedBy: string | null;
+  comments?: string | null;
 }
 
 export interface LibraryFineType {
@@ -142,8 +143,8 @@ export const libraryCirculationApi = {
   scan: (code: string) => apiClient.post<ScanResult>(`${BASE}/scan`, { code }).then((r) => r.data),
   activeBorrowingForCopy: (copyId: string) =>
     apiClient.get<LibraryBorrowing>(`${BASE}/book-copies/${copyId}/active-borrowing`).then((r) => r.data),
-  borrow: (studentId: string, bookCopyId: string) =>
-    apiClient.post<LibraryBorrowing>(`${BASE}/borrow`, { studentId, bookCopyId }).then((r) => r.data),
+  borrow: (studentId: string, bookCopyId: string, expectedReturnDate?: string, comments?: string) =>
+    apiClient.post<LibraryBorrowing>(`${BASE}/borrow`, { studentId, bookCopyId, expectedReturnDate, comments }).then((r) => r.data),
   returnBorrowing: (borrowingId: string) =>
     apiClient
       .post<{ borrowing: LibraryBorrowing; daysLate: number; lateFine: LibraryFine | null }>(`${BASE}/return`, { borrowingId })

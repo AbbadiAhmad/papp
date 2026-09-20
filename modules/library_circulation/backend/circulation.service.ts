@@ -83,7 +83,13 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** §7's minimum-steps borrow flow, wrapped in one transaction (§31). */
-  async borrow(studentId: string, bookCopyId: string, borrowedBy: string) {
+  async borrow(
+    studentId: string,
+    bookCopyId: string,
+    borrowedBy: string,
+    expectedReturnDate?: Date,
+    comments?: string,
+  ) {
     const policy = await this.settings.getLoanPolicy();
 
     const [student, copy] = await Promise.all([
@@ -105,12 +111,15 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const dueAt = new Date();
-    dueAt.setDate(dueAt.getDate() + policy.loanPeriodDays);
+    const dueAt = expectedReturnDate ?? (() => {
+      const date = new Date();
+      date.setDate(date.getDate() + policy.loanPeriodDays);
+      return date;
+    })();
 
     const borrowing = await this.prisma.$transaction(async (tx) => {
       const created = await tx.libraryBorrowing.create({
-        data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active' },
+        data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active', comments },
       });
       await tx.libraryCatalogBookCopy.update({ where: { id: bookCopyId }, data: { status: 'borrowed' } });
       return created;

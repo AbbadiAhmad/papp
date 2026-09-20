@@ -133,6 +133,36 @@ describe('CirculationService', () => {
       prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
       await expect(service.borrow('missing', 'copy-1', 'staff-1')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('Feature 5.1: accepts and stores optional comments', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+      prisma.libraryBorrowing.count.mockResolvedValue(0);
+      prisma.libraryBorrowing.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+        id: 'borrowing-1',
+        ...data,
+      }));
+
+      const comments = 'Return by end of semester';
+      const borrowing = await service.borrow('student-1', 'copy-1', 'staff-1', undefined, comments);
+
+      expect((borrowing as unknown as { comments: string }).comments).toBe(comments);
+    });
+
+    it('Feature 5.1: allows overriding the expected return date (due date)', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+      prisma.libraryBorrowing.count.mockResolvedValue(0);
+      prisma.libraryBorrowing.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+        id: 'borrowing-1',
+        ...data,
+      }));
+
+      const customDueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const borrowing = await service.borrow('student-1', 'copy-1', 'staff-1', customDueDate);
+
+      expect((borrowing as unknown as { dueAt: Date }).dueAt.getTime()).toBe(customDueDate.getTime());
+    });
   });
 
   describe('returnBorrowing', () => {

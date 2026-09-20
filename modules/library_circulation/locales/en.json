@@ -36,7 +36,17 @@
   "library_circulation.scan.return_success": "Book returned successfully.",
   "library_circulation.scan.return_success_late": "Book returned — {{days}} day(s) late, a fine was created.",
 
+  "library_circulation.borrow.dialog_title": "Borrow book",
+  "library_circulation.borrow.borrow_date": "Borrow date",
+  "library_circulation.borrow.expected_return_date": "Expected return date",
+  "library_circulation.borrow.comments": "Comments",
+  "library_circulation.borrow.comments_placeholder": "Optional notes (e.g., extension reason)",
+  "library_circulation.borrow.current_books_count": "Current books",
+
+  "library_circulation.books.status": "Status",
+
   "library_circulation.students.code": "Student code",
+  "library_circulation.students.class": "Class",
   "library_circulation.students.code_help": "The code printed on the student's card (also usable as a QR/barcode scan target).",
   "library_circulation.students.class_name": "Class",
   "library_circulation.students.create_title": "Add student",

@@ -21,6 +21,7 @@ interface MockPrisma {
     create: jest.Mock;
     update: jest.Mock;
   };
+  $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
@@ -38,6 +39,7 @@ function createMockPrisma(): MockPrisma {
       create: jest.fn(),
       update: jest.fn(),
     },
+    $transaction: jest.fn((fn) => fn({ libraryCatalogBook: {}, libraryCatalogBookCopy: {} })),
   };
 }
 
@@ -132,15 +134,60 @@ describe('BooksService', () => {
     });
   });
 
-  describe('create', () => {
-    it('creates a book, writing the dto straight through as the row data', async () => {
-      const dto = { title: 'New Title' } as CreateBookDto;
-      prisma.libraryCatalogBook.create.mockResolvedValue(bookRow({ title: 'New Title' }));
+  describe('create — Phase A: combined book + copy', () => {
+    it('creates a book and its initial copy in a transaction', async () => {
+      const dto = {
+        title: 'New Title',
+        author: 'Ahmed',
+        copy: {
+          qrCode: 'BOOK-001',
+          condition: 'good',
+          location: 'Shelf A',
+          acquisitionDate: '2026-09-20',
+        },
+      } as unknown as CreateBookDto;
+
+      const bookCreated = bookRow({ id: 'book-new', title: 'New Title', author: 'Ahmed' });
+      const copyCreated = copyRow({ qrCode: 'BOOK-001', bookId: 'book-new', condition: 'good', location: 'Shelf A' });
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
+          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyCreated) },
+        };
+        return fn(tx as never);
+      });
 
       const result = await service.create(dto);
 
-      expect(prisma.libraryCatalogBook.create).toHaveBeenCalledWith({ data: dto });
-      expect(result.title).toBe('New Title');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(result).toEqual(bookCreated);
+    });
+
+    it('defaults copy.status to "available" when omitted', async () => {
+      const dto = {
+        title: 'Another Book',
+        copy: {
+          qrCode: 'BOOK-002',
+        },
+      } as unknown as CreateBookDto;
+
+      const bookCreated = bookRow({ id: 'book-2', title: 'Another Book' });
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
+          libraryCatalogBookCopy: { create: jest.fn((arg: Record<string, unknown>) => {
+            expect(arg.data.status).toBe('available');
+            return copyRow({ qrCode: 'BOOK-002', bookId: 'book-2' });
+          }) },
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
     });
   });
 

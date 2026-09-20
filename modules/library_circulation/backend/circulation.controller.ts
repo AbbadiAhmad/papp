@@ -41,7 +41,8 @@ export class CirculationController {
   @RequirePermission('library_circulation.borrow')
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'create' })
   async borrow(@Body() dto: BorrowDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId);
+    const expectedReturnDate = dto.expectedReturnDate ? new Date(dto.expectedReturnDate) : undefined;
+    return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId, expectedReturnDate, dto.comments);
   }
 
   @Post('return')

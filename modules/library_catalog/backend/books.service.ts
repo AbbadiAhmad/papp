@@ -76,7 +76,21 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   }
 
   async create(dto: CreateBookDto) {
-    return this.prisma.libraryCatalogBook.create({ data: dto });
+    const { copy, ...bookData } = dto;
+    return this.prisma.$transaction(async (tx) => {
+      const book = await tx.libraryCatalogBook.create({ data: bookData });
+      await tx.libraryCatalogBookCopy.create({
+        data: {
+          bookId: book.id,
+          qrCode: copy.qrCode,
+          status: copy.status ?? 'available',
+          condition: copy.condition,
+          location: copy.location,
+          acquisitionDate: copy.acquisitionDate ? new Date(copy.acquisitionDate) : null,
+        },
+      });
+      return book;
+    });
   }
 
   async update(id: string, dto: UpdateBookDto) {
