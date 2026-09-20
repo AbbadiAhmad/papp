@@ -1,6 +1,22 @@
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
-import { Alert, Box, Button, Card, CardContent, Chip, Grid, Stack, TextField, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
@@ -11,6 +27,7 @@ import {
   libraryCirculationApi,
   type CopyCirculationHistoryEntry,
   type LibraryBorrowing,
+  type LibraryFineType,
   type ScanBookCopyResult,
   type ScanStudentResult,
 } from '../api';
@@ -51,6 +68,7 @@ export function ScanPage() {
   // (which bookCopy.activeBorrowing already covers on its own, regardless
   // of who has it). Computed once both slots are filled.
   const [priorBorrowByThisReader, setPriorBorrowByThisReader] = useState<CopyCirculationHistoryEntry | null>(null);
+  const [damageFineContext, setDamageFineContext] = useState<{ studentId: string; borrowingId: string; reason: string } | null>(null);
 
   useEffect(() => {
     if (!student || !bookCopy) {
@@ -154,6 +172,11 @@ export function ScanPage() {
           ? t('library_circulation.scan.return_success_late', { days: result.daysLate })
           : t('library_circulation.scan.return_success'),
       );
+      // §6.1: damage/loss suggests a fine but never auto-creates one — the
+      // librarian confirms amount/type explicitly via this dialog.
+      if (result.damageFine?.suggested) {
+        setDamageFineContext({ studentId: result.borrowing.studentId, borrowingId: result.borrowing.id, reason: result.damageFine.reason });
+      }
       setCurrentBorrowingForReturn(null);
       reset();
     } catch (err) {
@@ -358,6 +381,110 @@ export function ScanPage() {
       />
 
       <ReaderHistoryDialog open={readerHistoryOpen} studentId={student?.student.id ?? null} onClose={() => setReaderHistoryOpen(false)} />
+
+      <CreateFineDialog
+        context={damageFineContext}
+        onClose={() => setDamageFineContext(null)}
+        onCreated={() => {
+          setDamageFineContext(null);
+          setMessage(t('library_circulation.scan.fine_created'));
+        }}
+      />
     </Box>
+  );
+}
+
+/** §6.1: [Create Fine] — shown after a damaged/lost return, pre-filled from the matching seeded fine type (FINE-DAMAGE/FINE-LOST), librarian confirms/adjusts the amount before it's actually created. */
+function CreateFineDialog({
+  context,
+  onClose,
+  onCreated,
+}: {
+  context: { studentId: string; borrowingId: string; reason: string } | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { t } = useTranslation();
+  const gated = useGatedCall();
+  const [fineTypes, setFineTypes] = useState<LibraryFineType[]>([]);
+  const [fineTypeId, setFineTypeId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!context) return;
+    libraryCirculationApi.listFineTypes().then((types) => {
+      setFineTypes(types);
+      const matchingCode = context.reason === 'damaged' ? 'FINE-DAMAGE' : context.reason === 'lost' ? 'FINE-LOST' : undefined;
+      const match = types.find((ft) => ft.code === matchingCode) ?? types[0];
+      if (match) {
+        setFineTypeId(match.id);
+        setAmount(match.defaultAmount);
+      }
+    });
+  }, [context]);
+
+  if (!context) return null;
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await gated('library_circulation.fines.record', () =>
+        libraryCirculationApi.createFine({
+          studentId: context.studentId,
+          fineTypeId,
+          amount: Number(amount),
+          borrowingId: context.borrowingId,
+        }),
+      );
+      onCreated();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={context !== null} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>{t('library_circulation.scan.create_fine_title')}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {error ? (
+            <Typography variant="body2" color="error">
+              {error}
+            </Typography>
+          ) : null}
+          <TextField
+            select
+            label={t('library_circulation.fines.fine_type')}
+            value={fineTypeId}
+            onChange={(e) => setFineTypeId(e.target.value)}
+          >
+            {fineTypes.map((ft) => (
+              <MenuItem key={ft.id} value={ft.id}>
+                {ft.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label={t('library_circulation.fines.amount')}
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={submitting}>
+          {t('core.common.cancel')}
+        </Button>
+        <Button onClick={handleSubmit} variant="contained" disabled={submitting || !fineTypeId || !amount}>
+          {t('library_circulation.scan.create_fine_button')}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

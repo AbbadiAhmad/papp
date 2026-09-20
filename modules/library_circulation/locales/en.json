@@ -35,6 +35,9 @@
   "library_circulation.scan.borrow_success": "Book borrowed successfully.",
   "library_circulation.scan.return_success": "Book returned successfully.",
   "library_circulation.scan.return_success_late": "Book returned — {{days}} day(s) late, a fine was created.",
+  "library_circulation.scan.create_fine_title": "Create a fine for this return",
+  "library_circulation.scan.create_fine_button": "Create fine",
+  "library_circulation.scan.fine_created": "Fine created.",
   "library_circulation.scan.view_borrow_history": "View borrow history",
   "library_circulation.scan.view_copy_history": "View history",
   "library_circulation.scan.copy_history_title": "History — {{qrCode}}",
@@ -113,6 +116,7 @@
   "library_circulation.borrowing_status.cancelled": "Cancelled",
 
   "library_circulation.fines.fine_number": "Fine #",
+  "library_circulation.fines.fine_type": "Fine type",
   "library_circulation.fines.amount": "Amount",
   "library_circulation.fines.amount_paid": "Paid",
   "library_circulation.fines.status": "Status",

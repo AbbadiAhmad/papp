@@ -35,6 +35,9 @@
   "library_circulation.scan.borrow_success": "تمت إعارة الكتاب بنجاح.",
   "library_circulation.scan.return_success": "تم إرجاع الكتاب بنجاح.",
   "library_circulation.scan.return_success_late": "تم إرجاع الكتاب متأخراً بمقدار {{days}} يوم — تم تسجيل غرامة.",
+  "library_circulation.scan.create_fine_title": "إنشاء غرامة لهذه الإعادة",
+  "library_circulation.scan.create_fine_button": "إنشاء الغرامة",
+  "library_circulation.scan.fine_created": "تم إنشاء الغرامة.",
   "library_circulation.scan.view_borrow_history": "عرض سجل الإعارات",
   "library_circulation.scan.view_copy_history": "عرض السجل",
   "library_circulation.scan.copy_history_title": "السجل — {{qrCode}}",
@@ -113,6 +116,7 @@
   "library_circulation.borrowing_status.cancelled": "ملغاة",
 
   "library_circulation.fines.fine_number": "رقم الغرامة",
+  "library_circulation.fines.fine_type": "نوع الغرامة",
   "library_circulation.fines.amount": "المبلغ",
   "library_circulation.fines.amount_paid": "المدفوع",
   "library_circulation.fines.status": "الحالة",
