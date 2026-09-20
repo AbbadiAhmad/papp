@@ -178,7 +178,7 @@ export function ScanPage() {
                 </Typography>
                 <Typography variant="h5">{student.student.name ?? student.student.code}</Typography>
               </Box>
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <Chip
                   label={`${t('library_circulation.students.code')}: ${student.student.code}`}
                   size="small"

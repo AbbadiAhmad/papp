@@ -1,5 +1,4 @@
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import {
   Alert,
@@ -31,8 +30,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
-import { libraryCatalogApi, type CreateBookCopyInput, type LibraryBookCopy, type UpdateBookCopyDto } from '../api';
+import { libraryCatalogApi, type CreateBookCopyInput, type LibraryBookCopy } from '../api';
 
 export function BookDetailPage() {
   const { bookId } = useParams<{ bookId: string }>();
@@ -45,7 +43,6 @@ export function BookDetailPage() {
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [editingCopy, setEditingCopy] = useState<LibraryBookCopy | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<LibraryBookCopy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleEditCopy = (copy: LibraryBookCopy) => {
@@ -140,14 +137,14 @@ export function BookDetailPage() {
           setCopyDialogOpen(false);
           setEditingCopy(null);
         }}
-        onSubmit={async (dto) => {
+        onSubmit={async (dto: any) => {
           try {
             if (editingCopy) {
               await gated('library_catalog.books.update', () =>
                 libraryCatalogApi.updateCopy(bookId as string, editingCopy.id, dto),
               );
             } else {
-              await gated('library_catalog.books.create', () => libraryCatalogApi.createCopy(bookId as string, dto));
+              await gated('library_catalog.books.create', () => libraryCatalogApi.createCopy(bookId as string, dto as CreateBookCopyInput));
             }
             setCopyDialogOpen(false);
             setEditingCopy(null);
@@ -170,7 +167,7 @@ function AddCopyDialog({
   open: boolean;
   copy?: LibraryBookCopy | null;
   onClose: () => void;
-  onSubmit: (dto: CreateBookCopyInput | UpdateBookCopyDto) => Promise<void>;
+  onSubmit: (dto: any) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [qrCode, setQrCode] = useState('');
@@ -195,7 +192,11 @@ function AddCopyDialog({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await onSubmit({ qrCode, location: location || undefined, condition: condition || undefined });
+      if (isEditing) {
+        await onSubmit({ location: location || undefined, condition: condition || undefined });
+      } else {
+        await onSubmit({ qrCode, location: location || undefined, condition: condition || undefined });
+      }
       setQrCode('');
       setLocation('');
       setCondition('');
