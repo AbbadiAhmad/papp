@@ -17,8 +17,25 @@ export interface LibraryStudent {
 }
 
 export interface LibraryStudentDetail extends LibraryStudent {
+  name: string | null;
+  email: string | null;
+  isActive: boolean;
+  activeBorrowingsCount: number;
+  unpaidFinesTotal: number;
+  paidFinesTotal: number;
   activeBorrowings: LibraryBorrowing[];
   openFines: LibraryFine[];
+}
+
+/** AuditService-shaped row — read via the shared Prisma client, same shape as core's own AuditLog. */
+export interface StudentActionHistoryEntry {
+  id: string;
+  occurredAt: string;
+  actorUserId: string | null;
+  actorType: string;
+  action: string;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
 }
 
 export interface CreatedStudent extends LibraryStudent {
@@ -191,6 +208,8 @@ export const libraryCirculationApi = {
   // Students
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
   getStudent: (id: string) => apiClient.get<LibraryStudentDetail>(`${BASE}/students/${id}`).then((r) => r.data),
+  getStudentReadingHistory: (id: string) => apiClient.get<LibraryBorrowing[]>(`${BASE}/students/${id}/reading-history`).then((r) => r.data),
+  getStudentActionHistory: (id: string) => apiClient.get<StudentActionHistoryEntry[]>(`${BASE}/students/${id}/action-history`).then((r) => r.data),
   createStudent: (dto: CreateStudentInput) => apiClient.post<CreatedStudent>(`${BASE}/students`, dto).then((r) => r.data),
   updateStudent: (id: string, dto: UpdateStudentInput) =>
     apiClient.patch<LibraryStudent>(`${BASE}/students/${id}`, dto).then((r) => r.data),

@@ -60,7 +60,8 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
 
   async findById(id: string) {
     const student = await this.getOrThrow(id);
-    const [activeBorrowings, openFines] = await Promise.all([
+    const [user, activeBorrowings, openFines, allFines] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true } }),
       this.prisma.libraryBorrowing.findMany({
         where: { studentId: id, status: { in: ['active', 'overdue'] } },
         orderBy: { borrowedAt: 'desc' },
@@ -69,8 +70,52 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
         where: { studentId: id, status: { in: ['unpaid', 'partially_paid'] } },
         orderBy: { createdAt: 'desc' },
       }),
+      // §3.2's "total fines (paid + unpaid)" summary needs both buckets,
+      // not just the open ones openFines already covers.
+      this.prisma.libraryFine.findMany({ where: { studentId: id }, select: { status: true, amount: true, amountPaid: true } }),
     ]);
-    return { ...student, activeBorrowings, openFines };
+
+    const unpaidFinesTotal = allFines
+      .filter((f) => f.status === 'unpaid' || f.status === 'partially_paid')
+      .reduce((sum, f) => sum + Number(f.amount) - Number(f.amountPaid), 0);
+    const paidFinesTotal = allFines.reduce((sum, f) => sum + Number(f.amountPaid), 0);
+
+    return {
+      ...student,
+      name: user?.name ?? null,
+      email: user?.email ?? null,
+      isActive: user?.isActive ?? true,
+      activeBorrowingsCount: activeBorrowings.length,
+      unpaidFinesTotal,
+      paidFinesTotal,
+      activeBorrowings,
+      openFines,
+    };
+  }
+
+  /** §3.2 "Reading History" tab — every borrowing ever, not just the active ones findById() already returns. Never deleted (§10's "reading passport" rule — see this module's own DOCUMENTATION.md). */
+  async getReadingHistory(id: string) {
+    await this.getOrThrow(id);
+    return this.prisma.libraryBorrowing.findMany({
+      where: { studentId: id },
+      orderBy: { borrowedAt: 'desc' },
+    });
+  }
+
+  /**
+   * §3.3 "Actions" tab — audit trail of operations on this reader's OWN
+   * account row (create/update/delete of the LibraryStudent record itself,
+   * not their borrowing activity — that's the Reading History tab).
+   * `audit_log` is a core, platform-wide table on the same shared Prisma
+   * client this service already reads `User` through (see this class's own
+   * docblock) — not a cross-module service import.
+   */
+  async getActionHistory(id: string) {
+    await this.getOrThrow(id);
+    return this.prisma.auditLog.findMany({
+      where: { entityType: 'LibraryStudent', entityId: id },
+      orderBy: { occurredAt: 'desc' },
+    });
   }
 
   async create(dto: CreateStudentDto, createdBy: string): Promise<CreatedStudent> {

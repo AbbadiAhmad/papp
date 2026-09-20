@@ -26,6 +26,20 @@ export class StudentsController {
     return this.students.findById(id);
   }
 
+  /** §3.2 "Reading History" tab — every borrowing ever, never just the active ones. */
+  @Get(':id/reading-history')
+  @RequirePermission('library_circulation.students.view')
+  async readingHistory(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getReadingHistory(id);
+  }
+
+  /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */
+  @Get(':id/action-history')
+  @RequirePermission('library_circulation.students.view')
+  async actionHistory(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getActionHistory(id);
+  }
+
   @Post()
   @RequirePermission('library_circulation.students.create')
   @Audit({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'create' })

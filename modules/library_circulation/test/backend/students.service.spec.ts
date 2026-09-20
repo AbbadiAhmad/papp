@@ -4,23 +4,25 @@ import { Prisma } from '@prisma/client';
 import { StudentsService } from '../../backend/students.service';
 
 interface MockPrisma {
-  user: { create: jest.Mock };
+  user: { create: jest.Mock; findUnique: jest.Mock };
   role: { findUnique: jest.Mock };
   userRole: { create: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
   libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
   libraryFine: { findMany: jest.Mock };
+  auditLog: { findMany: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
-    user: { create: jest.fn() },
+    user: { create: jest.fn(), findUnique: jest.fn() },
     role: { findUnique: jest.fn() },
     userRole: { create: jest.fn() },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
     libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
     libraryFine: { findMany: jest.fn() },
+    auditLog: { findMany: jest.fn() },
     $transaction: jest.fn(),
   };
   // Every test below runs a single top-level $transaction — hand it the SAME mock prisma as `tx`.
@@ -133,6 +135,75 @@ describe('StudentsService', () => {
     it('§18: returns a real count for the dashboard, never a mock number', async () => {
       prisma.libraryStudent.count.mockResolvedValue(42);
       await expect(service.count()).resolves.toBe(42);
+    });
+  });
+
+  describe('findById (§3.2 enrichment)', () => {
+    it('returns name/email/isActive from the linked User plus computed borrowing/fine totals', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.user.findUnique.mockResolvedValue({ name: 'Aisha', email: 'aisha@school.test', isActive: true });
+      prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1', status: 'active' }, { id: 'b-2', status: 'overdue' }]);
+      prisma.libraryFine.findMany
+        .mockResolvedValueOnce([]) // openFines
+        .mockResolvedValueOnce([
+          { status: 'unpaid', amount: '20.00', amountPaid: '0.00' },
+          { status: 'paid', amount: '10.00', amountPaid: '10.00' },
+        ]); // allFines (for the two totals)
+
+      const result = await service.findById('student-1');
+
+      expect(result.name).toBe('Aisha');
+      expect(result.isActive).toBe(true);
+      expect(result.activeBorrowingsCount).toBe(2);
+      expect(result.unpaidFinesTotal).toBe(20);
+      expect(result.paidFinesTotal).toBe(10);
+    });
+
+    it('404s for an unknown student before touching User/borrowing/fine lookups', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      await expect(service.findById('missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getReadingHistory (§3.2)', () => {
+    it('returns every borrowing ever, ordered most-recent-first', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1' }]);
+
+      const result = await service.getReadingHistory('student-1');
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith({
+        where: { studentId: 'student-1' },
+        orderBy: { borrowedAt: 'desc' },
+      });
+      expect(result).toEqual([{ id: 'b-1' }]);
+    });
+
+    it('404s for an unknown student', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      await expect(service.getReadingHistory('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getActionHistory (§3.3)', () => {
+    it('queries audit_log scoped to this LibraryStudent entity', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.auditLog.findMany.mockResolvedValue([{ id: 'a-1', action: 'update' }]);
+
+      const result = await service.getActionHistory('student-1');
+
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
+        where: { entityType: 'LibraryStudent', entityId: 'student-1' },
+        orderBy: { occurredAt: 'desc' },
+      });
+      expect(result).toEqual([{ id: 'a-1', action: 'update' }]);
+    });
+
+    it('404s for an unknown student before querying audit_log', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      await expect(service.getActionHistory('missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
     });
   });
 });
