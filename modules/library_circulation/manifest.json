@@ -171,6 +171,12 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.finance.view",
       "component": "frontend/pages/FinancePage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/books/:bookId/history",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.borrow",
+      "component": "frontend/pages/BookHistoryPage.tsx"
     }
   ],
 

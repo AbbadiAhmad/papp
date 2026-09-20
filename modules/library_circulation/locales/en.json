@@ -44,6 +44,11 @@
   "library_circulation.scan.previous_borrow": "Previous borrow",
   "library_circulation.scan.previous_borrow_returned": "Returned {{date}}, marked {{status}}",
 
+  "library_circulation.book_history.title": "Borrowing history",
+  "library_circulation.book_history.no_history": "This book has never been borrowed.",
+  "library_circulation.book_history.borrowed_returned": "Borrowed {{borrowed}}, returned {{returned}} ({{status}})",
+  "library_circulation.book_history.borrowed_active": "Borrowed {{borrowed}} ({{status}})",
+
   "library_circulation.borrow.dialog_title": "Borrow book",
   "library_circulation.borrow.borrow_date": "Borrow date",
   "library_circulation.borrow.expected_return_date": "Expected return date",

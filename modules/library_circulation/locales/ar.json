@@ -44,6 +44,11 @@
   "library_circulation.scan.previous_borrow": "إعارة سابقة",
   "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
 
+  "library_circulation.book_history.title": "سجل الإعارة",
+  "library_circulation.book_history.no_history": "لم يُعَر هذا الكتاب من قبل.",
+  "library_circulation.book_history.borrowed_returned": "أُعير {{borrowed}}، وأُعيد {{returned}} ({{status}})",
+  "library_circulation.book_history.borrowed_active": "أُعير {{borrowed}} ({{status}})",
+
   "library_circulation.borrow.dialog_title": "إعارة كتاب",
   "library_circulation.borrow.borrow_date": "تاريخ الإعارة",
   "library_circulation.borrow.expected_return_date": "تاريخ الإرجاع المتوقع",

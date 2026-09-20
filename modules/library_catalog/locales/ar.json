@@ -28,6 +28,7 @@
   "library_catalog.books.edit_title": "تعديل الكتاب",
   "library_catalog.books.delete_title": "حذف الكتاب",
   "library_catalog.books.delete_confirm": "هل تريد حذف \"{{title}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+  "library_catalog.books.view_borrowing_history": "عرض سجل الإعارة",
 
   "library_catalog.book.copies_section": "النسخة الأولى",
   "library_catalog.book.add_copies_label": "كل كتاب يحتاج إلى نسخة فعلية واحدة على الأقل — أدخل رمز الاستجابة السريعة الخاص بها أدناه. يمكنك إضافة نسخ أخرى لاحقاً من صفحة الكتاب.",

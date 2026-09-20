@@ -29,14 +29,15 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import {
@@ -80,6 +81,32 @@ export function BookDetailPage() {
   const [historyCopy, setHistoryCopy] = useState<LibraryBookCopy | null>(null);
   const [historyEntries, setHistoryEntries] = useState<CopyHistoryEntry[] | null>(null);
   const [pendingRemoveCopy, setPendingRemoveCopy] = useState<LibraryBookCopy | null>(null);
+
+  // §2.1 (docs/LIBRARY_IMPROVEMENTS.md): borrowing history is
+  // library_circulation's data, not this (standalone, dependency-free)
+  // module's own — library_catalog must never import from
+  // library_circulation directly (LIBRARY_CATALOG-D4/D7's one-directional
+  // dependsOn), so this only ever shows a plain link into that module's
+  // own page, and only once it's confirmed installed. GET
+  // /modules/frontend-manifest needs no specific permission (just being
+  // logged in), unlike GET /modules — safe to call from any role that can
+  // view a book, not just modules.view holders.
+  const [circulationInstalled, setCirculationInstalled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    modulesApi
+      .getFrontendManifest()
+      .then((manifests) => {
+        if (!cancelled) setCirculationInstalled(manifests.some((m) => m.key === 'library_circulation'));
+      })
+      .catch(() => {
+        // Silently no-op: link just stays hidden, same as any other
+        // module-manifest fetch failure elsewhere in the shell.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleEditCopy = (copy: LibraryBookCopy) => {
     setEditingCopy(copy);
@@ -142,6 +169,11 @@ export function BookDetailPage() {
                 <Typography variant="body2" color="text.secondary">
                   {book.author ?? t('library_catalog.fields.no_author')} · {book.category ?? '—'}
                 </Typography>
+                {circulationInstalled ? (
+                  <RouterLink to={`/library-circulation/books/${book.id}/history`}>
+                    <Typography variant="body2">{t('library_catalog.books.view_borrowing_history')}</Typography>
+                  </RouterLink>
+                ) : null}
               </Box>
               <Can permission="library_catalog.books.create">
                 <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
