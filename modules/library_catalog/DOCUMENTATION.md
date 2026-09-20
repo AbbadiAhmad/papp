@@ -33,7 +33,7 @@ library_catalog_book_copies(
 | `library_catalog.books.view` | List/get a book, list a book's copies | `BooksController.list/findById/listCopies` |
 | `library_catalog.books.create` | Create a book, add a copy to a book | `BooksController.create/addCopy` |
 | `library_catalog.books.update` | Edit a book, update a copy's status/condition/location | `BooksController.update/updateCopy` |
-| `library_catalog.books.delete` | Delete a book (and, via cascade, its copies) | `BooksController.remove` |
+| `library_catalog.books.delete` | Delete a book (and, via cascade, its copies), or remove a single copy directly | `BooksController.remove/removeCopy` |
 | `library_catalog.books.export` | Download the books list as `.xlsx` | `BooksController.export` |
 
 `defaultRolePermissions`: `admin` gets all 5; `library_assistant` gets view/create/update (no delete/export); `finance` gets none; `reader` gets view only. The public availability route (below) needs no permission at all — there is no user to check one against.
@@ -42,7 +42,7 @@ library_catalog_book_copies(
 
 Backend (`apiPrefix: /api/library`):
 - `GET/POST /books`, `GET/PATCH/DELETE /books/:id`, `GET /books/export` — `BooksController`, all `@RequirePermission`-gated as above.
-- `GET/POST /books/:bookId/copies`, `PATCH /books/:bookId/copies/:id` — same controller, copies sub-resource.
+- `GET/POST /books/:bookId/copies`, `PATCH/DELETE /books/:bookId/copies/:id` — same controller, copies sub-resource. `DELETE` is gated by `books.delete` (not a separate code, matching the sub-resource pattern), and fails with 409 if the copy has `library_circulation` borrowing history (no `ON DELETE CASCADE` on that FK — see LIBRARY_CATALOG-D8).
 - `GET /public/books/:id/availability` — `PublicBooksController`, `@Public()` + `PublicThrottlerGuard` (D34 — even though it's a read, applied "for consistency" per the module's own build notes) + `@Audit(...)` (deliberately, to exercise the `actor_type='anonymous'` audit path — see that controller's own docblock).
 
 Frontend (`basePath: /library`):

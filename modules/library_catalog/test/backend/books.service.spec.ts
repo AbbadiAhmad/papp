@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { LibraryCatalogBookCopyStatus } from '@prisma/client';
+import { LibraryCatalogBookCopyStatus, Prisma } from '@prisma/client';
 import { BooksService } from '../../backend/books.service';
 import type { CreateBookCopyDto } from '../../backend/dto/create-book-copy.dto';
 import type { CreateBookDto } from '../../backend/dto/create-book.dto';
@@ -20,6 +20,7 @@ interface MockPrisma {
     findUnique: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    delete: jest.Mock;
   };
   $transaction: jest.Mock;
 }
@@ -38,6 +39,7 @@ function createMockPrisma(): MockPrisma {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
     },
     $transaction: jest.fn((fn) => fn({ libraryCatalogBook: {}, libraryCatalogBookCopy: {} })),
   };
@@ -444,6 +446,40 @@ describe('BooksService', () => {
         prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
 
         await expect(service.getCopyHistory('missing')).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('removeCopy — LIBRARY_CATALOG-D19 (lets remove() ever reach zero copies)', () => {
+      it('deletes the copy once found', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        prisma.libraryCatalogBookCopy.delete.mockResolvedValue(copyRow());
+
+        await expect(service.removeCopy('book-1', 'copy-1')).resolves.toBeUndefined();
+        expect(prisma.libraryCatalogBookCopy.delete).toHaveBeenCalledWith({ where: { id: 'copy-1' } });
+      });
+
+      it('throws NotFoundException for a copy that does not belong to the given book, never touching delete', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow({ bookId: 'other-book' }));
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBeInstanceOf(NotFoundException);
+        expect(prisma.libraryCatalogBookCopy.delete).not.toHaveBeenCalled();
+      });
+
+      it('converts a Postgres FK violation (borrowing history exists) into a ConflictException', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        prisma.libraryCatalogBookCopy.delete.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', { code: 'P2003', clientVersion: '6.0.0', meta: { field_name: 'book_copy_id' } }),
+        );
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      it('re-throws any other unexpected error unchanged', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        const unexpected = new Error('connection reset');
+        prisma.libraryCatalogBookCopy.delete.mockRejectedValue(unexpected);
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBe(unexpected);
       });
     });
   });

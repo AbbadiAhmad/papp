@@ -180,6 +180,21 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async removeCopy(bookId: string, copyId: string): Promise<void> {
+    await this.findCopyOrThrow(bookId, copyId);
+    try {
+      await this.prisma.libraryCatalogBookCopy.delete({ where: { id: copyId } });
+    } catch (err) {
+      // library_borrowings.book_copy_id has no ON DELETE CASCADE (history is
+      // never deleted, per library_circulation's own migration comment) — a
+      // copy with borrowing history hits Postgres FK violation P2003.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(`Copy "${copyId}" has borrowing history and cannot be removed`);
+      }
+      throw err;
+    }
+  }
+
   // --- History (Feature 2.1) --------------------------------------------------
 
   async getCopyHistory(copyId: string, limit: number = 10) {

@@ -225,7 +225,10 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       method: 'post',
       path: '/api/library/books',
       requiredPermission: 'library_catalog.books.create',
-      validBody: (role: RoleCode) => ({ title: `Matrix Book ${role} ${Date.now()}` }),
+      validBody: (role: RoleCode) => ({
+        title: `Matrix Book ${role} ${Date.now()}`,
+        copy: { qrCode: `E2E-MATRIX-${role}-${Date.now()}`, status: 'available' },
+      }),
     });
 
     it('GET /api/library/books/:id requires library_catalog.books.view', async () => {
@@ -266,7 +269,11 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       const disposable = await request(app!.getHttpServer())
         .post('/api/library/books')
         .set('Authorization', `Bearer ${admin.token}`)
-        .send({ title: `Disposable ${Date.now()}` });
+        .send({
+          title: `Disposable ${Date.now()}`,
+          copy: { qrCode: `E2E-DISPOSABLE-${Date.now()}`, status: 'available' },
+        });
+      expect(disposable.status).toBe(201);
 
       const forbidden = await request(app!.getHttpServer())
         .delete(`/api/library/books/${disposable.body.id}`)
@@ -275,6 +282,16 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
 
       const anon = await request(app!.getHttpServer()).delete(`/api/library/books/${disposable.body.id}`);
       expect(anon.status).toBe(401);
+
+      // BooksService.remove() rejects a book that still has copies (LIBRARY_CATALOG
+      // D7/D19) — the mandatory copy from creation must be removed first.
+      const copies = await request(app!.getHttpServer())
+        .get(`/api/library/books/${disposable.body.id}/copies`)
+        .set('Authorization', `Bearer ${admin.token}`);
+      const removeCopy = await request(app!.getHttpServer())
+        .delete(`/api/library/books/${disposable.body.id}/copies/${copies.body[0].id}`)
+        .set('Authorization', `Bearer ${admin.token}`);
+      expect(removeCopy.status).toBe(204);
 
       const ok = await request(app!.getHttpServer())
         .delete(`/api/library/books/${disposable.body.id}`)

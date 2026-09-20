@@ -32,9 +32,14 @@ test.describe('Template module smoke flow', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
+    // The manifest's `template.root` menu entry has exactly one child
+    // (`template.items.list`) — buildModuleMenuEntries.ts collapses a
+    // single-child root to one sidebar leaf using the CHILD's own label
+    // ("العناصر" / Items), not the root's ("القالب" / Template); the root
+    // label is never rendered as its own row in this case.
     const [itemsResponse] = await Promise.all([
       page.waitForResponse((response) => isApiResponse(response, '/api/template/items')),
-      page.getByRole('link', { name: 'القالب', exact: true }).click(),
+      page.getByRole('link', { name: 'العناصر', exact: true }).click(),
     ]);
     expect(itemsResponse.status()).toBe(200);
     await page.waitForURL(/\/template\/items$/);

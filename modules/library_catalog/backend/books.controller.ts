@@ -120,4 +120,17 @@ export class BooksController {
   async updateCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookCopyDto) {
     return this.books.updateCopy(bookId, id, dto);
   }
+
+  @Delete(':bookId/copies/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('library_catalog.books.delete')
+  @Audit({
+    category: 'library_catalog.copies',
+    entityType: 'LibraryCatalogBookCopy',
+    action: 'delete',
+    fetchState: fetchCopyState,
+  })
+  async removeCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
+    await this.books.removeCopy(bookId, id);
+  }
 }
