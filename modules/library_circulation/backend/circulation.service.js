@@ -219,6 +219,40 @@ let CirculationService = CirculationService_1 = class CirculationService {
         }
         return borrowing;
     }
+    /**
+     * Scan page's reader-centric view — this reader's own currently-active
+     * (not-yet-returned) borrowings, each enriched with the book's title/qrCode
+     * so the UI can show due dates and a per-row Return action without a
+     * second round trip per row.
+     */
+    async getActiveBorrowingsForStudent(studentId) {
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where: { studentId, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
+            orderBy: { dueAt: 'asc' },
+        });
+        if (borrowings.length === 0)
+            return [];
+        const copyIds = [...new Set(borrowings.map((b) => b.bookCopyId))];
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { id: { in: copyIds } } });
+        const copyById = new Map(copies.map((c) => [c.id, c]));
+        const bookIds = [...new Set(copies.map((c) => c.bookId))];
+        const books = bookIds.length ? await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: bookIds } } }) : [];
+        const bookById = new Map(books.map((b) => [b.id, b]));
+        return borrowings.map((b) => {
+            const copy = copyById.get(b.bookCopyId);
+            const book = copy ? bookById.get(copy.bookId) : undefined;
+            return {
+                id: b.id,
+                bookCopyId: b.bookCopyId,
+                qrCode: copy?.qrCode ?? null,
+                bookTitle: book?.title ?? null,
+                borrowedAt: b.borrowedAt,
+                dueAt: b.dueAt,
+                status: b.status,
+                isOverdue: b.dueAt.getTime() < Date.now(),
+            };
+        });
+    }
     /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
     async getCirculationHistory(bookCopyId, borrowingId, limit = 10) {
         const where = {};

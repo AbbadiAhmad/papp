@@ -37,6 +37,13 @@ export class CirculationController {
     return this.circulation.findActiveBorrowingForCopy(copyId);
   }
 
+  /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */
+  @Get('students/:studentId/active-borrowings')
+  @RequirePermission('library_circulation.borrow')
+  async activeBorrowingsForStudent(@Param('studentId') studentId: string) {
+    return this.circulation.getActiveBorrowingsForStudent(studentId);
+  }
+
   @Get('copies/:copyId/circulation-history')
   @RequirePermission('library_circulation.borrow')
   async getCopyCirculationHistory(@Param('copyId') copyId: string, @Query('limit') limit?: string) {

@@ -24,8 +24,15 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { libraryCirculationApi, type LibraryBorrowing, type StudentActionHistoryEntry } from '../api';
+import { libraryCirculationApi, type BookInfo, type LibraryBorrowing, type StudentActionHistoryEntry } from '../api';
 import { QrCodeImage } from './QrCodeImage';
+
+/** Mirrors StudentsService.STUDENT_FIELD_LABELS on the backend — keep in sync if a new LibraryStudent field is ever added to that map. */
+const CHANGE_FIELD_LABEL_KEYS: Record<string, string> = {
+  code: 'library_circulation.students.code',
+  className: 'library_circulation.students.class_name',
+  academicYearId: 'library_circulation.students.academic_year',
+};
 
 /** §25/§10/§3.2-3.3 (docs/LIBRARY_IMPROVEMENTS.md) — the reader's "reading passport": current loans, full reading history (never deleted), open+paid fines, and an audit trail of changes to their own account. */
 export function StudentDetailPage() {
@@ -37,7 +44,7 @@ export function StudentDetailPage() {
     libraryCirculationApi.getStudent(studentId!),
   );
 
-  const [readingHistory, setReadingHistory] = useState<LibraryBorrowing[] | null>(null);
+  const [readingHistory, setReadingHistory] = useState<(LibraryBorrowing & BookInfo)[] | null>(null);
   const [actionHistory, setActionHistory] = useState<StudentActionHistoryEntry[] | null>(null);
   const [tabError, setTabError] = useState<string | null>(null);
 
@@ -121,6 +128,7 @@ export function StudentDetailPage() {
                       <Table size="small">
                         <TableHead>
                           <TableRow>
+                            <TableCell>{t('library_circulation.scan.book_label')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.borrowed_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.due_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.status')}</TableCell>
@@ -129,6 +137,7 @@ export function StudentDetailPage() {
                         <TableBody>
                           {student.activeBorrowings.map((b) => (
                             <TableRow key={b.id}>
+                              <TableCell>{b.bookTitle ?? b.qrCode ?? '—'}</TableCell>
                               <TableCell>{formatDateOnly(b.borrowedAt, language)}</TableCell>
                               <TableCell>{formatDateOnly(b.dueAt, language)}</TableCell>
                               <TableCell>
@@ -159,6 +168,8 @@ export function StudentDetailPage() {
                       <Table size="small">
                         <TableHead>
                           <TableRow>
+                            <TableCell>{t('library_circulation.scan.book_label')}</TableCell>
+                            <TableCell>{t('library_catalog.fields.reading_level')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.borrowed_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.due_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.returned_at')}</TableCell>
@@ -168,6 +179,8 @@ export function StudentDetailPage() {
                         <TableBody>
                           {readingHistory.map((b) => (
                             <TableRow key={b.id}>
+                              <TableCell>{b.bookTitle ?? b.qrCode ?? '—'}</TableCell>
+                              <TableCell>{b.readingLevel ?? '—'}</TableCell>
                               <TableCell>{formatDateOnly(b.borrowedAt, language)}</TableCell>
                               <TableCell>{formatDateOnly(b.dueAt, language)}</TableCell>
                               <TableCell>{b.returnedAt ? formatDateOnly(b.returnedAt, language) : '—'}</TableCell>
@@ -234,6 +247,7 @@ export function StudentDetailPage() {
                         <TableHead>
                           <TableRow>
                             <TableCell>{t('library_circulation.students.action_date')}</TableCell>
+                            <TableCell>{t('library_circulation.students.action_by')}</TableCell>
                             <TableCell>{t('library_circulation.students.action_type')}</TableCell>
                             <TableCell>{t('library_circulation.students.action_details')}</TableCell>
                           </TableRow>
@@ -242,13 +256,14 @@ export function StudentDetailPage() {
                           {actionHistory.map((entry) => (
                             <TableRow key={entry.id}>
                               <TableCell>{formatDateTime(entry.occurredAt, language)}</TableCell>
+                              <TableCell>{entry.actorName ?? t('library_circulation.students.action_by_system')}</TableCell>
                               <TableCell>{t(`library_circulation.students.action_${entry.action}`, entry.action)}</TableCell>
                               <TableCell>
-                                {entry.newValue
-                                  ? Object.entries(entry.newValue)
-                                      .map(([field, value]) => `${field}: ${JSON.stringify(value)}`)
-                                      .join(', ')
-                                  : '—'}
+                                {entry.changes.length === 0
+                                  ? '—'
+                                  : entry.changes
+                                      .map((c) => `${t(CHANGE_FIELD_LABEL_KEYS[c.field] ?? c.field)}: ${c.before ?? '—'} → ${c.after ?? '—'}`)
+                                      .join(', ')}
                               </TableCell>
                             </TableRow>
                           ))}

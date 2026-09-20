@@ -40,6 +40,10 @@ let CirculationController = class CirculationController {
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
     }
+    /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */
+    async activeBorrowingsForStudent(studentId) {
+        return this.circulation.getActiveBorrowingsForStudent(studentId);
+    }
     async getCopyCirculationHistory(copyId, limit) {
         const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
         return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
@@ -92,6 +96,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "activeBorrowingForCopy", null);
+__decorate([
+    (0, common_1.Get)('students/:studentId/active-borrowings'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('studentId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "activeBorrowingsForStudent", null);
 __decorate([
     (0, common_1.Get)('copies/:copyId/circulation-history'),
     (0, platform_1.RequirePermission)('library_circulation.borrow'),

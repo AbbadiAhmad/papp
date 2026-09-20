@@ -11,7 +11,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   Grid,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   Stack,
   TextField,
@@ -25,15 +29,19 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import {
   libraryCirculationApi,
+  type ActiveBorrowingForStudent,
   type CopyCirculationHistoryEntry,
   type LibraryBorrowing,
+  type LibraryFine,
   type LibraryFineType,
   type ScanBookCopyResult,
   type ScanStudentResult,
+  type StudentSearchResult,
 } from '../api';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
+import { ReaderAutocomplete } from './ReaderAutocomplete';
 import { ReaderHistoryDialog } from './ReaderHistoryDialog';
 import { ReturnDialog } from './ReturnDialog';
 
@@ -60,6 +68,7 @@ export function ScanPage() {
   const [borrowDialogOpen, setBorrowDialogOpen] = useState(false);
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
+  const [returnFromActiveList, setReturnFromActiveList] = useState(false);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
   const [readerHistoryOpen, setReaderHistoryOpen] = useState(false);
@@ -69,6 +78,45 @@ export function ScanPage() {
   // of who has it). Computed once both slots are filled.
   const [priorBorrowByThisReader, setPriorBorrowByThisReader] = useState<CopyCirculationHistoryEntry | null>(null);
   const [damageFineContext, setDamageFineContext] = useState<{ studentId: string; borrowingId: string; reason: string } | null>(null);
+  // Reader-centric sections (in addition to, not replacing, the single-scan
+  // borrow/return flow below): once a reader is loaded — by code scan OR by
+  // the new search-by-name picker — their currently-active borrowings and
+  // open fines are shown directly, independent of whether a book has been
+  // scanned yet.
+  const [activeBorrowings, setActiveBorrowings] = useState<ActiveBorrowingForStudent[]>([]);
+  const [readerFines, setReaderFines] = useState<LibraryFine[]>([]);
+  const [readerSectionsLoading, setReaderSectionsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!student) {
+      setActiveBorrowings([]);
+      setReaderFines([]);
+      return;
+    }
+    let cancelled = false;
+    setReaderSectionsLoading(true);
+    Promise.all([
+      libraryCirculationApi.getActiveBorrowingsForStudent(student.student.id),
+      libraryCirculationApi.listFines({ studentId: student.student.id }),
+    ])
+      .then(([borrowings, fines]) => {
+        if (cancelled) return;
+        setActiveBorrowings(borrowings);
+        setReaderFines(fines.filter((f) => f.status === 'unpaid' || f.status === 'partially_paid'));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveBorrowings([]);
+          setReaderFines([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReaderSectionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [student]);
 
   useEffect(() => {
     if (!student || !bookCopy) {
@@ -121,6 +169,11 @@ export function ScanPage() {
 
   const handleScan = () => scanCode(code);
 
+  /** Reader search-by-name picker: reuses the same scan() lookup by the selected reader's own code, so it fills `student` identically to a real code scan. */
+  const handleReaderPicked = (picked: StudentSearchResult | null) => {
+    if (picked) void scanCode(picked.code);
+  };
+
   const handleCameraDecoded = (decodedText: string) => {
     setCameraOpen(false);
     void scanCode(decodedText);
@@ -159,6 +212,22 @@ export function ScanPage() {
     setReturnDialogOpen(true);
   };
 
+  /** Active-borrowings section's per-row Return button: ReturnDialog only ever reads id/borrowedAt/dueAt off `borrowing`, so a light adapter is enough — no second fetch needed. */
+  const openReturnDialogFromActive = (activeBorrowing: ActiveBorrowingForStudent) => {
+    setReturnFromActiveList(true);
+    openReturnDialog({
+      id: activeBorrowing.id,
+      bookCopyId: activeBorrowing.bookCopyId,
+      studentId: student?.student.id ?? '',
+      status: activeBorrowing.status,
+      borrowedAt: activeBorrowing.borrowedAt,
+      dueAt: activeBorrowing.dueAt,
+      returnedAt: null,
+      borrowedBy: '',
+      returnedBy: null,
+    });
+  };
+
   const confirmReturn = async (returnStatus: string, returnNotes?: string) => {
     if (!currentBorrowingForReturn) return;
     setBusy(true);
@@ -178,7 +247,21 @@ export function ScanPage() {
         setDamageFineContext({ studentId: result.borrowing.studentId, borrowingId: result.borrowing.id, reason: result.damageFine.reason });
       }
       setCurrentBorrowingForReturn(null);
-      reset();
+      if (returnFromActiveList && student) {
+        // Returned from the reader's own active-borrowings list — keep the
+        // reader loaded (they may have more books to return/borrow) and just
+        // refresh that list, instead of the full reset() a bookCopy-slot
+        // return uses.
+        setBookCopy(null);
+        setCode('');
+        libraryCirculationApi
+          .getActiveBorrowingsForStudent(student.student.id)
+          .then(setActiveBorrowings)
+          .catch(() => setActiveBorrowings([]));
+      } else {
+        reset();
+      }
+      setReturnFromActiveList(false);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -213,6 +296,14 @@ export function ScanPage() {
               {t('library_circulation.scan.camera_button')}
             </Button>
           </Stack>
+          <Box sx={{ mt: 2, maxWidth: 400 }}>
+            <ReaderAutocomplete
+              value={null}
+              onChange={handleReaderPicked}
+              label={t('library_circulation.scan.search_reader_label')}
+              disabled={busy}
+            />
+          </Box>
         </CardContent>
       </Card>
 
@@ -266,6 +357,75 @@ export function ScanPage() {
                     <Button variant="text" size="small" onClick={() => setReaderHistoryOpen(true)}>
                       {t('library_circulation.scan.view_borrow_history')}
                     </Button>
+
+                    <Divider />
+
+                    {/* Active borrowings — due date, overdue in red, per-row Return. Independent of whether a book has been scanned into the book section. */}
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        {t('library_circulation.scan.active_borrowings_title')}
+                      </Typography>
+                      {readerSectionsLoading ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('core.common.loading')}
+                        </Typography>
+                      ) : activeBorrowings.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('library_circulation.scan.no_active_borrowings')}
+                        </Typography>
+                      ) : (
+                        <List dense disablePadding>
+                          {activeBorrowings.map((b) => (
+                            <ListItem
+                              key={b.id}
+                              disableGutters
+                              secondaryAction={
+                                <Can permission="library_circulation.return">
+                                  <Button size="small" onClick={() => openReturnDialogFromActive(b)} disabled={busy}>
+                                    {t('library_circulation.scan.confirm_return')}
+                                  </Button>
+                                </Can>
+                              }
+                            >
+                              <ListItemText
+                                primary={b.bookTitle ?? b.qrCode ?? '—'}
+                                secondary={t('library_circulation.borrowings.due_at') + ': ' + formatDateOnly(b.dueAt, language)}
+                                slotProps={{ secondary: { color: b.isOverdue ? 'error' : 'text.secondary' } }}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      )}
+                    </Box>
+
+                    <Divider />
+
+                    {/* Open fines for this reader. */}
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        {t('library_circulation.students.open_fines')}
+                      </Typography>
+                      {readerSectionsLoading ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('core.common.loading')}
+                        </Typography>
+                      ) : readerFines.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('library_circulation.scan.no_open_fines')}
+                        </Typography>
+                      ) : (
+                        <List dense disablePadding>
+                          {readerFines.map((fine) => (
+                            <ListItem key={fine.id} disableGutters>
+                              <ListItemText
+                                primary={`${fine.fineNumber} — ${fine.amount}`}
+                                secondary={t(`library_circulation.fine_status.${fine.status}`)}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      )}
+                    </Box>
                   </Stack>
                 </CardContent>
               </Card>

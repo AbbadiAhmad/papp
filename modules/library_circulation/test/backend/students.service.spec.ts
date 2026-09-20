@@ -4,24 +4,28 @@ import { Prisma } from '@prisma/client';
 import { StudentsService } from '../../backend/students.service';
 
 interface MockPrisma {
-  user: { create: jest.Mock; findUnique: jest.Mock };
+  user: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
   role: { findUnique: jest.Mock };
   userRole: { create: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
   libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
   libraryFine: { findMany: jest.Mock };
+  libraryCatalogBookCopy: { findMany: jest.Mock };
+  libraryCatalogBook: { findMany: jest.Mock };
   auditLog: { findMany: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
-    user: { create: jest.fn(), findUnique: jest.fn() },
+    user: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
     role: { findUnique: jest.fn() },
     userRole: { create: jest.fn() },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
     libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
     libraryFine: { findMany: jest.fn() },
+    libraryCatalogBookCopy: { findMany: jest.fn() },
+    libraryCatalogBook: { findMany: jest.fn() },
     auditLog: { findMany: jest.fn() },
     $transaction: jest.fn(),
   };
@@ -139,16 +143,27 @@ describe('StudentsService', () => {
   });
 
   describe('findById (§3.2 enrichment)', () => {
-    it('returns name/email/isActive from the linked User plus computed borrowing/fine totals', async () => {
+    it('returns name/email/isActive from the linked User plus computed borrowing/fine totals, with each active borrowing enriched with its book title', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
       prisma.user.findUnique.mockResolvedValue({ name: 'Aisha', email: 'aisha@school.test', isActive: true });
-      prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1', status: 'active' }, { id: 'b-2', status: 'overdue' }]);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b-1', status: 'active', bookCopyId: 'copy-1' },
+        { id: 'b-2', status: 'overdue', bookCopyId: 'copy-2' },
+      ]);
       prisma.libraryFine.findMany
         .mockResolvedValueOnce([]) // openFines
         .mockResolvedValueOnce([
           { status: 'unpaid', amount: '20.00', amountPaid: '0.00' },
           { status: 'paid', amount: '10.00', amountPaid: '10.00' },
         ]); // allFines (for the two totals)
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { id: 'copy-1', bookId: 'book-1', qrCode: 'BOOK-001' },
+        { id: 'copy-2', bookId: 'book-2', qrCode: 'BOOK-002' },
+      ]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        { id: 'book-1', title: 'Kalila wa Dimna', readingLevel: 'B2' },
+        { id: 'book-2', title: 'The Little Prince', readingLevel: 'A2' },
+      ]);
 
       const result = await service.findById('student-1');
 
@@ -157,6 +172,8 @@ describe('StudentsService', () => {
       expect(result.activeBorrowingsCount).toBe(2);
       expect(result.unpaidFinesTotal).toBe(20);
       expect(result.paidFinesTotal).toBe(10);
+      expect(result.activeBorrowings[0]).toMatchObject({ id: 'b-1', bookTitle: 'Kalila wa Dimna', readingLevel: 'B2' });
+      expect(result.activeBorrowings[1]).toMatchObject({ id: 'b-2', bookTitle: 'The Little Prince', readingLevel: 'A2' });
     });
 
     it('404s for an unknown student before touching User/borrowing/fine lookups', async () => {
@@ -167,9 +184,11 @@ describe('StudentsService', () => {
   });
 
   describe('getReadingHistory (§3.2)', () => {
-    it('returns every borrowing ever, ordered most-recent-first', async () => {
+    it('returns every borrowing ever, ordered most-recent-first, each enriched with its book title/reading level/qrCode', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
-      prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1' }]);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([{ id: 'b-1', bookCopyId: 'copy-1' }]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'copy-1', bookId: 'book-1', qrCode: 'BOOK-001' }]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna', readingLevel: 'B2' }]);
 
       const result = await service.getReadingHistory('student-1');
 
@@ -177,7 +196,19 @@ describe('StudentsService', () => {
         where: { studentId: 'student-1' },
         orderBy: { borrowedAt: 'desc' },
       });
-      expect(result).toEqual([{ id: 'b-1' }]);
+      expect(result).toEqual([
+        { id: 'b-1', bookCopyId: 'copy-1', qrCode: 'BOOK-001', bookTitle: 'Kalila wa Dimna', readingLevel: 'B2' },
+      ]);
+    });
+
+    it('returns an empty array without querying copies/books when there is no borrowing history', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      const result = await service.getReadingHistory('student-1');
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();
     });
 
     it('404s for an unknown student', async () => {
@@ -187,9 +218,20 @@ describe('StudentsService', () => {
   });
 
   describe('getActionHistory (§3.3)', () => {
-    it('queries audit_log scoped to this LibraryStudent entity', async () => {
+    it('resolves the actor into a name and the raw column diff into labeled field changes — never a raw UUID/id dump', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
-      prisma.auditLog.findMany.mockResolvedValue([{ id: 'a-1', action: 'update' }]);
+      prisma.auditLog.findMany.mockResolvedValue([
+        {
+          id: 'a-1',
+          occurredAt: new Date('2026-01-02T00:00:00Z'),
+          actorType: 'user',
+          actorUserId: 'admin-1',
+          action: 'update',
+          oldValue: { id: 'student-1', userId: 'user-1', code: 'STU-001', className: '5A', academicYearId: null },
+          newValue: { id: 'student-1', userId: 'user-1', code: 'STU-001', className: '5B', academicYearId: null },
+        },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'admin-1', name: 'Admin User' }]);
 
       const result = await service.getActionHistory('student-1');
 
@@ -197,13 +239,42 @@ describe('StudentsService', () => {
         where: { entityType: 'LibraryStudent', entityId: 'student-1' },
         orderBy: { occurredAt: 'desc' },
       });
-      expect(result).toEqual([{ id: 'a-1', action: 'update' }]);
+      expect(result).toEqual([
+        {
+          id: 'a-1',
+          occurredAt: new Date('2026-01-02T00:00:00Z'),
+          actorType: 'user',
+          actorName: 'Admin User',
+          action: 'update',
+          changes: [{ field: 'className', before: '5A', after: '5B' }],
+        },
+      ]);
     });
 
     it('404s for an unknown student before querying audit_log', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
       await expect(service.getActionHistory('missing')).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('search', () => {
+    it('returns [] for a blank query without touching the database', async () => {
+      const result = await service.search('   ');
+      expect(result).toEqual([]);
+      expect(prisma.libraryStudent.findMany).not.toHaveBeenCalled();
+    });
+
+    it('merges code matches and name matches, capped at the limit', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValueOnce([studentRow({ id: 'student-1', code: 'STU-001', userId: 'user-1' })]); // by code
+      prisma.user.findMany
+        .mockResolvedValueOnce([]) // name search finds nobody
+        .mockResolvedValueOnce([{ id: 'user-1', name: 'Aisha' }]); // resolving the code match's own name afterward
+
+      const result = await service.search('STU-001', 5);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: 'student-1', code: 'STU-001', name: 'Aisha' });
     });
   });
 });

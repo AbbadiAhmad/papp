@@ -27,6 +27,15 @@ let StudentsController = class StudentsController {
     async list() {
         return this.students.list();
     }
+    /**
+     * Searchable reader picker (Fines page's [Create Fine] dialog, Scan page's
+     * search-by-name lookup) — registered BEFORE `:id` so Express never treats
+     * "search" as an id (same lesson as every other module's own docblock on
+     * this, e.g. library_catalog's books.controller.ts).
+     */
+    async search(q) {
+        return this.students.search(q ?? '');
+    }
     async findById(id) {
         return this.students.findById(id);
     }
@@ -56,6 +65,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('search'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "search", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),

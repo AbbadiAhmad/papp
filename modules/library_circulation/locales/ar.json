@@ -5,6 +5,7 @@
   "library_circulation.menu.students": "القراء",
   "library_circulation.menu.fines": "الغرامات",
   "library_circulation.menu.finance": "المالية",
+  "library_circulation.menu.settings": "الإعدادات",
 
   "library_circulation.perm.students.view": "عرض القراء",
   "library_circulation.perm.students.create": "إضافة قراء",
@@ -21,6 +22,11 @@
   "library_circulation.perm.dashboard.view": "عرض لوحة تحكم الإعارة",
 
   "library_circulation.settings.loan_policy_label": "سياسة الإعارة",
+  "library_circulation.settings.loan_policy_help": "تُطبَّق على كل إعارة جديدة من الآن فصاعداً — تغيير هذه الإعدادات لا يُغيّر تاريخ استحقاق الكتب المُعارة سابقاً بأثر رجعي.",
+  "library_circulation.settings.max_books_per_student": "الحد الأقصى للكتب لكل قارئ",
+  "library_circulation.settings.loan_period_days": "مدة الإعارة (أيام)",
+  "library_circulation.settings.loan_period_days_help": "تاريخ الإرجاع المتوقع عند الإعارة هو تاريخ اليوم + هذا العدد من الأيام.",
+  "library_circulation.settings.fine_per_day": "الغرامة لكل يوم تأخير",
 
   "library_circulation.scan.input_label": "امسح الرمز أو اكتبه",
   "library_circulation.scan.scan_button": "مسح",
@@ -48,6 +54,10 @@
   "library_circulation.scan.currently_borrowed_by": "مُعارة حالياً للقارئ {{code}}",
   "library_circulation.scan.previous_borrow": "إعارة سابقة",
   "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
+  "library_circulation.scan.search_reader_label": "أو ابحث بالاسم/الرمز",
+  "library_circulation.scan.active_borrowings_title": "الكتب المستعارة حالياً",
+  "library_circulation.scan.no_active_borrowings": "لا توجد كتب مستعارة حالياً.",
+  "library_circulation.scan.no_open_fines": "لا توجد غرامات مستحقة.",
 
   "library_circulation.book_history.title": "سجل الإعارة",
   "library_circulation.book_history.no_history": "لم يُعَر هذا الكتاب من قبل.",
@@ -82,6 +92,7 @@
   "library_circulation.students.class": "الصف",
   "library_circulation.students.code_help": "الرمز المطبوع على بطاقة القارئ (يُستخدم أيضاً كهدف للمسح الضوئي).",
   "library_circulation.students.class_name": "الصف",
+  "library_circulation.students.academic_year": "العام الدراسي",
   "library_circulation.students.create_title": "إضافة قارئ",
   "library_circulation.students.edit_title": "تعديل بيانات القارئ",
   "library_circulation.students.create_button": "إضافة قارئ",
@@ -99,6 +110,8 @@
   "library_circulation.students.status_active": "نشط",
   "library_circulation.students.status_inactive": "غير نشط",
   "library_circulation.students.action_date": "التاريخ",
+  "library_circulation.students.action_by": "بواسطة",
+  "library_circulation.students.action_by_system": "النظام",
   "library_circulation.students.action_type": "الإجراء",
   "library_circulation.students.action_details": "التفاصيل",
   "library_circulation.students.action_create": "تم إنشاء الحساب",
@@ -115,6 +128,12 @@
   "library_circulation.borrowing_status.lost": "مفقودة",
   "library_circulation.borrowing_status.cancelled": "ملغاة",
 
+  "library_circulation.reader_picker.label": "القارئ",
+  "library_circulation.reader_picker.no_matches": "لا يوجد قراء مطابقون",
+  "library_circulation.reader_picker.type_to_search": "اكتب اسم القارئ أو رمزه",
+
+  "library_circulation.fines.create_button": "إضافة غرامة",
+  "library_circulation.fines.create_title": "إنشاء غرامة",
   "library_circulation.fines.fine_number": "رقم الغرامة",
   "library_circulation.fines.fine_type": "نوع الغرامة",
   "library_circulation.fines.amount": "المبلغ",

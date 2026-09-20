@@ -1,3 +1,4 @@
+import AddIcon from '@mui/icons-material/Add';
 import PaidIcon from '@mui/icons-material/Paid';
 import {
   Alert,
@@ -23,14 +24,15 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { libraryCirculationApi, type FineStatus, type LibraryFine, type PaymentMethod } from '../api';
+import { libraryCirculationApi, type FineStatus, type LibraryFine, type LibraryFineType, type PaymentMethod, type StudentSearchResult } from '../api';
+import { ReaderAutocomplete } from './ReaderAutocomplete';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 
@@ -52,6 +54,7 @@ export function FinesPage() {
 
   const [pendingWaive, setPendingWaive] = useState<LibraryFine | null>(null);
   const [payingFine, setPayingFine] = useState<LibraryFine | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const handleWaive = async () => {
@@ -68,9 +71,16 @@ export function FinesPage() {
 
   return (
     <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('library_circulation.menu.fines')}
-      </Typography>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+        <Typography variant="h4" component="h2">
+          {t('library_circulation.menu.fines')}
+        </Typography>
+        <Can permission="library_circulation.fines.record">
+          <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
+            {t('library_circulation.fines.create_button')}
+          </Button>
+        </Can>
+      </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <TableContainer component={Paper}>
@@ -137,8 +147,118 @@ export function FinesPage() {
         }}
       />
 
+      <CreateFineDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => {
+          setCreateOpen(false);
+          reload();
+        }}
+      />
+
       <Snackbar open={snackbar !== null} autoHideDuration={4000} onClose={() => setSnackbar(null)} message={snackbar} />
     </Box>
+  );
+}
+
+/** [Add fine] button's dialog — the reader is picked via the searchable ReaderAutocomplete, not scanned/pre-supplied. */
+function CreateFineDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const { t } = useTranslation();
+  const gated = useGatedCall();
+  const [student, setStudent] = useState<StudentSearchResult | null>(null);
+  const [fineTypes, setFineTypes] = useState<LibraryFineType[]>([]);
+  const [fineTypeId, setFineTypeId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setStudent(null);
+    setFineTypeId('');
+    setAmount('');
+    setNotes('');
+    setError(null);
+    libraryCirculationApi.listFineTypes().then((types) => {
+      setFineTypes(types);
+      if (types[0]) {
+        setFineTypeId(types[0].id);
+        setAmount(types[0].defaultAmount);
+      }
+    });
+  }, [open]);
+
+  const handleFineTypeChange = (id: string) => {
+    setFineTypeId(id);
+    const match = fineTypes.find((ft) => ft.id === id);
+    if (match) setAmount(match.defaultAmount);
+  };
+
+  const handleSubmit = async () => {
+    if (!student) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await gated('library_circulation.fines.record', () =>
+        libraryCirculationApi.createFine({
+          studentId: student.id,
+          fineTypeId,
+          amount: Number(amount),
+          notes: notes || undefined,
+        }),
+      );
+      onCreated();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>{t('library_circulation.fines.create_title')}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {error ? <Alert severity="error">{error}</Alert> : null}
+          <ReaderAutocomplete value={student} onChange={setStudent} autoFocus />
+          <TextField
+            select
+            label={t('library_circulation.fines.fine_type')}
+            value={fineTypeId}
+            onChange={(e) => handleFineTypeChange(e.target.value)}
+          >
+            {fineTypes.map((ft) => (
+              <MenuItem key={ft.id} value={ft.id}>
+                {ft.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label={t('library_circulation.fines.amount')}
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <TextField
+            label={t('library_circulation.return.notes')}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            multiline
+            minRows={2}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={submitting}>
+          {t('core.common.cancel')}
+        </Button>
+        <Button onClick={handleSubmit} variant="contained" disabled={submitting || !student || !fineTypeId || !amount}>
+          {t('core.common.save')}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

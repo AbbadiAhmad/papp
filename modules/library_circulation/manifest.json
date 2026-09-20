@@ -132,6 +132,15 @@
       "order": 4,
       "route": "/library-circulation/finance",
       "requiredPermission": "library_circulation.finance.view"
+    },
+    {
+      "id": "library_circulation.settings",
+      "labelKey": "library_circulation.menu.settings",
+      "icon": "Settings",
+      "parentId": "library_circulation.root",
+      "order": 5,
+      "route": "/library-circulation/settings",
+      "requiredPermission": "library_circulation.settings.update"
     }
   ],
 
@@ -177,6 +186,12 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.borrow",
       "component": "frontend/pages/BookHistoryPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/settings",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.settings.update",
+      "component": "frontend/pages/SettingsPage.tsx"
     }
   ],
 
