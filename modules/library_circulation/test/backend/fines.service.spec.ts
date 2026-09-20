@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { FinesService } from '../../backend/fines.service';
 
 interface MockPrisma {
-  libraryStudent: { findUnique: jest.Mock };
+  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryFineType: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryFine: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
   libraryFinancialTransaction: { create: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
@@ -21,7 +21,7 @@ interface MockPrisma {
 function createMockPrisma(): MockPrisma {
   let sequenceCounter = 0;
   const prisma: MockPrisma = {
-    libraryStudent: { findUnique: jest.fn() },
+    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryFineType: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryFine: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
     libraryFinancialTransaction: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
@@ -265,6 +265,76 @@ describe('FinesService', () => {
       const summary = await service.getFinanceSummary();
       expect(summary.paidTotal).toBe(15); // 10 + 5 + 0
       expect(summary.unpaidTotal).toBe(23); // 0 + 15 + 8
+    });
+  });
+
+  describe('list (Fines page filters)', () => {
+    it('enriches each fine with reader code/name, fine type name, and creator name, plus a filtered total', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', amount: 10 }), fineRow({ id: 'fine-2', amount: 5 })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', code: 'STU-001', userId: 'user-reader' }]);
+      prisma.libraryFineType.findMany.mockResolvedValue([{ id: 'type-1', name: 'Late Return' }]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'staff-1', name: 'Aisha' },
+        { id: 'user-reader', name: 'Omar' },
+      ]);
+
+      const result = await service.list({});
+
+      expect(result.totalAmount).toBe(15);
+      expect(result.fines[0]).toMatchObject({ studentCode: 'STU-001', studentName: 'Omar', fineTypeName: 'Late Return', createdByName: 'Aisha' });
+    });
+
+    it('createdByName filters down to fines created by matching users, resolved via a name search first', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'staff-1' }]); // name search
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ createdBy: 'staff-1' })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      prisma.libraryFineType.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'staff-1', name: 'Aisha' }]); // resolving names for the enrichment pass
+
+      await service.list({ createdByName: 'Aisha' });
+
+      expect(prisma.libraryFine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ createdBy: { in: ['staff-1'] } }) }),
+      );
+    });
+
+    it('returns an empty result without querying fines when createdByName matches nobody', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([]); // name search finds nobody
+      const result = await service.list({ createdByName: 'Nobody' });
+      expect(result).toEqual({ fines: [], totalAmount: 0 });
+      expect(prisma.libraryFine.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listPayments (Finance page filters)', () => {
+    it('enriches each payment with receiver/fine-creator names and the fine it belongs to, plus a filtered total', async () => {
+      prisma.libraryPayment.findMany.mockResolvedValue([{ id: 'pay-1', transactionId: 'txn-1', receivedBy: 'staff-2', amount: 10, paymentMethod: 'cash', paidAt: new Date() }]);
+      prisma.libraryFinancialTransaction.findMany.mockResolvedValue([{ id: 'txn-1', fineId: 'fine-1' }]);
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1' })]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'staff-1', name: 'Aisha' },
+        { id: 'staff-2', name: 'Omar' },
+      ]);
+
+      const result = await service.listPayments({});
+
+      expect(result.totalAmount).toBe(10);
+      expect(result.payments[0]).toMatchObject({ receivedByName: 'Omar', createdByName: 'Aisha', fineNumber: fineRow().fineNumber });
+    });
+
+    it('returns an empty result without querying payments when receivedByName matches nobody', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([]);
+      const result = await service.listPayments({ receivedByName: 'Nobody' });
+      expect(result).toEqual({ payments: [], totalAmount: 0 });
+      expect(prisma.libraryPayment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('date range filters translate to an inclusive paidAt gte/lte', async () => {
+      prisma.libraryPayment.findMany.mockResolvedValue([]);
+      await service.listPayments({ dateFrom: '2026-01-01', dateTo: '2026-01-31' });
+      const call = prisma.libraryPayment.findMany.mock.calls[0][0] as { where: { paidAt: { gte: Date; lte: Date } } };
+      expect(call.where.paidAt.gte.toISOString().startsWith('2026-01-01')).toBe(true);
+      expect(call.where.paidAt.lte.toISOString().startsWith('2026-01-31')).toBe(true);
     });
   });
 });

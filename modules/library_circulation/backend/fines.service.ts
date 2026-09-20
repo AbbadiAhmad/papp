@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { CreateFineDto } from './dto/create-fine.dto';
 import { PaymentMethod } from './dto/record-payment.dto';
 import { UpdateFineDto } from './dto/update-fine.dto';
@@ -9,6 +10,14 @@ const OPEN_FINE_STATUSES = ['unpaid', 'partially_paid'] as const;
 const LATE_FINE_TYPE_CODE = 'FINE-LATE';
 
 type Tx = Prisma.TransactionClient;
+
+/** Finance page's Payments tab filter shape — shared by listPayments() and exportPaymentsWorkbook() so the two can never drift apart. */
+export interface PaymentFilter {
+  dateFrom?: string;
+  dateTo?: string;
+  createdByName?: string;
+  receivedByName?: string;
+}
 
 /**
  * The library_finance half of this module (§11-14): fines, the
@@ -35,11 +44,105 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.libraryFineType.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } });
   }
 
-  async list(filter: { studentId?: string; status?: string }) {
-    return this.prisma.libraryFine.findMany({
-      where: { studentId: filter.studentId, status: filter.status },
+  /**
+   * Fines page's filter bar. `createdByName`/`studentSearch` are resolved
+   * from a name search down to real User/LibraryStudent ids first (same
+   * two-pass approach as `getFilteredPayments` — this dedicated Prisma
+   * client has no declared relation to filter through directly). Returns
+   * rows enriched with the reader's code/name, fine type name, and
+   * creator's name, plus the filtered set's total amount — so the page
+   * never needs a second round trip just to show "who"/"how much" columns.
+   */
+  async list(filter: {
+    studentId?: string;
+    status?: string;
+    fineTypeId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    createdByName?: string;
+    studentSearch?: string;
+    amountMin?: number;
+    amountMax?: number;
+  }) {
+    const createdAt: { gte?: Date; lte?: Date } = {};
+    if (filter.dateFrom) createdAt.gte = new Date(filter.dateFrom);
+    if (filter.dateTo) {
+      const end = new Date(filter.dateTo);
+      end.setHours(23, 59, 59, 999);
+      createdAt.lte = end;
+    }
+
+    let createdByIds: string[] | undefined;
+    if (filter.createdByName) {
+      const users = await this.prisma.user.findMany({
+        where: { name: { contains: filter.createdByName, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      createdByIds = users.map((u) => u.id);
+      if (createdByIds.length === 0) return { fines: [], totalAmount: 0 };
+    }
+
+    let studentIds: string[] | undefined;
+    if (filter.studentSearch) {
+      const matchingUsers = await this.prisma.user.findMany({
+        where: { name: { contains: filter.studentSearch, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      const students = await this.prisma.libraryStudent.findMany({
+        where: {
+          OR: [
+            { code: { contains: filter.studentSearch, mode: 'insensitive' } },
+            ...(matchingUsers.length ? [{ userId: { in: matchingUsers.map((u) => u.id) } }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      studentIds = students.map((s) => s.id);
+      if (studentIds.length === 0) return { fines: [], totalAmount: 0 };
+    }
+
+    const amount: { gte?: number; lte?: number } = {};
+    if (filter.amountMin !== undefined) amount.gte = filter.amountMin;
+    if (filter.amountMax !== undefined) amount.lte = filter.amountMax;
+
+    const fines = await this.prisma.libraryFine.findMany({
+      where: {
+        studentId: filter.studentId ?? (studentIds ? { in: studentIds } : undefined),
+        status: filter.status,
+        fineTypeId: filter.fineTypeId,
+        createdBy: createdByIds ? { in: createdByIds } : undefined,
+        ...(Object.keys(createdAt).length ? { createdAt } : {}),
+        ...(Object.keys(amount).length ? { amount } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
+    if (fines.length === 0) return { fines: [], totalAmount: 0 };
+
+    const studentIdsToResolve = [...new Set(fines.map((f) => f.studentId))];
+    const students = await this.prisma.libraryStudent.findMany({ where: { id: { in: studentIdsToResolve } } });
+    const studentById = new Map(students.map((s) => [s.id, s]));
+
+    const fineTypeIds = [...new Set(fines.map((f) => f.fineTypeId))];
+    const fineTypes = fineTypeIds.length ? await this.prisma.libraryFineType.findMany({ where: { id: { in: fineTypeIds } } }) : [];
+    const fineTypeById = new Map(fineTypes.map((ft) => [ft.id, ft]));
+
+    const userIds = [...new Set([...fines.map((f) => f.createdBy), ...students.map((s) => s.userId)])];
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    const enriched = fines.map((fine) => {
+      const student = studentById.get(fine.studentId);
+      return {
+        ...fine,
+        createdByName: nameById.get(fine.createdBy) ?? null,
+        studentCode: student?.code ?? null,
+        studentName: student ? (nameById.get(student.userId) ?? null) : null,
+        fineTypeName: fineTypeById.get(fine.fineTypeId)?.name ?? null,
+      };
+    });
+
+    const totalAmount = enriched.reduce((sum, f) => sum + Number(f.amount), 0);
+    return { fines: enriched, totalAmount };
   }
 
   /**
@@ -271,8 +374,121 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.libraryFinancialTransaction.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  async listPayments() {
-    return this.prisma.libraryPayment.findMany({ orderBy: { paidAt: 'desc' } });
+  /**
+   * Finance page's Payments tab — date range + "who recorded the underlying
+   * fine" + "who received the payment" filters, each resolved from a name
+   * search down to the real `receivedBy`/fine.`createdBy` User ids (this
+   * dedicated Prisma client has no declared relation from LibraryPayment to
+   * User to filter through directly, per the D57 cross-module-read pattern
+   * — every module-owned table here is read via plain queries, not Prisma
+   * relation joins). Returns the filtered rows already enriched with both
+   * names plus the fine number/amount they belong to, and the filtered
+   * set's total amount, so the page doesn't need a second aggregate call.
+   */
+  async listPayments(filter: PaymentFilter = {}) {
+    return this.getFilteredPayments(filter);
+  }
+
+  /** Same filter/enrichment as listPayments() — factored out so the Excel export can never see a different result set than what the page just showed. */
+  private async getFilteredPayments(filter: PaymentFilter) {
+    const paidAt: { gte?: Date; lte?: Date } = {};
+    if (filter.dateFrom) paidAt.gte = new Date(filter.dateFrom);
+    if (filter.dateTo) {
+      // Inclusive of the whole "to" day.
+      const end = new Date(filter.dateTo);
+      end.setHours(23, 59, 59, 999);
+      paidAt.lte = end;
+    }
+
+    let receivedByIds: string[] | undefined;
+    if (filter.receivedByName) {
+      const users = await this.prisma.user.findMany({
+        where: { name: { contains: filter.receivedByName, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      receivedByIds = users.map((u) => u.id);
+      if (receivedByIds.length === 0) return { payments: [], totalAmount: 0 };
+    }
+
+    const payments = await this.prisma.libraryPayment.findMany({
+      where: {
+        ...(Object.keys(paidAt).length ? { paidAt } : {}),
+        ...(receivedByIds ? { receivedBy: { in: receivedByIds } } : {}),
+      },
+      orderBy: { paidAt: 'desc' },
+    });
+    if (payments.length === 0) return { payments: [], totalAmount: 0 };
+
+    const transactionIds = [...new Set(payments.map((p) => p.transactionId))];
+    const transactions = await this.prisma.libraryFinancialTransaction.findMany({ where: { id: { in: transactionIds } } });
+    const transactionById = new Map(transactions.map((t) => [t.id, t]));
+
+    const fineIds = [...new Set(transactions.map((t) => t.fineId))];
+    let fines = fineIds.length ? await this.prisma.libraryFine.findMany({ where: { id: { in: fineIds } } }) : [];
+
+    if (filter.createdByName) {
+      const creators = await this.prisma.user.findMany({
+        where: { name: { contains: filter.createdByName, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      const creatorIds = new Set(creators.map((u) => u.id));
+      fines = fines.filter((f) => creatorIds.has(f.createdBy));
+    }
+    const fineById = new Map(fines.map((f) => [f.id, f]));
+
+    const userIds = [...new Set([...payments.map((p) => p.receivedBy), ...fines.map((f) => f.createdBy)])];
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    const enriched = payments
+      .map((payment) => {
+        const transaction = transactionById.get(payment.transactionId);
+        const fine = transaction ? fineById.get(transaction.fineId) : undefined;
+        if (!fine) return null; // filtered out by createdByName above, or a genuine data-integrity gap either way
+        return {
+          ...payment,
+          receivedByName: nameById.get(payment.receivedBy) ?? null,
+          fineNumber: fine.fineNumber,
+          fineAmount: fine.amount,
+          createdBy: fine.createdBy,
+          createdByName: nameById.get(fine.createdBy) ?? null,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    const totalAmount = enriched.reduce((sum, p) => sum + Number(p.amount), 0);
+    return { payments: enriched, totalAmount };
+  }
+
+  /** Same filtered/enriched rows as listPayments(), as an .xlsx workbook — same shape as library_catalog's own exportBooksWorkbook(). */
+  async exportPaymentsWorkbook(filter: PaymentFilter = {}): Promise<Buffer> {
+    const { payments, totalAmount } = await this.getFilteredPayments(filter);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Payments');
+    worksheet.columns = [
+      { header: 'payment_number', key: 'paymentNumber', width: 16 },
+      { header: 'fine_number', key: 'fineNumber', width: 16 },
+      { header: 'amount', key: 'amount', width: 12 },
+      { header: 'payment_method', key: 'paymentMethod', width: 14 },
+      { header: 'paid_at', key: 'paidAt', width: 18 },
+      { header: 'received_by', key: 'receivedByName', width: 22 },
+      { header: 'fine_created_by', key: 'createdByName', width: 22 },
+    ];
+    for (const payment of payments) {
+      worksheet.addRow({
+        paymentNumber: payment.paymentNumber,
+        fineNumber: payment.fineNumber,
+        amount: payment.amount,
+        paymentMethod: payment.paymentMethod,
+        paidAt: payment.paidAt.toISOString(),
+        receivedByName: payment.receivedByName ?? '',
+        createdByName: payment.createdByName ?? '',
+      });
+    }
+    worksheet.addRow({});
+    worksheet.addRow({ paymentNumber: 'TOTAL', amount: totalAmount });
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 
   // --- internals -------------------------------------------------------

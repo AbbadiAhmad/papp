@@ -101,10 +101,10 @@ export function ScanPage() {
       libraryCirculationApi.getActiveBorrowingsForStudent(student.student.id),
       libraryCirculationApi.listFines({ studentId: student.student.id }),
     ])
-      .then(([borrowings, fines]) => {
+      .then(([borrowings, finesResult]) => {
         if (cancelled) return;
         setActiveBorrowings(borrowings);
-        setReaderFines(fines.filter((f) => f.status === 'unpaid' || f.status === 'partially_paid'));
+        setReaderFines(finesResult.fines.filter((f) => f.status === 'unpaid' || f.status === 'partially_paid'));
       })
       .catch(() => {
         if (!cancelled) {

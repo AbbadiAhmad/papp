@@ -168,6 +168,27 @@ export interface FineBorrowingContext {
   daysLate: number;
 }
 
+/** Fines page's filter bar — all optional, combined with AND. */
+export interface FineFilterInput {
+  studentId?: string;
+  status?: string;
+  fineTypeId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  createdByName?: string;
+  studentSearch?: string;
+  amountMin?: number;
+  amountMax?: number;
+}
+
+/** FinesService.list()'s enriched row — resolved reader/creator/fine-type names, never just raw ids. */
+export interface EnrichedFine extends LibraryFine {
+  createdByName: string | null;
+  studentCode: string | null;
+  studentName: string | null;
+  fineTypeName: string | null;
+}
+
 export interface LibraryFineDetail extends LibraryFine {
   createdByName: string | null;
   transaction: LibraryFinancialTransaction | null;
@@ -228,6 +249,23 @@ export interface LibraryReceipt {
   issuedAt: string;
 }
 
+/** Finance page's Payments tab filters — all optional, combined with AND. */
+export interface PaymentFilterInput {
+  dateFrom?: string;
+  dateTo?: string;
+  createdByName?: string;
+  receivedByName?: string;
+}
+
+/** FinesService.listPayments()'s enriched row — resolved names + the fine it belongs to, never just the raw receivedBy UUID. */
+export interface EnrichedPayment extends LibraryPayment {
+  receivedByName: string | null;
+  fineNumber: string;
+  fineAmount: string;
+  createdBy: string;
+  createdByName: string | null;
+}
+
 export interface DashboardStats {
   students: number;
   totalCopies: number;
@@ -280,9 +318,9 @@ export const libraryCirculationApi = {
 
   // Fines / finance
   listFineTypes: () => apiClient.get<LibraryFineType[]>(`${BASE}/fine-types`).then((r) => r.data),
-  listFines: (filter: { studentId?: string; status?: string } = {}) => {
-    const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined));
-    return apiClient.get<LibraryFine[]>(`${BASE}/fines`, { params }).then((r) => r.data);
+  listFines: (filter: FineFilterInput = {}) => {
+    const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== ''));
+    return apiClient.get<{ fines: EnrichedFine[]; totalAmount: number }>(`${BASE}/fines`, { params }).then((r) => r.data);
   },
   getFine: (id: string) => apiClient.get<LibraryFineDetail>(`${BASE}/fines/${id}`).then((r) => r.data),
   createFine: (dto: CreateFineInput) => apiClient.post<LibraryFine>(`${BASE}/fines`, dto).then((r) => r.data),
@@ -300,7 +338,16 @@ export const libraryCirculationApi = {
       })
       .then((r) => r.data),
   listTransactions: () => apiClient.get<LibraryFinancialTransaction[]>(`${BASE}/finance/transactions`).then((r) => r.data),
-  listPayments: () => apiClient.get<LibraryPayment[]>(`${BASE}/finance/payments`).then((r) => r.data),
+  listPayments: (filter: PaymentFilterInput = {}) => {
+    const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== ''));
+    return apiClient
+      .get<{ payments: EnrichedPayment[]; totalAmount: number }>(`${BASE}/finance/payments`, { params })
+      .then((r) => r.data);
+  },
+  exportPayments: (filter: PaymentFilterInput = {}) => {
+    const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== ''));
+    return apiClient.get<Blob>(`${BASE}/finance/payments/export`, { params, responseType: 'blob' }).then((r) => r.data);
+  },
 
   // Dashboard
   getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
@@ -309,3 +356,15 @@ export const libraryCirculationApi = {
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),
   updateLoanPolicy: (dto: LoanPolicy) => apiClient.put<LoanPolicy>(`${BASE}/settings/loan-policy`, dto).then((r) => r.data),
 };
+
+/** Mirrors library_catalog/frontend/api.ts's own copy of this helper (that one in turn mirrors apps/web/src/shared/api/users.ts) — small enough, and domain-specific enough, that each module keeps its own rather than importing across module boundaries. */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}

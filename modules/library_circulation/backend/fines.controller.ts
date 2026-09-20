@@ -1,11 +1,15 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CreateFineDto } from './dto/create-fine.dto';
+import { ListFinesDto } from './dto/list-fines.dto';
+import { ListPaymentsDto } from './dto/list-payments.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { UpdateFineDto } from './dto/update-fine.dto';
 import { FinesService } from './fines.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
+
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const fetchFineState = (prisma: PrismaClient, req: Request) =>
   prisma.libraryFine.findUnique({ where: { id: req.params.id as string } });
@@ -23,8 +27,8 @@ export class FinesController {
 
   @Get('fines')
   @RequirePermission('library_circulation.fines.view')
-  async list(@Query('studentId') studentId?: string, @Query('status') status?: string) {
-    return this.fines.list({ studentId, status });
+  async list(@Query() filter: ListFinesDto) {
+    return this.fines.list(filter);
   }
 
   @Get('fines/:id')
@@ -76,9 +80,20 @@ export class FinesController {
     return this.fines.listTransactions();
   }
 
+  @Get('finance/payments/export')
+  @RequirePermission('library_circulation.finance.view')
+  async exportPayments(@Query() filter: ListPaymentsDto, @Res() res: Response): Promise<void> {
+    const buffer = await this.fines.exportPaymentsWorkbook(filter);
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': 'attachment; filename="library-circulation-payments-export.xlsx"',
+    });
+    res.send(buffer);
+  }
+
   @Get('finance/payments')
   @RequirePermission('library_circulation.finance.view')
-  async listPayments() {
-    return this.fines.listPayments();
+  async listPayments(@Query() filter: ListPaymentsDto) {
+    return this.fines.listPayments(filter);
   }
 }

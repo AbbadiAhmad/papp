@@ -15,10 +15,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinesController = void 0;
 const common_1 = require("@nestjs/common");
 const create_fine_dto_1 = require("./dto/create-fine.dto");
+const list_fines_dto_1 = require("./dto/list-fines.dto");
+const list_payments_dto_1 = require("./dto/list-payments.dto");
 const record_payment_dto_1 = require("./dto/record-payment.dto");
 const update_fine_dto_1 = require("./dto/update-fine.dto");
 const fines_service_1 = require("./fines.service");
 const platform_1 = require("./platform");
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const fetchFineState = (prisma, req) => prisma.libraryFine.findUnique({ where: { id: req.params.id } });
 let FinesController = class FinesController {
     fines;
@@ -28,8 +31,8 @@ let FinesController = class FinesController {
     async listFineTypes() {
         return this.fines.listFineTypes();
     }
-    async list(studentId, status) {
-        return this.fines.list({ studentId, status });
+    async list(filter) {
+        return this.fines.list(filter);
     }
     async findById(id) {
         return this.fines.findById(id);
@@ -54,8 +57,16 @@ let FinesController = class FinesController {
     async listTransactions() {
         return this.fines.listTransactions();
     }
-    async listPayments() {
-        return this.fines.listPayments();
+    async exportPayments(filter, res) {
+        const buffer = await this.fines.exportPaymentsWorkbook(filter);
+        res.set({
+            'Content-Type': XLSX_CONTENT_TYPE,
+            'Content-Disposition': 'attachment; filename="library-circulation-payments-export.xlsx"',
+        });
+        res.send(buffer);
+    }
+    async listPayments(filter) {
+        return this.fines.listPayments(filter);
     }
 };
 exports.FinesController = FinesController;
@@ -69,10 +80,9 @@ __decorate([
 __decorate([
     (0, common_1.Get)('fines'),
     (0, platform_1.RequirePermission)('library_circulation.fines.view'),
-    __param(0, (0, common_1.Query)('studentId')),
-    __param(1, (0, common_1.Query)('status')),
+    __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [list_fines_dto_1.ListFinesDto]),
     __metadata("design:returntype", Promise)
 ], FinesController.prototype, "list", null);
 __decorate([
@@ -141,10 +151,20 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], FinesController.prototype, "listTransactions", null);
 __decorate([
+    (0, common_1.Get)('finance/payments/export'),
+    (0, platform_1.RequirePermission)('library_circulation.finance.view'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_payments_dto_1.ListPaymentsDto, Object]),
+    __metadata("design:returntype", Promise)
+], FinesController.prototype, "exportPayments", null);
+__decorate([
     (0, common_1.Get)('finance/payments'),
     (0, platform_1.RequirePermission)('library_circulation.finance.view'),
+    __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [list_payments_dto_1.ListPaymentsDto]),
     __metadata("design:returntype", Promise)
 ], FinesController.prototype, "listPayments", null);
 exports.FinesController = FinesController = __decorate([

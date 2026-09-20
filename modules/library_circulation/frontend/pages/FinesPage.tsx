@@ -4,12 +4,15 @@ import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  Grid,
   IconButton,
   Link,
   List,
@@ -40,6 +43,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can, useGatedCall, usePermission } from '../../../../apps/web/src/shared/permissions';
 import {
   libraryCirculationApi,
+  type FineFilterInput,
   type FineStatus,
   type LibraryFine,
   type LibraryFineDetail,
@@ -50,6 +54,7 @@ import {
 import { ReaderAutocomplete } from './ReaderAutocomplete';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
+const FINE_STATUSES: FineStatus[] = ['unpaid', 'partially_paid', 'paid', 'waived', 'cancelled'];
 
 const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'default'> = {
   unpaid: 'error',
@@ -59,13 +64,32 @@ const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'defaul
   cancelled: 'default',
 };
 
-/** §11-13: fines list + waive + record-payment — the finance side lives here since library_finance is combined into this module (D44). */
+const EMPTY_FINE_FILTER: FineFilterInput = {
+  studentId: undefined,
+  status: '',
+  fineTypeId: '',
+  dateFrom: '',
+  dateTo: '',
+  createdByName: '',
+  amountMin: undefined,
+  amountMax: undefined,
+};
+
+/** §11-13: fines list + filters + waive + record-payment — the finance side lives here since library_finance is combined into this module (D44). */
 export function FinesPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: fines, errorMessage, reload } = useGuardedQuery(() =>
-    libraryCirculationApi.listFines(),
-  );
+
+  const [filterStudent, setFilterStudent] = useState<StudentSearchResult | null>(null);
+  const [filter, setFilter] = useState<FineFilterInput>(EMPTY_FINE_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<FineFilterInput>(EMPTY_FINE_FILTER);
+  const [fineTypes, setFineTypes] = useState<LibraryFineType[]>([]);
+
+  useEffect(() => {
+    libraryCirculationApi.listFineTypes().then(setFineTypes);
+  }, []);
+
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => libraryCirculationApi.listFines(appliedFilter));
 
   const [pendingWaive, setPendingWaive] = useState<LibraryFine | null>(null);
   const [payingFine, setPayingFine] = useState<LibraryFine | null>(null);
@@ -85,6 +109,24 @@ export function FinesPage() {
     }
   };
 
+  const handleFieldChange = (field: keyof FineFilterInput, value: string) => {
+    setFilter((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // useGuardedQuery only re-fetches on an explicit reload() (reads its
+  // fetcher through a ref, not a dependency array) — a filter change needs
+  // its own reload() call, not just a state update.
+  const applyFilters = () => {
+    setAppliedFilter({ ...filter, studentId: filterStudent?.id });
+    reload();
+  };
+  const clearFilters = () => {
+    setFilterStudent(null);
+    setFilter(EMPTY_FINE_FILTER);
+    setAppliedFilter(EMPTY_FINE_FILTER);
+    reload();
+  };
+
   return (
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
@@ -98,31 +140,133 @@ export function FinesPage() {
         </Can>
       </Stack>
 
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <ReaderAutocomplete value={filterStudent} onChange={setFilterStudent} label={t('library_circulation.fines.filter_reader')} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                select
+                label={t('library_circulation.fines.status')}
+                value={filter.status}
+                onChange={(e) => handleFieldChange('status', e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{t('library_circulation.fines.filter_any_status')}</MenuItem>
+                {FINE_STATUSES.map((s) => (
+                  <MenuItem key={s} value={s}>
+                    {t(`library_circulation.fine_status.${s}`)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                select
+                label={t('library_circulation.fines.fine_type')}
+                value={filter.fineTypeId}
+                onChange={(e) => handleFieldChange('fineTypeId', e.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">{t('library_circulation.fines.filter_any_fine_type')}</MenuItem>
+                {fineTypes.map((ft) => (
+                  <MenuItem key={ft.id} value={ft.id}>
+                    {ft.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                label={t('library_circulation.finance.filter_created_by')}
+                value={filter.createdByName}
+                onChange={(e) => handleFieldChange('createdByName', e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                label={t('library_circulation.finance.filter_date_from')}
+                type="date"
+                value={filter.dateFrom}
+                onChange={(e) => handleFieldChange('dateFrom', e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                label={t('library_circulation.finance.filter_date_to')}
+                type="date"
+                value={filter.dateTo}
+                onChange={(e) => handleFieldChange('dateTo', e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                label={t('library_circulation.fines.filter_amount_min')}
+                type="number"
+                value={filter.amountMin ?? ''}
+                onChange={(e) => handleFieldChange('amountMin', e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <TextField
+                label={t('library_circulation.fines.filter_amount_max')}
+                type="number"
+                value={filter.amountMax ?? ''}
+                onChange={(e) => handleFieldChange('amountMax', e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid size={12}>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                <Button variant="contained" onClick={applyFilters}>
+                  {t('library_circulation.finance.apply_filters')}
+                </Button>
+                <Button onClick={clearFilters}>{t('library_circulation.finance.clear_filters')}</Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>{t('library_circulation.fines.fine_number')}</TableCell>
+                <TableCell>{t('library_circulation.reader_picker.label')}</TableCell>
+                <TableCell>{t('library_circulation.fines.fine_type')}</TableCell>
                 <TableCell>{t('library_circulation.fines.amount')}</TableCell>
                 <TableCell>{t('library_circulation.fines.amount_paid')}</TableCell>
                 <TableCell>{t('library_circulation.fines.status')}</TableCell>
+                <TableCell>{t('library_circulation.fines.recorded_by')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {(fines ?? []).map((fine) => (
+              {(data?.fines ?? []).map((fine) => (
                 <TableRow key={fine.id} hover>
                   <TableCell>
                     <Link component="button" onClick={() => setDetailFineId(fine.id)}>
                       {fine.fineNumber}
                     </Link>
                   </TableCell>
+                  <TableCell>{fine.studentName ?? fine.studentCode ?? '—'}</TableCell>
+                  <TableCell>{fine.fineTypeName ?? '—'}</TableCell>
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>
                   <TableCell>
                     <Chip size="small" color={STATUS_COLOR[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} />
                   </TableCell>
+                  <TableCell>{fine.createdByName ?? '—'}</TableCell>
                   <TableCell align="right">
                     <Can permission="library_circulation.finance.record_payment">
                       {fine.status === 'unpaid' || fine.status === 'partially_paid' ? (
@@ -147,6 +291,12 @@ export function FinesPage() {
           </Table>
         </TableContainer>
       </QueryStateGate>
+
+      {data ? (
+        <Typography variant="subtitle1" sx={{ textAlign: 'end', mt: 1 }}>
+          {t('library_circulation.finance.filtered_total', { amount: data.totalAmount.toFixed(2) })}
+        </Typography>
+      ) : null}
 
       <ConfirmDialog
         open={pendingWaive !== null}
