@@ -114,9 +114,9 @@ describe('BooksService', () => {
           ...bookRow(),
           _count: { copies: 3 },
           copies: [
-            { status: LibraryCatalogBookCopyStatus.available },
-            { status: LibraryCatalogBookCopyStatus.available },
-            { status: LibraryCatalogBookCopyStatus.borrowed },
+            copyRow({ status: LibraryCatalogBookCopyStatus.available }),
+            copyRow({ status: LibraryCatalogBookCopyStatus.available }),
+            copyRow({ status: LibraryCatalogBookCopyStatus.borrowed }),
           ],
         },
       ]);
@@ -128,7 +128,7 @@ describe('BooksService', () => {
         orderBy: { title: 'asc' },
         include: {
           _count: { select: { copies: true } },
-          copies: { select: { status: true } },
+          copies: true,
         },
       });
       expect(result).toEqual([
@@ -152,7 +152,7 @@ describe('BooksService', () => {
         orderBy: { title: 'asc' },
         include: {
           _count: { select: { copies: true } },
-          copies: { select: { status: true } },
+          copies: true,
         },
       });
     });

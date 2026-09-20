@@ -57,7 +57,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       orderBy: { title: 'asc' },
       include: {
         _count: { select: { copies: true } },
-        copies: { select: { status: true } }
+        copies: true,
       },
     });
     return books.map((book) => {
