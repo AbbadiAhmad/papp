@@ -1,6 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { API_ORIGIN, READER_USER, TEXT } from './support/test-data';
 
+function isApiResponse(response: Response, pathname: string, method = 'GET') {
+  try {
+    const url = new URL(response.url());
+    const api = new URL(API_ORIGIN);
+    return (
+      url.origin === api.origin &&
+      url.pathname.replace(/\/+$/, '') === `${api.pathname.replace(/\/+$/, '')}${pathname}`.replace(/\/+/g, '/') &&
+      response.request().method() === method
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Permission-driven UI (docs/TESTING_STRATEGY.md §1's Playwright bullet,
  * item 3): a `reader`-role user cannot reach an admin-only page even by
@@ -23,16 +37,8 @@ test.describe('Permission-driven UI', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
-    // A full page navigation (not a SPA link click) — literally "typing the
-    // URL directly": the app remounts, AuthProvider silently re-auths via
-    // the refresh cookie, and ModulesAdminPage makes its own real GET /modules.
-    // Matched against the exact backend origin, not a bare path suffix: the
-    // SPA's own page-navigation response for this same `page.goto()` (served
-    // by the web server's history-fallback at http://localhost:5173/modules)
-    // ALSO ends with "/modules" and resolves first, which would otherwise
-    // make this assert against the wrong response entirely.
     const [modulesResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url() === `${API_ORIGIN}/modules` && res.request().method() === 'GET'),
+      page.waitForResponse((response) => isApiResponse(response, '/modules')),
       page.goto('/modules'),
     ]);
 
@@ -57,7 +63,7 @@ test.describe('Permission-driven UI', () => {
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
     const [usersResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url() === `${API_ORIGIN}/users` && res.request().method() === 'GET'),
+      page.waitForResponse((response) => isApiResponse(response, '/users')),
       page.goto('/users'),
     ]);
     expect(usersResponse.status()).toBe(403);

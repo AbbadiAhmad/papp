@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { SURVEY_ADMIN_USER, TEXT } from './support/test-data';
 
+function isApiResponse(response: Response, pathname: string, method = 'GET') {
+  try {
+    const url = new URL(response.url());
+    return url.pathname === pathname && response.request().method() === method;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Template module smoke flow (docs/MODULE_SPEC.md §10) — same admin fixture
  * as survey.spec.ts (SURVEY_ADMIN_USER holds `admin`, which is what every
@@ -24,7 +33,7 @@ test.describe('Template module smoke flow', () => {
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
     const [itemsResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/api/template/items') && res.request().method() === 'GET'),
+      page.waitForResponse((response) => isApiResponse(response, '/api/template/items')),
       page.getByRole('link', { name: 'القالب', exact: true }).click(),
     ]);
     expect(itemsResponse.status()).toBe(200);
@@ -42,7 +51,7 @@ test.describe('Template module smoke flow', () => {
     await page.getByRole('button', { name: 'عنصر جديد' }).click();
     await page.getByLabel('العنوان').fill(itemTitle);
     const [createResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().endsWith('/api/template/items') && res.request().method() === 'POST'),
+      page.waitForResponse((response) => isApiResponse(response, '/api/template/items', 'POST')),
       page.getByRole('button', { name: 'حفظ' }).click(),
     ]);
     expect(createResponse.status()).toBe(201);
@@ -64,7 +73,9 @@ test.describe('Template module smoke flow', () => {
     await dialog.getByLabel('الحالة').click();
     await page.getByRole('option', { name: 'مؤرشف' }).click();
     const [updateResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().includes(`/api/template/items/${created.id}`) && res.request().method() === 'PATCH'),
+      page.waitForResponse((response) =>
+        response.url().includes(`/api/template/items/${created.id}`) && response.request().method() === 'PATCH',
+      ),
       page.getByRole('button', { name: 'حفظ' }).click(),
     ]);
     expect(updateResponse.status()).toBe(200);
@@ -80,7 +91,9 @@ test.describe('Template module smoke flow', () => {
     const rowAfterReload = page.getByRole('row', { name: new RegExp(itemTitle) });
     await rowAfterReload.getByRole('button', { name: 'حذف' }).click();
     const [deleteResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().includes(`/api/template/items/${created.id}`) && res.request().method() === 'DELETE'),
+      page.waitForResponse((response) =>
+        response.url().includes(`/api/template/items/${created.id}`) && response.request().method() === 'DELETE',
+      ),
       page.getByRole('button', { name: 'حذف' }).last().click(),
     ]);
     expect(deleteResponse.status()).toBe(204);

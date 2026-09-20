@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { SURVEY_ADMIN_USER, TEXT } from './support/test-data';
 
+function isApiResponse(response: Response, pathMatcher: string | ((path: string) => boolean), method = 'GET') {
+  try {
+    const url = new URL(response.url());
+    const pathMatches =
+      typeof pathMatcher === 'string' ? url.pathname === pathMatcher : pathMatcher(url.pathname);
+    return pathMatches && response.request().method() === method;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Survey module smoke flow (mirrors library-catalog.spec.ts's shape, but
  * this module has no static seeded fixture to read — the builder itself
@@ -25,7 +36,7 @@ test.describe('Survey smoke flow', () => {
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
     const [surveysResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/api/survey/surveys') && res.request().method() === 'GET'),
+      page.waitForResponse((response) => isApiResponse(response, '/api/survey/surveys')),
       page.getByRole('link', { name: TEXT.ar.surveysMenu, exact: true }).click(),
     ]);
     expect(surveysResponse.status()).toBe(200);
@@ -35,7 +46,7 @@ test.describe('Survey smoke flow', () => {
     await page.getByRole('button', { name: TEXT.ar.newSurvey }).click();
     await page.getByLabel(TEXT.ar.surveyTitleField).first().fill(surveyTitle);
     const [createResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().endsWith('/api/survey/surveys') && res.request().method() === 'POST'),
+      page.waitForResponse((response) => isApiResponse(response, '/api/survey/surveys', 'POST')),
       page.getByRole('button', { name: TEXT.ar.save }).click(),
     ]);
     expect(createResponse.status()).toBe(201);
@@ -63,7 +74,9 @@ test.describe('Survey smoke flow', () => {
     await page.getByRole('button', { name: TEXT.ar.addRule }).click();
 
     const [structureResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/structure') && res.request().method() === 'PUT'),
+      page.waitForResponse((response) =>
+        isApiResponse(response, (path) => path.includes('/structure'), 'PUT'),
+      ),
       page.getByRole('button', { name: TEXT.ar.save }).click(),
     ]);
     expect(structureResponse.status()).toBe(200);
@@ -87,7 +100,9 @@ test.describe('Survey smoke flow', () => {
     await anonPage.locator('textarea, input[type=text]').last().fill('Because it is bold.');
 
     const [submitResponse] = await Promise.all([
-      anonPage.waitForResponse((res) => res.url().includes('/api/survey/public/') && res.request().method() === 'POST'),
+      anonPage.waitForResponse((response) =>
+        isApiResponse(response, (path) => path.includes('/api/survey/public/'), 'POST'),
+      ),
       anonPage.getByRole('button', { name: TEXT.ar.submit }).click(),
     ]);
     expect(submitResponse.status()).toBe(201);
