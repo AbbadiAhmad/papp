@@ -53,6 +53,13 @@ export interface CreateBookInput {
 
 export type UpdateBookInput = Partial<CreateBookInput>;
 
+export interface UpdateBookCopyDto {
+  status?: BookCopyStatus;
+  condition?: string;
+  location?: string;
+  acquisitionDate?: string;
+}
+
 export interface CreateBookCopyInput {
   qrCode: string;
   status?: BookCopyStatus;
@@ -82,6 +89,8 @@ export const libraryCatalogApi = {
     apiClient.get<LibraryBookCopy[]>(`/api/library/books/${bookId}/copies`).then((r) => r.data),
   createCopy: (bookId: string, dto: CreateBookCopyInput) =>
     apiClient.post<LibraryBookCopy>(`/api/library/books/${bookId}/copies`, dto).then((r) => r.data),
+  updateCopy: (bookId: string, copyId: string, dto: UpdateBookCopyDto) =>
+    apiClient.patch<LibraryBookCopy>(`/api/library/books/${bookId}/copies/${copyId}`, dto).then((r) => r.data),
 
   // Public — no Authorization header required (MODULE_SPEC.md §7); reused
   // `apiClient` still opportunistically attaches one if present (a logged-in
