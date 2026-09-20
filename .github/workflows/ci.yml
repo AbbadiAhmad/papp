@@ -7,10 +7,10 @@ name: CI
 on:
   push:
     branches:
-      - claude/compassionate-dijkstra-9f52cd
+      - claude/gracious-noether-e70kgy
   pull_request:
     branches:
-      - claude/compassionate-dijkstra-9f52cd
+      - claude/gracious-noether-e70kgy
 
 # Cancel superseded runs on the same ref so a rapid string of pushes doesn't
 # queue up redundant Testcontainers/Playwright runs.
