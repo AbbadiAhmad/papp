@@ -46,6 +46,16 @@
   "library_catalog.copy_status.maintenance": "Under maintenance",
   "library_catalog.copy_status.reserved": "Reserved",
 
+  "library_catalog.copies.view_history": "View history",
+  "library_catalog.copies.update_status": "Update status",
+  "library_catalog.copies.mark_damaged": "Mark damaged",
+  "library_catalog.copies.mark_lost": "Mark lost",
+  "library_catalog.copies.mark_available": "Mark available",
+  "library_catalog.copies.history_title": "History — {{qrCode}}",
+  "library_catalog.copies.no_history": "No status/condition/location changes recorded yet.",
+  "library_catalog.copies.delete_title": "Remove copy",
+  "library_catalog.copies.delete_confirm": "Remove copy \"{{qrCode}}\"? This cannot be undone.",
+
   "library_catalog.public.not_found": "This book could not be found.",
   "library_catalog.public.availability_summary": "{{available}} of {{total}} copies available",
   "library_catalog.public.available": "This book is currently available.",
