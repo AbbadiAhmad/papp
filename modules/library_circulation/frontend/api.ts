@@ -4,6 +4,7 @@ import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
 export type BorrowingStatus = 'active' | 'returned' | 'overdue' | 'lost' | 'cancelled';
 export type FineStatus = 'unpaid' | 'partially_paid' | 'paid' | 'waived' | 'cancelled';
 export type PaymentMethod = 'cash' | 'card' | 'transfer';
+export type ReturnStatus = 'returned' | 'damaged' | 'lost' | 'other';
 
 export interface LibraryStudent {
   id: string;
@@ -145,9 +146,12 @@ export const libraryCirculationApi = {
     apiClient.get<LibraryBorrowing>(`${BASE}/book-copies/${copyId}/active-borrowing`).then((r) => r.data),
   borrow: (studentId: string, bookCopyId: string, expectedReturnDate?: string, comments?: string) =>
     apiClient.post<LibraryBorrowing>(`${BASE}/borrow`, { studentId, bookCopyId, expectedReturnDate, comments }).then((r) => r.data),
-  returnBorrowing: (borrowingId: string) =>
+  returnBorrowing: (borrowingId: string, returnStatus?: string, returnNotes?: string) =>
     apiClient
-      .post<{ borrowing: LibraryBorrowing; daysLate: number; lateFine: LibraryFine | null }>(`${BASE}/return`, { borrowingId })
+      .post<{ borrowing: LibraryBorrowing; daysLate: number; lateFine: LibraryFine | null; damageFine?: { suggested: boolean; reason: string } }>(
+        `${BASE}/return`,
+        { borrowingId, returnStatus, returnNotes },
+      )
       .then((r) => r.data),
 
   // Students

@@ -8,6 +8,7 @@ import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
+import { ReturnDialog } from './ReturnDialog';
 
 /**
  * §6/§30 — "the most important screen" / "Quick Library": one scan input,
@@ -29,6 +30,8 @@ export function ScanPage() {
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [borrowDialogOpen, setBorrowDialogOpen] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
 
   const reset = () => {
@@ -94,16 +97,25 @@ export function ScanPage() {
     }
   };
 
-  const confirmReturn = async (borrowing: LibraryBorrowing) => {
+  const openReturnDialog = (borrowing: LibraryBorrowing) => {
+    setCurrentBorrowingForReturn(borrowing);
+    setReturnDialogOpen(true);
+  };
+
+  const confirmReturn = async (returnStatus: string, returnNotes?: string) => {
+    if (!currentBorrowingForReturn) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await gated('library_circulation.return', () => libraryCirculationApi.returnBorrowing(borrowing.id));
+      const result = await gated('library_circulation.return', () =>
+        libraryCirculationApi.returnBorrowing(currentBorrowingForReturn.id, returnStatus, returnNotes),
+      );
       setMessage(
         result.daysLate > 0
           ? t('library_circulation.scan.return_success_late', { days: result.daysLate })
           : t('library_circulation.scan.return_success'),
       );
+      setCurrentBorrowingForReturn(null);
       reset();
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -235,7 +247,7 @@ export function ScanPage() {
               {bookCopy.activeBorrowing ? (
                 <Box sx={{ mt: 2 }}>
                   <Can permission="library_circulation.return">
-                    <Button variant="contained" color="secondary" fullWidth onClick={() => confirmReturn(bookCopy.activeBorrowing!)} disabled={busy}>
+                    <Button variant="contained" color="secondary" fullWidth onClick={() => openReturnDialog(bookCopy.activeBorrowing!)} disabled={busy}>
                       {t('library_circulation.scan.confirm_return')}
                     </Button>
                   </Can>
@@ -267,6 +279,17 @@ export function ScanPage() {
         loanPeriodDays={loanPeriodDays}
         onBorrow={confirmBorrow}
         onClose={() => setBorrowDialogOpen(false)}
+        loading={busy}
+      />
+
+      <ReturnDialog
+        open={returnDialogOpen}
+        borrowing={currentBorrowingForReturn}
+        onReturn={confirmReturn}
+        onClose={() => {
+          setReturnDialogOpen(false);
+          setCurrentBorrowingForReturn(null);
+        }}
         loading={busy}
       />
     </Box>

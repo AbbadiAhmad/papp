@@ -649,6 +649,8 @@ model LibraryBorrowing {
   borrowedBy          String    @map("borrowed_by") @db.Uuid
   returnedBy          String?   @map("returned_by") @db.Uuid
   comments            String?
+  returnStatus        String?   @map("return_status")
+  returnNotes         String?   @map("return_notes")
   circulationHistory  Json      @default("[]") @map("circulation_history")
 
   student LibraryStudent @relation(fields: [studentId], references: [id])

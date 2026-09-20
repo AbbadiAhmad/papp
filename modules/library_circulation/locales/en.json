@@ -47,6 +47,21 @@
   "library_circulation.borrow.comments_placeholder": "Optional notes (e.g., extension reason)",
   "library_circulation.borrow.current_books_count": "Current books",
 
+  "library_circulation.return.dialog_title": "Return book",
+  "library_circulation.return.borrowed_date": "Borrowed date",
+  "library_circulation.return.expected_return_date": "Expected return date",
+  "library_circulation.return.actual_return_date": "Actual return date",
+  "library_circulation.return.days_late": "Days late",
+  "library_circulation.return.status": "Return status",
+  "library_circulation.return.status_returned": "Returned",
+  "library_circulation.return.status_damaged": "Damaged",
+  "library_circulation.return.status_lost": "Lost",
+  "library_circulation.return.status_other": "Other",
+  "library_circulation.return.notes": "Notes",
+  "library_circulation.return.notes_placeholder": "Optional notes about the return condition",
+  "library_circulation.return.complete_return": "Complete return",
+  "library_circulation.return.suggest_fine": "A fine may be needed for {{reason}} books",
+
   "library_circulation.books.status": "Status",
 
   "library_circulation.students.code": "Student code",

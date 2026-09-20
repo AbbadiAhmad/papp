@@ -57,9 +57,15 @@ export class CirculationController {
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState })
   async returnBorrowing(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser) {
     const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
-    const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId);
+    const { borrowing, daysLate } = await this.circulation.returnBorrowing(
+      dto.borrowingId,
+      user.userId,
+      dto.returnStatus,
+      dto.returnNotes,
+    );
 
     let lateFine = null;
+    // Auto-create fines for late returns or damage/loss
     if (daysLate > 0) {
       const policy = await this.circulation.getLoanPolicy();
       const amount = daysLate * policy.finePerDay;
@@ -68,6 +74,14 @@ export class CirculationController {
       }
     }
 
-    return { borrowing, daysLate, lateFine };
+    // Auto-suggest fine for damage/loss (caller decides whether to create it)
+    let damageFine = null;
+    if (dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') {
+      // Fine amount would be determined by FinesService based on fine type
+      // For now, just return indicator that a fine should be considered
+      damageFine = { suggested: true, reason: dto.returnStatus };
+    }
+
+    return { borrowing, daysLate, lateFine, damageFine };
   }
 }

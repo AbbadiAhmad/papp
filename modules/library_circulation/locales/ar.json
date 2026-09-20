@@ -47,6 +47,21 @@
   "library_circulation.borrow.comments_placeholder": "ملاحظات اختيارية (مثل: سبب التمديد)",
   "library_circulation.borrow.current_books_count": "الكتب الحالية",
 
+  "library_circulation.return.dialog_title": "إرجاع كتاب",
+  "library_circulation.return.borrowed_date": "تاريخ الإعارة",
+  "library_circulation.return.expected_return_date": "تاريخ الإرجاع المتوقع",
+  "library_circulation.return.actual_return_date": "تاريخ الإرجاع الفعلي",
+  "library_circulation.return.days_late": "أيام التأخير",
+  "library_circulation.return.status": "حالة الإرجاع",
+  "library_circulation.return.status_returned": "تم الإرجاع",
+  "library_circulation.return.status_damaged": "تالف",
+  "library_circulation.return.status_lost": "مفقود",
+  "library_circulation.return.status_other": "أخرى",
+  "library_circulation.return.notes": "الملاحظات",
+  "library_circulation.return.notes_placeholder": "ملاحظات اختيارية حول حالة الإرجاع",
+  "library_circulation.return.complete_return": "إكمال الإرجاع",
+  "library_circulation.return.suggest_fine": "قد تكون هناك حاجة لتسجيل غرامة للكتب {{reason}}",
+
   "library_circulation.books.status": "الحالة",
 
   "library_circulation.students.code": "رمز الطالب",
