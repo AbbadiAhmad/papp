@@ -37,6 +37,10 @@
   "library_circulation.scan.return_success_late": "تم إرجاع الكتاب متأخراً بمقدار {{days}} يوم — تم تسجيل غرامة.",
   "library_circulation.scan.view_borrow_history": "عرض سجل الإعارات",
   "library_circulation.scan.view_copy_history": "عرض السجل",
+  "library_circulation.scan.copy_history_title": "السجل — {{qrCode}}",
+  "library_circulation.scan.no_history": "لا يوجد سجل إعارة بعد.",
+  "library_circulation.scan.history_borrowed_returned": "أُعيرت {{borrowed}}، وأُعيدت {{returned}} ({{status}})",
+  "library_circulation.scan.history_borrowed_active": "أُعيرت {{borrowed}} ({{status}})",
   "library_circulation.scan.previous_borrow": "إعارة سابقة",
   "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
 

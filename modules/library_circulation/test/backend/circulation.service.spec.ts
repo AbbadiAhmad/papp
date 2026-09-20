@@ -4,20 +4,20 @@ import { CirculationService } from '../../backend/circulation.service';
 
 interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };
-  libraryCatalogBookCopy: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
+  libraryCatalogBookCopy: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
   libraryCatalogBook: { findUnique: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
-  user: { findUnique: jest.Mock };
+  user: { findUnique: jest.Mock; findMany: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
     libraryStudent: { findUnique: jest.fn() },
-    libraryCatalogBookCopy: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn() },
+    libraryCatalogBookCopy: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
     libraryCatalogBook: { findUnique: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-    user: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn(), findMany: jest.fn() },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
@@ -255,6 +255,50 @@ describe('CirculationService', () => {
       expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ take: 5 }),
       );
+    });
+  });
+
+  describe('getBookCirculationHistory (§2.1)', () => {
+    it('resolves the book\'s copy ids first, then queries borrowings across all of them', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { id: 'copy-1', qrCode: 'BOOK-001' },
+        { id: 'copy-2', qrCode: 'BOOK-002' },
+      ]);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        {
+          id: 'b-1',
+          studentId: 'student-1',
+          student: { code: 'STU-001', userId: 'user-1' },
+          bookCopyId: 'copy-1',
+          borrowedAt: new Date('2026-09-01'),
+          dueAt: new Date('2026-09-15'),
+          returnedAt: new Date('2026-09-12'),
+          status: 'returned',
+        },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Ahmed' }]);
+
+      const result = await service.getBookCirculationHistory('book-1');
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith({
+        where: { bookId: 'book-1' },
+        select: { id: true, qrCode: true },
+      });
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { bookCopyId: { in: ['copy-1', 'copy-2'] } } }),
+      );
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'b-1', studentCode: 'STU-001', studentName: 'Ahmed', qrCode: 'BOOK-001' }),
+      ]);
+    });
+
+    it('returns an empty array without querying borrowings when the book has no copies', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+
+      const result = await service.getBookCirculationHistory('book-1');
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryBorrowing.findMany).not.toHaveBeenCalled();
     });
   });
 

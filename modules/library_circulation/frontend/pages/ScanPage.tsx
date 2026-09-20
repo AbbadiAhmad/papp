@@ -8,6 +8,7 @@ import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
+import { CopyHistoryDialog } from './CopyHistoryDialog';
 import { ReturnDialog } from './ReturnDialog';
 
 /**
@@ -33,6 +34,7 @@ export function ScanPage() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
+  const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
 
   const reset = () => {
     setStudent(null);
@@ -241,7 +243,7 @@ export function ScanPage() {
                   </Stack>
                 </Box>
               ) : null}
-              <Button variant="text" size="small">
+              <Button variant="text" size="small" onClick={() => setCopyHistoryOpen(true)}>
                 {t('library_circulation.scan.view_copy_history')}
               </Button>
               {bookCopy.activeBorrowing ? (
@@ -291,6 +293,13 @@ export function ScanPage() {
           setCurrentBorrowingForReturn(null);
         }}
         loading={busy}
+      />
+
+      <CopyHistoryDialog
+        open={copyHistoryOpen}
+        copyId={bookCopy?.copy.id ?? null}
+        qrCode={bookCopy?.copy.qrCode}
+        onClose={() => setCopyHistoryOpen(false)}
       />
     </Box>
   );

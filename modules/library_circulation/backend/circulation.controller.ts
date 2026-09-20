@@ -44,6 +44,14 @@ export class CirculationController {
     return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
   }
 
+  /** §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any copy of this book. */
+  @Get('books/:bookId/circulation-history')
+  @RequirePermission('library_circulation.borrow')
+  async getBookCirculationHistory(@Param('bookId') bookId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.circulation.getBookCirculationHistory(bookId, limitNumber);
+  }
+
   @Post('borrow')
   @RequirePermission('library_circulation.borrow')
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'create' })

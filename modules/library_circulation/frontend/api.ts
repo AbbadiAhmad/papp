@@ -50,6 +50,34 @@ export interface LibraryBorrowing {
   comments?: string | null;
 }
 
+/** CirculationService.getCirculationHistory() — a copy's last N borrowings. */
+export interface CopyCirculationHistoryEntry {
+  id: string;
+  studentId: string;
+  studentCode: string;
+  borrowedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: BorrowingStatus;
+  comments: string | null;
+  borrowedBy: string;
+  returnedBy: string | null;
+}
+
+/** CirculationService.getBookCirculationHistory() — every reader who borrowed any copy of a book, most recent first (§2.1). */
+export interface BookCirculationHistoryEntry {
+  id: string;
+  studentId: string;
+  studentCode: string;
+  studentName: string | null;
+  bookCopyId: string;
+  qrCode: string | null;
+  borrowedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: BorrowingStatus;
+}
+
 export interface LibraryFineType {
   id: string;
   code: string;
@@ -153,6 +181,12 @@ export const libraryCirculationApi = {
         { borrowingId, returnStatus, returnNotes },
       )
       .then((r) => r.data),
+
+  // History (§2.1/§2.2, docs/LIBRARY_IMPROVEMENTS.md)
+  getCopyCirculationHistory: (copyId: string, limit = 10) =>
+    apiClient.get<CopyCirculationHistoryEntry[]>(`${BASE}/copies/${copyId}/circulation-history`, { params: { limit } }).then((r) => r.data),
+  getBookCirculationHistory: (bookId: string, limit = 10) =>
+    apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit } }).then((r) => r.data),
 
   // Students
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),

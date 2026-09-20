@@ -273,4 +273,48 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       returnedBy: b.returnedBy,
     }));
   }
+
+  /**
+   * §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed
+   * ANY copy of a given book, most recent first. `library_borrowings` only
+   * has `bookCopyId`, not `bookId` (a copy's title is catalog domain, not
+   * circulation's), so this first resolves the book's copy ids through the
+   * shared Prisma client's `library_catalog_book_copies` table (same
+   * deliberate direct-read pattern this service already uses everywhere
+   * else — see this class's own docblock) and then queries borrowings
+   * across all of them.
+   */
+  async getBookCirculationHistory(bookId: string, limit: number = 10) {
+    const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, select: { id: true, qrCode: true } });
+    if (copies.length === 0) {
+      return [];
+    }
+    const qrCodeByCopyId = new Map(copies.map((c) => [c.id, c.qrCode]));
+
+    const borrowings = await this.prisma.libraryBorrowing.findMany({
+      where: { bookCopyId: { in: copies.map((c) => c.id) } },
+      orderBy: { borrowedAt: 'desc' },
+      take: limit,
+      include: { student: true },
+    });
+
+    // Student names live on the linked core User, not LibraryStudent itself
+    // (same split scanStudent() already works around) — batch-fetch once.
+    const userIds = [...new Set(borrowings.map((b) => b.student.userId))];
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+    const nameByUserId = new Map(users.map((u) => [u.id, u.name]));
+
+    return borrowings.map((b) => ({
+      id: b.id,
+      studentId: b.studentId,
+      studentCode: b.student.code,
+      studentName: nameByUserId.get(b.student.userId) ?? null,
+      bookCopyId: b.bookCopyId,
+      qrCode: qrCodeByCopyId.get(b.bookCopyId) ?? null,
+      borrowedAt: b.borrowedAt,
+      dueAt: b.dueAt,
+      returnedAt: b.returnedAt,
+      status: b.status,
+    }));
+  }
 }
