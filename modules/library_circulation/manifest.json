@@ -1,7 +1,7 @@
 {
   "key": "library_circulation",
   "name": "Library Circulation & Finance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_catalog"],
   "description": "Students, staff-performed borrow/return, fines, and the finance side (transactions/payments/receipts) built on top of library_catalog's books/copies (D44). Requirements captured in docs/LIBRARY_MODULE_REQUIREMENTS.md.",
