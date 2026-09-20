@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -22,7 +22,7 @@ export class StudentsController {
 
   @Get(':id')
   @RequirePermission('library_circulation.students.view')
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.students.findById(id);
   }
 
@@ -36,7 +36,7 @@ export class StudentsController {
   @Patch(':id')
   @RequirePermission('library_circulation.students.update')
   @Audit({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'update', fetchState: fetchStudentState })
-  async update(@Param('id') id: string, @Body() dto: UpdateStudentDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateStudentDto) {
     return this.students.update(id, dto);
   }
 
@@ -44,7 +44,7 @@ export class StudentsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('library_circulation.students.delete')
   @Audit({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'delete', fetchState: fetchStudentState })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.students.remove(id);
   }
 }

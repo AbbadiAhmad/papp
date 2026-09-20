@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateFineDto } from './dto/create-fine.dto';
@@ -28,7 +28,7 @@ export class FinesController {
 
   @Get('fines/:id')
   @RequirePermission('library_circulation.fines.view')
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.fines.findById(id);
   }
 
@@ -42,14 +42,14 @@ export class FinesController {
   @Post('fines/:id/waive')
   @RequirePermission('library_circulation.fines.waive')
   @Audit({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState })
-  async waive(@Param('id') id: string) {
+  async waive(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.fines.waive(id);
   }
 
   @Post('fines/:id/payments')
   @RequirePermission('library_circulation.finance.record_payment')
   @Audit({ category: 'library_circulation.finance', entityType: 'LibraryPayment', action: 'create' })
-  async recordPayment(@Param('id') id: string, @Body() dto: RecordPaymentDto, @CurrentUser() user: AuthenticatedUser) {
+  async recordPayment(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: RecordPaymentDto, @CurrentUser() user: AuthenticatedUser) {
     return this.fines.recordPayment(id, dto.amount, user.userId, dto.paymentMethod);
   }
 

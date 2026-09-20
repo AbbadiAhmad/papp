@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { SubmitResponseDto } from './dto/submit-response.dto';
 import { AuthenticatedUser, CurrentUser, MustChangePasswordGuard } from './platform';
@@ -24,7 +24,7 @@ export class FillController {
   constructor(private readonly responses: ResponsesService) {}
 
   @Get(':id/fill')
-  async getForFilling(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  async getForFilling(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.responses.getForFilling(id, user.userId);
   }
 

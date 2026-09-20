@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 // The REAL core guard, imported from apps/api's BUILT output (never `src/`)
 // — see platform.ts's docblock / modules/library_catalog/backend/public.controller.ts
 // for exactly why (D57's exception category — genuine shared logic, not a
@@ -31,7 +31,7 @@ export class PublicItemsController {
   @Get(':id')
   @Public()
   @UseGuards(PublicThrottlerGuard)
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.items.getPublicIfActive(id);
   }
 }
