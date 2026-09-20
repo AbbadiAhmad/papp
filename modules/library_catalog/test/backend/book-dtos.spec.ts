@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it } from '@jest/globals';
@@ -21,8 +22,10 @@ async function validateCreateBookCopy(payload: Record<string, unknown>) {
 }
 
 describe('CreateBookDto (class-validator)', () => {
-  it('accepts a payload with only the required title', async () => {
-    await expect(validateCreateBook({ title: 'Kalila wa Dimna' })).resolves.toEqual([]);
+  const validCopy = { qrCode: 'QR-0001' };
+
+  it('accepts a payload with only the required title and copy', async () => {
+    await expect(validateCreateBook({ title: 'Kalila wa Dimna', copy: validCopy })).resolves.toEqual([]);
   });
 
   it('accepts a full payload including every optional field', async () => {
@@ -36,12 +39,13 @@ describe('CreateBookDto (class-validator)', () => {
         language: 'ar',
         description: 'A classic collection of fables.',
         coverImage: 'https://example.com/cover.jpg',
+        copy: validCopy,
       }),
     ).resolves.toEqual([]);
   });
 
   it('rejects a missing title', async () => {
-    const errors = await validateCreateBook({});
+    const errors = await validateCreateBook({ copy: validCopy });
 
     expect(errors).toHaveLength(1);
     expect(errors[0].property).toBe('title');
@@ -50,7 +54,7 @@ describe('CreateBookDto (class-validator)', () => {
   });
 
   it('rejects an empty-string title (MinLength(1))', async () => {
-    const errors = await validateCreateBook({ title: '' });
+    const errors = await validateCreateBook({ title: '', copy: validCopy });
 
     expect(errors).toHaveLength(1);
     expect(errors[0].property).toBe('title');
@@ -58,7 +62,7 @@ describe('CreateBookDto (class-validator)', () => {
   });
 
   it('rejects a non-string title', async () => {
-    const errors = await validateCreateBook({ title: 12345 });
+    const errors = await validateCreateBook({ title: 12345, copy: validCopy });
 
     expect(errors).toHaveLength(1);
     expect(errors[0].property).toBe('title');

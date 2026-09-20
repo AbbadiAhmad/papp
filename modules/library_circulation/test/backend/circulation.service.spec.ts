@@ -6,7 +6,7 @@ interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };
   libraryCatalogBookCopy: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
   libraryCatalogBook: { findUnique: jest.Mock };
-  libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+  libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   user: { findUnique: jest.Mock };
   $transaction: jest.Mock;
 }
@@ -16,7 +16,7 @@ function createMockPrisma(): MockPrisma {
     libraryStudent: { findUnique: jest.fn() },
     libraryCatalogBookCopy: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn() },
     libraryCatalogBook: { findUnique: jest.fn() },
-    libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     user: { findUnique: jest.fn() },
     $transaction: jest.fn(),
   };

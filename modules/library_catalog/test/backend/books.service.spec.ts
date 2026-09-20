@@ -108,17 +108,38 @@ describe('BooksService', () => {
   });
 
   describe('list', () => {
-    it('maps _count.copies to totalCopies and drops _count from each row', async () => {
-      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ ...bookRow(), _count: { copies: 3 } }]);
+    it('maps _count.copies to totalCopies and filters availableCopies', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        {
+          ...bookRow(),
+          _count: { copies: 3 },
+          copies: [
+            { status: LibraryCatalogBookCopyStatus.available },
+            { status: LibraryCatalogBookCopyStatus.available },
+            { status: LibraryCatalogBookCopyStatus.borrowed },
+          ],
+        },
+      ]);
 
       const result = await service.list({});
 
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
         where: {},
         orderBy: { title: 'asc' },
-        include: { _count: { select: { copies: true } } },
+        include: {
+          _count: { select: { copies: true } },
+          copies: { select: { status: true } },
+        },
       });
-      expect(result).toEqual([{ ...bookRow(), totalCopies: 3, _count: undefined }]);
+      expect(result).toEqual([
+        {
+          ...bookRow(),
+          totalCopies: 3,
+          availableCopies: 2,
+          _count: undefined,
+          copies: undefined,
+        },
+      ]);
     });
 
     it('filters by search (case-insensitive contains on title) and category when supplied', async () => {
@@ -129,7 +150,10 @@ describe('BooksService', () => {
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
         where: { title: { contains: 'kalila', mode: 'insensitive' }, category: 'fiction' },
         orderBy: { title: 'asc' },
-        include: { _count: { select: { copies: true } } },
+        include: {
+          _count: { select: { copies: true } },
+          copies: { select: { status: true } },
+        },
       });
     });
   });
@@ -321,10 +345,10 @@ describe('BooksService', () => {
 
         const result = await service.updateCopy('book-1', 'copy-1', dto);
 
-        expect(prisma.libraryCatalogBookCopy.update).toHaveBeenCalledWith({
-          where: { id: 'copy-1' },
-          data: { status: LibraryCatalogBookCopyStatus.borrowed },
-        });
+        const callData = (prisma.libraryCatalogBookCopy.update as jest.Mock).mock.calls[0][0];
+        expect(callData.where).toEqual({ id: 'copy-1' });
+        expect(callData.data.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
+        expect(callData.data.history).toBeDefined();
         expect(result.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
       });
 
