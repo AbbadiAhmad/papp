@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { BooksService } from './books.service';
@@ -57,7 +57,7 @@ export class BooksController {
 
   @Get(':id')
   @RequirePermission('library_catalog.books.view')
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.books.findById(id);
   }
 
@@ -71,7 +71,7 @@ export class BooksController {
   @Patch(':id')
   @RequirePermission('library_catalog.books.update')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'update', fetchState: fetchBookState })
-  async update(@Param('id') id: string, @Body() dto: UpdateBookDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookDto) {
     return this.books.update(id, dto);
   }
 
@@ -79,7 +79,7 @@ export class BooksController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('library_catalog.books.delete')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'delete', fetchState: fetchBookState })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.books.remove(id);
   }
 
@@ -91,14 +91,21 @@ export class BooksController {
 
   @Get(':bookId/copies')
   @RequirePermission('library_catalog.books.view')
-  async listCopies(@Param('bookId') bookId: string) {
+  async listCopies(@Param('bookId', new ParseUUIDPipe()) bookId: string) {
     return this.books.listCopies(bookId);
+  }
+
+  @Get(':bookId/copies/:copyId/catalog-history')
+  @RequirePermission('library_catalog.books.view')
+  async getCopyHistory(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('copyId', new ParseUUIDPipe()) copyId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.books.getCopyHistory(copyId, limitNumber);
   }
 
   @Post(':bookId/copies')
   @RequirePermission('library_catalog.books.create')
   @Audit({ category: 'library_catalog.copies', entityType: 'LibraryCatalogBookCopy', action: 'create' })
-  async createCopy(@Param('bookId') bookId: string, @Body() dto: CreateBookCopyDto) {
+  async createCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Body() dto: CreateBookCopyDto) {
     return this.books.createCopy(bookId, dto);
   }
 
@@ -110,7 +117,20 @@ export class BooksController {
     action: 'update',
     fetchState: fetchCopyState,
   })
-  async updateCopy(@Param('bookId') bookId: string, @Param('id') id: string, @Body() dto: UpdateBookCopyDto) {
+  async updateCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookCopyDto) {
     return this.books.updateCopy(bookId, id, dto);
+  }
+
+  @Delete(':bookId/copies/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('library_catalog.books.delete')
+  @Audit({
+    category: 'library_catalog.copies',
+    entityType: 'LibraryCatalogBookCopy',
+    action: 'delete',
+    fetchState: fetchCopyState,
+  })
+  async removeCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
+    await this.books.removeCopy(bookId, id);
   }
 }

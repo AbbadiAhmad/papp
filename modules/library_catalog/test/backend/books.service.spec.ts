@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { LibraryCatalogBookCopyStatus } from '@prisma/client';
+import { LibraryCatalogBookCopyStatus, Prisma } from '@prisma/client';
 import { BooksService } from '../../backend/books.service';
 import type { CreateBookCopyDto } from '../../backend/dto/create-book-copy.dto';
 import type { CreateBookDto } from '../../backend/dto/create-book.dto';
@@ -20,7 +20,9 @@ interface MockPrisma {
     findUnique: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    delete: jest.Mock;
   };
+  $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
@@ -37,7 +39,9 @@ function createMockPrisma(): MockPrisma {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
     },
+    $transaction: jest.fn((fn) => fn({ libraryCatalogBook: {}, libraryCatalogBookCopy: {} })),
   };
 }
 
@@ -106,17 +110,38 @@ describe('BooksService', () => {
   });
 
   describe('list', () => {
-    it('maps _count.copies to totalCopies and drops _count from each row', async () => {
-      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ ...bookRow(), _count: { copies: 3 } }]);
+    it('maps _count.copies to totalCopies and filters availableCopies', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        {
+          ...bookRow(),
+          _count: { copies: 3 },
+          copies: [
+            copyRow({ status: LibraryCatalogBookCopyStatus.available }),
+            copyRow({ status: LibraryCatalogBookCopyStatus.available }),
+            copyRow({ status: LibraryCatalogBookCopyStatus.borrowed }),
+          ],
+        },
+      ]);
 
       const result = await service.list({});
 
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
         where: {},
         orderBy: { title: 'asc' },
-        include: { _count: { select: { copies: true } } },
+        include: {
+          _count: { select: { copies: true } },
+          copies: true,
+        },
       });
-      expect(result).toEqual([{ ...bookRow(), totalCopies: 3, _count: undefined }]);
+      expect(result).toEqual([
+        {
+          ...bookRow(),
+          totalCopies: 3,
+          availableCopies: 2,
+          _count: undefined,
+          copies: undefined,
+        },
+      ]);
     });
 
     it('filters by search (case-insensitive contains on title) and category when supplied', async () => {
@@ -127,20 +152,68 @@ describe('BooksService', () => {
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
         where: { title: { contains: 'kalila', mode: 'insensitive' }, category: 'fiction' },
         orderBy: { title: 'asc' },
-        include: { _count: { select: { copies: true } } },
+        include: {
+          _count: { select: { copies: true } },
+          copies: true,
+        },
       });
     });
   });
 
-  describe('create', () => {
-    it('creates a book, writing the dto straight through as the row data', async () => {
-      const dto = { title: 'New Title' } as CreateBookDto;
-      prisma.libraryCatalogBook.create.mockResolvedValue(bookRow({ title: 'New Title' }));
+  describe('create — Phase A: combined book + copy', () => {
+    it('creates a book and its initial copy in a transaction', async () => {
+      const dto = {
+        title: 'New Title',
+        author: 'Ahmed',
+        copy: {
+          qrCode: 'BOOK-001',
+          condition: 'good',
+          location: 'Shelf A',
+          acquisitionDate: '2026-09-20',
+        },
+      } as unknown as CreateBookDto;
+
+      const bookCreated = bookRow({ id: 'book-new', title: 'New Title', author: 'Ahmed' });
+      const copyCreated = copyRow({ qrCode: 'BOOK-001', bookId: 'book-new', condition: 'good', location: 'Shelf A' });
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
+          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyCreated) },
+        };
+        return fn(tx as never);
+      });
 
       const result = await service.create(dto);
 
-      expect(prisma.libraryCatalogBook.create).toHaveBeenCalledWith({ data: dto });
-      expect(result.title).toBe('New Title');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(result).toEqual(bookCreated);
+    });
+
+    it('defaults copy.status to "available" when omitted', async () => {
+      const dto = {
+        title: 'Another Book',
+        copy: {
+          qrCode: 'BOOK-002',
+        },
+      } as unknown as CreateBookDto;
+
+      const bookCreated = bookRow({ id: 'book-2', title: 'Another Book' });
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
+          libraryCatalogBookCopy: { create: jest.fn((arg: Record<string, unknown>) => {
+            expect(arg.data.status).toBe('available');
+            return copyRow({ qrCode: 'BOOK-002', bookId: 'book-2' });
+          }) },
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
     });
   });
 
@@ -267,17 +340,17 @@ describe('BooksService', () => {
     });
 
     describe('updateCopy', () => {
-      it('updates a copy status using the real migration enum values', async () => {
+      it('updates a copy with the provided DTO', async () => {
         prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
         const dto: UpdateBookCopyDto = { status: LibraryCatalogBookCopyStatus.borrowed };
         prisma.libraryCatalogBookCopy.update.mockResolvedValue(copyRow({ status: LibraryCatalogBookCopyStatus.borrowed }));
 
         const result = await service.updateCopy('book-1', 'copy-1', dto);
 
-        expect(prisma.libraryCatalogBookCopy.update).toHaveBeenCalledWith({
-          where: { id: 'copy-1' },
-          data: { status: LibraryCatalogBookCopyStatus.borrowed },
-        });
+        const callData = (prisma.libraryCatalogBookCopy.update as jest.Mock).mock.calls[0][0];
+        expect(callData.where).toEqual({ id: 'copy-1' });
+        expect(callData.data.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
+        expect(callData.data.history).toEqual(expect.any(Array));
         expect(result.status).toBe(LibraryCatalogBookCopyStatus.borrowed);
       });
 
@@ -306,6 +379,107 @@ describe('BooksService', () => {
 
         await expect(service.updateCopy('book-1', 'missing', {})).rejects.toBeInstanceOf(NotFoundException);
         expect(prisma.libraryCatalogBookCopy.update).not.toHaveBeenCalled();
+      });
+
+      it('Feature 2.1: tracks status/condition/location changes in history', async () => {
+        const existingHistory = [
+          { timestamp: '2026-09-10T10:00:00Z', changes: { status: { before: 'available', after: 'borrowed' } } },
+        ];
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(
+          copyRow({ status: LibraryCatalogBookCopyStatus.borrowed, history: existingHistory }),
+        );
+        prisma.libraryCatalogBookCopy.update.mockResolvedValue(
+          copyRow({
+            status: LibraryCatalogBookCopyStatus.damaged,
+            history: [
+              ...existingHistory,
+              { timestamp: expect.any(String), changes: { status: { before: 'borrowed', after: 'damaged' } } },
+            ],
+          }),
+        );
+
+        const dto: UpdateBookCopyDto = { status: LibraryCatalogBookCopyStatus.damaged };
+        await service.updateCopy('book-1', 'copy-1', dto);
+
+        const callData = (prisma.libraryCatalogBookCopy.update as jest.Mock).mock.calls[0][0];
+        const history = callData.data.history as Record<string, unknown>[];
+        expect(history).toHaveLength(2);
+        expect(history[1]).toHaveProperty('changes.status');
+      });
+    });
+
+    describe('getCopyHistory', () => {
+      it('returns up to limit history entries for a copy, newest last', async () => {
+        const history = [
+          { timestamp: '2026-09-10T10:00:00Z', changes: { status: { before: 'available', after: 'borrowed' } } },
+          { timestamp: '2026-09-15T14:30:00Z', changes: { status: { before: 'borrowed', after: 'available' } } },
+        ];
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow({ history }));
+
+        const result = await service.getCopyHistory('copy-1', 10);
+
+        expect(result).toEqual(history);
+      });
+
+      it('respects the limit parameter, returning only the most recent entries', async () => {
+        const history = [
+          { timestamp: '2026-09-01T10:00:00Z', changes: { condition: { before: 'good', after: 'fair' } } },
+          { timestamp: '2026-09-10T10:00:00Z', changes: { status: { before: 'available', after: 'borrowed' } } },
+          { timestamp: '2026-09-15T14:30:00Z', changes: { status: { before: 'borrowed', after: 'available' } } },
+        ];
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow({ history }));
+
+        const result = await service.getCopyHistory('copy-1', 2);
+
+        expect(result).toEqual(history.slice(-2));
+      });
+
+      it('returns empty array for a copy with no history', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow({ history: [] }));
+
+        const result = await service.getCopyHistory('copy-1');
+
+        expect(result).toEqual([]);
+      });
+
+      it('throws NotFoundException for a nonexistent copy', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
+
+        await expect(service.getCopyHistory('missing')).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('removeCopy — LIBRARY_CATALOG-D19 (lets remove() ever reach zero copies)', () => {
+      it('deletes the copy once found', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        prisma.libraryCatalogBookCopy.delete.mockResolvedValue(copyRow());
+
+        await expect(service.removeCopy('book-1', 'copy-1')).resolves.toBeUndefined();
+        expect(prisma.libraryCatalogBookCopy.delete).toHaveBeenCalledWith({ where: { id: 'copy-1' } });
+      });
+
+      it('throws NotFoundException for a copy that does not belong to the given book, never touching delete', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow({ bookId: 'other-book' }));
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBeInstanceOf(NotFoundException);
+        expect(prisma.libraryCatalogBookCopy.delete).not.toHaveBeenCalled();
+      });
+
+      it('converts a Postgres FK violation (borrowing history exists) into a ConflictException', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        prisma.libraryCatalogBookCopy.delete.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', { code: 'P2003', clientVersion: '6.0.0', meta: { field_name: 'book_copy_id' } }),
+        );
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      it('re-throws any other unexpected error unchanged', async () => {
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+        const unexpected = new Error('connection reset');
+        prisma.libraryCatalogBookCopy.delete.mockRejectedValue(unexpected);
+
+        await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBe(unexpected);
       });
     });
   });

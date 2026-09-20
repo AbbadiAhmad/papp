@@ -101,7 +101,13 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
     const bookRes = await request(app!.getHttpServer())
       .post('/api/library/books')
       .set('Authorization', `Bearer ${admin.token}`)
-      .send({ title: 'Fixture Book for circulation e2e' });
+      .send({
+        title: 'Fixture Book for circulation e2e',
+        copy: {
+          qrCode: `E2E-CIRC-QR-INITIAL-${Date.now()}`,
+          status: 'available',
+        },
+      });
     expect(bookRes.status).toBe(201);
 
     const copyRes = await request(app!.getHttpServer())

@@ -1,6 +1,20 @@
 import { expect, test } from '@playwright/test';
 import { API_ORIGIN, READER_USER, TEXT } from './support/test-data';
 
+function isApiResponse(response: Response, pathname: string, method = 'GET') {
+  try {
+    const url = new URL(response.url());
+    const api = new URL(API_ORIGIN);
+    return (
+      url.origin === api.origin &&
+      url.pathname.replace(/\/+$/, '') === `${api.pathname.replace(/\/+$/, '')}${pathname}`.replace(/\/+/g, '/') &&
+      response.request().method() === method
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Permission-driven UI (docs/TESTING_STRATEGY.md §1's Playwright bullet,
  * item 3): a `reader`-role user cannot reach an admin-only page even by
@@ -8,12 +22,20 @@ import { API_ORIGIN, READER_USER, TEXT } from './support/test-data';
  * here — confirmed via the real seeded role_permissions table that `reader`
  * holds neither `modules.view` nor `users.view`, while `admin` holds both.
  *
- * apps/web/src/shared/permissions.tsx's own docblock explains why: there is
- * no client-side "effective permission set" to pre-check against, so the
- * real boundary IS the backend PermissionGuard — QueryStateGate only
- * navigates to /forbidden after the page's own real GET call comes back 403
- * (shared/components/QueryStateGate.tsx). This spec asserts both halves:
- * the real 403 on the wire, and the resulting client-side redirect.
+ * `RequirePermissionRoute` (apps/web/src/shared/components/RequirePermissionRoute.tsx)
+ * is the real boundary now, not a page's own data call: it gates on the
+ * caller's already-loaded `GET /users/me/permissions` result (fetched once
+ * by `AuthContext` right after login) and redirects to `/forbidden` BEFORE
+ * the wrapped page ever mounts — this is what fixes the older "page
+ * renders, its own list call 403s, THEN it redirects" flash that
+ * `shared/permissions.tsx`'s docblock describes as the previous design.
+ * That means the page's own list endpoint (`GET /modules`, `GET /users`)
+ * is never called at all for a denied caller; this spec asserts that
+ * (real) absence rather than waiting on a call that no longer happens, and
+ * still asserts the actual security boundary the same way — the backend
+ * `PermissionGuard` denying `/users/me/permissions`'s underlying grants
+ * remains what a stale/mid-session-revoked grant would be caught by,
+ * `RequirePermissionRoute`'s own docblock says so explicitly.
  */
 test.describe('Permission-driven UI', () => {
   test('a reader cannot reach the admin-only Modules page, even by typing the URL', async ({ page }) => {
@@ -23,29 +45,24 @@ test.describe('Permission-driven UI', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
-    // A full page navigation (not a SPA link click) — literally "typing the
-    // URL directly": the app remounts, AuthProvider silently re-auths via
-    // the refresh cookie, and ModulesAdminPage makes its own real GET /modules.
-    // Matched against the exact backend origin, not a bare path suffix: the
-    // SPA's own page-navigation response for this same `page.goto()` (served
-    // by the web server's history-fallback at http://localhost:5173/modules)
-    // ALSO ends with "/modules" and resolves first, which would otherwise
-    // make this assert against the wrong response entirely.
-    const [modulesResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url() === `${API_ORIGIN}/modules` && res.request().method() === 'GET'),
-      page.goto('/modules'),
-    ]);
+    // The real, server-confirmed permission set the redirect below relies on.
+    const permissionsResponse = await page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
+    expect(permissionsResponse.status()).toBe(200);
+    const permissions = (await permissionsResponse.json()) as string[];
+    expect(permissions).not.toContain('modules.view');
 
-    // 1. The underlying API call itself is really rejected.
-    expect(modulesResponse.status()).toBe(403);
-    const body = (await modulesResponse.json()) as { message?: string };
-    expect(body.message).toBe('Missing required permission: modules.view');
+    let modulesListCalled = false;
+    page.on('response', (response) => {
+      if (isApiResponse(response, '/modules')) modulesListCalled = true;
+    });
 
-    // 2. Only AFTER that real rejection does the SPA redirect client-side.
+    await page.goto('/modules');
     await page.waitForURL(/\/forbidden$/);
     await expect(page.getByText(TEXT.ar.forbiddenTitle)).toBeVisible();
 
-    // The Modules page's own content never rendered.
+    // The Modules page never mounted — its own list call never fired, and
+    // no table (its content) ever rendered.
+    expect(modulesListCalled).toBe(false);
     await expect(page.getByRole('table')).toHaveCount(0);
   });
 
@@ -56,11 +73,18 @@ test.describe('Permission-driven UI', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
-    const [usersResponse] = await Promise.all([
-      page.waitForResponse((res) => res.url() === `${API_ORIGIN}/users` && res.request().method() === 'GET'),
-      page.goto('/users'),
-    ]);
-    expect(usersResponse.status()).toBe(403);
+    const permissionsResponse = await page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
+    const permissions = (await permissionsResponse.json()) as string[];
+    expect(permissions).not.toContain('users.view');
+
+    let usersListCalled = false;
+    page.on('response', (response) => {
+      if (isApiResponse(response, '/users')) usersListCalled = true;
+    });
+
+    await page.goto('/users');
     await page.waitForURL(/\/forbidden$/);
+
+    expect(usersListCalled).toBe(false);
   });
 });

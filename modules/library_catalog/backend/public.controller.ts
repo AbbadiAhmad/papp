@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 // The REAL core guard, imported from apps/api's BUILT output (never `src/`)
 // — see this file's docblock below and platform.ts's docblock for exactly
 // why. This is the one deliberate cross-repo runtime dependency in this
@@ -50,7 +50,7 @@ export class PublicBooksController {
     entityType: 'LibraryCatalogBook',
     action: 'view_availability',
   })
-  async availability(@Param('id') id: string): Promise<BookAvailability> {
+  async availability(@Param('id', new ParseUUIDPipe()) id: string): Promise<BookAvailability> {
     // getAvailability() already throws a plain NotFoundException for a
     // missing book — exactly what an anonymous caller should see (404, no
     // stack trace or internal detail), MODULE_SPEC.md §7.2.

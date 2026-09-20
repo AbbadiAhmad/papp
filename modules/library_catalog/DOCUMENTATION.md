@@ -16,13 +16,15 @@ library_catalog_books(
 library_catalog_book_copies(
   id, book_id -> books(id) ON DELETE CASCADE,
   qr_code UNIQUE, status ENUM(available|borrowed|lost|damaged|maintenance|reserved),
-  condition, location, acquisition_date, created_at, updated_at
+  condition, location, acquisition_date, created_at, updated_at,
+  history JSONB[] DEFAULT '[]'
 )
 ```
 
 - `status` is a real Postgres `ENUM` (`library_catalog_book_copy_status`), not a `TEXT` + `CHECK` — required for Prisma's `enum` mapping (see the migration's own comment; the same lesson core's `0000`/`0005` migrations already learned).
 - Deleting a book **cascades** to its copies — a copy cannot outlive its title. A future circulation module deciding to block that delete when a copy has borrowing history is that module's job, not this one's (see Known gotchas).
 - `updated_at` exists on both tables specifically so `@Audit`'s before/after diff on an `update` has more than just the one changed field to show.
+- `history` (Feature 2.1 — D18) is a JSONB array tracking up to 100 most recent changes to `status`, `condition`, and `location`. Each entry records `{ timestamp, changes: { field: { before, after } } }`. The `getCopyHistory` endpoint retrieves these entries. See DECISIONS.md D18 for the migration application process.
 
 ## Permissions
 
@@ -31,7 +33,7 @@ library_catalog_book_copies(
 | `library_catalog.books.view` | List/get a book, list a book's copies | `BooksController.list/findById/listCopies` |
 | `library_catalog.books.create` | Create a book, add a copy to a book | `BooksController.create/addCopy` |
 | `library_catalog.books.update` | Edit a book, update a copy's status/condition/location | `BooksController.update/updateCopy` |
-| `library_catalog.books.delete` | Delete a book (and, via cascade, its copies) | `BooksController.remove` |
+| `library_catalog.books.delete` | Delete a book (and, via cascade, its copies), or remove a single copy directly | `BooksController.remove/removeCopy` |
 | `library_catalog.books.export` | Download the books list as `.xlsx` | `BooksController.export` |
 
 `defaultRolePermissions`: `admin` gets all 5; `library_assistant` gets view/create/update (no delete/export); `finance` gets none; `reader` gets view only. The public availability route (below) needs no permission at all — there is no user to check one against.
@@ -40,7 +42,7 @@ library_catalog_book_copies(
 
 Backend (`apiPrefix: /api/library`):
 - `GET/POST /books`, `GET/PATCH/DELETE /books/:id`, `GET /books/export` — `BooksController`, all `@RequirePermission`-gated as above.
-- `GET/POST /books/:bookId/copies`, `PATCH /books/:bookId/copies/:id` — same controller, copies sub-resource.
+- `GET/POST /books/:bookId/copies`, `PATCH/DELETE /books/:bookId/copies/:id` — same controller, copies sub-resource. `DELETE` is gated by `books.delete` (not a separate code, matching the sub-resource pattern), and fails with 409 if the copy has `library_circulation` borrowing history (no `ON DELETE CASCADE` on that FK — see LIBRARY_CATALOG-D8).
 - `GET /public/books/:id/availability` — `PublicBooksController`, `@Public()` + `PublicThrottlerGuard` (D34 — even though it's a read, applied "for consistency" per the module's own build notes) + `@Audit(...)` (deliberately, to exercise the `actor_type='anonymous'` audit path — see that controller's own docblock).
 
 Frontend (`basePath: /library`):
@@ -58,10 +60,36 @@ Frontend (`basePath: /library`):
 
 ## Known gotchas
 
-- **This module intentionally does not track borrowing/returning/fines at all** — `library_catalog_book_copies.status` only reflects a copy's *current* state; there is no history table here. That's `library_circulation`/`library_finance`'s job (a single combined future module per root `D44`), which will `dependsOn: ["library_catalog"]`. Don't add borrowing fields to this module when that need comes up — add the new module instead.
+- **This module intentionally does not track borrowing/returning/fines at all** — `library_catalog_book_copies.status` only reflects a copy's *current* state; there is no borrowing history table here. That's `library_circulation`/`library_finance`'s job (a single combined future module per root `D44`), which will `dependsOn: ["library_catalog"]`. Don't add borrowing fields to this module when that need comes up — add the new module instead.
+  - **Exception**: Feature 2.1 (D18) adds a `history` JSONB column tracking changes to copy state (`status`, `condition`, `location`) — this is catalog-level metadata for audit/compliance, not circulation history. See DECISIONS.md D18 for the manual migration process.
 - The `export` endpoint returns a raw `xlsx` buffer; Supertest/`superagent`-based e2e tests need an explicit binary `.parse()` callback to read it correctly (root `D63` — a real bug found in a *different* module's export endpoint with the exact same shape; if this module's own export test ever reads `.body` as `undefined`, that's why).
 
 ## How to extend
 
 - **A new book field** (e.g. `edition`): add a migration (`003_...sql`, `ALTER TABLE ... ADD COLUMN`), mirror it in `apps/api/prisma/schema.prisma`'s `LibraryCatalogBook` model, add it to `CreateBookDto`/`UpdateBookDto` with real `class-validator` decorators (see root `D67` — an undecorated field is silently stripped by the global `ValidationPipe`), thread it through `BooksService`, and add the column to `BooksListPage.tsx`'s table + `BookFormDialog.tsx`'s form + both locale files.
 - **A new copy status**: `ALTER TYPE library_catalog_book_copy_status ADD VALUE '...'` in a new migration file (append-only per D16 — never edit `002_...sql` in place).
+
+## Migration Application (D18 / Platform D47)
+
+The platform currently **does not auto-apply migrations on startup** (root D47). When features introduce new migrations (like D18's history column), you must apply them manually:
+
+1. **Code already carries the migration**: `modules/library_catalog/migrations/003_add_copy_history.sql` exists.
+2. **Prisma schema is already updated**: `apps/api/prisma/schema.prisma`'s `LibraryCatalogBookCopy` model includes `history Json @default("[]")`.
+3. **You must apply the SQL manually**:
+   ```bash
+   # Using psql directly:
+   psql $DATABASE_URL < modules/library_catalog/migrations/003_add_copy_history.sql
+   
+   # Or via Docker (if using docker-compose):
+   docker-compose exec db psql -U postgres -d papp < modules/library_catalog/migrations/003_add_copy_history.sql
+   ```
+4. **Record the migration in the registry** (required so the platform knows not to re-apply it):
+   ```bash
+   # SQL to run against the same database:
+   INSERT INTO module_migrations (id, module_key, filename, checksum)
+   VALUES (gen_random_uuid(), 'library_catalog', '003_add_copy_history.sql', 
+           ''); -- checksum is validated against the file; see MigrationRunnerService
+   ```
+   - The checksum must match what `MigrationRunnerService.computeChecksum()` calculates for the SQL file. Run the API and check logs if unsure.
+
+**Future**: Once the platform supports automatic migration discovery/application on module install (root D47), this manual step will no longer be needed.

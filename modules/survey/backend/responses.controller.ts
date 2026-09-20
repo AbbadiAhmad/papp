@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Res, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { Audit, MustChangePasswordGuard, RequirePermission } from './platform';
@@ -31,7 +31,7 @@ export class ResponsesController {
 
   @Get(':id/responses/export')
   @RequirePermission('survey.responses.export')
-  async export(@Param('id') id: string, @Res() res: Response): Promise<void> {
+  async export(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
     const buffer = await this.reports.exportResponsesWorkbook(id);
     res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="survey-responses-export.xlsx"' });
     res.send(buffer);
@@ -39,25 +39,25 @@ export class ResponsesController {
 
   @Get(':id/report/summary')
   @RequirePermission('survey.responses.view')
-  async summary(@Param('id') id: string) {
+  async summary(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.getSummary(id);
   }
 
   @Get(':id/report/dataset')
   @RequirePermission('survey.responses.view')
-  async dataset(@Param('id') id: string) {
+  async dataset(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.getDataset(id);
   }
 
   @Get(':id/responses')
   @RequirePermission('survey.responses.view')
-  async list(@Param('id') id: string) {
+  async list(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.listResponses(id);
   }
 
   @Get(':id/responses/:responseId')
   @RequirePermission('survey.responses.view')
-  async findOne(@Param('id') id: string, @Param('responseId') responseId: string) {
+  async findOne(@Param('id', new ParseUUIDPipe()) id: string, @Param('responseId', new ParseUUIDPipe()) responseId: string) {
     return this.reports.getResponse(id, responseId);
   }
 
@@ -65,7 +65,7 @@ export class ResponsesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('survey.responses.delete')
   @Audit({ category: 'survey.responses', entityType: 'SurveyResponse', action: 'delete', entityIdParam: 'responseId', fetchState: fetchResponseState })
-  async remove(@Param('id') id: string, @Param('responseId') responseId: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string, @Param('responseId', new ParseUUIDPipe()) responseId: string): Promise<void> {
     await this.reports.removeResponse(id, responseId);
   }
 }

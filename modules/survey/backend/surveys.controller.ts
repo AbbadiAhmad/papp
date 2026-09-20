@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateSurveyDto } from './dto/create-survey.dto';
@@ -38,14 +38,14 @@ export class SurveysController {
 
   @Get(':id')
   @RequirePermission('survey.surveys.view')
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.findById(id);
   }
 
   @Patch(':id')
   @RequirePermission('survey.surveys.update')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update', fetchState: fetchSurveyState })
-  async update(@Param('id') id: string, @Body() dto: UpdateSurveyDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateSurveyDto) {
     return this.surveys.update(id, dto);
   }
 
@@ -53,28 +53,28 @@ export class SurveysController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('survey.surveys.delete')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'delete', fetchState: fetchSurveyState })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.surveys.remove(id);
   }
 
   @Post(':id/publish')
   @RequirePermission('survey.surveys.publish')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'publish', fetchState: fetchSurveyState })
-  async publish(@Param('id') id: string) {
+  async publish(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.publish(id);
   }
 
   @Post(':id/close')
   @RequirePermission('survey.surveys.publish')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'close', fetchState: fetchSurveyState })
-  async close(@Param('id') id: string) {
+  async close(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.close(id);
   }
 
   @Put(':id/structure')
   @RequirePermission('survey.surveys.update')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' })
-  async replaceStructure(@Param('id') id: string, @Body() dto: SurveyStructureDto) {
+  async replaceStructure(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SurveyStructureDto) {
     return this.surveys.replaceStructure(id, dto);
   }
 }

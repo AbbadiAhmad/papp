@@ -1,4 +1,5 @@
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
 import {
   Alert,
   Box,
@@ -8,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -28,7 +30,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { libraryCatalogApi, type CreateBookCopyInput } from '../api';
+import { libraryCatalogApi, type CreateBookCopyInput, type LibraryBookCopy } from '../api';
 
 export function BookDetailPage() {
   const { bookId } = useParams<{ bookId: string }>();
@@ -40,7 +42,13 @@ export function BookDetailPage() {
   );
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [editingCopy, setEditingCopy] = useState<LibraryBookCopy | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleEditCopy = (copy: LibraryBookCopy) => {
+    setEditingCopy(copy);
+    setCopyDialogOpen(true);
+  };
 
   return (
     <Box>
@@ -91,6 +99,7 @@ export function BookDetailPage() {
                     <TableCell>{t('library_catalog.copies.condition')}</TableCell>
                     <TableCell>{t('library_catalog.copies.location')}</TableCell>
                     <TableCell>{t('library_catalog.copies.acquisition_date')}</TableCell>
+                    <TableCell align="right">{t('core.common.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -105,6 +114,13 @@ export function BookDetailPage() {
                       <TableCell>
                         {copy.acquisitionDate ? formatDateOnly(copy.acquisitionDate, language) : '—'}
                       </TableCell>
+                      <TableCell align="right">
+                        <Can permission="library_catalog.books.update">
+                          <IconButton size="small" onClick={() => handleEditCopy(copy)} aria-label={t('core.common.edit')}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Can>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -116,11 +132,22 @@ export function BookDetailPage() {
 
       <AddCopyDialog
         open={copyDialogOpen}
-        onClose={() => setCopyDialogOpen(false)}
-        onSubmit={async (dto) => {
+        copy={editingCopy}
+        onClose={() => {
+          setCopyDialogOpen(false);
+          setEditingCopy(null);
+        }}
+        onSubmit={async (dto: any) => {
           try {
-            await gated('library_catalog.books.create', () => libraryCatalogApi.createCopy(bookId as string, dto));
+            if (editingCopy) {
+              await gated('library_catalog.books.update', () =>
+                libraryCatalogApi.updateCopy(bookId as string, editingCopy.id, dto),
+              );
+            } else {
+              await gated('library_catalog.books.create', () => libraryCatalogApi.createCopy(bookId as string, dto as CreateBookCopyInput));
+            }
             setCopyDialogOpen(false);
+            setEditingCopy(null);
             reload();
           } catch (submitError) {
             setError(extractErrorMessage(submitError));
@@ -133,12 +160,14 @@ export function BookDetailPage() {
 
 function AddCopyDialog({
   open,
+  copy,
   onClose,
   onSubmit,
 }: {
   open: boolean;
+  copy?: LibraryBookCopy | null;
   onClose: () => void;
-  onSubmit: (dto: CreateBookCopyInput) => Promise<void>;
+  onSubmit: (dto: any) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [qrCode, setQrCode] = useState('');
@@ -146,10 +175,28 @@ function AddCopyDialog({
   const [condition, setCondition] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const isEditing = !!copy;
+
+  const handleOpen = () => {
+    if (open && copy) {
+      setQrCode(copy.qrCode);
+      setLocation(copy.location ?? '');
+      setCondition(copy.condition ?? '');
+    } else if (open && !copy) {
+      setQrCode('');
+      setLocation('');
+      setCondition('');
+    }
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await onSubmit({ qrCode, location: location || undefined, condition: condition || undefined });
+      if (isEditing) {
+        await onSubmit({ location: location || undefined, condition: condition || undefined });
+      } else {
+        await onSubmit({ qrCode, location: location || undefined, condition: condition || undefined });
+      }
       setQrCode('');
       setLocation('');
       setCondition('');
@@ -159,8 +206,8 @@ function AddCopyDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('library_catalog.actions.add_copy')}</DialogTitle>
+    <Dialog open={open} onTransitionEnter={handleOpen} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{isEditing ? t('core.common.edit') : t('library_catalog.actions.add_copy')}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           <TextField

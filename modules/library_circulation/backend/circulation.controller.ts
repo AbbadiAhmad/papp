@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { BorrowDto } from './dto/borrow.dto';
@@ -37,11 +37,19 @@ export class CirculationController {
     return this.circulation.findActiveBorrowingForCopy(copyId);
   }
 
+  @Get('copies/:copyId/circulation-history')
+  @RequirePermission('library_circulation.borrow')
+  async getCopyCirculationHistory(@Param('copyId') copyId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
+  }
+
   @Post('borrow')
   @RequirePermission('library_circulation.borrow')
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'create' })
   async borrow(@Body() dto: BorrowDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId);
+    const expectedReturnDate = dto.expectedReturnDate ? new Date(dto.expectedReturnDate) : undefined;
+    return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId, expectedReturnDate, dto.comments);
   }
 
   @Post('return')
@@ -49,9 +57,15 @@ export class CirculationController {
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState })
   async returnBorrowing(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser) {
     const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
-    const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId);
+    const { borrowing, daysLate } = await this.circulation.returnBorrowing(
+      dto.borrowingId,
+      user.userId,
+      dto.returnStatus,
+      dto.returnNotes,
+    );
 
     let lateFine = null;
+    // Auto-create fines for late returns or damage/loss
     if (daysLate > 0) {
       const policy = await this.circulation.getLoanPolicy();
       const amount = daysLate * policy.finePerDay;
@@ -60,6 +74,14 @@ export class CirculationController {
       }
     }
 
-    return { borrowing, daysLate, lateFine };
+    // Auto-suggest fine for damage/loss (caller decides whether to create it)
+    let damageFine = null;
+    if (dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') {
+      // Fine amount would be determined by FinesService based on fine type
+      // For now, just return indicator that a fine should be considered
+      damageFine = { suggested: true, reason: dto.returnStatus };
+    }
+
+    return { borrowing, daysLate, lateFine, damageFine };
   }
 }

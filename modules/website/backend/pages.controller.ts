@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreatePageDto } from './dto/create-page.dto';
@@ -23,7 +23,7 @@ export class PagesController {
 
   @Get(':id')
   @RequirePermission('website.pages.view')
-  async findById(@Param('id') id: string) {
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.pages.findById(id);
   }
 
@@ -37,7 +37,7 @@ export class PagesController {
   @Patch(':id')
   @RequirePermission('website.pages.update')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
-  async update(@Param('id') id: string, @Body() dto: UpdatePageDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdatePageDto) {
     return this.pages.update(id, dto);
   }
 
@@ -45,7 +45,7 @@ export class PagesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('website.pages.delete')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'delete', fetchState: fetchPageState })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.pages.remove(id);
   }
 
@@ -53,7 +53,7 @@ export class PagesController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('website.pages.publish')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
-  async publish(@Param('id') id: string) {
+  async publish(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.pages.publish(id);
   }
 
@@ -61,14 +61,14 @@ export class PagesController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('website.pages.publish')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
-  async unpublish(@Param('id') id: string) {
+  async unpublish(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.pages.unpublish(id);
   }
 
   @Put(':id/blocks')
   @RequirePermission('website.pages.update')
   @Audit({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState })
-  async replaceBlocks(@Param('id') id: string, @Body() dto: ReplaceBlocksDto) {
+  async replaceBlocks(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ReplaceBlocksDto) {
     return this.pages.replaceBlocks(id, dto.blocks);
   }
 }

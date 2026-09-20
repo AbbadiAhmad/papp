@@ -143,7 +143,9 @@ export function BooksListPage() {
                   </TableCell>
                   <TableCell>{book.author ?? '—'}</TableCell>
                   <TableCell>{book.category ?? '—'}</TableCell>
-                  <TableCell>{book.totalCopies ?? 0}</TableCell>
+                  <TableCell>
+                    {(book.availableCopies ?? 0)} / {(book.totalCopies ?? 0)}
+                  </TableCell>
                   <TableCell>{formatDateOnly(book.createdAt, language)}</TableCell>
                   <TableCell align="right">
                     <Can permission="library_catalog.books.update">

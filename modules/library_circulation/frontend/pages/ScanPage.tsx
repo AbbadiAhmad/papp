@@ -6,7 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
+import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
+import { ReturnDialog } from './ReturnDialog';
 
 /**
  * §6/§30 — "the most important screen" / "Quick Library": one scan input,
@@ -27,6 +29,10 @@ export function ScanPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [borrowDialogOpen, setBorrowDialogOpen] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
+  const [loanPeriodDays, setLoanPeriodDays] = useState(14);
 
   const reset = () => {
     setStudent(null);
@@ -63,12 +69,25 @@ export function ScanPage() {
     void scanCode(decodedText);
   };
 
-  const confirmBorrow = async () => {
+  const openBorrowDialog = async () => {
+    if (!student || !bookCopy) return;
+    try {
+      const policy = await libraryCirculationApi.getLoanPolicy();
+      setLoanPeriodDays(policy.loanPeriodDays);
+      setBorrowDialogOpen(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const confirmBorrow = async (expectedReturnDate?: string, comments?: string) => {
     if (!student || !bookCopy) return;
     setBusy(true);
     setError(null);
     try {
-      await gated('library_circulation.borrow', () => libraryCirculationApi.borrow(student.student.id, bookCopy.copy.id));
+      await gated('library_circulation.borrow', () =>
+        libraryCirculationApi.borrow(student.student.id, bookCopy.copy.id, expectedReturnDate, comments),
+      );
       setMessage(t('library_circulation.scan.borrow_success'));
       reset();
     } catch (err) {
@@ -78,16 +97,25 @@ export function ScanPage() {
     }
   };
 
-  const confirmReturn = async (borrowing: LibraryBorrowing) => {
+  const openReturnDialog = (borrowing: LibraryBorrowing) => {
+    setCurrentBorrowingForReturn(borrowing);
+    setReturnDialogOpen(true);
+  };
+
+  const confirmReturn = async (returnStatus: string, returnNotes?: string) => {
+    if (!currentBorrowingForReturn) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await gated('library_circulation.return', () => libraryCirculationApi.returnBorrowing(borrowing.id));
+      const result = await gated('library_circulation.return', () =>
+        libraryCirculationApi.returnBorrowing(currentBorrowingForReturn.id, returnStatus, returnNotes),
+      );
       setMessage(
         result.daysLate > 0
           ? t('library_circulation.scan.return_success_late', { days: result.daysLate })
           : t('library_circulation.scan.return_success'),
       );
+      setCurrentBorrowingForReturn(null);
       reset();
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -139,47 +167,100 @@ export function ScanPage() {
         </Alert>
       ) : null}
 
+      {/* Reader Section */}
       {student ? (
-        <Card sx={{ mb: 2 }}>
+        <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="subtitle1">{t('library_circulation.scan.student_label')}</Typography>
-            <Typography variant="h6">{student.student.name ?? student.student.code}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {t('library_circulation.students.code')}: {student.student.code}
-              {student.student.className ? ` · ${student.student.className}` : ''}
-            </Typography>
-            <Chip
-              size="small"
-              sx={{ mt: 1 }}
-              label={t('library_circulation.scan.active_borrowings_count', { count: student.activeBorrowingsCount })}
-            />
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  {t('library_circulation.scan.student_label')}
+                </Typography>
+                <Typography variant="h5">{student.student.name ?? student.student.code}</Typography>
+              </Box>
+              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Chip
+                  label={`${t('library_circulation.students.code')}: ${student.student.code}`}
+                  size="small"
+                  variant="outlined"
+                />
+                {student.student.className && (
+                  <Chip
+                    label={`${t('library_circulation.students.class')}: ${student.student.className}`}
+                    size="small"
+                    variant="outlined"
+                  />
+                )}
+              </Stack>
+              <Chip
+                label={t('library_circulation.scan.active_borrowings_count', { count: student.activeBorrowingsCount })}
+                color="primary"
+                size="small"
+              />
+              <Button variant="text" size="small">
+                {t('library_circulation.scan.view_borrow_history')}
+              </Button>
+            </Stack>
           </CardContent>
         </Card>
       ) : null}
 
+      {/* Book Section */}
       {bookCopy ? (
-        <Card sx={{ mb: 2 }}>
+        <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="subtitle1">{t('library_circulation.scan.book_label')}</Typography>
-            <Typography variant="h6">{bookCopy.book?.title ?? bookCopy.copy.qrCode}</Typography>
-            <Chip size="small" sx={{ mt: 1 }} label={bookCopy.copy.status} />
-
-            {bookCopy.activeBorrowing ? (
-              <Box sx={{ mt: 2 }}>
-                <Can permission="library_circulation.return">
-                  <Button variant="contained" color="secondary" onClick={() => confirmReturn(bookCopy.activeBorrowing!)} disabled={busy}>
-                    {t('library_circulation.scan.confirm_return')}
-                  </Button>
-                </Can>
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  {t('library_circulation.scan.book_label')}
+                </Typography>
+                <Typography variant="h5">{bookCopy.book?.title ?? bookCopy.copy.qrCode}</Typography>
               </Box>
-            ) : null}
+              <Chip
+                label={bookCopy.copy.status}
+                color={bookCopy.copy.status === 'available' ? 'success' : 'warning'}
+                size="small"
+              />
+              {bookCopy.activeBorrowing && student ? (
+                <Box sx={{ p: 1.5, bgcolor: 'info.lighter', borderRadius: 1, border: '1px solid', borderColor: 'info.light' }}>
+                  <Stack spacing={1}>
+                    <Typography variant="caption" color="text.secondary">
+                      {t('library_circulation.scan.previous_borrow')}
+                    </Typography>
+                    <Typography variant="body2">
+                      {t('library_circulation.students.code')}: {student.student.code}
+                    </Typography>
+                    {bookCopy.activeBorrowing.returnedAt ? (
+                      <Typography variant="caption" color="text.secondary">
+                        {t('library_circulation.scan.previous_borrow_returned', {
+                          date: new Date(bookCopy.activeBorrowing.returnedAt).toLocaleDateString(),
+                          status: bookCopy.activeBorrowing.status,
+                        })}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </Box>
+              ) : null}
+              <Button variant="text" size="small">
+                {t('library_circulation.scan.view_copy_history')}
+              </Button>
+              {bookCopy.activeBorrowing ? (
+                <Box sx={{ mt: 2 }}>
+                  <Can permission="library_circulation.return">
+                    <Button variant="contained" color="secondary" fullWidth onClick={() => openReturnDialog(bookCopy.activeBorrowing!)} disabled={busy}>
+                      {t('library_circulation.scan.confirm_return')}
+                    </Button>
+                  </Can>
+                </Box>
+              ) : null}
+            </Stack>
           </CardContent>
         </Card>
       ) : null}
 
       {student && bookCopy && !bookCopy.activeBorrowing ? (
         <Can permission="library_circulation.borrow">
-          <Button variant="contained" size="large" fullWidth onClick={confirmBorrow} disabled={busy}>
+          <Button variant="contained" size="large" fullWidth onClick={openBorrowDialog} disabled={busy}>
             {t('library_circulation.scan.confirm_borrow')}
           </Button>
         </Can>
@@ -190,6 +271,27 @@ export function ScanPage() {
           {t('core.common.cancel')}
         </Button>
       ) : null}
+
+      <BorrowDialog
+        open={borrowDialogOpen}
+        student={student}
+        bookCopy={bookCopy}
+        loanPeriodDays={loanPeriodDays}
+        onBorrow={confirmBorrow}
+        onClose={() => setBorrowDialogOpen(false)}
+        loading={busy}
+      />
+
+      <ReturnDialog
+        open={returnDialogOpen}
+        borrowing={currentBorrowingForReturn}
+        onReturn={confirmReturn}
+        onClose={() => {
+          setReturnDialogOpen(false);
+          setCurrentBorrowingForReturn(null);
+        }}
+        loading={busy}
+      />
     </Box>
   );
 }

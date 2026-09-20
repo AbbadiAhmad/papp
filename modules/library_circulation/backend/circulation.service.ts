@@ -83,7 +83,13 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** §7's minimum-steps borrow flow, wrapped in one transaction (§31). */
-  async borrow(studentId: string, bookCopyId: string, borrowedBy: string) {
+  async borrow(
+    studentId: string,
+    bookCopyId: string,
+    borrowedBy: string,
+    expectedReturnDate?: Date,
+    comments?: string,
+  ) {
     const policy = await this.settings.getLoanPolicy();
 
     const [student, copy] = await Promise.all([
@@ -105,12 +111,15 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const dueAt = new Date();
-    dueAt.setDate(dueAt.getDate() + policy.loanPeriodDays);
+    const dueAt = expectedReturnDate ?? (() => {
+      const date = new Date();
+      date.setDate(date.getDate() + policy.loanPeriodDays);
+      return date;
+    })();
 
     const borrowing = await this.prisma.$transaction(async (tx) => {
       const created = await tx.libraryBorrowing.create({
-        data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active' },
+        data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active', comments },
       });
       await tx.libraryCatalogBookCopy.update({ where: { id: bookCopyId }, data: { status: 'borrowed' } });
       return created;
@@ -134,8 +143,15 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
    * one; this method never creates fines itself, keeping the two concerns
    * (circulation state vs. money) separated the same way library_finance's
    * own tables are.
+   *
+   * Feature D18: supports return status (returned/damaged/lost/other) and notes
    */
-  async returnBorrowing(borrowingId: string, returnedBy: string): Promise<{ borrowing: unknown; daysLate: number }> {
+  async returnBorrowing(
+    borrowingId: string,
+    returnedBy: string,
+    returnStatus?: string,
+    returnNotes?: string,
+  ): Promise<{ borrowing: unknown; daysLate: number }> {
     const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
     if (!borrowing) throw new NotFoundException('Borrowing not found');
     if (borrowing.status !== 'active' && borrowing.status !== 'overdue') {
@@ -145,21 +161,39 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const returnedAt = new Date();
     const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
 
+    // Map return status to copy status
+    const copyStatusMap: Record<string, string> = {
+      returned: 'available',
+      damaged: 'damaged',
+      lost: 'lost',
+      other: 'available',
+    };
+    const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || 'available';
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.libraryBorrowing.update({
         where: { id: borrowingId },
-        data: { status: 'returned', returnedAt, returnedBy },
+        data: {
+          status: 'returned',
+          returnedAt,
+          returnedBy,
+          returnStatus: returnStatus || 'returned',
+          returnNotes,
+        },
       });
-      await tx.libraryCatalogBookCopy.update({ where: { id: borrowing.bookCopyId }, data: { status: 'available' } });
+      await tx.libraryCatalogBookCopy.update({ where: { id: borrowing.bookCopyId }, data: { status: copyStatus } });
       return result;
     });
 
     const student = await this.prisma.libraryStudent.findUnique({ where: { id: borrowing.studentId } });
     if (student) {
-      const body =
-        daysLate > 0
-          ? `تم إرجاع القصة. يوجد تأخير لمدة ${daysLate} يوم.`
-          : 'تم إرجاع القصة.';
+      let body = 'تم إرجاع القصة.';
+      if (daysLate > 0) {
+        body = `تم إرجاع القصة. يوجد تأخير لمدة ${daysLate} يوم.`;
+      }
+      if (returnStatus && returnStatus !== 'returned') {
+        body += ` الحالة: ${returnStatus}`;
+      }
       await this.notifyStudent(student.userId, 'library_circulation.return', 'إرجاع كتاب', body);
     }
 
@@ -207,5 +241,36 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('This copy has no active borrowing to return');
     }
     return borrowing;
+  }
+
+  /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
+  async getCirculationHistory(bookCopyId?: string, borrowingId?: string, limit: number = 10) {
+    const where: Record<string, unknown> = {};
+    if (bookCopyId) {
+      where.bookCopyId = bookCopyId;
+    }
+    if (borrowingId) {
+      where.id = borrowingId;
+    }
+
+    const borrowings = await this.prisma.libraryBorrowing.findMany({
+      where,
+      orderBy: { borrowedAt: 'desc' },
+      take: limit,
+      include: { student: true },
+    });
+
+    return borrowings.map((b) => ({
+      id: b.id,
+      studentId: b.studentId,
+      studentCode: b.student.code,
+      borrowedAt: b.borrowedAt,
+      dueAt: b.dueAt,
+      returnedAt: b.returnedAt,
+      status: b.status,
+      comments: b.comments,
+      borrowedBy: b.borrowedBy,
+      returnedBy: b.returnedBy,
+    }));
   }
 }

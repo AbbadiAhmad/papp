@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateItemDto } from './dto/create-item.dto';
@@ -26,12 +26,6 @@ export class ItemsController {
     return this.items.list();
   }
 
-  @Get(':id')
-  @RequirePermission('template.items.view')
-  async findById(@Param('id') id: string) {
-    return this.items.findById(id);
-  }
-
   @Post()
   @RequirePermission('template.items.create')
   @Audit({ category: 'template.items', entityType: 'TemplateItem', action: 'create' })
@@ -39,10 +33,16 @@ export class ItemsController {
     return this.items.create(dto, user.userId);
   }
 
+  @Get(':id')
+  @RequirePermission('template.items.view')
+  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.items.findById(id);
+  }
+
   @Patch(':id')
   @RequirePermission('template.items.update')
   @Audit({ category: 'template.items', entityType: 'TemplateItem', action: 'update', fetchState: fetchItemState })
-  async update(@Param('id') id: string, @Body() dto: UpdateItemDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateItemDto) {
     return this.items.update(id, dto);
   }
 
@@ -50,7 +50,7 @@ export class ItemsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('template.items.delete')
   @Audit({ category: 'template.items', entityType: 'TemplateItem', action: 'delete', fetchState: fetchItemState })
-  async remove(@Param('id') id: string): Promise<void> {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.items.remove(id);
   }
 }

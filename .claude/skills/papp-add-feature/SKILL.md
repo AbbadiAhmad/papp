@@ -49,6 +49,22 @@ Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`doc
 - [ ] `menu` entries have a valid `parentId` (or `null`) and a `requiredPermission`.
 - [ ] `roleAccessLocked` is used only when a role must **never** be grantable this module's permissions under any circumstance — this is rare; default is that admin can grant anything to any role.
 
+## When a feature introduces a database schema migration
+
+**Current status (Platform-GAP-001)**: The platform does NOT yet auto-discover or auto-apply migrations. This is documented in `docs/DECISIONS.md` PLATFORM-GAP-001 and blocks clean, seamless feature delivery. Until the platform gains automatic migration discovery/application, follow this manual process:
+
+- [ ] **Write the migration file** in `modules/<key>/migrations/NNN_description.sql` (raw SQL, per D16). Migration should be **idempotent** where possible (e.g. `IF NOT EXISTS`, `DO ... END` blocks for `CREATE TYPE`).
+- [ ] **Update `apps/api/prisma/schema.prisma`** by hand to match the schema changes the SQL introduces. The schema file must stay in sync with the actual database state — this is not auto-generated, it's a contract document.
+- [ ] **Document the manual application process** in `modules/<key>/DOCUMENTATION.md` under a new "Migration Application" section. Provide:
+  - The exact SQL file path relative to repo root
+  - Copy-paste-ready SQL command to execute (e.g. `psql $DATABASE_URL < modules/library_catalog/migrations/003_add_copy_history.sql`)
+  - Instructions to register the migration in `module_migrations` table (with exact SQL including a placeholder for checksum)
+  - How to compute the checksum: run the feature's service unit tests once (which will fail with a checksum mismatch); the error message tells you the correct checksum; record it
+- [ ] **Add a decision entry** in `modules/<key>/DECISIONS.md` for the feature, noting that it "REQUIRES MANUAL MIGRATION" and cross-referencing the documentation's Migration Application section.
+- [ ] **Test the feature manually** against a real Postgres database where you've applied the migration by hand. Don't just run unit tests (which mock Prisma) — verify the actual schema change works end-to-end.
+
+**When the platform gains automatic migration discovery/application** (root D47, tracked in `docs/DECISIONS.md` PLATFORM-GAP-001), this entire manual section becomes obsolete — migrations will auto-apply on app startup and module install, eliminating operator error and the need for documentation step-by-step instructions.
+
 ## Known gotchas (learned the hard way — read before you hit them again)
 
 - **`ValidationPipe`'s global `whitelist: true` silently STRIPS any request-body property whose DTO field has NO `class-validator` decorator at all** — not just an unrecognized property, a *declared but undecorated* one too. A field typed loosely on purpose (`value: unknown`, because its real shape depends on something looked up later, e.g. a question's type) still needs a decorator to survive — `@IsDefined()` is the right minimal choice when you deliberately don't want to constrain the shape yet. This is invisible to `tsc` (the TS type is fine) and to a raw-Prisma smoke test (never goes through the real HTTP pipe) — only a real HTTP call (curl or a browser) through the real running app will show the property silently missing on the other side. Found via `docs/DECISIONS.md` root D67; if a submitted value "disappears" with no validation error at all, check this first.
