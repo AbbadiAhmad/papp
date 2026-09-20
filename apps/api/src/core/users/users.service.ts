@@ -5,7 +5,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { assertPasswordMeetsPolicy } from '../auth/password-policy.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
-import { toPublicRole } from '../roles/role.presenter';
 import { RolesService } from '../roles/roles.service';
 import { SettingsService } from '../settings/settings.service';
 import {
