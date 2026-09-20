@@ -54,7 +54,7 @@ export class UsersService {
 
   async list(): Promise<PublicUser[]> {
     const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
-    return users.map(toPublicUser);
+    return users.map((user) => toPublicUser(user));
   }
 
   /**
