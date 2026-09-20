@@ -51,13 +51,22 @@ let BooksService = BooksService_1 = class BooksService {
         const books = await this.prisma.libraryCatalogBook.findMany({
             where,
             orderBy: { title: 'asc' },
-            include: { _count: { select: { copies: true } } },
+            include: {
+                _count: { select: { copies: true } },
+                copies: true,
+            },
         });
-        return books.map((book) => ({
-            ...book,
-            totalCopies: book._count.copies,
-            _count: undefined,
-        }));
+        return books.map((book) => {
+            const totalCopies = book._count.copies;
+            const availableCopies = book.copies.filter((c) => c.status === client_1.LibraryCatalogBookCopyStatus.available).length;
+            return {
+                ...book,
+                totalCopies,
+                availableCopies,
+                copies: undefined,
+                _count: undefined,
+            };
+        });
     }
     async findById(id) {
         const book = await this.prisma.libraryCatalogBook.findUnique({
@@ -70,7 +79,21 @@ let BooksService = BooksService_1 = class BooksService {
         return book;
     }
     async create(dto) {
-        return this.prisma.libraryCatalogBook.create({ data: dto });
+        const { copy, ...bookData } = dto;
+        return this.prisma.$transaction(async (tx) => {
+            const book = await tx.libraryCatalogBook.create({ data: bookData });
+            await tx.libraryCatalogBookCopy.create({
+                data: {
+                    bookId: book.id,
+                    qrCode: copy.qrCode,
+                    status: copy.status ?? 'available',
+                    condition: copy.condition,
+                    location: copy.location,
+                    acquisitionDate: copy.acquisitionDate ? new Date(copy.acquisitionDate) : null,
+                },
+            });
+            return book;
+        });
     }
     async update(id, dto) {
         await this.ensureBookExists(id);
@@ -114,10 +137,53 @@ let BooksService = BooksService_1 = class BooksService {
     }
     async updateCopy(bookId, copyId, dto) {
         const copy = await this.findCopyOrThrow(bookId, copyId);
+        const changes = {};
+        if (dto.status !== undefined && dto.status !== copy.status) {
+            changes.status = { before: copy.status, after: dto.status };
+        }
+        if (dto.condition !== undefined && dto.condition !== copy.condition) {
+            changes.condition = { before: copy.condition, after: dto.condition };
+        }
+        if (dto.location !== undefined && dto.location !== copy.location) {
+            changes.location = { before: copy.location, after: dto.location };
+        }
+        let historyEntry = null;
+        if (Object.keys(changes).length > 0) {
+            historyEntry = {
+                timestamp: new Date().toISOString(),
+                changes,
+            };
+        }
+        const history = copy.history || [];
+        const updatedHistory = historyEntry ? [...history, historyEntry].slice(-100) : history;
         return this.prisma.libraryCatalogBookCopy.update({
             where: { id: copy.id },
-            data: dto,
+            data: { ...dto, history: updatedHistory },
         });
+    }
+    async removeCopy(bookId, copyId) {
+        await this.findCopyOrThrow(bookId, copyId);
+        try {
+            await this.prisma.libraryCatalogBookCopy.delete({ where: { id: copyId } });
+        }
+        catch (err) {
+            // library_borrowings.book_copy_id has no ON DELETE CASCADE (history is
+            // never deleted, per library_circulation's own migration comment) — a
+            // copy with borrowing history hits Postgres FK violation P2003.
+            if (err instanceof client_1.Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+                throw new common_1.ConflictException(`Copy "${copyId}" has borrowing history and cannot be removed`);
+            }
+            throw err;
+        }
+    }
+    // --- History (Feature 2.1) --------------------------------------------------
+    async getCopyHistory(copyId, limit = 10) {
+        const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: copyId } });
+        if (!copy) {
+            throw new common_1.NotFoundException(`Copy "${copyId}" not found`);
+        }
+        const history = copy.history || [];
+        return history.slice(-limit);
     }
     // --- Public availability (MODULE_SPEC.md §7 / BUILD_PLAN.md Phase 8) -----
     async getAvailability(bookId) {

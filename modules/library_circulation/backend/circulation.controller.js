@@ -40,13 +40,24 @@ let CirculationController = class CirculationController {
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
     }
+    async getCopyCirculationHistory(copyId, limit) {
+        const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+        return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
+    }
+    /** §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any copy of this book. */
+    async getBookCirculationHistory(bookId, limit) {
+        const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+        return this.circulation.getBookCirculationHistory(bookId, limitNumber);
+    }
     async borrow(dto, user) {
-        return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId);
+        const expectedReturnDate = dto.expectedReturnDate ? new Date(dto.expectedReturnDate) : undefined;
+        return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId, expectedReturnDate, dto.comments);
     }
     async returnBorrowing(dto, user) {
         const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
-        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId);
+        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId, dto.returnStatus, dto.returnNotes);
         let lateFine = null;
+        // Auto-create fines for late returns or damage/loss
         if (daysLate > 0) {
             const policy = await this.circulation.getLoanPolicy();
             const amount = daysLate * policy.finePerDay;
@@ -54,7 +65,14 @@ let CirculationController = class CirculationController {
                 lateFine = await this.fines.createLateFine(borrowingBefore.studentId, dto.borrowingId, amount, user.userId);
             }
         }
-        return { borrowing, daysLate, lateFine };
+        // Auto-suggest fine for damage/loss (caller decides whether to create it)
+        let damageFine = null;
+        if (dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') {
+            // Fine amount would be determined by FinesService based on fine type
+            // For now, just return indicator that a fine should be considered
+            damageFine = { suggested: true, reason: dto.returnStatus };
+        }
+        return { borrowing, daysLate, lateFine, damageFine };
     }
 };
 exports.CirculationController = CirculationController;
@@ -74,6 +92,24 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "activeBorrowingForCopy", null);
+__decorate([
+    (0, common_1.Get)('copies/:copyId/circulation-history'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('copyId')),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "getCopyCirculationHistory", null);
+__decorate([
+    (0, common_1.Get)('books/:bookId/circulation-history'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('bookId')),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "getBookCirculationHistory", null);
 __decorate([
     (0, common_1.Post)('borrow'),
     (0, platform_1.RequirePermission)('library_circulation.borrow'),

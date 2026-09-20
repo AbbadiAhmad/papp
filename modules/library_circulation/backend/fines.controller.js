@@ -69,7 +69,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)('fines/:id'),
     (0, platform_1.RequirePermission)('library_circulation.fines.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -88,7 +88,7 @@ __decorate([
     (0, common_1.Post)('fines/:id/waive'),
     (0, platform_1.RequirePermission)('library_circulation.fines.waive'),
     (0, platform_1.Audit)({ category: 'library_circulation.fines', entityType: 'LibraryFine', action: 'update', fetchState: fetchFineState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -97,7 +97,7 @@ __decorate([
     (0, common_1.Post)('fines/:id/payments'),
     (0, platform_1.RequirePermission)('library_circulation.finance.record_payment'),
     (0, platform_1.Audit)({ category: 'library_circulation.finance', entityType: 'LibraryPayment', action: 'create' }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),

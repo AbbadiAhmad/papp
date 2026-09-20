@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { LibraryCatalogBookCopyStatus, PrismaClient } from '@prisma/client';
 import { NOTIFICATIONS_SENDER, NotificationsSender } from './notifications-sender';
 import { SettingsService } from './settings.service';
 
@@ -162,13 +162,13 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
 
     // Map return status to copy status
-    const copyStatusMap: Record<string, string> = {
-      returned: 'available',
-      damaged: 'damaged',
-      lost: 'lost',
-      other: 'available',
+    const copyStatusMap: Record<string, LibraryCatalogBookCopyStatus> = {
+      returned: LibraryCatalogBookCopyStatus.available,
+      damaged: LibraryCatalogBookCopyStatus.damaged,
+      lost: LibraryCatalogBookCopyStatus.lost,
+      other: LibraryCatalogBookCopyStatus.available,
     };
-    const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || 'available';
+    const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || LibraryCatalogBookCopyStatus.available;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.libraryBorrowing.update({
