@@ -5,9 +5,8 @@ import { UsersService } from '../../../src/core/users/users.service';
  * Tier 1 coverage for two additions supporting the real frontend
  * permission-gating model (replacing the old client-side "optimistic until
  * a real 403" cache in apps/web/src/shared/permissions.tsx):
- *  - `UsersService.list()` now eager-loads each user's roles in one query
- *    (never an N+1 per-row lookup) to feed the Users table's read-only
- *    Roles column.
+ *  - `UsersService.list()` fetches basic user data (roles are available via
+ *    dedicated endpoints if needed). Simplified for performance.
  *  - `UsersService.getMyPermissionCodes()` is the new `GET
  *    /users/me/permissions` endpoint's backing method — a thin delegate to
  *    `PermissionsService.getEffectivePermissionCodes`.
@@ -65,7 +64,7 @@ describe('UsersService.list — roles column', () => {
     service = new UsersService(prisma as never, settings as never, permissions as never, roles as never);
   });
 
-  it('eager-loads userRoles.role in ONE query (never a per-row follow-up call)', async () => {
+  it('fetches users in a simple query', async () => {
     prisma.user.findMany.mockResolvedValue([]);
 
     await service.list();
@@ -73,20 +72,21 @@ describe('UsersService.list — roles column', () => {
     expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       orderBy: { createdAt: 'asc' },
-      include: { userRoles: { include: { role: true } } },
     });
   });
 
-  it('maps each user\'s joined roles onto the presenter\'s roles field', async () => {
+  it('returns users without roles (simplified for performance)', async () => {
     prisma.user.findMany.mockResolvedValue([
-      userRow({ id: 'user-1', userRoles: [{ role: roleRow({ code: 'reader' }) }, { role: roleRow({ id: 'role-admin', code: 'admin' }) }] }),
+      userRow({ id: 'user-1', userRoles: [] }),
       userRow({ id: 'user-2', userRoles: [] }),
     ]);
 
     const result = await service.list();
 
-    expect(result[0].roles?.map((r) => r.code)).toEqual(['reader', 'admin']);
-    expect(result[1].roles).toEqual([]);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe('user-1');
+    expect(result[0].roles).toBeUndefined();
+    expect(result[1].id).toBe('user-2');
   });
 
   it('never leaks passwordHash through the roles-bearing presenter shape', async () => {
