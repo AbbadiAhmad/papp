@@ -9,32 +9,18 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReturnDto = exports.ReturnStatus = void 0;
+exports.ExtendLoanDto = void 0;
 const class_validator_1 = require("class-validator");
-var ReturnStatus;
-(function (ReturnStatus) {
-    ReturnStatus["returned"] = "returned";
-    ReturnStatus["damaged"] = "damaged";
-    ReturnStatus["lost"] = "lost";
-    ReturnStatus["other"] = "other";
-})(ReturnStatus || (exports.ReturnStatus = ReturnStatus = {}));
-class ReturnDto {
+class ExtendLoanDto {
     borrowingId;
-    returnStatus;
-    returnNotes;
+    newDueDate;
 }
-exports.ReturnDto = ReturnDto;
+exports.ExtendLoanDto = ExtendLoanDto;
 __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
-], ReturnDto.prototype, "borrowingId", void 0);
+], ExtendLoanDto.prototype, "borrowingId", void 0);
 __decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(ReturnStatus),
+    (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
-], ReturnDto.prototype, "returnStatus", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], ReturnDto.prototype, "returnNotes", void 0);
+], ExtendLoanDto.prototype, "newDueDate", void 0);

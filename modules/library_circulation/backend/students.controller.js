@@ -51,7 +51,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -70,7 +70,7 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, platform_1.RequirePermission)('library_circulation.students.update'),
     (0, platform_1.Audit)({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'update', fetchState: fetchStudentState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_student_dto_1.UpdateStudentDto]),
@@ -81,7 +81,7 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('library_circulation.students.delete'),
     (0, platform_1.Audit)({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'delete', fetchState: fetchStudentState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)

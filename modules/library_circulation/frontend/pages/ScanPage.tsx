@@ -8,6 +8,7 @@ import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
+import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { ReturnDialog } from './ReturnDialog';
 
 /**
@@ -32,6 +33,8 @@ export function ScanPage() {
   const [borrowDialogOpen, setBorrowDialogOpen] = useState(false);
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [currentBorrowingForExtend, setCurrentBorrowingForExtend] = useState<LibraryBorrowing | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
 
   const reset = () => {
@@ -100,6 +103,33 @@ export function ScanPage() {
   const openReturnDialog = (borrowing: LibraryBorrowing) => {
     setCurrentBorrowingForReturn(borrowing);
     setReturnDialogOpen(true);
+  };
+
+  const openExtendDialog = async (borrowing: LibraryBorrowing) => {
+    try {
+      const policy = await libraryCirculationApi.getLoanPolicy();
+      setLoanPeriodDays(policy.loanPeriodDays);
+      setCurrentBorrowingForExtend(borrowing);
+      setExtendDialogOpen(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const confirmExtend = async (newDueDate: string) => {
+    if (!currentBorrowingForExtend) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await gated('library_circulation.extend', () => libraryCirculationApi.extendLoan(currentBorrowingForExtend.id, newDueDate));
+      setMessage(t('library_circulation.scan.extend_success'));
+      setCurrentBorrowingForExtend(null);
+      reset();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const confirmReturn = async (returnStatus: string, returnNotes?: string) => {
@@ -245,13 +275,18 @@ export function ScanPage() {
                 {t('library_circulation.scan.view_copy_history')}
               </Button>
               {bookCopy.activeBorrowing ? (
-                <Box sx={{ mt: 2 }}>
+                <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                   <Can permission="library_circulation.return">
                     <Button variant="contained" color="secondary" fullWidth onClick={() => openReturnDialog(bookCopy.activeBorrowing!)} disabled={busy}>
                       {t('library_circulation.scan.confirm_return')}
                     </Button>
                   </Can>
-                </Box>
+                  <Can permission="library_circulation.extend">
+                    <Button variant="outlined" fullWidth onClick={() => openExtendDialog(bookCopy.activeBorrowing!)} disabled={busy}>
+                      {t('library_circulation.scan.extend_button')}
+                    </Button>
+                  </Can>
+                </Stack>
               ) : null}
             </Stack>
           </CardContent>
@@ -289,6 +324,18 @@ export function ScanPage() {
         onClose={() => {
           setReturnDialogOpen(false);
           setCurrentBorrowingForReturn(null);
+        }}
+        loading={busy}
+      />
+
+      <ExtendLoanDialog
+        open={extendDialogOpen}
+        borrowing={currentBorrowingForExtend}
+        loanPeriodDays={loanPeriodDays}
+        onExtend={confirmExtend}
+        onClose={() => {
+          setExtendDialogOpen(false);
+          setCurrentBorrowingForExtend(null);
         }}
         loading={busy}
       />

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { BorrowDto } from './dto/borrow.dto';
+import { ExtendLoanDto } from './dto/extend-loan.dto';
 import { ReturnDto } from './dto/return.dto';
 import { ScanDto } from './dto/scan.dto';
 import { CirculationService } from './circulation.service';
@@ -83,5 +84,12 @@ export class CirculationController {
     }
 
     return { borrowing, daysLate, lateFine, damageFine };
+  }
+
+  @Post('extend')
+  @RequirePermission('library_circulation.extend')
+  @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState })
+  async extendLoan(@Body() dto: ExtendLoanDto) {
+    return this.circulation.extendLoan(dto.borrowingId, new Date(dto.newDueDate));
   }
 }

@@ -90,7 +90,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
         return { type: 'book_copy', copy, book, activeBorrowing };
     }
     /** §7's minimum-steps borrow flow, wrapped in one transaction (§31). */
-    async borrow(studentId, bookCopyId, borrowedBy) {
+    async borrow(studentId, bookCopyId, borrowedBy, expectedReturnDate, comments) {
         const policy = await this.settings.getLoanPolicy();
         const [student, copy] = await Promise.all([
             this.prisma.libraryStudent.findUnique({ where: { id: studentId } }),
@@ -109,11 +109,14 @@ let CirculationService = CirculationService_1 = class CirculationService {
         if (activeCount >= policy.maxBooksPerStudent) {
             throw new common_1.ConflictException(`This student already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`);
         }
-        const dueAt = new Date();
-        dueAt.setDate(dueAt.getDate() + policy.loanPeriodDays);
+        const dueAt = expectedReturnDate ?? (() => {
+            const date = new Date();
+            date.setDate(date.getDate() + policy.loanPeriodDays);
+            return date;
+        })();
         const borrowing = await this.prisma.$transaction(async (tx) => {
             const created = await tx.libraryBorrowing.create({
-                data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active' },
+                data: { bookCopyId, studentId, dueAt, borrowedBy, status: 'active', comments },
             });
             await tx.libraryCatalogBookCopy.update({ where: { id: bookCopyId }, data: { status: 'borrowed' } });
             return created;
@@ -129,8 +132,10 @@ let CirculationService = CirculationService_1 = class CirculationService {
      * one; this method never creates fines itself, keeping the two concerns
      * (circulation state vs. money) separated the same way library_finance's
      * own tables are.
+     *
+     * Feature D18: supports return status (returned/damaged/lost/other) and notes
      */
-    async returnBorrowing(borrowingId, returnedBy) {
+    async returnBorrowing(borrowingId, returnedBy, returnStatus, returnNotes) {
         const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
         if (!borrowing)
             throw new common_1.NotFoundException('Borrowing not found');
@@ -139,22 +144,65 @@ let CirculationService = CirculationService_1 = class CirculationService {
         }
         const returnedAt = new Date();
         const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
+        // Map return status to copy status
+        const copyStatusMap = {
+            returned: 'available',
+            damaged: 'damaged',
+            lost: 'lost',
+            other: 'available',
+        };
+        const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || 'available';
         const updated = await this.prisma.$transaction(async (tx) => {
             const result = await tx.libraryBorrowing.update({
                 where: { id: borrowingId },
-                data: { status: 'returned', returnedAt, returnedBy },
+                data: {
+                    status: 'returned',
+                    returnedAt,
+                    returnedBy,
+                    returnStatus: returnStatus || 'returned',
+                    returnNotes,
+                },
             });
-            await tx.libraryCatalogBookCopy.update({ where: { id: borrowing.bookCopyId }, data: { status: 'available' } });
+            await tx.libraryCatalogBookCopy.update({ where: { id: borrowing.bookCopyId }, data: { status: copyStatus } });
             return result;
         });
         const student = await this.prisma.libraryStudent.findUnique({ where: { id: borrowing.studentId } });
         if (student) {
-            const body = daysLate > 0
-                ? `تم إرجاع القصة. يوجد تأخير لمدة ${daysLate} يوم.`
-                : 'تم إرجاع القصة.';
+            let body = 'تم إرجاع القصة.';
+            if (daysLate > 0) {
+                body = `تم إرجاع القصة. يوجد تأخير لمدة ${daysLate} يوم.`;
+            }
+            if (returnStatus && returnStatus !== 'returned') {
+                body += ` الحالة: ${returnStatus}`;
+            }
             await this.notifyStudent(student.userId, 'library_circulation.return', 'إرجاع كتاب', body);
         }
         return { borrowing: updated, daysLate };
+    }
+    /**
+     * Extends an active/overdue borrowing's due date to a staff-picked new
+     * date (no fixed policy multiplier, no cap on how many times a borrowing
+     * can be extended — v1 scope per the user's own call, module DECISIONS.md).
+     */
+    async extendLoan(borrowingId, newDueDate) {
+        const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
+        if (!borrowing)
+            throw new common_1.NotFoundException('Borrowing not found');
+        if (borrowing.status !== 'active' && borrowing.status !== 'overdue') {
+            throw new common_1.ConflictException(`This borrowing is already "${borrowing.status}" and cannot be extended.`);
+        }
+        if (newDueDate.getTime() <= borrowing.dueAt.getTime()) {
+            throw new common_1.ConflictException('The new due date must be after the current due date.');
+        }
+        const updated = await this.prisma.libraryBorrowing.update({
+            where: { id: borrowingId },
+            data: { dueAt: newDueDate },
+        });
+        const student = await this.prisma.libraryStudent.findUnique({ where: { id: borrowing.studentId } });
+        if (student) {
+            await this.notifyStudent(student.userId, 'library_circulation.extend', 'تمديد إعارة', 'تم تمديد فترة إعارة الكتاب بنجاح.');
+        }
+        return updated;
     }
     /** Never lets a notification failure fail the underlying circulation action (§23's UX addition, not a correctness requirement). */
     async notifyStudent(userId, category, title, bodyMarkdown) {
@@ -195,6 +243,34 @@ let CirculationService = CirculationService_1 = class CirculationService {
             throw new common_1.NotFoundException('This copy has no active borrowing to return');
         }
         return borrowing;
+    }
+    /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
+    async getCirculationHistory(bookCopyId, borrowingId, limit = 10) {
+        const where = {};
+        if (bookCopyId) {
+            where.bookCopyId = bookCopyId;
+        }
+        if (borrowingId) {
+            where.id = borrowingId;
+        }
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where,
+            orderBy: { borrowedAt: 'desc' },
+            take: limit,
+            include: { student: true },
+        });
+        return borrowings.map((b) => ({
+            id: b.id,
+            studentId: b.studentId,
+            studentCode: b.student.code,
+            borrowedAt: b.borrowedAt,
+            dueAt: b.dueAt,
+            returnedAt: b.returnedAt,
+            status: b.status,
+            comments: b.comments,
+            borrowedBy: b.borrowedBy,
+            returnedBy: b.returnedBy,
+        }));
     }
 };
 exports.CirculationService = CirculationService;

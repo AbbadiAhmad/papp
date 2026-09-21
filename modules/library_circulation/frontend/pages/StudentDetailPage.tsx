@@ -1,12 +1,15 @@
-import { Box, Card, CardContent, Chip, Paper, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, Paper, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, Typography } from '@mui/material';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
+import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { libraryCirculationApi } from '../api';
+import { Can } from '../../../../apps/web/src/shared/permissions';
+import { libraryCirculationApi, type LibraryBorrowing } from '../api';
+import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { QrCodeImage } from './QrCodeImage';
 
 /** §25/§10 — the student's "reading passport": current loans + open fines. Full history export is a documented follow-up (DECISIONS.md). */
@@ -18,6 +21,38 @@ export function StudentDetailPage() {
   const { status, data: student, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.getStudent(studentId!),
   );
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [borrowingToExtend, setBorrowingToExtend] = useState<LibraryBorrowing | null>(null);
+  const [loanPeriodDays, setLoanPeriodDays] = useState(14);
+  const [extendBusy, setExtendBusy] = useState(false);
+  const [extendError, setExtendError] = useState<string | null>(null);
+
+  const openExtendDialog = async (borrowing: LibraryBorrowing) => {
+    setExtendError(null);
+    try {
+      const policy = await libraryCirculationApi.getLoanPolicy();
+      setLoanPeriodDays(policy.loanPeriodDays);
+      setBorrowingToExtend(borrowing);
+      setExtendDialogOpen(true);
+    } catch (err) {
+      setExtendError(extractErrorMessage(err));
+    }
+  };
+
+  const confirmExtend = async (newDueDate: string) => {
+    if (!borrowingToExtend) return;
+    setExtendBusy(true);
+    setExtendError(null);
+    try {
+      await libraryCirculationApi.extendLoan(borrowingToExtend.id, newDueDate);
+      setBorrowingToExtend(null);
+      reload();
+    } catch (err) {
+      setExtendError(extractErrorMessage(err));
+    } finally {
+      setExtendBusy(false);
+    }
+  };
 
   return (
     <Box>
@@ -49,6 +84,11 @@ export function StudentDetailPage() {
               {/* Tab Content */}
               {selectedTab === 0 && (
                 <Box sx={{ p: 2 }}>
+                  {extendError ? (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {extendError}
+                    </Alert>
+                  ) : null}
                   {student.activeBorrowings.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
                       {t('core.common.no_data')}
@@ -61,6 +101,7 @@ export function StudentDetailPage() {
                             <TableCell>{t('library_circulation.borrowings.borrowed_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.due_at')}</TableCell>
                             <TableCell>{t('library_circulation.borrowings.status')}</TableCell>
+                            <TableCell>{t('library_circulation.borrowings.actions')}</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -70,6 +111,13 @@ export function StudentDetailPage() {
                               <TableCell>{formatDateOnly(b.dueAt, language)}</TableCell>
                               <TableCell>
                                 <Chip size="small" label={t(`library_circulation.borrowing_status.${b.status}`)} />
+                              </TableCell>
+                              <TableCell>
+                                <Can permission="library_circulation.extend">
+                                  <Button size="small" onClick={() => openExtendDialog(b)} disabled={extendBusy}>
+                                    {t('library_circulation.borrowings.extend')}
+                                  </Button>
+                                </Can>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -116,6 +164,18 @@ export function StudentDetailPage() {
           </Stack>
         ) : null}
       </QueryStateGate>
+
+      <ExtendLoanDialog
+        open={extendDialogOpen}
+        borrowing={borrowingToExtend}
+        loanPeriodDays={loanPeriodDays}
+        onExtend={confirmExtend}
+        onClose={() => {
+          setExtendDialogOpen(false);
+          setBorrowingToExtend(null);
+        }}
+        loading={extendBusy}
+      />
     </Box>
   );
 }

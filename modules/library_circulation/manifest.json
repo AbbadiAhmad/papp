@@ -1,7 +1,7 @@
 {
   "key": "library_circulation",
   "name": "Library Circulation & Finance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_catalog"],
   "description": "Students, staff-performed borrow/return, fines, and the finance side (transactions/payments/receipts) built on top of library_catalog's books/copies (D44). Requirements captured in docs/LIBRARY_MODULE_REQUIREMENTS.md.",
@@ -22,6 +22,7 @@
     { "code": "library_circulation.students.delete", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.delete" },
     { "code": "library_circulation.borrow", "category": "library_circulation", "descriptionKey": "library_circulation.perm.borrow" },
     { "code": "library_circulation.return", "category": "library_circulation", "descriptionKey": "library_circulation.perm.return" },
+    { "code": "library_circulation.extend", "category": "library_circulation", "descriptionKey": "library_circulation.perm.extend" },
     { "code": "library_circulation.fines.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.view" },
     { "code": "library_circulation.fines.record", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.record" },
     { "code": "library_circulation.fines.waive", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.waive" },
@@ -39,6 +40,7 @@
       "library_circulation.students.delete",
       "library_circulation.borrow",
       "library_circulation.return",
+      "library_circulation.extend",
       "library_circulation.fines.view",
       "library_circulation.fines.record",
       "library_circulation.fines.waive",
@@ -53,6 +55,7 @@
       "library_circulation.students.update",
       "library_circulation.borrow",
       "library_circulation.return",
+      "library_circulation.extend",
       "library_circulation.fines.view",
       "library_circulation.dashboard.view"
     ],

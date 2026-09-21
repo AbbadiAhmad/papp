@@ -153,6 +153,8 @@ export const libraryCirculationApi = {
         { borrowingId, returnStatus, returnNotes },
       )
       .then((r) => r.data),
+  extendLoan: (borrowingId: string, newDueDate: string) =>
+    apiClient.post<LibraryBorrowing>(`${BASE}/extend`, { borrowingId, newDueDate }).then((r) => r.data),
 
   // Students
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
