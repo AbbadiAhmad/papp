@@ -39,6 +39,10 @@
   "library_circulation.scan.view_copy_history": "عرض السجل",
   "library_circulation.scan.previous_borrow": "إعارة سابقة",
   "library_circulation.scan.previous_borrow_returned": "تم الإرجاع في {{date}}، الحالة {{status}}",
+  "library_circulation.scan.reading_club_reward_heading": "نادي القراءة — مكافأة بانتظار التسليم",
+  "library_circulation.scan.reading_club_reward_line": "أنهى مرحلة \"{{stage}}\" في {{group}} — المكافأة: {{reward}}",
+  "library_circulation.scan.reading_club_reward_unspecified": "(غير محددة)",
+  "library_circulation.scan.reading_club_confirm_reward_button": "تأكيد تسليم المكافأة",
 
   "library_circulation.borrow.dialog_title": "إعارة كتاب",
   "library_circulation.borrow.borrow_date": "تاريخ الإعارة",

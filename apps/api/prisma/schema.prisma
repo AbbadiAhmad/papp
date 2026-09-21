@@ -770,6 +770,88 @@ model WebsiteMenuItem {
   @@map("website_menu_items")
 }
 
+// --- reading_club module -----------------------------------------------------
+// See modules/reading_club/migrations/001_create_reading_club_tables.sql for
+// the raw DDL these mirror. `dependsOn: ["library_circulation"]` — readers
+// here are the same `library_students` rows the circulation module's scan
+// screen already resolves; that cross-module FK (`studentId`) is a plain
+// scalar column with no Prisma relation, same as LibraryBorrowing.bookCopyId
+// referencing library_catalog — see modules/reading_club/DECISIONS.md.
+
+model ReadingClubGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String   @map("created_by") @db.Uuid
+
+  stages ReadingClubStage[]
+
+  @@map("reading_club_groups")
+}
+
+model ReadingClubStage {
+  id                String   @id @default(uuid()) @db.Uuid
+  groupId           String   @map("group_id") @db.Uuid
+  stageOrder        Int      @map("stage_order")
+  name              String
+  targetType        String   @map("target_type")
+  targetAmount      Int      @map("target_amount")
+  rewardDescription String?  @map("reward_description")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  group ReadingClubGroup @relation(fields: [groupId], references: [id])
+
+  @@unique([groupId, stageOrder])
+  @@index([groupId])
+  @@map("reading_club_stages")
+}
+
+/// One active membership per reader (studentId is UNIQUE). `stageStartedAt`
+/// anchors the live "books returned since entering this stage" progress
+/// query; `manualProgressAmount` is the librarian-entered running total,
+/// used only for `targetType = 'pages'` stages.
+model ReadingClubMembership {
+  id                   String   @id @default(uuid()) @db.Uuid
+  studentId            String   @unique @map("student_id") @db.Uuid
+  groupId              String   @map("group_id") @db.Uuid
+  currentStageId       String?  @map("current_stage_id") @db.Uuid
+  stageStartedAt       DateTime @default(now()) @map("stage_started_at")
+  manualProgressAmount Int      @default(0) @map("manual_progress_amount")
+  assignedBy           String   @map("assigned_by") @db.Uuid
+  assignedAt           DateTime @default(now()) @map("assigned_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([groupId])
+  @@index([currentStageId])
+  @@map("reading_club_memberships")
+}
+
+/// Append-only: one row per "librarian marked this stage finished" event.
+/// `rewardStatus` tracks physical reward delivery independently of stage
+/// progression — see modules/reading_club/backend/stage-completions.service.ts.
+model ReadingClubStageCompletion {
+  id                          String    @id @default(uuid()) @db.Uuid
+  studentId                   String    @map("student_id") @db.Uuid
+  groupId                     String    @map("group_id") @db.Uuid
+  stageId                     String    @map("stage_id") @db.Uuid
+  targetAmountAtCompletion    Int       @map("target_amount_at_completion")
+  progressAmountAtCompletion  Int       @map("progress_amount_at_completion")
+  completedAt                 DateTime  @default(now()) @map("completed_at")
+  markedBy                    String    @map("marked_by") @db.Uuid
+  rewardStatus                String    @default("pending") @map("reward_status")
+  rewardDeliveredAt           DateTime? @map("reward_delivered_at")
+  rewardDeliveredBy           String?   @map("reward_delivered_by") @db.Uuid
+  createdAt                   DateTime  @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([rewardStatus])
+  @@map("reading_club_stage_completions")
+}
+
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).
 model UserRole {
   userId     String   @map("user_id") @db.Uuid

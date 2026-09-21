@@ -1,11 +1,15 @@
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import { Alert, Box, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { useModuleFrontendManifests } from '../../../../apps/web/src/shared/modules/useInstalledModules';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type LibraryBorrowing, type ScanBookCopyResult, type ScanStudentResult } from '../api';
+import { readingClubIntegration, type ReadingClubPendingReward } from '../readingClubIntegration';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
 import { ReturnDialog } from './ReturnDialog';
@@ -22,6 +26,7 @@ import { ReturnDialog } from './ReturnDialog';
 export function ScanPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
+  const { status: authStatus, mustChangePassword, hasPermission } = useAuth();
   const [code, setCode] = useState('');
   const [student, setStudent] = useState<ScanStudentResult | null>(null);
   const [bookCopy, setBookCopy] = useState<ScanBookCopyResult | null>(null);
@@ -33,6 +38,45 @@ export function ScanPage() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [currentBorrowingForReturn, setCurrentBorrowingForReturn] = useState<LibraryBorrowing | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
+  const [pendingRewards, setPendingRewards] = useState<ReadingClubPendingReward[]>([]);
+
+  // "The circulation module, when searching a reader (scan page), shows a
+  // hook that the student has finished the stage and won an award. The
+  // librarian can confirm they handed the reader their present (recorded on
+  // the reading club module)." — entirely optional/additive: hidden whenever
+  // reading_club isn't installed or the caller lacks the permission, never a
+  // hard dependency of this page (see readingClubIntegration.ts docblock).
+  const installedManifests = useModuleFrontendManifests(authStatus === 'authenticated' && !mustChangePassword);
+  const readingClubInstalled = installedManifests?.some((m) => m.key === 'reading_club') ?? false;
+  const canSeeRewards = readingClubInstalled && hasPermission('reading_club.memberships.view');
+
+  useEffect(() => {
+    if (!canSeeRewards || !student) {
+      setPendingRewards([]);
+      return;
+    }
+    let cancelled = false;
+    readingClubIntegration
+      .getPendingRewards(student.student.id)
+      .then((rewards) => {
+        if (!cancelled) setPendingRewards(rewards);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingRewards([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeRewards, student]);
+
+  const confirmReadingClubReward = async (completionId: string) => {
+    try {
+      await readingClubIntegration.confirmReward(completionId);
+      setPendingRewards((current) => current.filter((r) => r.id !== completionId));
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
 
   const reset = () => {
     setStudent(null);
@@ -40,6 +84,7 @@ export function ScanPage() {
     setCode('');
     setError(null);
     setMessage(null);
+    setPendingRewards([]);
   };
 
   const scanCode = async (rawCode: string) => {
@@ -200,6 +245,36 @@ export function ScanPage() {
               <Button variant="text" size="small">
                 {t('library_circulation.scan.view_borrow_history')}
               </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Reading Club hook (§ optional, only when the reading_club module is installed) */}
+      {pendingRewards.length > 0 ? (
+        <Card sx={{ mb: 3, borderColor: 'warning.main', borderWidth: 1, borderStyle: 'solid' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+              <EmojiEventsIcon color="warning" />
+              <Typography variant="subtitle1">{t('library_circulation.scan.reading_club_reward_heading')}</Typography>
+            </Stack>
+            <Stack spacing={1.5}>
+              {pendingRewards.map((reward) => (
+                <Box key={reward.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <Typography variant="body2">
+                    {t('library_circulation.scan.reading_club_reward_line', {
+                      group: reward.groupName ?? '',
+                      stage: reward.stageName ?? '',
+                      reward: reward.rewardDescription ?? t('library_circulation.scan.reading_club_reward_unspecified'),
+                    })}
+                  </Typography>
+                  <Can permission="reading_club.stage_completions.confirm_reward">
+                    <Button size="small" variant="contained" color="warning" onClick={() => confirmReadingClubReward(reward.id)}>
+                      {t('library_circulation.scan.reading_club_confirm_reward_button')}
+                    </Button>
+                  </Can>
+                </Box>
+              ))}
             </Stack>
           </CardContent>
         </Card>

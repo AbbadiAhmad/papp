@@ -96,5 +96,7 @@
   "core.common.no": "No",
   "core.common.loading": "Loading…",
   "core.common.error": "Something went wrong",
-  "core.common.language": "Language"
+  "core.common.language": "Language",
+  "core.common.no_data": "No data",
+  "core.common.status": "Status"
 }

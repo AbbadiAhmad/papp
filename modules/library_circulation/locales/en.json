@@ -39,6 +39,10 @@
   "library_circulation.scan.view_copy_history": "View history",
   "library_circulation.scan.previous_borrow": "Previous borrow",
   "library_circulation.scan.previous_borrow_returned": "Returned {{date}}, marked {{status}}",
+  "library_circulation.scan.reading_club_reward_heading": "Reading Club — reward awaiting delivery",
+  "library_circulation.scan.reading_club_reward_line": "Finished \"{{stage}}\" in {{group}} — reward: {{reward}}",
+  "library_circulation.scan.reading_club_reward_unspecified": "(not specified)",
+  "library_circulation.scan.reading_club_confirm_reward_button": "Confirm reward given",
 
   "library_circulation.borrow.dialog_title": "Borrow book",
   "library_circulation.borrow.borrow_date": "Borrow date",
