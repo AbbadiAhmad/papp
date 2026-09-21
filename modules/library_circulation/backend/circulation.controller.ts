@@ -37,11 +37,26 @@ export class CirculationController {
     return this.circulation.findActiveBorrowingForCopy(copyId);
   }
 
+  /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */
+  @Get('students/:studentId/active-borrowings')
+  @RequirePermission('library_circulation.borrow')
+  async activeBorrowingsForStudent(@Param('studentId') studentId: string) {
+    return this.circulation.getActiveBorrowingsForStudent(studentId);
+  }
+
   @Get('copies/:copyId/circulation-history')
   @RequirePermission('library_circulation.borrow')
   async getCopyCirculationHistory(@Param('copyId') copyId: string, @Query('limit') limit?: string) {
     const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
     return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
+  }
+
+  /** §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any copy of this book. */
+  @Get('books/:bookId/circulation-history')
+  @RequirePermission('library_circulation.borrow')
+  async getBookCirculationHistory(@Param('bookId') bookId: string, @Query('limit') limit?: string) {
+    const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+    return this.circulation.getBookCirculationHistory(bookId, limitNumber);
   }
 
   @Post('borrow')
@@ -57,16 +72,18 @@ export class CirculationController {
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState })
   async returnBorrowing(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser) {
     const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
+    const returnedAtOverride = dto.returnedAt ? new Date(dto.returnedAt) : undefined;
     const { borrowing, daysLate } = await this.circulation.returnBorrowing(
       dto.borrowingId,
       user.userId,
       dto.returnStatus,
       dto.returnNotes,
+      returnedAtOverride,
     );
 
     let lateFine = null;
-    // Auto-create fines for late returns or damage/loss
-    if (daysLate > 0) {
+    // Auto-create fines for late returns — skipped when the librarian already added an inline fine covering this same return (dto.fine below), to avoid double-charging.
+    if (daysLate > 0 && !dto.fine) {
       const policy = await this.circulation.getLoanPolicy();
       const amount = daysLate * policy.finePerDay;
       if (amount > 0) {
@@ -74,14 +91,21 @@ export class CirculationController {
       }
     }
 
-    // Auto-suggest fine for damage/loss (caller decides whether to create it)
+    // The librarian's own explicit fine, entered inline in the return dialog (checkbox + amount/type), created in this same request.
+    let recordedFine = null;
+    if (dto.fine) {
+      recordedFine = await this.fines.create(
+        { studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes },
+        user.userId,
+      );
+    }
+
+    // Auto-suggest fine for damage/loss (caller decides whether to create it) — only still relevant if the librarian didn't already add one inline above.
     let damageFine = null;
-    if (dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') {
-      // Fine amount would be determined by FinesService based on fine type
-      // For now, just return indicator that a fine should be considered
+    if ((dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') && !dto.fine) {
       damageFine = { suggested: true, reason: dto.returnStatus };
     }
 
-    return { borrowing, daysLate, lateFine, damageFine };
+    return { borrowing, daysLate, lateFine, recordedFine, damageFine };
   }
 }

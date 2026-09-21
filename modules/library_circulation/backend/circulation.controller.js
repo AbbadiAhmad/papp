@@ -40,21 +40,47 @@ let CirculationController = class CirculationController {
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
     }
+    /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */
+    async activeBorrowingsForStudent(studentId) {
+        return this.circulation.getActiveBorrowingsForStudent(studentId);
+    }
+    async getCopyCirculationHistory(copyId, limit) {
+        const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+        return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
+    }
+    /** §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any copy of this book. */
+    async getBookCirculationHistory(bookId, limit) {
+        const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+        return this.circulation.getBookCirculationHistory(bookId, limitNumber);
+    }
     async borrow(dto, user) {
-        return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId);
+        const expectedReturnDate = dto.expectedReturnDate ? new Date(dto.expectedReturnDate) : undefined;
+        return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId, expectedReturnDate, dto.comments);
     }
     async returnBorrowing(dto, user) {
         const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
-        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId);
+        const returnedAtOverride = dto.returnedAt ? new Date(dto.returnedAt) : undefined;
+        const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId, dto.returnStatus, dto.returnNotes, returnedAtOverride);
         let lateFine = null;
-        if (daysLate > 0) {
+        // Auto-create fines for late returns — skipped when the librarian already added an inline fine covering this same return (dto.fine below), to avoid double-charging.
+        if (daysLate > 0 && !dto.fine) {
             const policy = await this.circulation.getLoanPolicy();
             const amount = daysLate * policy.finePerDay;
             if (amount > 0) {
                 lateFine = await this.fines.createLateFine(borrowingBefore.studentId, dto.borrowingId, amount, user.userId);
             }
         }
-        return { borrowing, daysLate, lateFine };
+        // The librarian's own explicit fine, entered inline in the return dialog (checkbox + amount/type), created in this same request.
+        let recordedFine = null;
+        if (dto.fine) {
+            recordedFine = await this.fines.create({ studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes }, user.userId);
+        }
+        // Auto-suggest fine for damage/loss (caller decides whether to create it) — only still relevant if the librarian didn't already add one inline above.
+        let damageFine = null;
+        if ((dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') && !dto.fine) {
+            damageFine = { suggested: true, reason: dto.returnStatus };
+        }
+        return { borrowing, daysLate, lateFine, recordedFine, damageFine };
     }
 };
 exports.CirculationController = CirculationController;
@@ -74,6 +100,32 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "activeBorrowingForCopy", null);
+__decorate([
+    (0, common_1.Get)('students/:studentId/active-borrowings'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('studentId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "activeBorrowingsForStudent", null);
+__decorate([
+    (0, common_1.Get)('copies/:copyId/circulation-history'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('copyId')),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "getCopyCirculationHistory", null);
+__decorate([
+    (0, common_1.Get)('books/:bookId/circulation-history'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Param)('bookId')),
+    __param(1, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "getBookCirculationHistory", null);
 __decorate([
     (0, common_1.Post)('borrow'),
     (0, platform_1.RequirePermission)('library_circulation.borrow'),

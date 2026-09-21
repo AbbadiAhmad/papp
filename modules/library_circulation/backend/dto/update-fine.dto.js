@@ -9,30 +9,21 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BorrowDto = void 0;
+exports.UpdateFineDto = void 0;
 const class_validator_1 = require("class-validator");
-class BorrowDto {
-    studentId;
-    bookCopyId;
-    expectedReturnDate;
-    comments;
+class UpdateFineDto {
+    amount;
+    notes;
 }
-exports.BorrowDto = BorrowDto;
-__decorate([
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], BorrowDto.prototype, "studentId", void 0);
-__decorate([
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], BorrowDto.prototype, "bookCopyId", void 0);
+exports.UpdateFineDto = UpdateFineDto;
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
-], BorrowDto.prototype, "expectedReturnDate", void 0);
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0.01),
+    __metadata("design:type", Number)
+], UpdateFineDto.prototype, "amount", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], BorrowDto.prototype, "comments", void 0);
+], UpdateFineDto.prototype, "notes", void 0);

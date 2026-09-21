@@ -1,8 +1,10 @@
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
+import { BookHistoryPage } from './pages/BookHistoryPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
 import { ScanPage } from './pages/ScanPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { StudentDetailPage } from './pages/StudentDetailPage';
 import { StudentsListPage } from './pages/StudentsListPage';
 
@@ -20,6 +22,8 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/students/:studentId', element: <StudentDetailPage /> },
   { path: '/library-circulation/fines', element: <FinesPage /> },
   { path: '/library-circulation/finance', element: <FinancePage /> },
+  { path: '/library-circulation/books/:bookId/history', element: <BookHistoryPage /> },
+  { path: '/library-circulation/settings', element: <SettingsPage /> },
 ];
 
 /** No public routes — every screen in this module needs an authenticated, permission-gated staff session. */
