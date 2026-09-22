@@ -1,15 +1,28 @@
-import { Box, Card, CardActionArea, CardContent, Chip, Grid, Stack, Typography } from '@mui/material';
+import { Box, Card, CardActionArea, CardContent, Chip, Grid, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
+import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { readingClubApi } from '../api';
+import { EpisodeSwitcher } from './EpisodeSwitcher';
 
 /** "The dashboard shows the groups and stages statistics. When clicking it goes to the details." — clicking a group/stage navigates to the readers list, pre-filtered. */
 export function DashboardPage() {
   const { t } = useTranslation();
+  const { language } = useLanguage();
   const navigate = useNavigate();
-  const { status, data, errorMessage, reload } = useGuardedQuery(() => readingClubApi.getDashboardStats());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const episodeId = searchParams.get('episodeId') ?? '';
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => readingClubApi.getDashboardStats(episodeId || undefined));
+
+  const setEpisodeFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('episodeId', value);
+    else next.delete('episodeId');
+    setSearchParams(next);
+  };
 
   const topCards = data
     ? [
@@ -21,9 +34,12 @@ export function DashboardPage() {
 
   return (
     <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('reading_club.menu.dashboard')}
-      </Typography>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+        <Typography variant="h4" component="h2">
+          {t('reading_club.menu.dashboard')}
+        </Typography>
+        <EpisodeSwitcher episodeId={episodeId} onEpisodeChange={setEpisodeFilter} />
+      </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -92,6 +108,44 @@ export function DashboardPage() {
             </Grid>
           ))}
         </Grid>
+
+        <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+          {t('reading_club.dashboard.pending_rewards_heading')}
+        </Typography>
+        {(data?.pendingRewards ?? []).length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('core.common.no_data')}
+          </Typography>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('reading_club.fields.name')}</TableCell>
+                  <TableCell>{t('reading_club.menu.groups')}</TableCell>
+                  <TableCell>{t('reading_club.readers.current_stage')}</TableCell>
+                  <TableCell>{t('reading_club.fields.reward_description')}</TableCell>
+                  <TableCell>{t('reading_club.readers.completed_at')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(data?.pendingRewards ?? []).map((reward) => (
+                  <TableRow key={reward.id} hover>
+                    <TableCell>
+                      <RouterLink to={`/reading-club/readers/${reward.studentId}`}>
+                        {reward.studentName ?? reward.studentCode ?? '—'}
+                      </RouterLink>
+                    </TableCell>
+                    <TableCell>{reward.groupName ?? '—'}</TableCell>
+                    <TableCell>{reward.stageName ?? '—'}</TableCell>
+                    <TableCell>{reward.rewardDescription ?? '—'}</TableCell>
+                    <TableCell>{formatDateOnly(reward.completedAt, language)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </QueryStateGate>
     </Box>
   );
