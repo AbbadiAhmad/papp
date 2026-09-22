@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -28,8 +28,8 @@ export class GroupsController {
 
   @Get()
   @RequirePermission('reading_club.groups.view')
-  async list() {
-    return this.groups.listGroups();
+  async list(@Query('episodeId') episodeId?: string) {
+    return this.groups.listGroups(episodeId);
   }
 
   @Get(':id')

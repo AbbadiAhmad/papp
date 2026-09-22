@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StageCompletionsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const episodes_service_1 = require("./episodes.service");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
 /**
@@ -30,11 +31,13 @@ const notifications_sender_1 = require("./notifications-sender");
  */
 let StageCompletionsService = StageCompletionsService_1 = class StageCompletionsService {
     memberships;
+    episodes;
     notifications;
     logger = new common_1.Logger(StageCompletionsService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(memberships, notifications) {
+    constructor(memberships, episodes, notifications) {
         this.memberships = memberships;
+        this.episodes = episodes;
         this.notifications = notifications;
     }
     async onModuleInit() {
@@ -46,6 +49,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
     }
     async markComplete(studentId, markedBy) {
         const membership = await this.memberships.getMembershipOrThrow(studentId);
+        await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
         const stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
         if (!stage)
             throw new common_1.NotFoundException('Current stage not found');
@@ -58,6 +62,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
             this.prisma.readingClubStageCompletion.create({
                 data: {
                     studentId,
+                    episodeId: membership.episodeId,
                     groupId: membership.groupId,
                     stageId: stage.id,
                     targetAmountAtCompletion: stage.targetAmount,
@@ -120,8 +125,52 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
             completedAt: completion.completedAt,
         }));
     }
-    async getPendingRewardsCount() {
-        return this.prisma.readingClubStageCompletion.count({ where: { rewardStatus: 'pending' } });
+    async getPendingRewardsCount(episodeId) {
+        const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+        return this.prisma.readingClubStageCompletion.count({ where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' } });
+    }
+    /**
+     * Every pending reward ACROSS ALL readers, scoped to the given/current
+     * episode — feeds the dashboard's pending-rewards list (item C). Realistic
+     * scale for a school reading club, so no pagination (see manifest scope
+     * cuts).
+     */
+    async listAllPendingRewards(episodeId) {
+        const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+        const completions = await this.prisma.readingClubStageCompletion.findMany({
+            where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' },
+            orderBy: { completedAt: 'asc' },
+        });
+        if (completions.length === 0)
+            return [];
+        const studentIds = [...new Set(completions.map((c) => c.studentId))];
+        const stageIds = [...new Set(completions.map((c) => c.stageId))];
+        const groupIds = [...new Set(completions.map((c) => c.groupId))];
+        const [students, stages, groups] = await Promise.all([
+            this.prisma.libraryStudent.findMany({ where: { id: { in: studentIds } } }),
+            this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
+            this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } }),
+        ]);
+        const studentsById = new Map(students.map((s) => [s.id, s]));
+        const userIds = students.map((s) => s.userId);
+        const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
+        const usersById = new Map(users.map((u) => [u.id, u]));
+        const stagesById = new Map(stages.map((s) => [s.id, s]));
+        const groupsById = new Map(groups.map((g) => [g.id, g]));
+        return completions.map((completion) => {
+            const student = studentsById.get(completion.studentId);
+            const user = student ? usersById.get(student.userId) : undefined;
+            return {
+                id: completion.id,
+                studentId: completion.studentId,
+                studentCode: student?.code ?? null,
+                studentName: user?.name ?? null,
+                groupName: groupsById.get(completion.groupId)?.name ?? null,
+                stageName: stagesById.get(completion.stageId)?.name ?? null,
+                rewardDescription: stagesById.get(completion.stageId)?.rewardDescription ?? null,
+                completedAt: completion.completedAt,
+            };
+        });
     }
     /** Never lets a notification failure fail the underlying action (matches library_circulation.CirculationService's own `notifyStudent`, §23's UX addition, not a correctness requirement). */
     async notifyReader(userId, category, title, bodyMarkdown) {
@@ -136,6 +185,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
 exports.StageCompletionsService = StageCompletionsService;
 exports.StageCompletionsService = StageCompletionsService = StageCompletionsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(1, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
-    __metadata("design:paramtypes", [memberships_service_1.MembershipsService, Object])
+    __param(2, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
+    __metadata("design:paramtypes", [memberships_service_1.MembershipsService,
+        episodes_service_1.EpisodesService, Object])
 ], StageCompletionsService);

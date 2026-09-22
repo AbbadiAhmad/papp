@@ -4,6 +4,7 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { CreateStageDto } from './dto/create-stage.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { EpisodesService } from './episodes.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -14,12 +15,19 @@ const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
  * `system_settings` JSON blob — a relational, orderable list of stages per
  * group doesn't fit that shape, see DECISIONS.md).
  *
+ * Every group belongs to exactly one episode (READING_CLUB-D10) — reads
+ * accept an optional `episodeId` (defaulting to the current episode) so a
+ * past, closed episode's groups/stages remain browsable read-only; writes
+ * are always rejected outside the current episode (READING_CLUB-D12).
+ *
  * Own dedicated `PrismaClient` (D57 pattern, same as every other module).
  */
 @Injectable()
 export class GroupsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GroupsService.name);
   private readonly prisma = new PrismaClient();
+
+  constructor(private readonly episodes: EpisodesService) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -32,8 +40,11 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
 
   // --- Groups ------------------------------------------------------------
 
-  async listGroups() {
+  /** `episodeId` omitted -> current episode's groups. */
+  async listGroups(episodeId?: string) {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     return this.prisma.readingClubGroup.findMany({
+      where: { episodeId: resolvedEpisodeId },
       orderBy: { createdAt: 'desc' },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
@@ -43,15 +54,19 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.getGroupOrThrow(id);
   }
 
+  /** `dto.episodeId` omitted -> the current episode (READING_CLUB-D12). Always rejected if the resolved episode isn't current. */
   async createGroup(dto: CreateGroupDto, createdBy: string) {
+    const episodeId = dto.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    await this.episodes.assertEpisodeIsCurrent(episodeId);
     return this.prisma.readingClubGroup.create({
-      data: { name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
+      data: { episodeId, name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
   }
 
   async updateGroup(id: string, dto: UpdateGroupDto) {
-    await this.getGroupOrThrow(id);
+    const group = await this.getGroupOrThrow(id);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     return this.prisma.readingClubGroup.update({
       where: { id },
       data: { name: dto.name, description: dto.description, isActive: dto.isActive },
@@ -61,7 +76,8 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
 
   /** Rejects deleting a group any reader has ever been assigned to or completed a stage in — history is permanent, same ethos as library_circulation §10/§22. */
   async removeGroup(id: string): Promise<void> {
-    await this.getGroupOrThrow(id);
+    const group = await this.getGroupOrThrow(id);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     const [membershipCount, completionCount] = await Promise.all([
       this.prisma.readingClubMembership.count({ where: { groupId: id } }),
       this.prisma.readingClubStageCompletion.count({ where: { groupId: id } }),
@@ -83,7 +99,8 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createStage(groupId: string, dto: CreateStageDto) {
-    await this.getGroupOrThrow(groupId);
+    const group = await this.getGroupOrThrow(groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     try {
       return await this.prisma.readingClubStage.create({
         data: {
@@ -101,7 +118,9 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateStage(stageId: string, dto: UpdateStageDto) {
-    await this.getStageOrThrow(stageId);
+    const stage = await this.getStageOrThrow(stageId);
+    const group = await this.getGroupOrThrow(stage.groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     try {
       return await this.prisma.readingClubStage.update({
         where: { id: stageId },
@@ -120,7 +139,9 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
 
   /** Rejects deleting a stage any reader is currently on or has ever completed — same permanence rule as a group. */
   async removeStage(stageId: string): Promise<void> {
-    await this.getStageOrThrow(stageId);
+    const stage = await this.getStageOrThrow(stageId);
+    const group = await this.getGroupOrThrow(stage.groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     const [currentCount, completionCount] = await Promise.all([
       this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } }),
       this.prisma.readingClubStageCompletion.count({ where: { stageId } }),
@@ -144,13 +165,15 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.readingClubStage.findFirst({ where: { groupId }, orderBy: { stageOrder: 'asc' } });
   }
 
-  /** §18 dashboard: per-group/per-stage reader counts — real aggregate counts, never mock data. */
-  async getDashboardStats() {
+  /** §18 dashboard: per-group/per-stage reader counts — real aggregate counts, never mock data. `episodeId` omitted -> current episode. */
+  async getDashboardStats(episodeId?: string) {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     const groups = await this.prisma.readingClubGroup.findMany({
+      where: { episodeId: resolvedEpisodeId },
       orderBy: { name: 'asc' },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
-    const memberships = await this.prisma.readingClubMembership.findMany();
+    const memberships = await this.prisma.readingClubMembership.findMany({ where: { episodeId: resolvedEpisodeId } });
     const membershipsByGroup = new Map<string, typeof memberships>();
     for (const membership of memberships) {
       const list = membershipsByGroup.get(membership.groupId) ?? [];

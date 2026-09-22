@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { EpisodesService } from '../../backend/episodes.service';
 import { GroupsService } from '../../backend/groups.service';
 
 interface MockPrisma {
@@ -27,11 +28,18 @@ function createMockPrisma(): MockPrisma {
   };
 }
 
-/** Same reflection idiom every module's own service spec uses (D57). */
-function buildService(prisma: MockPrisma): GroupsService {
-  const service = new GroupsService();
+/** Same reflection idiom every module's own service spec uses (D57). `episodes` defaults to "always current" — tests exercising episode-scoping override it explicitly. */
+function buildService(prisma: MockPrisma, episodes: Partial<EpisodesService> = defaultEpisodesMock()): GroupsService {
+  const service = new GroupsService(episodes as EpisodesService);
   (service as unknown as { prisma: MockPrisma }).prisma = prisma;
   return service;
+}
+
+function defaultEpisodesMock(): Partial<EpisodesService> {
+  return {
+    getCurrentEpisode: jest.fn(async () => ({ id: 'ep-current', name: 'Current', isCurrent: true })) as unknown as EpisodesService['getCurrentEpisode'],
+    assertEpisodeIsCurrent: jest.fn(async () => undefined) as unknown as EpisodesService['assertEpisodeIsCurrent'],
+  };
 }
 
 describe('GroupsService', () => {
@@ -45,7 +53,7 @@ describe('GroupsService', () => {
 
   describe('removeGroup', () => {
     it('rejects when the group has readers assigned', async () => {
-      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1' });
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-current' });
       prisma.readingClubMembership.count.mockResolvedValue(1);
       prisma.readingClubStageCompletion.count.mockResolvedValue(0);
 
@@ -54,7 +62,7 @@ describe('GroupsService', () => {
     });
 
     it('rejects when the group has completion history', async () => {
-      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1' });
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-current' });
       prisma.readingClubMembership.count.mockResolvedValue(0);
       prisma.readingClubStageCompletion.count.mockResolvedValue(1);
 
@@ -62,7 +70,7 @@ describe('GroupsService', () => {
     });
 
     it('deletes stages then the group when it is clean', async () => {
-      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1' });
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-current' });
       prisma.readingClubMembership.count.mockResolvedValue(0);
       prisma.readingClubStageCompletion.count.mockResolvedValue(0);
       prisma.readingClubStage.deleteMany.mockResolvedValue({ count: 2 });
@@ -73,11 +81,25 @@ describe('GroupsService', () => {
       expect(prisma.readingClubStage.deleteMany).toHaveBeenCalledWith({ where: { groupId: 'g1' } });
       expect(prisma.readingClubGroup.delete).toHaveBeenCalledWith({ where: { id: 'g1' } });
     });
+
+    it('rejects deleting a group in a closed (non-current) episode', async () => {
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-old' });
+      const episodes: Partial<EpisodesService> = {
+        assertEpisodeIsCurrent: jest.fn(async () => {
+          throw new Error('This episode is closed — only the current episode can be modified');
+        }) as unknown as EpisodesService['assertEpisodeIsCurrent'],
+      };
+      const closedEpisodeService = buildService(prisma, episodes);
+
+      await expect(closedEpisodeService.removeGroup('g1')).rejects.toThrow('closed');
+      expect(prisma.readingClubGroup.delete).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeStage', () => {
     it('rejects when a reader is currently on the stage', async () => {
-      prisma.readingClubStage.findUnique.mockResolvedValue({ id: 's1' });
+      prisma.readingClubStage.findUnique.mockResolvedValue({ id: 's1', groupId: 'g1' });
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-current' });
       prisma.readingClubMembership.count.mockResolvedValue(1);
       prisma.readingClubStageCompletion.count.mockResolvedValue(0);
 
@@ -86,7 +108,8 @@ describe('GroupsService', () => {
     });
 
     it('deletes a stage with no readers and no history', async () => {
-      prisma.readingClubStage.findUnique.mockResolvedValue({ id: 's1' });
+      prisma.readingClubStage.findUnique.mockResolvedValue({ id: 's1', groupId: 'g1' });
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', episodeId: 'ep-current' });
       prisma.readingClubMembership.count.mockResolvedValue(0);
       prisma.readingClubStageCompletion.count.mockResolvedValue(0);
 

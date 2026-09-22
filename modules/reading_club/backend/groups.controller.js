@@ -35,8 +35,8 @@ let GroupsController = class GroupsController {
     constructor(groups) {
         this.groups = groups;
     }
-    async list() {
-        return this.groups.listGroups();
+    async list(episodeId) {
+        return this.groups.listGroups(episodeId);
     }
     async findById(id) {
         return this.groups.getGroup(id);
@@ -68,8 +68,9 @@ exports.GroupsController = GroupsController;
 __decorate([
     (0, common_1.Get)(),
     (0, platform_1.RequirePermission)('reading_club.groups.view'),
+    __param(0, (0, common_1.Query)('episodeId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], GroupsController.prototype, "list", null);
 __decorate([

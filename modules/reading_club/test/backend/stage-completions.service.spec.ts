@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { EpisodesService } from '../../backend/episodes.service';
 import { StageCompletionsService } from '../../backend/stage-completions.service';
 import { MembershipsService } from '../../backend/memberships.service';
 import type { NotificationsSender } from '../../backend/notifications-sender';
@@ -21,9 +22,14 @@ function createMockPrisma(): MockPrisma {
   };
 }
 
-function buildService(prisma: MockPrisma, memberships: Partial<MembershipsService>): StageCompletionsService {
+/** Defaults to "always current" — tests exercising rejection override `assertEpisodeIsCurrent` explicitly. */
+function buildService(
+  prisma: MockPrisma,
+  memberships: Partial<MembershipsService>,
+  episodes: Partial<EpisodesService> = { assertEpisodeIsCurrent: jest.fn(async () => undefined) as unknown as EpisodesService['assertEpisodeIsCurrent'] },
+): StageCompletionsService {
   const notifications: NotificationsSender = { send: jest.fn(async () => undefined) };
-  const service = new StageCompletionsService(memberships as MembershipsService, notifications);
+  const service = new StageCompletionsService(memberships as MembershipsService, episodes as EpisodesService, notifications);
   (service as unknown as { prisma: MockPrisma }).prisma = prisma;
   return service;
 }
@@ -36,8 +42,24 @@ describe('StageCompletionsService', () => {
   });
 
   describe('markComplete', () => {
+    it('rejects marking a stage complete when the membership\'s episode is closed (non-current)', async () => {
+      const membership = { studentId: 'student-1', episodeId: 'ep-old', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date(), manualProgressAmount: 0 };
+      const memberships: Partial<MembershipsService> = {
+        getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+      };
+      const episodes: Partial<EpisodesService> = {
+        assertEpisodeIsCurrent: jest.fn(async () => {
+          throw new Error('This episode is closed — only the current episode can be modified');
+        }) as unknown as EpisodesService['assertEpisodeIsCurrent'],
+      };
+      const service = buildService(prisma, memberships, episodes);
+
+      await expect(service.markComplete('student-1', 'librarian-1')).rejects.toThrow('closed');
+      expect(prisma.readingClubStageCompletion.create).not.toHaveBeenCalled();
+    });
+
     it('creates a pending completion snapshot and advances the membership to the next stage', async () => {
-      const membership = { studentId: 'student-1', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date('2026-01-01'), manualProgressAmount: 0 };
+      const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date('2026-01-01'), manualProgressAmount: 0 };
       const stage = { id: 's1', groupId: 'g1', stageOrder: 1, name: 'Stage 1', targetAmount: 5, rewardDescription: 'Sticker pack' };
       const nextStage = { id: 's2', groupId: 'g1', stageOrder: 2 };
       const memberships: Partial<MembershipsService> = {
@@ -73,7 +95,7 @@ describe('StageCompletionsService', () => {
     });
 
     it('advances to a null current stage when the finished stage was the last one in its group', async () => {
-      const membership = { studentId: 'student-1', groupId: 'g1', currentStageId: 's2', stageStartedAt: new Date(), manualProgressAmount: 0 };
+      const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's2', stageStartedAt: new Date(), manualProgressAmount: 0 };
       const lastStage = { id: 's2', groupId: 'g1', stageOrder: 2, name: 'Stage 2', targetAmount: 10, rewardDescription: null };
       const memberships: Partial<MembershipsService> = {
         getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],

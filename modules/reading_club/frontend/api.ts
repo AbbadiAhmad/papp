@@ -79,6 +79,7 @@ export interface ReadingClubMembership {
 export interface ReadingClubStageCompletion {
   id: string;
   studentId: string;
+  episodeId: string;
   groupId: string;
   stageId: string;
   targetAmountAtCompletion: number;
@@ -91,6 +92,57 @@ export interface ReadingClubStageCompletion {
   createdAt: string;
 }
 
+/** A reader's own completion history row — extends the base completion with its (possibly PRIOR) group/stage identity, since a reader can have completions from a group they've since moved out of (READING_CLUB-D7). */
+export interface ReaderCompletionRow extends ReadingClubStageCompletion {
+  groupName: string | null;
+  stageName: string | null;
+  stageOrder: number | null;
+}
+
+export interface ReadingClubEpisode {
+  id: string;
+  name: string;
+  isCurrent: boolean;
+  startsAt: string;
+  endsAt: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateEpisodeInput {
+  name: string;
+}
+
+export type BookEntrySource = 'auto' | 'manual';
+export type BookEntryStatus = 'active' | 'discarded';
+
+export interface ReadingClubStageBookEntry {
+  id: string;
+  studentId: string;
+  episodeId: string;
+  groupId: string;
+  stageId: string;
+  borrowingId: string | null;
+  bookCopyId: string | null;
+  bookTitle: string;
+  bookCode: string | null;
+  source: BookEntrySource;
+  comments: string | null;
+  addedBy: string;
+  addedAt: string;
+  status: BookEntryStatus;
+  discardedAt: string | null;
+  discardedBy: string | null;
+  discardReason: string | null;
+}
+
+export interface AddBookEntryInput {
+  bookTitle: string;
+  bookCode?: string;
+  comments?: string;
+  bookCopyId?: string;
+}
+
 export interface ReaderDetail {
   studentId: string;
   studentCode: string;
@@ -100,7 +152,7 @@ export interface ReaderDetail {
   group: ReadingClubGroup | null;
   stage: ReadingClubStage | null;
   progress: StageProgress | null;
-  completions: ReadingClubStageCompletion[];
+  completions: ReaderCompletionRow[];
 }
 
 export interface PendingReward {
@@ -109,6 +161,13 @@ export interface PendingReward {
   stageName: string | null;
   rewardDescription: string | null;
   completedAt: string;
+}
+
+/** The dashboard's cross-reader pending-rewards list (item C) — same shape as PendingReward plus the reader's own identity. */
+export interface PendingRewardWithReader extends PendingReward {
+  studentId: string;
+  studentCode: string | null;
+  studentName: string | null;
 }
 
 export interface DashboardStageStats {
@@ -132,14 +191,21 @@ export interface DashboardStats {
   totalGroups: number;
   totalActiveReaders: number;
   pendingRewardsCount: number;
+  pendingRewards: PendingRewardWithReader[];
   groups: DashboardGroupStats[];
 }
 
 const BASE = '/api/reading-club';
 
 export const readingClubApi = {
+  // Episodes
+  listEpisodes: () => apiClient.get<ReadingClubEpisode[]>(`${BASE}/episodes`).then((r) => r.data),
+  getCurrentEpisode: () => apiClient.get<ReadingClubEpisode>(`${BASE}/episodes/current`).then((r) => r.data),
+  createEpisode: (dto: CreateEpisodeInput) => apiClient.post<ReadingClubEpisode>(`${BASE}/episodes`, dto).then((r) => r.data),
+
   // Groups
-  listGroups: () => apiClient.get<ReadingClubGroup[]>(`${BASE}/groups`).then((r) => r.data),
+  listGroups: (episodeId?: string) =>
+    apiClient.get<ReadingClubGroup[]>(`${BASE}/groups`, { params: episodeId ? { episodeId } : undefined }).then((r) => r.data),
   getGroup: (id: string) => apiClient.get<ReadingClubGroup>(`${BASE}/groups/${id}`).then((r) => r.data),
   createGroup: (dto: CreateGroupInput) => apiClient.post<ReadingClubGroup>(`${BASE}/groups`, dto).then((r) => r.data),
   updateGroup: (id: string, dto: UpdateGroupInput) => apiClient.patch<ReadingClubGroup>(`${BASE}/groups/${id}`, dto).then((r) => r.data),
@@ -153,7 +219,7 @@ export const readingClubApi = {
   removeStage: (stageId: string) => apiClient.delete<void>(`${BASE}/groups/stages/${stageId}`).then((r) => r.data),
 
   // Readers / memberships
-  listReaders: (filter: { groupId?: string; stageId?: string; search?: string } = {}) => {
+  listReaders: (filter: { episodeId?: string; groupId?: string; stageId?: string; search?: string } = {}) => {
     const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== ''));
     return apiClient.get<ReaderListItem[]>(`${BASE}/readers`, { params }).then((r) => r.data);
   },
@@ -172,6 +238,19 @@ export const readingClubApi = {
   confirmReward: (completionId: string) =>
     apiClient.post<ReadingClubStageCompletion>(`${BASE}/stage-completions/${completionId}/confirm-reward`).then((r) => r.data),
 
+  // Stage book entries (per-stage "books read this stage" tracking)
+  listBookEntries: (studentId: string) =>
+    apiClient.get<ReadingClubStageBookEntry[]>(`${BASE}/readers/${studentId}/book-entries`).then((r) => r.data),
+  addBookEntry: (studentId: string, dto: AddBookEntryInput) =>
+    apiClient.post<ReadingClubStageBookEntry>(`${BASE}/readers/${studentId}/book-entries`, dto).then((r) => r.data),
+  discardBookEntry: (studentId: string, entryId: string, reason?: string) =>
+    apiClient
+      .patch<ReadingClubStageBookEntry>(`${BASE}/readers/${studentId}/book-entries/${entryId}/discard`, { reason })
+      .then((r) => r.data),
+  removeBookEntry: (studentId: string, entryId: string) =>
+    apiClient.delete<void>(`${BASE}/readers/${studentId}/book-entries/${entryId}`).then((r) => r.data),
+
   // Dashboard
-  getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
+  getDashboardStats: (episodeId?: string) =>
+    apiClient.get<DashboardStats>(`${BASE}/dashboard`, { params: episodeId ? { episodeId } : undefined }).then((r) => r.data),
 };

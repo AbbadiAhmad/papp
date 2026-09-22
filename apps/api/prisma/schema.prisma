@@ -778,8 +778,27 @@ model WebsiteMenuItem {
 // scalar column with no Prisma relation, same as LibraryBorrowing.bookCopyId
 // referencing library_catalog — see modules/reading_club/DECISIONS.md.
 
+/// One global "current" episode at a time (`isCurrent`, enforced by a
+/// partial unique index in the migration — Prisma has no native way to
+/// express a partial unique index in the schema DSL itself, so it is
+/// documented here rather than declared as a Prisma-level `@@unique`).
+/// Episodes fully own groups/stages/memberships/completions — see
+/// modules/reading_club/DECISIONS.md READING_CLUB-D10.
+model ReadingClubEpisode {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  isCurrent Boolean   @default(false) @map("is_current")
+  startsAt  DateTime  @default(now()) @map("starts_at")
+  endsAt    DateTime? @map("ends_at")
+  createdBy String    @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("reading_club_episodes")
+}
+
 model ReadingClubGroup {
   id          String   @id @default(uuid()) @db.Uuid
+  episodeId   String   @map("episode_id") @db.Uuid
   name        String
   description String?
   isActive    Boolean  @default(true) @map("is_active")
@@ -789,6 +808,7 @@ model ReadingClubGroup {
 
   stages ReadingClubStage[]
 
+  @@index([episodeId])
   @@map("reading_club_groups")
 }
 
@@ -817,6 +837,7 @@ model ReadingClubStage {
 model ReadingClubMembership {
   id                   String   @id @default(uuid()) @db.Uuid
   studentId            String   @unique @map("student_id") @db.Uuid
+  episodeId            String   @map("episode_id") @db.Uuid
   groupId              String   @map("group_id") @db.Uuid
   currentStageId       String?  @map("current_stage_id") @db.Uuid
   stageStartedAt       DateTime @default(now()) @map("stage_started_at")
@@ -825,6 +846,7 @@ model ReadingClubMembership {
   assignedAt           DateTime @default(now()) @map("assigned_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
+  @@index([episodeId])
   @@index([groupId])
   @@index([currentStageId])
   @@map("reading_club_memberships")
@@ -836,6 +858,7 @@ model ReadingClubMembership {
 model ReadingClubStageCompletion {
   id                          String    @id @default(uuid()) @db.Uuid
   studentId                   String    @map("student_id") @db.Uuid
+  episodeId                   String    @map("episode_id") @db.Uuid
   groupId                     String    @map("group_id") @db.Uuid
   stageId                     String    @map("stage_id") @db.Uuid
   targetAmountAtCompletion    Int       @map("target_amount_at_completion")
@@ -848,8 +871,38 @@ model ReadingClubStageCompletion {
   createdAt                   DateTime  @default(now()) @map("created_at")
 
   @@index([studentId])
+  @@index([episodeId])
   @@index([rewardStatus])
   @@map("reading_club_stage_completions")
+}
+
+/// Per-stage book tracking (item D) — auto-synced from returned borrowings
+/// inside the reader's current stage window (both books-type and pages-type
+/// stages), plus free-typed manual entries. Every entry can be soft-discarded
+/// (struck-through, excluded from counts, kept visible) or hard-deleted; see
+/// modules/reading_club/DECISIONS.md READING_CLUB-D13/D14.
+model ReadingClubStageBookEntry {
+  id            String    @id @default(uuid()) @db.Uuid
+  studentId     String    @map("student_id") @db.Uuid
+  episodeId     String    @map("episode_id") @db.Uuid
+  groupId       String    @map("group_id") @db.Uuid
+  stageId       String    @map("stage_id") @db.Uuid
+  borrowingId   String?   @map("borrowing_id") @db.Uuid
+  bookCopyId    String?   @map("book_copy_id") @db.Uuid
+  bookTitle     String    @map("book_title")
+  bookCode      String?   @map("book_code")
+  source        String
+  comments      String?
+  addedBy       String    @map("added_by") @db.Uuid
+  addedAt       DateTime  @default(now()) @map("added_at")
+  status        String    @default("active")
+  discardedAt   DateTime? @map("discarded_at")
+  discardedBy   String?   @map("discarded_by") @db.Uuid
+  discardReason String?   @map("discard_reason")
+
+  @@index([studentId, groupId, stageId])
+  @@index([borrowingId])
+  @@map("reading_club_stage_book_entries")
 }
 
 /// Many-to-many: a user can hold multiple roles (ARCHITECTURE.md §7.1).

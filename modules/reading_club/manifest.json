@@ -25,7 +25,8 @@
     { "code": "reading_club.memberships.update_progress", "category": "reading_club", "descriptionKey": "reading_club.perm.memberships.update_progress" },
     { "code": "reading_club.stage_completions.mark", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.mark" },
     { "code": "reading_club.stage_completions.confirm_reward", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.confirm_reward" },
-    { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" }
+    { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" },
+    { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" }
   ],
 
   "defaultRolePermissions": {
@@ -39,7 +40,8 @@
       "reading_club.memberships.update_progress",
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
-      "reading_club.dashboard.view"
+      "reading_club.dashboard.view",
+      "reading_club.episodes.manage"
     ],
     "library_assistant": [
       "reading_club.groups.view",
@@ -51,7 +53,8 @@
       "reading_club.memberships.update_progress",
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
-      "reading_club.dashboard.view"
+      "reading_club.dashboard.view",
+      "reading_club.episodes.manage"
     ],
     "finance": [],
     "reader": []
@@ -98,6 +101,15 @@
       "order": 2,
       "route": "/reading-club/groups",
       "requiredPermission": "reading_club.groups.view"
+    },
+    {
+      "id": "reading_club.episodes",
+      "labelKey": "reading_club.menu.episodes",
+      "icon": "Event",
+      "parentId": "reading_club.root",
+      "order": 3,
+      "route": "/reading-club/episodes",
+      "requiredPermission": "reading_club.groups.view"
     }
   ],
 
@@ -125,6 +137,12 @@
       "access": "authenticated",
       "requiredPermission": "reading_club.groups.view",
       "component": "frontend/pages/GroupsListPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/episodes",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.groups.view",
+      "component": "frontend/pages/EpisodesPage.tsx"
     }
   ],
 

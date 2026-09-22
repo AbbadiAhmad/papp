@@ -3,6 +3,7 @@
   "reading_club.menu.dashboard": "لوحة المتابعة",
   "reading_club.menu.readers": "القرّاء",
   "reading_club.menu.groups": "المجموعات",
+  "reading_club.menu.episodes": "المواسم",
 
   "reading_club.perm.groups.view": "عرض مجموعات القراءة",
   "reading_club.perm.groups.create": "إنشاء مجموعات القراءة",
@@ -14,6 +15,7 @@
   "reading_club.perm.stage_completions.mark": "وضع علامة إنهاء مرحلة للقارئ",
   "reading_club.perm.stage_completions.confirm_reward": "تأكيد تسليم المكافأة",
   "reading_club.perm.dashboard.view": "عرض لوحة متابعة نادي القراءة",
+  "reading_club.perm.episodes.manage": "إدارة مواسم نادي القراءة (بدء موسم جديد)",
 
   "reading_club.dashboard.total_groups": "المجموعات",
   "reading_club.dashboard.total_active_readers": "القرّاء النشطون",
@@ -75,5 +77,40 @@
   "reading_club.readers.history_heading": "سجل إنجاز المراحل",
   "reading_club.readers.completed_at": "تاريخ الإنجاز",
   "reading_club.readers.reward_status": "المكافأة",
-  "reading_club.readers.confirm_reward_button": "تأكيد تسليم المكافأة"
+  "reading_club.readers.confirm_reward_button": "تأكيد تسليم المكافأة",
+
+  "reading_club.episodes.current": "الموسم الحالي",
+  "reading_club.episodes.closed": "منتهٍ",
+  "reading_club.episodes.current_is": "الموسم الحالي: {{name}}",
+  "reading_club.episodes.starts_at": "تاريخ البدء",
+  "reading_club.episodes.ends_at": "تاريخ الانتهاء",
+  "reading_club.episodes.start_new_button": "بدء موسم جديد",
+  "reading_club.episodes.start_new_title": "بدء موسم جديد",
+  "reading_club.episodes.start_new_confirm": "سيؤدي بدء موسم جديد إلى إنهاء الموسم الحالي \"{{current}}\". هل تريد المتابعة؟",
+  "reading_club.episodes.viewing_episode": "الموسم المعروض",
+  "reading_club.episodes.viewing_past_readonly": "أنت تستعرض موسماً منتهياً للقراءة فقط. لا يمكن إجراء أي تعديل عليه.",
+
+  "reading_club.dashboard.pending_rewards_heading": "مكافآت بانتظار التسليم",
+
+  "reading_club.readers.completion_group": "المجموعة",
+  "reading_club.readers.completion_stage": "المرحلة",
+
+  "reading_club.book_entries.heading": "الكتب المقروءة في هذه المرحلة",
+  "reading_club.book_entries.add_button": "إضافة كتاب",
+  "reading_club.book_entries.add_title": "إضافة كتاب يدوياً",
+  "reading_club.book_entries.book_title": "عنوان الكتاب",
+  "reading_club.book_entries.book_code": "رمز الكتاب",
+  "reading_club.book_entries.comments": "ملاحظات",
+  "reading_club.book_entries.source.auto": "تلقائي",
+  "reading_club.book_entries.source.manual": "يدوي",
+  "reading_club.book_entries.discard_button": "استبعاد",
+  "reading_club.book_entries.discard_title": "استبعاد الكتاب",
+  "reading_club.book_entries.discard_confirm": "استبعاد \"{{title}}\" من قائمة هذه المرحلة؟ سيبقى ظاهراً لكن مستبعداً من العدّ.",
+  "reading_club.book_entries.discard_reason": "سبب الاستبعاد (اختياري)",
+  "reading_club.book_entries.delete_button": "حذف نهائي",
+  "reading_club.book_entries.delete_title": "حذف الكتاب نهائياً",
+  "reading_club.book_entries.delete_confirm": "حذف \"{{title}}\" نهائياً من السجل؟ لا يمكن التراجع عن هذا الإجراء.",
+  "reading_club.book_entries.discarded_label": "مستبعد",
+  "reading_club.book_entries.empty": "لا توجد كتب مسجّلة لهذه المرحلة بعد.",
+  "reading_club.book_entries.added_at": "تاريخ الإضافة"
 }

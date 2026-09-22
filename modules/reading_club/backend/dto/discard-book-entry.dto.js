@@ -9,33 +9,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateGroupDto = void 0;
+exports.DiscardBookEntryDto = void 0;
 const class_validator_1 = require("class-validator");
-class CreateGroupDto {
-    name;
-    description;
-    isActive;
-    /** Omitted -> the current episode (READING_CLUB-D12). */
-    episodeId;
+/** `reason` is OPTIONAL — never required to discard an entry (see DECISIONS.md). */
+class DiscardBookEntryDto {
+    reason;
 }
-exports.CreateGroupDto = CreateGroupDto;
-__decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(1),
-    __metadata("design:type", String)
-], CreateGroupDto.prototype, "name", void 0);
+exports.DiscardBookEntryDto = DiscardBookEntryDto;
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateGroupDto.prototype, "description", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], CreateGroupDto.prototype, "isActive", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], CreateGroupDto.prototype, "episodeId", void 0);
+], DiscardBookEntryDto.prototype, "reason", void 0);

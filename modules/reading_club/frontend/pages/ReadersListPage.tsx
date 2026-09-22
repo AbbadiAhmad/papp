@@ -23,6 +23,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
+import { EpisodeSwitcher } from './EpisodeSwitcher';
 
 /** "The librarian can search a specific reader or see readers in a specific group or stage (filters) and an indicator how far the reader is from finishing the stage." */
 export function ReadersListPage() {
@@ -30,14 +31,23 @@ export function ReadersListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const groupId = searchParams.get('groupId') ?? '';
   const stageId = searchParams.get('stageId') ?? '';
+  const episodeId = searchParams.get('episodeId') ?? '';
   const [search, setSearch] = useState('');
   const [assignOpen, setAssignOpen] = useState(false);
 
+  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisode());
+  const isViewingPast = Boolean(episodeId) && episodeId !== currentEpisode?.id;
+
   const { status, data: readers, errorMessage, reload } = useGuardedQuery(() =>
-    readingClubApi.listReaders({ groupId: groupId || undefined, stageId: stageId || undefined, search: search || undefined }),
+    readingClubApi.listReaders({
+      episodeId: episodeId || undefined,
+      groupId: groupId || undefined,
+      stageId: stageId || undefined,
+      search: search || undefined,
+    }),
   );
 
-  const { data: groups } = useGuardedQuery(() => readingClubApi.listGroups());
+  const { data: groups } = useGuardedQuery(() => readingClubApi.listGroups(episodeId || undefined));
   const selectedGroup = useMemo(() => (groups ?? []).find((g) => g.id === groupId) ?? null, [groups, groupId]);
 
   const setGroupFilter = (value: string) => {
@@ -53,18 +63,31 @@ export function ReadersListPage() {
     else next.delete('stageId');
     setSearchParams(next);
   };
+  const setEpisodeFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('episodeId', value);
+    else next.delete('episodeId');
+    next.delete('groupId');
+    next.delete('stageId');
+    setSearchParams(next);
+  };
 
   return (
     <Box>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4" component="h2">
           {t('reading_club.menu.readers')}
         </Typography>
-        <Can permission="reading_club.memberships.assign">
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => setAssignOpen(true)}>
-            {t('reading_club.readers.assign_button')}
-          </Button>
-        </Can>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <EpisodeSwitcher episodeId={episodeId} onEpisodeChange={setEpisodeFilter} />
+          {!isViewingPast ? (
+            <Can permission="reading_club.memberships.assign">
+              <Button startIcon={<AddIcon />} variant="contained" onClick={() => setAssignOpen(true)}>
+                {t('reading_club.readers.assign_button')}
+              </Button>
+            </Can>
+          ) : null}
+        </Stack>
       </Stack>
 
       <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }}>

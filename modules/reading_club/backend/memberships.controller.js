@@ -25,11 +25,11 @@ let MembershipsController = class MembershipsController {
     constructor(memberships) {
         this.memberships = memberships;
     }
-    async list(groupId, stageId, search) {
-        return this.memberships.listReaders({ groupId, stageId, search });
+    async list(groupId, stageId, search, episodeId) {
+        return this.memberships.listReaders({ episodeId, groupId, stageId, search });
     }
-    async findById(studentId) {
-        return this.memberships.getReaderDetail(studentId);
+    async findById(studentId, user) {
+        return this.memberships.getReaderDetail(studentId, user.userId);
     }
     async assign(dto, user) {
         return this.memberships.assign(dto, user.userId);
@@ -48,16 +48,18 @@ __decorate([
     __param(0, (0, common_1.Query)('groupId')),
     __param(1, (0, common_1.Query)('stageId')),
     __param(2, (0, common_1.Query)('search')),
+    __param(3, (0, common_1.Query)('episodeId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:paramtypes", [String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], MembershipsController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)(':studentId'),
     (0, platform_1.RequirePermission)('reading_club.memberships.view'),
     __param(0, (0, common_1.Param)('studentId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], MembershipsController.prototype, "findById", null);
 __decorate([

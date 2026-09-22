@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateGroupDto {
   @IsString()
@@ -12,4 +12,9 @@ export class CreateGroupDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Omitted -> the current episode (READING_CLUB-D12). */
+  @IsOptional()
+  @IsUUID()
+  episodeId?: string;
 }

@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { EpisodesService } from './episodes.service';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER, NotificationsSender } from './notifications-sender';
 
@@ -20,6 +21,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly memberships: MembershipsService,
+    private readonly episodes: EpisodesService,
     @Inject(NOTIFICATIONS_SENDER) private readonly notifications: NotificationsSender,
   ) {}
 
@@ -34,6 +36,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
 
   async markComplete(studentId: string, markedBy: string) {
     const membership = await this.memberships.getMembershipOrThrow(studentId);
+    await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
     const stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId! } });
     if (!stage) throw new NotFoundException('Current stage not found');
 
@@ -47,6 +50,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
       this.prisma.readingClubStageCompletion.create({
         data: {
           studentId,
+          episodeId: membership.episodeId,
           groupId: membership.groupId,
           stageId: stage.id,
           targetAmountAtCompletion: stage.targetAmount,
@@ -122,8 +126,54 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
-  async getPendingRewardsCount(): Promise<number> {
-    return this.prisma.readingClubStageCompletion.count({ where: { rewardStatus: 'pending' } });
+  async getPendingRewardsCount(episodeId?: string): Promise<number> {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    return this.prisma.readingClubStageCompletion.count({ where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' } });
+  }
+
+  /**
+   * Every pending reward ACROSS ALL readers, scoped to the given/current
+   * episode — feeds the dashboard's pending-rewards list (item C). Realistic
+   * scale for a school reading club, so no pagination (see manifest scope
+   * cuts).
+   */
+  async listAllPendingRewards(episodeId?: string) {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    const completions = await this.prisma.readingClubStageCompletion.findMany({
+      where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' },
+      orderBy: { completedAt: 'asc' },
+    });
+    if (completions.length === 0) return [];
+
+    const studentIds = [...new Set(completions.map((c) => c.studentId))];
+    const stageIds = [...new Set(completions.map((c) => c.stageId))];
+    const groupIds = [...new Set(completions.map((c) => c.groupId))];
+    const [students, stages, groups] = await Promise.all([
+      this.prisma.libraryStudent.findMany({ where: { id: { in: studentIds } } }),
+      this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
+      this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } }),
+    ]);
+    const studentsById = new Map(students.map((s) => [s.id, s]));
+    const userIds = students.map((s) => s.userId);
+    const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
+    const usersById = new Map(users.map((u) => [u.id, u]));
+    const stagesById = new Map(stages.map((s) => [s.id, s]));
+    const groupsById = new Map(groups.map((g) => [g.id, g]));
+
+    return completions.map((completion) => {
+      const student = studentsById.get(completion.studentId);
+      const user = student ? usersById.get(student.userId) : undefined;
+      return {
+        id: completion.id,
+        studentId: completion.studentId,
+        studentCode: student?.code ?? null,
+        studentName: user?.name ?? null,
+        groupName: groupsById.get(completion.groupId)?.name ?? null,
+        stageName: stagesById.get(completion.stageId)?.name ?? null,
+        rewardDescription: stagesById.get(completion.stageId)?.rewardDescription ?? null,
+        completedAt: completion.completedAt,
+      };
+    });
   }
 
   /** Never lets a notification failure fail the underlying action (matches library_circulation.CirculationService's own `notifyStudent`, §23's UX addition, not a correctness requirement). */

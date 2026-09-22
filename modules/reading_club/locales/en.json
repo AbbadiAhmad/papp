@@ -3,6 +3,7 @@
   "reading_club.menu.dashboard": "Dashboard",
   "reading_club.menu.readers": "Readers",
   "reading_club.menu.groups": "Groups",
+  "reading_club.menu.episodes": "Episodes",
 
   "reading_club.perm.groups.view": "View reading groups",
   "reading_club.perm.groups.create": "Create reading groups",
@@ -14,6 +15,7 @@
   "reading_club.perm.stage_completions.mark": "Mark a reader's stage as finished",
   "reading_club.perm.stage_completions.confirm_reward": "Confirm a reward was delivered",
   "reading_club.perm.dashboard.view": "View the reading club dashboard",
+  "reading_club.perm.episodes.manage": "Manage reading club episodes (start a new one)",
 
   "reading_club.dashboard.total_groups": "Groups",
   "reading_club.dashboard.total_active_readers": "Active readers",
@@ -75,5 +77,40 @@
   "reading_club.readers.history_heading": "Stage completion history",
   "reading_club.readers.completed_at": "Completed on",
   "reading_club.readers.reward_status": "Reward",
-  "reading_club.readers.confirm_reward_button": "Confirm reward given"
+  "reading_club.readers.confirm_reward_button": "Confirm reward given",
+
+  "reading_club.episodes.current": "Current episode",
+  "reading_club.episodes.closed": "Closed",
+  "reading_club.episodes.current_is": "Current episode: {{name}}",
+  "reading_club.episodes.starts_at": "Started",
+  "reading_club.episodes.ends_at": "Ended",
+  "reading_club.episodes.start_new_button": "Start new episode",
+  "reading_club.episodes.start_new_title": "Start a new episode",
+  "reading_club.episodes.start_new_confirm": "Starting a new episode will close the current episode \"{{current}}\". Continue?",
+  "reading_club.episodes.viewing_episode": "Viewing episode",
+  "reading_club.episodes.viewing_past_readonly": "You are viewing a closed episode, read-only. No changes can be made here.",
+
+  "reading_club.dashboard.pending_rewards_heading": "Rewards awaiting delivery",
+
+  "reading_club.readers.completion_group": "Group",
+  "reading_club.readers.completion_stage": "Stage",
+
+  "reading_club.book_entries.heading": "Books read this stage",
+  "reading_club.book_entries.add_button": "Add a book",
+  "reading_club.book_entries.add_title": "Add a book manually",
+  "reading_club.book_entries.book_title": "Book title",
+  "reading_club.book_entries.book_code": "Book code",
+  "reading_club.book_entries.comments": "Comments",
+  "reading_club.book_entries.source.auto": "Auto",
+  "reading_club.book_entries.source.manual": "Manual",
+  "reading_club.book_entries.discard_button": "Discard",
+  "reading_club.book_entries.discard_title": "Discard book",
+  "reading_club.book_entries.discard_confirm": "Discard \"{{title}}\" from this stage's list? It stays visible but is excluded from the count.",
+  "reading_club.book_entries.discard_reason": "Reason (optional)",
+  "reading_club.book_entries.delete_button": "Delete permanently",
+  "reading_club.book_entries.delete_title": "Delete book permanently",
+  "reading_club.book_entries.delete_confirm": "Permanently delete \"{{title}}\" from the record? This cannot be undone.",
+  "reading_club.book_entries.discarded_label": "Discarded",
+  "reading_club.book_entries.empty": "No books recorded for this stage yet.",
+  "reading_club.book_entries.added_at": "Added on"
 }

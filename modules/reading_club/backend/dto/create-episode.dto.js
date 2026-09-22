@@ -9,33 +9,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateGroupDto = void 0;
+exports.CreateEpisodeDto = void 0;
 const class_validator_1 = require("class-validator");
-class CreateGroupDto {
+/** Starting a new episode closes whatever was previously current (see EpisodesService.createEpisode). */
+class CreateEpisodeDto {
     name;
-    description;
-    isActive;
-    /** Omitted -> the current episode (READING_CLUB-D12). */
-    episodeId;
 }
-exports.CreateGroupDto = CreateGroupDto;
+exports.CreateEpisodeDto = CreateEpisodeDto;
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)
-], CreateGroupDto.prototype, "name", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], CreateGroupDto.prototype, "description", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], CreateGroupDto.prototype, "isActive", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], CreateGroupDto.prototype, "episodeId", void 0);
+], CreateEpisodeDto.prototype, "name", void 0);

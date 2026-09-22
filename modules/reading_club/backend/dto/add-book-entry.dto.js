@@ -9,33 +9,33 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateGroupDto = void 0;
+exports.AddBookEntryDto = void 0;
 const class_validator_1 = require("class-validator");
-class CreateGroupDto {
-    name;
-    description;
-    isActive;
-    /** Omitted -> the current episode (READING_CLUB-D12). */
-    episodeId;
+/** Manual "books read this stage" entry — a librarian free-types a title (required); everything else is optional. Catalog search-select is a nice-to-have not built in v1 (see DECISIONS.md), so `bookCopyId` stays available for a future enhancement but is not required. */
+class AddBookEntryDto {
+    bookTitle;
+    bookCode;
+    comments;
+    bookCopyId;
 }
-exports.CreateGroupDto = CreateGroupDto;
+exports.AddBookEntryDto = AddBookEntryDto;
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)
-], CreateGroupDto.prototype, "name", void 0);
+], AddBookEntryDto.prototype, "bookTitle", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], CreateGroupDto.prototype, "description", void 0);
+], AddBookEntryDto.prototype, "bookCode", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsBoolean)(),
-    __metadata("design:type", Boolean)
-], CreateGroupDto.prototype, "isActive", void 0);
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], AddBookEntryDto.prototype, "comments", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
-], CreateGroupDto.prototype, "episodeId", void 0);
+], AddBookEntryDto.prototype, "bookCopyId", void 0);
