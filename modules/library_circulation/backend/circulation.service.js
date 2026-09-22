@@ -184,6 +184,31 @@ let CirculationService = CirculationService_1 = class CirculationService {
         }
         return { borrowing: updated, daysLate };
     }
+    /**
+     * Extends an active/overdue borrowing's due date to a staff-picked new
+     * date (no fixed policy multiplier, no cap on how many times a borrowing
+     * can be extended — v1 scope per the user's own call, module DECISIONS.md).
+     */
+    async extendLoan(borrowingId, newDueDate) {
+        const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
+        if (!borrowing)
+            throw new common_1.NotFoundException('Borrowing not found');
+        if (borrowing.status !== 'active' && borrowing.status !== 'overdue') {
+            throw new common_1.ConflictException(`This borrowing is already "${borrowing.status}" and cannot be extended.`);
+        }
+        if (newDueDate.getTime() <= borrowing.dueAt.getTime()) {
+            throw new common_1.ConflictException('The new due date must be after the current due date.');
+        }
+        const updated = await this.prisma.libraryBorrowing.update({
+            where: { id: borrowingId },
+            data: { dueAt: newDueDate },
+        });
+        const student = await this.prisma.libraryStudent.findUnique({ where: { id: borrowing.studentId } });
+        if (student) {
+            await this.notifyStudent(student.userId, 'library_circulation.extend', 'تمديد إعارة', 'تم تمديد فترة إعارة الكتاب بنجاح.');
+        }
+        return updated;
+    }
     /** Never lets a notification failure fail the underlying circulation action (§23's UX addition, not a correctness requirement). */
     async notifyStudent(userId, category, title, bodyMarkdown) {
         try {

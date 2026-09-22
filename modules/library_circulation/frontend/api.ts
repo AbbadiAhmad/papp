@@ -296,6 +296,8 @@ export const libraryCirculationApi = {
         damageFine?: { suggested: boolean; reason: string };
       }>(`${BASE}/return`, { borrowingId, returnStatus, returnNotes, returnedAt, fine })
       .then((r) => r.data),
+  extendLoan: (borrowingId: string, newDueDate: string) =>
+    apiClient.post<LibraryBorrowing>(`${BASE}/extend`, { borrowingId, newDueDate }).then((r) => r.data),
 
   // History (§2.1/§2.2, docs/LIBRARY_IMPROVEMENTS.md)
   getCopyCirculationHistory: (copyId: string, limit = 10) =>

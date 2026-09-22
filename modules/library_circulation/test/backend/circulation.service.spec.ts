@@ -208,6 +208,42 @@ describe('CirculationService', () => {
     });
   });
 
+  describe('extendLoan', () => {
+    it('extends an active borrowing to a staff-picked new due date', async () => {
+      const dueAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({ id: 'b-1', status: 'active', dueAt, studentId: 'student-1' });
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      const newDueDate = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000);
+      prisma.libraryBorrowing.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ id: 'b-1', ...data }));
+
+      const updated = await service.extendLoan('b-1', newDueDate);
+
+      expect(prisma.libraryBorrowing.update).toHaveBeenCalledWith({ where: { id: 'b-1' }, data: { dueAt: newDueDate } });
+      expect((updated as unknown as { dueAt: Date }).dueAt).toBe(newDueDate);
+    });
+
+    it('rejects a new due date that is not after the current due date', async () => {
+      const dueAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({ id: 'b-1', status: 'active', dueAt, studentId: 'student-1' });
+
+      await expect(service.extendLoan('b-1', dueAt)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.libraryBorrowing.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects extending a borrowing that is already returned', async () => {
+      const dueAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({ id: 'b-1', status: 'returned', dueAt, studentId: 'student-1' });
+
+      await expect(service.extendLoan('b-1', new Date(Date.now() + 21 * 24 * 60 * 60 * 1000))).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.libraryBorrowing.update).not.toHaveBeenCalled();
+    });
+
+    it('404s for a nonexistent borrowing', async () => {
+      prisma.libraryBorrowing.findUnique.mockResolvedValue(null);
+      await expect(service.extendLoan('missing', new Date(Date.now() + 21 * 24 * 60 * 60 * 1000))).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   describe('findActiveBorrowingForCopy', () => {
     it('404s when the copy has no active borrowing (nothing to return)', async () => {
       prisma.libraryBorrowing.findFirst.mockResolvedValue(null);

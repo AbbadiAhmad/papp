@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CirculationController = void 0;
 const common_1 = require("@nestjs/common");
 const borrow_dto_1 = require("./dto/borrow.dto");
+const extend_loan_dto_1 = require("./dto/extend-loan.dto");
 const return_dto_1 = require("./dto/return.dto");
 const scan_dto_1 = require("./dto/scan.dto");
 const circulation_service_1 = require("./circulation.service");
@@ -82,6 +83,9 @@ let CirculationController = class CirculationController {
         }
         return { borrowing, daysLate, lateFine, recordedFine, damageFine };
     }
+    async extendLoan(dto) {
+        return this.circulation.extendLoan(dto.borrowingId, new Date(dto.newDueDate));
+    }
 };
 exports.CirculationController = CirculationController;
 __decorate([
@@ -146,6 +150,15 @@ __decorate([
     __metadata("design:paramtypes", [return_dto_1.ReturnDto, Object]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "returnBorrowing", null);
+__decorate([
+    (0, common_1.Post)('extend'),
+    (0, platform_1.RequirePermission)('library_circulation.extend'),
+    (0, platform_1.Audit)({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [extend_loan_dto_1.ExtendLoanDto]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "extendLoan", null);
 exports.CirculationController = CirculationController = __decorate([
     (0, common_1.Controller)('api/library-circulation'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
