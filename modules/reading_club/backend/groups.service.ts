@@ -46,6 +46,7 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   async createGroup(dto: CreateGroupDto, createdBy: string) {
     return this.prisma.readingClubGroup.create({
       data: { name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
   }
 
@@ -54,6 +55,7 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.readingClubGroup.update({
       where: { id },
       data: { name: dto.name, description: dto.description, isActive: dto.isActive },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
   }
 
@@ -182,7 +184,10 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   // --- internals -----------------------------------------------------------
 
   private async getGroupOrThrow(id: string) {
-    const group = await this.prisma.readingClubGroup.findUnique({ where: { id } });
+    const group = await this.prisma.readingClubGroup.findUnique({
+      where: { id },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
+    });
     if (!group) throw new NotFoundException('Group not found');
     return group;
   }

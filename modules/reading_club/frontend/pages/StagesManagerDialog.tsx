@@ -51,9 +51,10 @@ export function StagesManagerDialog({
 
   useEffect(() => {
     if (open && group) {
-      setStages([...group.stages].sort((a, b) => a.stageOrder - b.stageOrder));
+      const groupStages = group.stages ?? [];
+      setStages([...groupStages].sort((a, b) => a.stageOrder - b.stageOrder));
       setError(null);
-      resetForm(group.stages.length);
+      resetForm(groupStages.length);
     }
   }, [open, group]);
 
@@ -76,7 +77,7 @@ export function StagesManagerDialog({
   const refresh = async () => {
     if (!group) return;
     const updated = await readingClubApi.getGroup(group.id);
-    setStages([...updated.stages].sort((a, b) => a.stageOrder - b.stageOrder));
+    setStages([...(updated.stages ?? [])].sort((a, b) => a.stageOrder - b.stageOrder));
     onChanged();
   };
 

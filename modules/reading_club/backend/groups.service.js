@@ -43,6 +43,7 @@ let GroupsService = GroupsService_1 = class GroupsService {
     async createGroup(dto, createdBy) {
         return this.prisma.readingClubGroup.create({
             data: { name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
+            include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
     }
     async updateGroup(id, dto) {
@@ -50,6 +51,7 @@ let GroupsService = GroupsService_1 = class GroupsService {
         return this.prisma.readingClubGroup.update({
             where: { id },
             data: { name: dto.name, description: dto.description, isActive: dto.isActive },
+            include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
     }
     /** Rejects deleting a group any reader has ever been assigned to or completed a stage in — history is permanent, same ethos as library_circulation §10/§22. */
@@ -168,7 +170,10 @@ let GroupsService = GroupsService_1 = class GroupsService {
     }
     // --- internals -----------------------------------------------------------
     async getGroupOrThrow(id) {
-        const group = await this.prisma.readingClubGroup.findUnique({ where: { id } });
+        const group = await this.prisma.readingClubGroup.findUnique({
+            where: { id },
+            include: { stages: { orderBy: { stageOrder: 'asc' } } },
+        });
         if (!group)
             throw new common_1.NotFoundException('Group not found');
         return group;
