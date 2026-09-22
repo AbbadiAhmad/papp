@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { FinesService } from '../../backend/fines.service';
 
 interface MockPrisma {
-  libraryStudent: { findUnique: jest.Mock };
+  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryFineType: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryFine: { findFirst: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
-  libraryFinancialTransaction: { create: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
+  libraryFinancialTransaction: { create: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
   libraryPayment: { create: jest.Mock; findMany: jest.Mock };
   libraryReceipt: { create: jest.Mock };
+  libraryBorrowing: { findUnique: jest.Mock };
+  libraryCatalogBookCopy: { findUnique: jest.Mock };
+  libraryCatalogBook: { findUnique: jest.Mock };
+  user: { findMany: jest.Mock };
   $transaction: jest.Mock;
   $queryRawUnsafe: jest.Mock;
 }
@@ -17,12 +21,16 @@ interface MockPrisma {
 function createMockPrisma(): MockPrisma {
   let sequenceCounter = 0;
   const prisma: MockPrisma = {
-    libraryStudent: { findUnique: jest.fn() },
+    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryFineType: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryFine: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
-    libraryFinancialTransaction: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+    libraryFinancialTransaction: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
     libraryPayment: { create: jest.fn(), findMany: jest.fn() },
     libraryReceipt: { create: jest.fn() },
+    libraryBorrowing: { findUnique: jest.fn() },
+    libraryCatalogBookCopy: { findUnique: jest.fn() },
+    libraryCatalogBook: { findUnique: jest.fn() },
+    user: { findMany: jest.fn() },
     $transaction: jest.fn(),
     $queryRawUnsafe: jest.fn(),
   };
@@ -164,6 +172,88 @@ describe('FinesService', () => {
     });
   });
 
+  describe('update', () => {
+    it('edits amount/notes while unpaid, keeping the ledger transaction amount in sync', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'unpaid', amount: 10, amountPaid: 0 }));
+      prisma.libraryFine.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ ...fineRow(), ...data }));
+
+      const result = await service.update('fine-1', { amount: 15, notes: 'adjusted' }, false);
+
+      expect(result.amount).toBe(15);
+      expect(prisma.libraryFinancialTransaction.updateMany).toHaveBeenCalledWith({ where: { fineId: 'fine-1' }, data: { amount: 15 } });
+    });
+
+    it('editing a partially_paid fine down to exactly the paid amount flips it to paid', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'partially_paid', amount: 10, amountPaid: 6 }));
+      prisma.libraryFine.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ ...fineRow(), ...data }));
+
+      const result = await service.update('fine-1', { amount: 6 }, false);
+      expect(result.status).toBe('paid');
+    });
+
+    it('rejects lowering the amount below what has already been paid', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'partially_paid', amount: 10, amountPaid: 6 }));
+      await expect(service.update('fine-1', { amount: 5 }, false)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.libraryFine.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects editing a paid fine without allowAfterPayment', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'paid', amount: 10, amountPaid: 10 }));
+      await expect(service.update('fine-1', { amount: 12 }, false)).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.libraryFine.update).not.toHaveBeenCalled();
+    });
+
+    it('allows editing a paid fine when allowAfterPayment is true', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'paid', amount: 10, amountPaid: 10 }));
+      prisma.libraryFine.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ ...fineRow(), ...data }));
+
+      const result = await service.update('fine-1', { amount: 20 }, true);
+      expect(result.status).toBe('partially_paid'); // 10 paid against a new 20 total is no longer "fully paid"
+    });
+
+    it('rejects editing a waived fine even with allowAfterPayment', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ status: 'waived' }));
+      await expect(service.update('fine-1', { amount: 5 }, true)).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('findById (fine detail enrichment)', () => {
+    it('resolves createdBy/receivedBy to names and joins in the borrowing/book context', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ createdBy: 'staff-1' }));
+      prisma.libraryFinancialTransaction.findFirst.mockResolvedValue({ id: 'txn-1', fineId: 'fine-1' });
+      prisma.libraryPayment.findMany.mockResolvedValue([{ id: 'pay-1', receivedBy: 'staff-2', amount: 10, paymentMethod: 'cash' }]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'staff-1', name: 'Aisha' },
+        { id: 'staff-2', name: 'Omar' },
+      ]);
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({
+        id: 'borrowing-1',
+        bookCopyId: 'copy-1',
+        dueAt: new Date('2026-01-01T00:00:00Z'),
+        returnedAt: new Date('2026-01-05T00:00:00Z'),
+        returnStatus: 'returned',
+      });
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue({ id: 'copy-1', bookId: 'book-1', qrCode: 'BOOK-001' });
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1', title: 'Kalila wa Dimna' });
+
+      const result = await service.findById('fine-1');
+
+      expect(result.createdByName).toBe('Aisha');
+      expect(result.payments[0].receivedByName).toBe('Omar');
+      expect(result.borrowingContext).toMatchObject({ bookTitle: 'Kalila wa Dimna', qrCode: 'BOOK-001', daysLate: 4 });
+    });
+
+    it('borrowingContext is null when the fine has no linked borrowing', async () => {
+      prisma.libraryFine.findUnique.mockResolvedValue(fineRow({ borrowingId: null }));
+      prisma.libraryFinancialTransaction.findFirst.mockResolvedValue(null);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      const result = await service.findById('fine-1');
+      expect(result.borrowingContext).toBeNull();
+      expect(prisma.libraryBorrowing.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getFinanceSummary', () => {
     it('§18: sums real fine rows into paid/unpaid totals, never mock numbers', async () => {
       prisma.libraryFine.findMany.mockResolvedValue([
@@ -175,6 +265,76 @@ describe('FinesService', () => {
       const summary = await service.getFinanceSummary();
       expect(summary.paidTotal).toBe(15); // 10 + 5 + 0
       expect(summary.unpaidTotal).toBe(23); // 0 + 15 + 8
+    });
+  });
+
+  describe('list (Fines page filters)', () => {
+    it('enriches each fine with reader code/name, fine type name, and creator name, plus a filtered total', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', amount: 10 }), fineRow({ id: 'fine-2', amount: 5 })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', code: 'STU-001', userId: 'user-reader' }]);
+      prisma.libraryFineType.findMany.mockResolvedValue([{ id: 'type-1', name: 'Late Return' }]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'staff-1', name: 'Aisha' },
+        { id: 'user-reader', name: 'Omar' },
+      ]);
+
+      const result = await service.list({});
+
+      expect(result.totalAmount).toBe(15);
+      expect(result.fines[0]).toMatchObject({ studentCode: 'STU-001', studentName: 'Omar', fineTypeName: 'Late Return', createdByName: 'Aisha' });
+    });
+
+    it('createdByName filters down to fines created by matching users, resolved via a name search first', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'staff-1' }]); // name search
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ createdBy: 'staff-1' })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      prisma.libraryFineType.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValueOnce([{ id: 'staff-1', name: 'Aisha' }]); // resolving names for the enrichment pass
+
+      await service.list({ createdByName: 'Aisha' });
+
+      expect(prisma.libraryFine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ createdBy: { in: ['staff-1'] } }) }),
+      );
+    });
+
+    it('returns an empty result without querying fines when createdByName matches nobody', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([]); // name search finds nobody
+      const result = await service.list({ createdByName: 'Nobody' });
+      expect(result).toEqual({ fines: [], totalAmount: 0 });
+      expect(prisma.libraryFine.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listPayments (Finance page filters)', () => {
+    it('enriches each payment with receiver/fine-creator names and the fine it belongs to, plus a filtered total', async () => {
+      prisma.libraryPayment.findMany.mockResolvedValue([{ id: 'pay-1', transactionId: 'txn-1', receivedBy: 'staff-2', amount: 10, paymentMethod: 'cash', paidAt: new Date() }]);
+      prisma.libraryFinancialTransaction.findMany.mockResolvedValue([{ id: 'txn-1', fineId: 'fine-1' }]);
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1' })]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'staff-1', name: 'Aisha' },
+        { id: 'staff-2', name: 'Omar' },
+      ]);
+
+      const result = await service.listPayments({});
+
+      expect(result.totalAmount).toBe(10);
+      expect(result.payments[0]).toMatchObject({ receivedByName: 'Omar', createdByName: 'Aisha', fineNumber: fineRow().fineNumber });
+    });
+
+    it('returns an empty result without querying payments when receivedByName matches nobody', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([]);
+      const result = await service.listPayments({ receivedByName: 'Nobody' });
+      expect(result).toEqual({ payments: [], totalAmount: 0 });
+      expect(prisma.libraryPayment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('date range filters translate to an inclusive paidAt gte/lte', async () => {
+      prisma.libraryPayment.findMany.mockResolvedValue([]);
+      await service.listPayments({ dateFrom: '2026-01-01', dateTo: '2026-01-31' });
+      const call = prisma.libraryPayment.findMany.mock.calls[0][0] as { where: { paidAt: { gte: Date; lte: Date } } };
+      expect(call.where.paidAt.gte.toISOString().startsWith('2026-01-01')).toBe(true);
+      expect(call.where.paidAt.lte.toISOString().startsWith('2026-01-31')).toBe(true);
     });
   });
 });

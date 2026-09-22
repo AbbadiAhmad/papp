@@ -176,7 +176,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
     return this.prisma.libraryCatalogBookCopy.update({
       where: { id: copy.id },
-      data: { ...dto, history: updatedHistory },
+      data: { ...dto, history: updatedHistory as Prisma.InputJsonValue },
     });
   }
 

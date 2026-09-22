@@ -38,13 +38,13 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 | Code | Gates |
 |---|---|
 | `library_circulation.students.view/create/update/delete` | Students CRUD |
-| `library_circulation.borrow` / `.return` | The two circulation actions, and `/scan` (gated on `.borrow`) |
+| `library_circulation.borrow` / `.return` / `.extend` | The three circulation actions, and `/scan` (gated on `.borrow`) |
 | `library_circulation.fines.view/record/waive` | Fines list/detail, manual fine creation, waiving |
 | `library_circulation.finance.view/record_payment` | Transactions/payments read, recording a payment |
 | `library_circulation.settings.update` | The `loan_policy` setting |
 | `library_circulation.dashboard.view` | `GET /dashboard` (§18's stat cards) |
 
-`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return + `fines.view` + `dashboard.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*` + `dashboard.view`; `reader` none.
+`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return/extend + `fines.view` + `dashboard.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*` + `dashboard.view`; `reader` none.
 
 ## Settings
 
@@ -52,14 +52,15 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 
 ## Key files
 
-- `backend/circulation.service.ts` — scan (prefix-dispatch STU/BOOK, §6)/borrow/return, the per-student borrowing-limit protection rule (§22), late-day computation, copy-stats aggregate for the dashboard, borrow/return notifications.
+- `backend/circulation.service.ts` — scan (prefix-dispatch STU/BOOK, §6)/borrow/return/extend, the per-student borrowing-limit protection rule (§22), late-day computation, copy-stats aggregate for the dashboard, borrow/return/extend notifications. `extendLoan()` (LIBRARY_CIRCULATION-D22): staff-picked new due date (must be after the current one), no cap on repeat extensions, no dedicated `extended_by` column — the audit log already captures the actor.
 - `backend/students.service.ts` — creates the linked `User` + `library_students` row together; blocks delete-with-history.
 - `backend/fines.service.ts` — fine creation (manual + auto-on-late-return) with duplicate-open-fine prevention (§14/§22), payments with the overpayment guard, receipt issuance, sequence-backed reference numbers (`nextNumber()`), finance-summary aggregate for the dashboard, fine/payment notifications.
 - `backend/notifications-sender.ts` — the `NOTIFICATIONS_SENDER` injection token + structural interface `circulation.service.ts`/`fines.service.ts` depend on instead of importing the real `NotificationsService` directly (keeps them unit-testable — root D74, read this file's own docblock before touching notification wiring).
 - `backend/dashboard.controller.ts` — `GET /dashboard` (§18), combining all three services' own stat methods.
 - `backend/*.controller.ts` — four controllers (`students`, `circulation`, `fines`, `dashboard`) plus `settings`, sharing one manifest/module.
-- `frontend/pages/ScanPage.tsx` — the daily-use screen (§6/§30): two scan slots (student/book), then one confirm action. All three of §6's input methods are real: `CameraScanDialog.tsx` (camera), a USB keyboard-wedge scanner (free — same text field), manual typing. Also renders the optional `reading_club` reward hook (see `readingClubIntegration.ts` below) right under the reader section once a student is scanned.
+- `frontend/pages/ScanPage.tsx` — the daily-use screen (§6/§30): two scan slots (student/book), then one confirm action. All three of §6's input methods are real: `CameraScanDialog.tsx` (camera), a USB keyboard-wedge scanner (free — same text field), manual typing. When the scanned copy has an active borrowing, an Extend button (`library_circulation.extend`, `ExtendLoanDialog.tsx`) sits next to Confirm Return. Also renders the optional `reading_club` reward hook (see `readingClubIntegration.ts` below) right under the reader section once a student is scanned.
 - `frontend/readingClubIntegration.ts` — a small, deliberately import-free (raw `apiClient` calls, never a static TS import of `modules/reading_club/**`) helper this page uses to show "reader finished a reading-club stage, reward pending" and let staff confirm it was handed over, right when the reader is next physically present. Entirely optional: hidden whenever the `reading_club` module isn't installed or the caller lacks its permission — see `DECISIONS.md`.
+- `frontend/pages/StudentDetailPage.tsx` — the reader's active-books/fines tabs (§25/§10); the "Currently borrowed" tab's Actions column also opens `ExtendLoanDialog.tsx` per row.
 - `frontend/pages/QrCodeImage.tsx` — client-side QR image rendering (`qrcode` npm package) for a student's own code.
 - `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`.
 
@@ -74,6 +75,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - **Global search across students/books/fines/transactions (§24) is not built** — each entity has its own list endpoint; a unified search endpoint is a follow-up.
 - **Batch QR/barcode + card/spine-label printing (§28) is not built** — `QrCodeImage.tsx` renders one code at a time (student create dialog / detail page), not a batch/print layout.
 - **Notification content is hardcoded Arabic text**, not an operator-editable `system_settings` template like core's password-reset notice — root ASSUMPTIONS.md A15.
+- **The committed `backend/*.js` can drift from `backend/*.ts`** — found via LIBRARY_CIRCULATION-D22's rebuild: several `.js` files were stale relative to their own `.ts` source (missing already-reviewed features entirely: borrow's `expectedReturnDate`/`comments`, return's status/notes handling, `getCirculationHistory`, `ParseUUIDPipe` on `:id` routes). Since `backend.entry` in the manifest runs the `.js`, this meant the real running app silently lacked functionality its source code already had. Any change to a `backend/*.ts` file must be followed by `npx tsc -p modules/library_circulation/tsconfig.json` (which recompiles the WHOLE module in place, not just the file you touched) — never hand-edit a `.js` file, and never assume an existing `.js` is actually in sync with its `.ts` without recompiling to check.
 
 ## How to extend
 

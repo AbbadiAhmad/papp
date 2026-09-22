@@ -9,68 +9,68 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReturnDto = exports.ReturnFineDto = exports.ReturnStatus = void 0;
+exports.ListFinesDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
-var ReturnStatus;
-(function (ReturnStatus) {
-    ReturnStatus["returned"] = "returned";
-    ReturnStatus["damaged"] = "damaged";
-    ReturnStatus["lost"] = "lost";
-    ReturnStatus["other"] = "other";
-})(ReturnStatus || (exports.ReturnStatus = ReturnStatus = {}));
-/** Return dialog's extendable "add fine" checkbox — created in the SAME request/transaction as the return, not a separate follow-up step. */
-class ReturnFineDto {
+/** Fines page's filter bar — all optional, combined with AND. */
+class ListFinesDto {
+    studentId;
+    status;
     fineTypeId;
-    amount;
-    notes;
+    dateFrom;
+    dateTo;
+    /** Substring match on the fine's own createdBy User.name. */
+    createdByName;
+    /** Substring match on the reader's own User.name or LibraryStudent.code. */
+    studentSearch;
+    amountMin;
+    amountMax;
 }
-exports.ReturnFineDto = ReturnFineDto;
+exports.ListFinesDto = ListFinesDto;
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
-], ReturnFineDto.prototype, "fineTypeId", void 0);
-__decorate([
-    (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0.01),
-    __metadata("design:type", Number)
-], ReturnFineDto.prototype, "amount", void 0);
+], ListFinesDto.prototype, "studentId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], ReturnFineDto.prototype, "notes", void 0);
-class ReturnDto {
-    borrowingId;
-    returnStatus;
-    returnNotes;
-    /** Backdating support — defaults to "now" server-side when omitted. */
-    returnedAt;
-    fine;
-}
-exports.ReturnDto = ReturnDto;
+], ListFinesDto.prototype, "status", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
-], ReturnDto.prototype, "borrowingId", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEnum)(ReturnStatus),
-    __metadata("design:type", String)
-], ReturnDto.prototype, "returnStatus", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], ReturnDto.prototype, "returnNotes", void 0);
+], ListFinesDto.prototype, "fineTypeId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
-], ReturnDto.prototype, "returnedAt", void 0);
+], ListFinesDto.prototype, "dateFrom", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_transformer_1.Type)(() => ReturnFineDto),
-    (0, class_validator_1.ValidateNested)(),
-    __metadata("design:type", ReturnFineDto)
-], ReturnDto.prototype, "fine", void 0);
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], ListFinesDto.prototype, "dateTo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListFinesDto.prototype, "createdByName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListFinesDto.prototype, "studentSearch", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], ListFinesDto.prototype, "amountMin", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], ListFinesDto.prototype, "amountMax", void 0);

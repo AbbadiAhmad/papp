@@ -9,30 +9,35 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BorrowDto = void 0;
+exports.ListPaymentsDto = void 0;
 const class_validator_1 = require("class-validator");
-class BorrowDto {
-    studentId;
-    bookCopyId;
-    expectedReturnDate;
-    comments;
+/** Finance page's Payments tab filters — all optional, combined with AND. */
+class ListPaymentsDto {
+    dateFrom;
+    dateTo;
+    /** The fine's own `createdBy` (who recorded the fine) — substring match on the User's name. */
+    createdByName;
+    /** The payment's own `receivedBy` (who recorded the payment) — substring match on the User's name. */
+    receivedByName;
 }
-exports.BorrowDto = BorrowDto;
-__decorate([
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], BorrowDto.prototype, "studentId", void 0);
-__decorate([
-    (0, class_validator_1.IsUUID)(),
-    __metadata("design:type", String)
-], BorrowDto.prototype, "bookCopyId", void 0);
+exports.ListPaymentsDto = ListPaymentsDto;
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
-], BorrowDto.prototype, "expectedReturnDate", void 0);
+], ListPaymentsDto.prototype, "dateFrom", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], ListPaymentsDto.prototype, "dateTo", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], BorrowDto.prototype, "comments", void 0);
+], ListPaymentsDto.prototype, "createdByName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListPaymentsDto.prototype, "receivedByName", void 0);
