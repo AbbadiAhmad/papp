@@ -134,24 +134,29 @@ let CirculationService = CirculationService_1 = class CirculationService {
      * own tables are.
      *
      * Feature D18: supports return status (returned/damaged/lost/other) and notes
+     *
+     * `returnedAtOverride`: the librarian backdating the return (book was
+     * physically back yesterday, only scanned today) — defaults to "now" when
+     * omitted, same as before. Days-late/fine calculations use whichever date
+     * actually applies, never a hardcoded "now".
      */
-    async returnBorrowing(borrowingId, returnedBy, returnStatus, returnNotes) {
+    async returnBorrowing(borrowingId, returnedBy, returnStatus, returnNotes, returnedAtOverride) {
         const borrowing = await this.prisma.libraryBorrowing.findUnique({ where: { id: borrowingId } });
         if (!borrowing)
             throw new common_1.NotFoundException('Borrowing not found');
         if (borrowing.status !== 'active' && borrowing.status !== 'overdue') {
             throw new common_1.ConflictException(`This borrowing is already "${borrowing.status}" and cannot be returned (§22).`);
         }
-        const returnedAt = new Date();
+        const returnedAt = returnedAtOverride ?? new Date();
         const daysLate = Math.max(0, Math.ceil((returnedAt.getTime() - borrowing.dueAt.getTime()) / (24 * 60 * 60 * 1000)));
         // Map return status to copy status
         const copyStatusMap = {
-            returned: 'available',
-            damaged: 'damaged',
-            lost: 'lost',
-            other: 'available',
+            returned: client_1.LibraryCatalogBookCopyStatus.available,
+            damaged: client_1.LibraryCatalogBookCopyStatus.damaged,
+            lost: client_1.LibraryCatalogBookCopyStatus.lost,
+            other: client_1.LibraryCatalogBookCopyStatus.available,
         };
-        const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || 'available';
+        const copyStatus = copyStatusMap[returnStatus ?? 'returned'] || client_1.LibraryCatalogBookCopyStatus.available;
         const updated = await this.prisma.$transaction(async (tx) => {
             const result = await tx.libraryBorrowing.update({
                 where: { id: borrowingId },
@@ -244,6 +249,40 @@ let CirculationService = CirculationService_1 = class CirculationService {
         }
         return borrowing;
     }
+    /**
+     * Scan page's reader-centric view — this reader's own currently-active
+     * (not-yet-returned) borrowings, each enriched with the book's title/qrCode
+     * so the UI can show due dates and a per-row Return action without a
+     * second round trip per row.
+     */
+    async getActiveBorrowingsForStudent(studentId) {
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where: { studentId, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
+            orderBy: { dueAt: 'asc' },
+        });
+        if (borrowings.length === 0)
+            return [];
+        const copyIds = [...new Set(borrowings.map((b) => b.bookCopyId))];
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { id: { in: copyIds } } });
+        const copyById = new Map(copies.map((c) => [c.id, c]));
+        const bookIds = [...new Set(copies.map((c) => c.bookId))];
+        const books = bookIds.length ? await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: bookIds } } }) : [];
+        const bookById = new Map(books.map((b) => [b.id, b]));
+        return borrowings.map((b) => {
+            const copy = copyById.get(b.bookCopyId);
+            const book = copy ? bookById.get(copy.bookId) : undefined;
+            return {
+                id: b.id,
+                bookCopyId: b.bookCopyId,
+                qrCode: copy?.qrCode ?? null,
+                bookTitle: book?.title ?? null,
+                borrowedAt: b.borrowedAt,
+                dueAt: b.dueAt,
+                status: b.status,
+                isOverdue: b.dueAt.getTime() < Date.now(),
+            };
+        });
+    }
     /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
     async getCirculationHistory(bookCopyId, borrowingId, limit = 10) {
         const where = {};
@@ -270,6 +309,46 @@ let CirculationService = CirculationService_1 = class CirculationService {
             comments: b.comments,
             borrowedBy: b.borrowedBy,
             returnedBy: b.returnedBy,
+        }));
+    }
+    /**
+     * §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed
+     * ANY copy of a given book, most recent first. `library_borrowings` only
+     * has `bookCopyId`, not `bookId` (a copy's title is catalog domain, not
+     * circulation's), so this first resolves the book's copy ids through the
+     * shared Prisma client's `library_catalog_book_copies` table (same
+     * deliberate direct-read pattern this service already uses everywhere
+     * else — see this class's own docblock) and then queries borrowings
+     * across all of them.
+     */
+    async getBookCirculationHistory(bookId, limit = 10) {
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, select: { id: true, qrCode: true } });
+        if (copies.length === 0) {
+            return [];
+        }
+        const qrCodeByCopyId = new Map(copies.map((c) => [c.id, c.qrCode]));
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where: { bookCopyId: { in: copies.map((c) => c.id) } },
+            orderBy: { borrowedAt: 'desc' },
+            take: limit,
+            include: { student: true },
+        });
+        // Student names live on the linked core User, not LibraryStudent itself
+        // (same split scanStudent() already works around) — batch-fetch once.
+        const userIds = [...new Set(borrowings.map((b) => b.student.userId))];
+        const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+        const nameByUserId = new Map(users.map((u) => [u.id, u.name]));
+        return borrowings.map((b) => ({
+            id: b.id,
+            studentId: b.studentId,
+            studentCode: b.student.code,
+            studentName: nameByUserId.get(b.student.userId) ?? null,
+            bookCopyId: b.bookCopyId,
+            qrCode: qrCodeByCopyId.get(b.bookCopyId) ?? null,
+            borrowedAt: b.borrowedAt,
+            dueAt: b.dueAt,
+            returnedAt: b.returnedAt,
+            status: b.status,
         }));
     }
 };

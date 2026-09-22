@@ -218,7 +218,7 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
       const fines = await request(app!.getHttpServer())
         .get(`/api/library-circulation/fines?studentId=${studentId}`)
         .set('Authorization', `Bearer ${assistant.token}`);
-      expect(fines.body.some((f: { id: string }) => f.id === fineId)).toBe(true);
+      expect(fines.body.fines.some((f: { id: string }) => f.id === fineId)).toBe(true);
     });
 
     it('records a full payment against the fine and issues a receipt', async () => {

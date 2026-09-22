@@ -26,6 +26,7 @@
     { "code": "library_circulation.fines.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.view" },
     { "code": "library_circulation.fines.record", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.record" },
     { "code": "library_circulation.fines.waive", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.waive" },
+    { "code": "library_circulation.fines.update_after_payment", "category": "library_circulation", "descriptionKey": "library_circulation.perm.fines.update_after_payment" },
     { "code": "library_circulation.finance.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.finance.view" },
     { "code": "library_circulation.finance.record_payment", "category": "library_circulation", "descriptionKey": "library_circulation.perm.finance.record_payment" },
     { "code": "library_circulation.settings.update", "category": "library_circulation", "descriptionKey": "library_circulation.perm.settings.update" },
@@ -44,6 +45,7 @@
       "library_circulation.fines.view",
       "library_circulation.fines.record",
       "library_circulation.fines.waive",
+      "library_circulation.fines.update_after_payment",
       "library_circulation.finance.view",
       "library_circulation.finance.record_payment",
       "library_circulation.settings.update",
@@ -135,6 +137,15 @@
       "order": 4,
       "route": "/library-circulation/finance",
       "requiredPermission": "library_circulation.finance.view"
+    },
+    {
+      "id": "library_circulation.settings",
+      "labelKey": "library_circulation.menu.settings",
+      "icon": "Settings",
+      "parentId": "library_circulation.root",
+      "order": 5,
+      "route": "/library-circulation/settings",
+      "requiredPermission": "library_circulation.settings.update"
     }
   ],
 
@@ -174,6 +185,18 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.finance.view",
       "component": "frontend/pages/FinancePage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/books/:bookId/history",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.borrow",
+      "component": "frontend/pages/BookHistoryPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/settings",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.settings.update",
+      "component": "frontend/pages/SettingsPage.tsx"
     }
   ],
 

@@ -76,11 +76,18 @@ let BooksController = class BooksController {
     async listCopies(bookId) {
         return this.books.listCopies(bookId);
     }
+    async getCopyHistory(bookId, copyId, limit) {
+        const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
+        return this.books.getCopyHistory(copyId, limitNumber);
+    }
     async createCopy(bookId, dto) {
         return this.books.createCopy(bookId, dto);
     }
     async updateCopy(bookId, id, dto) {
         return this.books.updateCopy(bookId, id, dto);
+    }
+    async removeCopy(bookId, id) {
+        await this.books.removeCopy(bookId, id);
     }
 };
 exports.BooksController = BooksController;
@@ -103,7 +110,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -121,7 +128,7 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, platform_1.RequirePermission)('library_catalog.books.update'),
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'update', fetchState: fetchBookState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_book_dto_1.UpdateBookDto]),
@@ -132,7 +139,7 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('library_catalog.books.delete'),
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'delete', fetchState: fetchBookState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -140,16 +147,26 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':bookId/copies'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
-    __param(0, (0, common_1.Param)('bookId')),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "listCopies", null);
 __decorate([
+    (0, common_1.Get)(':bookId/copies/:copyId/catalog-history'),
+    (0, platform_1.RequirePermission)('library_catalog.books.view'),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('copyId', new common_1.ParseUUIDPipe())),
+    __param(2, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "getCopyHistory", null);
+__decorate([
     (0, common_1.Post)(':bookId/copies'),
     (0, platform_1.RequirePermission)('library_catalog.books.create'),
     (0, platform_1.Audit)({ category: 'library_catalog.copies', entityType: 'LibraryCatalogBookCopy', action: 'create' }),
-    __param(0, (0, common_1.Param)('bookId')),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, create_book_copy_dto_1.CreateBookCopyDto]),
@@ -164,13 +181,29 @@ __decorate([
         action: 'update',
         fetchState: fetchCopyState,
     }),
-    __param(0, (0, common_1.Param)('bookId')),
-    __param(1, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(2, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String, update_book_copy_dto_1.UpdateBookCopyDto]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "updateCopy", null);
+__decorate([
+    (0, common_1.Delete)(':bookId/copies/:id'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, platform_1.RequirePermission)('library_catalog.books.delete'),
+    (0, platform_1.Audit)({
+        category: 'library_catalog.copies',
+        entityType: 'LibraryCatalogBookCopy',
+        action: 'delete',
+        fetchState: fetchCopyState,
+    }),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "removeCopy", null);
 exports.BooksController = BooksController = __decorate([
     (0, common_1.Controller)('api/library/books'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

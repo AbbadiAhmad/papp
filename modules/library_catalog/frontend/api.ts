@@ -40,6 +40,14 @@ export interface LibraryBookCopy {
   updatedAt: string;
 }
 
+export interface CreateBookCopyInlineInput {
+  qrCode: string;
+  status?: BookCopyStatus;
+  condition?: string;
+  location?: string;
+  acquisitionDate?: string;
+}
+
 export interface CreateBookInput {
   title: string;
   author?: string;
@@ -49,9 +57,12 @@ export interface CreateBookInput {
   language?: string;
   description?: string;
   coverImage?: string;
+  /** Mandatory server-side (CreateBookDto.copy, LIBRARY_CATALOG-D11) — every book is created with its first copy in the same transaction. */
+  copy: CreateBookCopyInlineInput;
 }
 
-export type UpdateBookInput = Partial<CreateBookInput>;
+/** Book UPDATE never touches `copy` — a book's copies are their own sub-resource (create/update/delete via the `/copies` endpoints), never edited through the book PATCH. */
+export type UpdateBookInput = Partial<Omit<CreateBookInput, 'copy'>>;
 
 export interface UpdateBookCopyDto {
   status?: BookCopyStatus;
@@ -75,6 +86,12 @@ export interface BookAvailability {
   availableCopies: number;
 }
 
+/** One entry from BooksService.getCopyHistory() — status/condition/location changes only (catalog-domain metadata, not borrowing history; see LIBRARY_CATALOG-D12). */
+export interface CopyHistoryEntry {
+  timestamp: string;
+  changes: Record<string, { before: unknown; after: unknown }>;
+}
+
 export const libraryCatalogApi = {
   listBooks: (params?: { search?: string; category?: string }) =>
     apiClient.get<LibraryBook[]>('/api/library/books', { params }).then((r) => r.data),
@@ -91,6 +108,12 @@ export const libraryCatalogApi = {
     apiClient.post<LibraryBookCopy>(`/api/library/books/${bookId}/copies`, dto).then((r) => r.data),
   updateCopy: (bookId: string, copyId: string, dto: UpdateBookCopyDto) =>
     apiClient.patch<LibraryBookCopy>(`/api/library/books/${bookId}/copies/${copyId}`, dto).then((r) => r.data),
+  removeCopy: (bookId: string, copyId: string) =>
+    apiClient.delete<void>(`/api/library/books/${bookId}/copies/${copyId}`).then((r) => r.data),
+  getCopyHistory: (bookId: string, copyId: string, limit = 10) =>
+    apiClient
+      .get<CopyHistoryEntry[]>(`/api/library/books/${bookId}/copies/${copyId}/catalog-history`, { params: { limit } })
+      .then((r) => r.data),
 
   // Public — no Authorization header required (MODULE_SPEC.md §7); reused
   // `apiClient` still opportunistically attaches one if present (a logged-in

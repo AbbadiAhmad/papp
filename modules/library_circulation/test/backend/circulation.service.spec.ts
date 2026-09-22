@@ -4,20 +4,20 @@ import { CirculationService } from '../../backend/circulation.service';
 
 interface MockPrisma {
   libraryStudent: { findUnique: jest.Mock };
-  libraryCatalogBookCopy: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
-  libraryCatalogBook: { findUnique: jest.Mock };
+  libraryCatalogBookCopy: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
+  libraryCatalogBook: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
-  user: { findUnique: jest.Mock };
+  user: { findUnique: jest.Mock; findMany: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
     libraryStudent: { findUnique: jest.fn() },
-    libraryCatalogBookCopy: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn() },
-    libraryCatalogBook: { findUnique: jest.fn() },
+    libraryCatalogBookCopy: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
+    libraryCatalogBook: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-    user: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn(), findMany: jest.fn() },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
@@ -194,6 +194,18 @@ describe('CirculationService', () => {
       prisma.libraryBorrowing.findUnique.mockResolvedValue(null);
       await expect(service.returnBorrowing('missing', 'staff-1')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('backdating: an explicit returnedAtOverride is used for both the stored returnedAt and the daysLate calculation, not "now"', async () => {
+      const dueAt = new Date('2026-01-01T00:00:00Z');
+      const backdated = new Date('2026-01-04T00:00:00Z'); // 3 days late as of the backdated date
+      prisma.libraryBorrowing.findUnique.mockResolvedValue({ id: 'b-1', status: 'active', dueAt, bookCopyId: 'copy-1', studentId: 'student-1' });
+      prisma.libraryBorrowing.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({ id: 'b-1', ...data }));
+
+      const { daysLate, borrowing } = await service.returnBorrowing('b-1', 'staff-1', undefined, undefined, backdated);
+
+      expect(daysLate).toBe(3);
+      expect((borrowing as { returnedAt: Date }).returnedAt).toEqual(backdated);
+    });
   });
 
   describe('extendLoan', () => {
@@ -294,6 +306,50 @@ describe('CirculationService', () => {
     });
   });
 
+  describe('getBookCirculationHistory (§2.1)', () => {
+    it('resolves the book\'s copy ids first, then queries borrowings across all of them', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { id: 'copy-1', qrCode: 'BOOK-001' },
+        { id: 'copy-2', qrCode: 'BOOK-002' },
+      ]);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        {
+          id: 'b-1',
+          studentId: 'student-1',
+          student: { code: 'STU-001', userId: 'user-1' },
+          bookCopyId: 'copy-1',
+          borrowedAt: new Date('2026-09-01'),
+          dueAt: new Date('2026-09-15'),
+          returnedAt: new Date('2026-09-12'),
+          status: 'returned',
+        },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Ahmed' }]);
+
+      const result = await service.getBookCirculationHistory('book-1');
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith({
+        where: { bookId: 'book-1' },
+        select: { id: true, qrCode: true },
+      });
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { bookCopyId: { in: ['copy-1', 'copy-2'] } } }),
+      );
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'b-1', studentCode: 'STU-001', studentName: 'Ahmed', qrCode: 'BOOK-001' }),
+      ]);
+    });
+
+    it('returns an empty array without querying borrowings when the book has no copies', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+
+      const result = await service.getBookCirculationHistory('book-1');
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryBorrowing.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getCopyStats', () => {
     it('§18: returns real aggregate counts for the dashboard, never mock numbers', async () => {
       prisma.libraryCatalogBookCopy.count
@@ -304,6 +360,39 @@ describe('CirculationService', () => {
 
       const stats = await service.getCopyStats();
       expect(stats).toEqual({ totalCopies: 100, availableCopies: 60, borrowedCopies: 40, overdueBorrowings: 5 });
+    });
+  });
+
+  describe('getActiveBorrowingsForStudent', () => {
+    it('enriches each active borrowing with its book title/qrCode and flags overdue ones', async () => {
+      const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const futureDue = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b-1', bookCopyId: 'copy-1', borrowedAt: new Date(), dueAt: pastDue, status: 'overdue' },
+        { id: 'b-2', bookCopyId: 'copy-2', borrowedAt: new Date(), dueAt: futureDue, status: 'active' },
+      ]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { id: 'copy-1', bookId: 'book-1', qrCode: 'BOOK-001' },
+        { id: 'copy-2', bookId: 'book-2', qrCode: 'BOOK-002' },
+      ]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        { id: 'book-1', title: 'Kalila wa Dimna' },
+        { id: 'book-2', title: 'The Little Prince' },
+      ]);
+
+      const result = await service.getActiveBorrowingsForStudent('student-1');
+
+      expect(result[0]).toMatchObject({ id: 'b-1', bookTitle: 'Kalila wa Dimna', qrCode: 'BOOK-001', isOverdue: true });
+      expect(result[1]).toMatchObject({ id: 'b-2', bookTitle: 'The Little Prince', qrCode: 'BOOK-002', isOverdue: false });
+    });
+
+    it('returns [] without querying copies/books when the reader has no active borrowings', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      const result = await service.getActiveBorrowingsForStudent('student-1');
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();
     });
   });
 });

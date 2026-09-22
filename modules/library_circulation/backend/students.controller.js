@@ -27,8 +27,25 @@ let StudentsController = class StudentsController {
     async list() {
         return this.students.list();
     }
+    /**
+     * Searchable reader picker (Fines page's [Create Fine] dialog, Scan page's
+     * search-by-name lookup) — registered BEFORE `:id` so Express never treats
+     * "search" as an id (same lesson as every other module's own docblock on
+     * this, e.g. library_catalog's books.controller.ts).
+     */
+    async search(q) {
+        return this.students.search(q ?? '');
+    }
     async findById(id) {
         return this.students.findById(id);
+    }
+    /** §3.2 "Reading History" tab — every borrowing ever, never just the active ones. */
+    async readingHistory(id) {
+        return this.students.getReadingHistory(id);
+    }
+    /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */
+    async actionHistory(id) {
+        return this.students.getActionHistory(id);
     }
     async create(dto, user) {
         return this.students.create(dto, user.userId);
@@ -49,6 +66,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "list", null);
 __decorate([
+    (0, common_1.Get)('search'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "search", null);
+__decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
@@ -56,6 +81,22 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "findById", null);
+__decorate([
+    (0, common_1.Get)(':id/reading-history'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "readingHistory", null);
+__decorate([
+    (0, common_1.Get)(':id/action-history'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "actionHistory", null);
 __decorate([
     (0, common_1.Post)(),
     (0, platform_1.RequirePermission)('library_circulation.students.create'),
