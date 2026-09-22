@@ -74,6 +74,7 @@ export function ScanPage() {
   const [currentBorrowingForExtend, setCurrentBorrowingForExtend] = useState<LibraryBorrowing | null>(null);
   const [returnBookLabel, setReturnBookLabel] = useState<string | null>(null);
   const [returnFromActiveList, setReturnFromActiveList] = useState(false);
+  const [extendFromActiveList, setExtendFromActiveList] = useState(false);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [copyHistoryOpen, setCopyHistoryOpen] = useState(false);
   const [readerHistoryOpen, setReaderHistoryOpen] = useState(false);
@@ -237,7 +238,18 @@ export function ScanPage() {
       await gated('library_circulation.extend', () => libraryCirculationApi.extendLoan(currentBorrowingForExtend.id, newDueDate));
       setMessage(t('library_circulation.scan.extend_success'));
       setCurrentBorrowingForExtend(null);
-      reset();
+      if (extendFromActiveList && student) {
+        // Extended from the reader's own active-borrowings list — keep the
+        // reader loaded and just refresh that list, instead of the full
+        // reset() a bookCopy-slot extend uses (mirrors confirmReturn above).
+        libraryCirculationApi
+          .getActiveBorrowingsForStudent(student.student.id)
+          .then(setActiveBorrowings)
+          .catch(() => setActiveBorrowings([]));
+      } else {
+        reset();
+      }
+      setExtendFromActiveList(false);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -262,6 +274,22 @@ export function ScanPage() {
       },
       activeBorrowing.bookTitle ?? activeBorrowing.qrCode,
     );
+  };
+
+  /** Active-borrowings section's per-row Extend button: ExtendLoanDialog only ever reads id/dueAt off `borrowing`, so this mirrors openReturnDialogFromActive's adapter. */
+  const openExtendDialogFromActive = async (activeBorrowing: ActiveBorrowingForStudent) => {
+    setExtendFromActiveList(true);
+    await openExtendDialog({
+      id: activeBorrowing.id,
+      bookCopyId: activeBorrowing.bookCopyId,
+      studentId: student?.student.id ?? '',
+      status: activeBorrowing.status,
+      borrowedAt: activeBorrowing.borrowedAt,
+      dueAt: activeBorrowing.dueAt,
+      returnedAt: null,
+      borrowedBy: '',
+      returnedBy: null,
+    });
   };
 
   const confirmReturn = async (returnStatus: string, returnNotes?: string, returnedAt?: string, fine?: ReturnFineInput) => {
@@ -416,11 +444,18 @@ export function ScanPage() {
                               key={b.id}
                               disableGutters
                               secondaryAction={
-                                <Can permission="library_circulation.return">
-                                  <Button size="small" onClick={() => openReturnDialogFromActive(b)} disabled={busy}>
-                                    {t('library_circulation.scan.confirm_return')}
-                                  </Button>
-                                </Can>
+                                <Stack direction="row" spacing={1}>
+                                  <Can permission="library_circulation.extend">
+                                    <Button size="small" onClick={() => openExtendDialogFromActive(b)} disabled={busy}>
+                                      {t('library_circulation.borrowings.extend')}
+                                    </Button>
+                                  </Can>
+                                  <Can permission="library_circulation.return">
+                                    <Button size="small" onClick={() => openReturnDialogFromActive(b)} disabled={busy}>
+                                      {t('library_circulation.scan.confirm_return')}
+                                    </Button>
+                                  </Can>
+                                </Stack>
                               }
                             >
                               <ListItemText
