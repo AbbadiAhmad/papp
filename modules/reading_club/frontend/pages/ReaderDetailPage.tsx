@@ -34,6 +34,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
+import { StageBookEntriesCard } from './StageBookEntriesCard';
 
 /** A reader's reading-club profile: current group/stage, live progress, action buttons, and the append-only stage-completion/reward history. */
 export function ReaderDetailPage() {
@@ -191,6 +192,8 @@ export function ReaderDetailPage() {
             ) : (
               <Alert severity="warning">{t('reading_club.readers.not_assigned')}</Alert>
             )}
+
+            {reader.group && reader.stage ? <StageBookEntriesCard studentId={reader.studentId} /> : null}
 
             <Paper>
               <Box sx={{ p: 2 }}>
