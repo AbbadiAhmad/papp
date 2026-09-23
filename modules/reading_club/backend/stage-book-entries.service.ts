@@ -39,6 +39,7 @@ export class StageBookEntriesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** `groupName`/`stageName` are snapshotted from the membership's own current snapshot at add time (READING_CLUB-D16) — consistent with the auto-sync half in MembershipsService.syncStageBookEntries. */
   async addManual(studentId: string, dto: AddBookEntryDto, addedBy: string) {
     const membership = await this.memberships.getMembershipOrThrow(studentId);
     return this.prisma.readingClubStageBookEntry.create({
@@ -46,7 +47,9 @@ export class StageBookEntriesService implements OnModuleInit, OnModuleDestroy {
         studentId,
         episodeId: membership.episodeId,
         groupId: membership.groupId,
+        groupName: membership.groupName,
         stageId: membership.currentStageId!,
+        stageName: membership.stageName,
         bookCopyId: dto.bookCopyId ?? null,
         bookTitle: dto.bookTitle,
         bookCode: dto.bookCode ?? null,

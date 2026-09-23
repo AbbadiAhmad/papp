@@ -5,19 +5,23 @@ import { MembershipsService } from '../../backend/memberships.service';
 import type { NotificationsSender } from '../../backend/notifications-sender';
 
 interface MockPrisma {
-  readingClubStage: { findUnique: jest.Mock; findFirst: jest.Mock };
+  readingClubGroup: { findUnique: jest.Mock };
+  readingClubStage: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
   readingClubStageCompletion: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
   readingClubMembership: { update: jest.Mock };
-  libraryStudent: { findUnique: jest.Mock };
+  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock };
+  user: { findMany: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   return {
-    readingClubStage: { findUnique: jest.fn(), findFirst: jest.fn() },
+    readingClubGroup: { findUnique: jest.fn() },
+    readingClubStage: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(() => Promise.resolve([])) },
     readingClubStageCompletion: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     readingClubMembership: { update: jest.fn() },
-    libraryStudent: { findUnique: jest.fn() },
+    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(() => Promise.resolve([])) },
+    user: { findMany: jest.fn(() => Promise.resolve([])) },
     $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
   };
 }
@@ -70,6 +74,7 @@ describe('StageCompletionsService', () => {
 
       prisma.readingClubStage.findUnique.mockResolvedValue(stage);
       prisma.readingClubStage.findFirst.mockResolvedValue(nextStage);
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', name: 'Grade 3 Readers' });
       prisma.readingClubStageCompletion.create.mockResolvedValue({ id: 'completion-1', rewardStatus: 'pending' });
       prisma.readingClubMembership.update.mockResolvedValue({ studentId: 'student-1', currentStageId: 's2' });
       prisma.libraryStudent.findUnique.mockResolvedValue({ id: 'student-1', userId: 'user-1' });
@@ -80,7 +85,10 @@ describe('StageCompletionsService', () => {
         data: expect.objectContaining({
           studentId: 'student-1',
           groupId: 'g1',
+          groupName: 'Grade 3 Readers',
           stageId: 's1',
+          stageName: 'Stage 1',
+          stageOrder: 1,
           targetAmountAtCompletion: 5,
           progressAmountAtCompletion: 5,
           markedBy: 'librarian-1',
@@ -89,7 +97,7 @@ describe('StageCompletionsService', () => {
       });
       expect(prisma.readingClubMembership.update).toHaveBeenCalledWith({
         where: { studentId: 'student-1' },
-        data: expect.objectContaining({ currentStageId: 's2', manualProgressAmount: 0 }),
+        data: expect.objectContaining({ currentStageId: 's2', stageName: 'Stage 2', manualProgressAmount: 0 }),
       });
       expect(result).toEqual({ id: 'completion-1', rewardStatus: 'pending' });
     });
@@ -105,6 +113,7 @@ describe('StageCompletionsService', () => {
 
       prisma.readingClubStage.findUnique.mockResolvedValue(lastStage);
       prisma.readingClubStage.findFirst.mockResolvedValue(null); // no next stage
+      prisma.readingClubGroup.findUnique.mockResolvedValue({ id: 'g1', name: 'Grade 3 Readers' });
       prisma.readingClubStageCompletion.create.mockResolvedValue({ id: 'completion-2' });
       prisma.readingClubMembership.update.mockResolvedValue({ studentId: 'student-1', currentStageId: null });
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
@@ -113,7 +122,7 @@ describe('StageCompletionsService', () => {
 
       expect(prisma.readingClubMembership.update).toHaveBeenCalledWith({
         where: { studentId: 'student-1' },
-        data: expect.objectContaining({ currentStageId: null }),
+        data: expect.objectContaining({ currentStageId: null, stageName: null }),
       });
     });
   });
@@ -156,6 +165,28 @@ describe('StageCompletionsService', () => {
       const result = await service.listPendingRewards('student-1');
 
       expect(result).toEqual([]);
+    });
+
+    it('reads groupName/stageName from the completion\'s own snapshot, even when the live stage is gone (READING_CLUB-D16)', async () => {
+      const service = buildService(prisma, {});
+      prisma.readingClubStageCompletion.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          groupId: null,
+          groupName: 'Old Group (deleted)',
+          stageId: null,
+          stageName: 'Old Stage (deleted)',
+          completedAt: new Date('2026-01-10'),
+        },
+      ]);
+
+      const result = await service.listPendingRewards('student-1');
+
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'c1', groupName: 'Old Group (deleted)', stageName: 'Old Stage (deleted)', rewardDescription: null }),
+      ]);
+      // stageId is null, so no live stage lookup should even be attempted for reward description.
+      expect(prisma.readingClubStage.findMany).toHaveBeenCalledWith({ where: { id: { in: [] } } });
     });
   });
 });

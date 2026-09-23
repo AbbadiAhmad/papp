@@ -69,9 +69,12 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
         const userIds = students.map((s) => s.userId);
         const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
         const usersById = new Map(users.map((u) => [u.id, u]));
-        const groupIds = [...new Set(memberships.map((m) => m.groupId))];
-        const groups = await this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } });
-        const groupsById = new Map(groups.map((g) => [g.id, g]));
+        // Stage lookup is still needed to compute LIVE progress for a reader
+        // still actively on a (necessarily live, non-deleted) stage — but the
+        // DISPLAYED group/stage name always comes from the membership's own
+        // snapshot (READING_CLUB-D16), never this join, so a membership whose
+        // live group/stage was since deleted still shows the right name instead
+        // of null.
         const stageIds = memberships.map((m) => m.currentStageId).filter((id) => id !== null);
         const stages = await this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } });
         const stagesById = new Map(stages.map((s) => [s.id, s]));
@@ -85,9 +88,9 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
                 studentCode: student?.code ?? null,
                 studentName: user?.name ?? null,
                 groupId: membership.groupId,
-                groupName: groupsById.get(membership.groupId)?.name ?? null,
+                groupName: membership.groupName,
                 currentStageId: membership.currentStageId,
-                stageName: stage?.name ?? null,
+                stageName: membership.stageName,
                 stageOrder: stage?.stageOrder ?? null,
                 progress,
             };
@@ -110,10 +113,18 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             throw new common_1.NotFoundException('Reader (library student) not found');
         const user = await this.prisma.user.findUnique({ where: { id: student.userId } });
         const membership = await this.prisma.readingClubMembership.findUnique({ where: { studentId } });
+        // A membership's `groupId`/`currentStageId` can now be null — set by
+        // `ON DELETE SET NULL` (migration 003) when the librarian deletes the
+        // group/stage this reader was actively assigned to (READING_CLUB-D16).
+        // `group`/`stage` below stay the LIVE rows (used for e.g. the "move
+        // stage" picker's list of sibling stages) and are simply null in that
+        // case — the reader shows as unassigned/needing re-assignment, their
+        // membership row's own `groupName`/`stageName` snapshot still shows
+        // what they WERE in (see the frontend's handling of this).
         let group = null;
         let stage = null;
         let progress = null;
-        if (membership) {
+        if (membership?.groupId) {
             group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId } });
             if (membership.currentStageId) {
                 stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
@@ -129,22 +140,18 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             where: { studentId },
             orderBy: { completedAt: 'desc' },
         });
-        // A reader can have completions from a PRIOR group (READING_CLUB-D7) —
-        // look up each completion's own group/stage rather than assuming the
-        // reader's CURRENT group/stage covers every row (item B).
-        const completionGroupIds = [...new Set(completions.map((c) => c.groupId))];
-        const completionStageIds = [...new Set(completions.map((c) => c.stageId))];
-        const [completionGroups, completionStages] = await Promise.all([
-            this.prisma.readingClubGroup.findMany({ where: { id: { in: completionGroupIds } } }),
-            this.prisma.readingClubStage.findMany({ where: { id: { in: completionStageIds } } }),
-        ]);
-        const completionGroupsById = new Map(completionGroups.map((g) => [g.id, g]));
-        const completionStagesById = new Map(completionStages.map((s) => [s.id, s]));
+        // Every completion's group/stage NAME comes from its own snapshot
+        // (`groupName`/`stageName`/`stageOrder`, taken at markComplete time),
+        // never a live join — a completion is append-only history and must
+        // display correctly forever, including after its group/stage row is
+        // later deleted (READING_CLUB-D16; a live join would return null the
+        // moment that happens, silently breaking the group/stage columns this
+        // session's earlier commit just added).
         const completionRows = completions.map((completion) => ({
             ...completion,
-            groupName: completionGroupsById.get(completion.groupId)?.name ?? null,
-            stageName: completionStagesById.get(completion.stageId)?.name ?? null,
-            stageOrder: completionStagesById.get(completion.stageId)?.stageOrder ?? null,
+            groupName: completion.groupName,
+            stageName: completion.stageName,
+            stageOrder: completion.stageOrder,
         }));
         return {
             studentId: student.id,
@@ -190,7 +197,9 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
                     studentId: membership.studentId,
                     episodeId: membership.episodeId,
                     groupId: membership.groupId,
+                    groupName: membership.groupName,
                     stageId: stage.id,
+                    stageName: membership.stageName,
                     borrowingId: borrowing.id,
                     bookCopyId: copy?.id ?? null,
                     bookTitle: book?.title ?? 'Unknown',
@@ -201,22 +210,34 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             });
         }
     }
-    /** Assigns a reader to a group (first assignment, or moving them to a different group). The membership's `episodeId` follows the TARGET GROUP's own episode; rejected unless that episode is current (READING_CLUB-D12). */
+    /**
+     * Assigns a reader to a group (first assignment, or moving them to a
+     * different group). The membership's `episodeId` follows the TARGET
+     * GROUP's own episode; rejected unless that episode is current
+     * (READING_CLUB-D12). `groupName`/`stageName` are snapshotted fresh here
+     * (READING_CLUB-D16) — every write path re-snapshots, so the CURRENT
+     * membership's displayed name is always exactly what it was assigned as,
+     * never stale, and keeps displaying correctly even if the live group/
+     * stage is later deleted out from under this reader.
+     */
     async assign(dto, assignedBy) {
         const group = await this.prisma.readingClubGroup.findUnique({ where: { id: dto.groupId } });
         if (!group)
             throw new common_1.NotFoundException('Group not found');
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
         let stageId = dto.stageId ?? null;
+        let stageName = null;
         if (stageId) {
             const stage = await this.prisma.readingClubStage.findUnique({ where: { id: stageId } });
             if (!stage || stage.groupId !== dto.groupId) {
                 throw new common_1.BadRequestException('The given stage does not belong to the target group');
             }
+            stageName = stage.name;
         }
         else {
             const firstStage = await this.prisma.readingClubStage.findFirst({ where: { groupId: dto.groupId }, orderBy: { stageOrder: 'asc' } });
             stageId = firstStage?.id ?? null;
+            stageName = firstStage?.name ?? null;
         }
         return this.prisma.readingClubMembership.upsert({
             where: { studentId: dto.studentId },
@@ -224,7 +245,9 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
                 studentId: dto.studentId,
                 episodeId: group.episodeId,
                 groupId: dto.groupId,
+                groupName: group.name,
                 currentStageId: stageId,
+                stageName,
                 stageStartedAt: new Date(),
                 manualProgressAmount: 0,
                 assignedBy,
@@ -232,14 +255,16 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             update: {
                 episodeId: group.episodeId,
                 groupId: dto.groupId,
+                groupName: group.name,
                 currentStageId: stageId,
+                stageName,
                 stageStartedAt: new Date(),
                 manualProgressAmount: 0,
                 assignedBy,
             },
         });
     }
-    /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. Rejected unless the membership's episode is current. */
+    /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. Rejected unless the membership's episode is current. Re-snapshots `stageName` (READING_CLUB-D16). */
     async moveStage(studentId, dto) {
         const membership = await this.getMembershipOrThrow(studentId);
         await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
@@ -249,7 +274,7 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
         }
         return this.prisma.readingClubMembership.update({
             where: { studentId },
-            data: { currentStageId: stage.id, stageStartedAt: new Date(), manualProgressAmount: 0 },
+            data: { currentStageId: stage.id, stageName: stage.name, stageStartedAt: new Date(), manualProgressAmount: 0 },
         });
     }
     /** Records the librarian's manually-tracked running progress amount — the only progress source for a `pages`-type stage (no page-count data exists in the catalog to compute it automatically). Rejected unless the membership's episode is current. */

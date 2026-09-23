@@ -74,21 +74,28 @@ let GroupsService = GroupsService_1 = class GroupsService {
             include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
     }
-    /** Rejects deleting a group any reader has ever been assigned to or completed a stage in — history is permanent, same ethos as library_circulation §10/§22. */
+    /**
+     * Deletion is now ALWAYS allowed, regardless of history (READING_CLUB-D16
+     * — a deliberate user request, not a bug fix: the librarian wants to
+     * reconfigure a season's groups/stages without losing that season's
+     * already-earned reward/completion history). History rows survive via
+     * `ON DELETE SET NULL` (migration 003) plus their own name snapshot
+     * (`groupName`/`stageName`, taken at write time) — this method no longer
+     * needs to touch history rows itself, Postgres does it automatically.
+     * Still returns `affectedActiveReaderCount` so a caller (the frontend's
+     * type-to-confirm dialog) can warn about the blast radius before calling
+     * this — never a block, purely informational once this method actually
+     * runs (the count reflects state just before deletion).
+     */
     async removeGroup(id) {
         const group = await this.getGroupOrThrow(id);
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
-        const [membershipCount, completionCount] = await Promise.all([
-            this.prisma.readingClubMembership.count({ where: { groupId: id } }),
-            this.prisma.readingClubStageCompletion.count({ where: { groupId: id } }),
-        ]);
-        if (membershipCount > 0 || completionCount > 0) {
-            throw new common_1.ConflictException('This group has readers assigned or completion history and cannot be deleted.');
-        }
+        const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { groupId: id } });
         await this.prisma.$transaction([
             this.prisma.readingClubStage.deleteMany({ where: { groupId: id } }),
             this.prisma.readingClubGroup.delete({ where: { id } }),
         ]);
+        return { affectedActiveReaderCount };
     }
     // --- Stages --------------------------------------------------------------
     async listStages(groupId) {
@@ -134,19 +141,22 @@ let GroupsService = GroupsService_1 = class GroupsService {
             throw this.translateUniqueConstraintError(error);
         }
     }
-    /** Rejects deleting a stage any reader is currently on or has ever completed — same permanence rule as a group. */
+    /**
+     * Deletion is now ALWAYS allowed, regardless of history — same
+     * READING_CLUB-D16 decision as `removeGroup`. A reader currently on this
+     * stage has their `currentStageId` set to NULL automatically (`ON DELETE
+     * SET NULL`, migration 003); their membership's own `stageName` snapshot
+     * (taken at assign/moveStage time) keeps their row displaying sensibly.
+     * Returns `affectedActiveReaderCount` for the same caller-side warning
+     * purpose as `removeGroup` — informational only, never a block.
+     */
     async removeStage(stageId) {
         const stage = await this.getStageOrThrow(stageId);
         const group = await this.getGroupOrThrow(stage.groupId);
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
-        const [currentCount, completionCount] = await Promise.all([
-            this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } }),
-            this.prisma.readingClubStageCompletion.count({ where: { stageId } }),
-        ]);
-        if (currentCount > 0 || completionCount > 0) {
-            throw new common_1.ConflictException('This stage has readers currently on it or completion history and cannot be deleted.');
-        }
+        const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } });
         await this.prisma.readingClubStage.delete({ where: { id: stageId } });
+        return { affectedActiveReaderCount };
     }
     /** The stage immediately after `currentStage` in its own group's order, or `null` if `currentStage` is the last one. */
     async findNextStage(groupId, currentStageOrder) {
@@ -168,8 +178,15 @@ let GroupsService = GroupsService_1 = class GroupsService {
             include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
         const memberships = await this.prisma.readingClubMembership.findMany({ where: { episodeId: resolvedEpisodeId } });
+        // A membership whose live group was deleted out from under its reader
+        // (READING_CLUB-D16) has `groupId = null` — it still counts toward
+        // `totalActiveReaders` (the reader is still a club member, just
+        // unassigned) but can't be attributed to any group's own per-group
+        // stats below.
         const membershipsByGroup = new Map();
         for (const membership of memberships) {
+            if (!membership.groupId)
+                continue;
             const list = membershipsByGroup.get(membership.groupId) ?? [];
             list.push(membership);
             membershipsByGroup.set(membership.groupId, list);

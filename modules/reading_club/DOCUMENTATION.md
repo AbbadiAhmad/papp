@@ -25,19 +25,24 @@ reading_club_stages(
 
 reading_club_memberships(              -- one active membership per reader (student_id UNIQUE)
   id, student_id -> library_students(id) UNIQUE, episode_id -> reading_club_episodes(id),
-  group_id -> reading_club_groups(id), current_stage_id -> reading_club_stages(id) NULL,
+  group_id -> reading_club_groups(id) NULL ON DELETE SET NULL, group_name NULL,       -- (READING_CLUB-D16)
+  current_stage_id -> reading_club_stages(id) NULL ON DELETE SET NULL, stage_name NULL, -- (READING_CLUB-D16)
   stage_started_at, manual_progress_amount, assigned_by -> users(id), assigned_at, updated_at
 )
 
 reading_club_stage_completions(        -- append-only, never deleted
-  id, student_id -> library_students(id), episode_id -> reading_club_episodes(id), group_id, stage_id,
+  id, student_id -> library_students(id), episode_id -> reading_club_episodes(id),
+  group_id NULL ON DELETE SET NULL, group_name NULL,                                  -- (READING_CLUB-D16)
+  stage_id NULL ON DELETE SET NULL, stage_name NULL, stage_order NULL,                -- (READING_CLUB-D16)
   target_amount_at_completion, progress_amount_at_completion,
   completed_at, marked_by -> users(id),
   reward_status CHECK(pending|delivered), reward_delivered_at, reward_delivered_by -> users(id)
 )
 
 reading_club_stage_book_entries(       -- per-stage "books read this stage" tracking (item D)
-  id, student_id -> library_students(id), episode_id, group_id, stage_id,
+  id, student_id -> library_students(id), episode_id,
+  group_id NULL ON DELETE SET NULL, group_name NULL,                                  -- (READING_CLUB-D16)
+  stage_id NULL ON DELETE SET NULL, stage_name NULL,                                  -- (READING_CLUB-D16)
   borrowing_id -> library_borrowings(id) NULL,   -- set for auto-sourced, NULL for manual
   book_copy_id -> library_catalog_book_copies(id) NULL,
   book_title, book_code NULL,                     -- snapshotted at entry time
@@ -51,8 +56,10 @@ reading_club_stage_book_entries(       -- per-stage "books read this stage" trac
 - **Episodes (seasons/years) own groups fully** (READING_CLUB-D10) — every group belongs to exactly one episode; a stage inherits its episode from its own group (no separate `episode_id` column on stages). One global "current" episode at a time, enforced by a partial unique index `CREATE UNIQUE INDEX ... ON reading_club_episodes (is_current) WHERE is_current`. Starting a new episode (`EpisodesService.createEpisode`) closes whatever was previously current in the same transaction. Reads across groups/memberships/completions/dashboard default to the current episode but accept an optional `episodeId` so a past, closed episode stays browsable read-only; writes against a non-current episode are always rejected (409/400) — see READING_CLUB-D12.
 - `target_amount` on a stage is THAT STAGE'S OWN amount, not cumulative — "stage 1 = 5 books, stage 2 = an additional 10 books" is `target_amount` 5 then 10.
 - Progress for a `books`-type stage is computed **live**, never stored: a count of `library_borrowings` with `status = 'returned' AND returned_at >= stage_started_at` for that reader, read directly off `library_circulation`'s own tables through this module's own `PrismaClient` — the same "a module reads its `dependsOn` dependency's tables directly, coupled only through the shared DB schema" pattern `library_circulation`'s own `CirculationService` already established for `library_catalog`. Progress for a `pages`-type stage has no such data source anywhere in the catalog, so it's the librarian's own manually-recorded `manual_progress_amount` — see `DECISIONS.md`.
-- `reading_club_stage_completions` is append-only and never deleted — same "reading passport" permanence philosophy as `library_circulation` (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §10). A group/stage can never be deleted once any reader has been assigned to it or completed a stage in it.
+- `reading_club_stage_completions` is append-only and never deleted — same "reading passport" permanence philosophy as `library_circulation` (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §10). **A group/stage CAN now be deleted even with history against it** (READING_CLUB-D16, migration 003) — a deliberate reversal of the original v1 rule, on explicit user request, so a librarian can reconfigure a season's groups/stages without losing that season's already-earned reward/completion history. `group_id`/`stage_id`/`current_stage_id` on every history table (`reading_club_memberships`, `reading_club_stage_completions`, `reading_club_stage_book_entries`) are nullable with `ON DELETE SET NULL` — deleting the live group/stage row nulls these out automatically, and the row's own `group_name`/`stage_name` snapshot (see next bullet) keeps it displaying correctly. `reading_club_stages.group_id -> reading_club_groups(id)` itself is unchanged (still blocking/default) — a stage is owned by its group, and `removeGroup` already explicitly deletes a group's stages first, in a transaction, before deleting the group.
+- **Every history row snapshots its group/stage NAME at write time, never re-derived from a live join** (READING_CLUB-D16): `reading_club_memberships.group_name`/`stage_name` (re-snapshotted on every `assign`/`moveStage` call), `reading_club_stage_completions.group_name`/`stage_name`/`stage_order` (snapshotted once, at `markComplete` time — same append-only philosophy as the pre-existing `target_amount_at_completion`/`progress_amount_at_completion`), `reading_club_stage_book_entries.group_name`/`stage_name` (snapshotted at entry-creation time, both auto-sync and manual-add paths). Every read path that displays a group/stage name (`getReaderDetail`, `listReaders`, `listPendingRewards`, `listAllPendingRewards`) reads these snapshot columns directly — the old `groupsById.get(...)`/`stagesById.get(...)` live-join pattern is gone for these fields, since it would silently return `null` the moment the live row is deleted. The one live lookup NOT replaced: `listPendingRewards`/`listAllPendingRewards`'s `rewardDescription` still does a live `readingClubStage` lookup (never snapshotted onto the completion) — a stage deleted between `markComplete` and `confirmReward` loses its reward-description TEXT in that list (the identifying group/stage NAME still shows correctly from the snapshot; only the reward text itself, an accepted documented gap, see DECISIONS.md).
 - Marking a stage complete (`StageCompletionsService.markComplete`) does TWO things in one transaction: creates the completion snapshot (`reward_status = 'pending'`) AND immediately advances the membership to the next stage (or to no stage at all, if it was the group's last one). Reward **delivery** is tracked independently via `confirmReward` — a librarian can hand over the actual present later without blocking the reader's progression.
+- **A reader's `currentStageId`/`groupId` can become `null` while their membership row still exists**, if the librarian deletes the group/stage they're actively assigned to (READING_CLUB-D16). `getReaderDetail`/`listReaders`/the dashboard all handle this without crashing — `group`/`stage`/`progress` come back `null`, `totalActiveReaders` still counts them, but they're not attributed to any group's per-group stats. The frontend shows a distinct "this reader's group was deleted" message (reading the membership's own `groupName` snapshot) rather than the generic "not assigned" message, so a librarian can tell the two cases apart and re-assign the reader.
 - **Per-stage book tracking** (`reading_club_stage_book_entries`, READING_CLUB-D13): every `library_borrowings` row returned inside the reader's current stage window (`returnedAt >= stageStartedAt` — the SAME window `computeStageProgress` uses) is auto-synced whenever a reader's detail is viewed (`MembershipsService.getReaderDetail` → `syncStageBookEntries`), for BOTH books-type and pages-type stages. Dedup is by `borrowing_id` existence regardless of status (a discarded auto-entry is never re-synced). A librarian can also add a free-typed manual entry (`source='manual'`, no `borrowing_id`). Every entry — auto or manual — supports both a soft **discard** (`status='discarded'`, stays visible struck-through, excluded from counts, optional reason) and a hard **delete** (gone entirely).
 
 ## Permissions
@@ -79,7 +86,7 @@ reading_club_stage_book_entries(       -- per-stage "books read this stage" trac
 
 Backend, all under `api/reading-club`, `MustChangePasswordGuard` + the global `JwtAuthGuard`/`PermissionGuard`:
 - `GET /episodes`, `GET /episodes/current`, `GET /episodes/:id`, `POST /episodes`
-- `GET/POST /groups` (`?episodeId=` optional on the list), `GET/PATCH/DELETE /groups/:id`, `GET/POST /groups/:groupId/stages`, `PATCH/DELETE /groups/stages/:stageId`
+- `GET/POST /groups` (`?episodeId=` optional on the list), `GET/PATCH/DELETE /groups/:id`, `GET/POST /groups/:groupId/stages`, `PATCH/DELETE /groups/stages/:stageId` — **`DELETE` on either now always succeeds, even with history/active readers against it (READING_CLUB-D16), and returns `{ affectedActiveReaderCount }` (200, not 204/No Content) instead of an empty body** — purely informational, the frontend's type-to-confirm dialog already warned about this count before calling it.
 - `GET /readers` (`?episodeId=`/`?groupId=`/`?stageId=`/`?search=`), `GET /readers/:studentId`, `POST /readers/assign`, `POST /readers/:studentId/move-stage`, `PUT /readers/:studentId/progress`
 - `POST /readers/:studentId/complete-stage`, `GET /readers/:studentId/pending-rewards`, `POST /stage-completions/:completionId/confirm-reward`
 - `GET/POST /readers/:studentId/book-entries`, `PATCH /readers/:studentId/book-entries/:entryId/discard`, `DELETE /readers/:studentId/book-entries/:entryId`
@@ -95,13 +102,14 @@ Frontend, all `access: "authenticated"` under `basePath: "/reading-club"` — no
 ## Key files
 
 - `backend/episodes.service.ts` — episode CRUD/current-episode logic; `createEpisode` closes whatever was current and opens the new one in one transaction; `assertEpisodeIsCurrent` is the single reusable rejection check every write-path in this module now calls.
-- `backend/groups.service.ts` — group + stage CRUD (episode-scoped reads/writes), the dashboard aggregate query.
+- `backend/groups.service.ts` — group + stage CRUD (episode-scoped reads/writes), the dashboard aggregate query. `removeGroup`/`removeStage` no longer block on history/active-reader presence (READING_CLUB-D16) — they return `{ affectedActiveReaderCount }` instead.
 - `backend/memberships.service.ts` — reader search/filter/detail, assignment, manual stage moves, **`computeStageProgress`** (the books-vs-pages progress logic, see Data model above), and **`syncStageBookEntries`** (the per-stage book-entries auto-sync, called from `getReaderDetail`).
 - `backend/stage-book-entries.service.ts` — manual add / discard / hard-delete for `reading_club_stage_book_entries` (item D); `MembershipsService` owns the auto-sync half, this service owns the CRUD half.
 - `backend/stage-completions.service.ts` — `markComplete`/`confirmReward`/`listPendingRewards`/**`listAllPendingRewards`** (the cross-reader dashboard list, item C); sends real in-app notifications on both events (never lets a notification failure fail the underlying action, same pattern as `library_circulation.CirculationService.notifyStudent`).
 - `frontend/pages/EpisodesPage.tsx` / `EpisodeSwitcher.tsx` — the episode management page and the reusable `<Select>` embedded in Dashboard/Groups/Readers toolbars (placement choice, READING_CLUB-D12).
 - `frontend/pages/StageBookEntriesCard.tsx` — the "books read this stage" card on `ReaderDetailPage.tsx` (item D): auto/manual source chip, add-manual dialog, discard (optional reason) and delete (real `ConfirmDialog`) actions, all gated by `reading_club.memberships.update_progress`.
-- `frontend/pages/StagesManagerDialog.tsx` — the actual "librarian defines the stages, the amount, the reward, the order" configuration surface (see `DECISIONS.md` for why this is plain CRUD, not the manifest `settings[]` mechanism).
+- `frontend/pages/StagesManagerDialog.tsx` — the actual "librarian defines the stages, the amount, the reward, the order" configuration surface (see `DECISIONS.md` for why this is plain CRUD, not the manifest `settings[]` mechanism). Its stage-delete button now goes through `TypeToConfirmDialog` (READING_CLUB-D16), not the plain `ConfirmDialog`.
+- `frontend/pages/TypeToConfirmDialog.tsx` — a module-local, stronger confirmation dialog (type the group/stage's exact name to enable the delete button) used by both `GroupsListPage.tsx` (group delete) and `StagesManagerDialog.tsx` (stage delete) now that deletion is never blocked by history (READING_CLUB-D16) — the harder-to-fat-finger confirm is the replacement safety net.
 - `frontend/circulationIntegration.ts` — a small, deliberately import-free (no static cross-module TS import) helper that lists `library_circulation`'s students for the "assign a reader" picker.
 - `modules/library_circulation/frontend/readingClubIntegration.ts` (in the OTHER module) — the mirror-image helper for the scan-page hook; see that module's own `DOCUMENTATION.md`/`DECISIONS.md` too.
 
@@ -139,6 +147,18 @@ See `DECISIONS.md` READING_CLUB-D8/D9 for the full reasoning and how this was ve
 4. After install, an admin (or `library_assistant`) must create the first episode via `POST /episodes` (or the Episodes page's "Start new episode" button) before any group can be created — `createGroup` requires a current episode to exist.
 
 Verified end-to-end against a real Postgres 16 database (this repo's own `docker-compose` `db` service) — see READING_CLUB-D15.
+
+### 003 — snapshot names + allow delete with history
+
+Lets a librarian delete a group/stage even with reader assignments/completion history against it, while every affected history row keeps displaying the right group/stage name forever (READING_CLUB-D16). Additive only — no data loss, no truncation (unlike 002).
+
+1. Apply the SQL: `psql $DATABASE_URL -f modules/reading_club/migrations/003_snapshot_names_and_allow_delete.sql`
+2. Register it:
+   `INSERT INTO module_migrations (module_key, filename, checksum) VALUES ('reading_club', '003_snapshot_names_and_allow_delete.sql', '2e01c1f6ea5b223c930af2944315ae2451f8673f5a6678ed457aec5a8909697b');`
+   — real `sha256(file contents, 'utf8')` (Node `crypto.createHash('sha256').update(fs.readFileSync(path,'utf8')).digest('hex')`), matching `MigrationRunnerService`'s own hashing method exactly (confirmed by reading that service's source). Recompute if this file is ever edited before being applied (it never should be once applied, per D16 root).
+3. `npx prisma generate` (never `prisma migrate`) from `apps/api/` to pick up the new nullable `groupId`/`stageId`/`currentStageId` fields and the new `groupName`/`stageName`/`stageOrder` snapshot fields on `ReadingClubMembership`/`ReadingClubStageCompletion`/`ReadingClubStageBookEntry` in `schema.prisma`.
+
+Verified end-to-end against this repo's own real running `docker-compose` Postgres 16 container (`p_app-db-1`) — see READING_CLUB-D16 for the full list of what was checked.
 
 ## How to extend
 

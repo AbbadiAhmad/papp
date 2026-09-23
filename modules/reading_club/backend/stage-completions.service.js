@@ -54,17 +54,27 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         if (!stage)
             throw new common_1.NotFoundException('Current stage not found');
         const progress = await this.memberships.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
+        // A membership with a live `currentStageId` (guaranteed by
+        // getMembershipOrThrow) always has a live `groupId` too — a stage
+        // cannot outlive its own group (removeGroup deletes its stages first,
+        // which would have already nulled currentStageId via ON DELETE SET
+        // NULL) — so this non-null assertion mirrors the one on
+        // `currentStageId` just above, not a new assumption.
         const nextStage = await this.prisma.readingClubStage.findFirst({
             where: { groupId: membership.groupId, stageOrder: { gt: stage.stageOrder } },
             orderBy: { stageOrder: 'asc' },
         });
+        const group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId } });
         const [completion] = await this.prisma.$transaction([
             this.prisma.readingClubStageCompletion.create({
                 data: {
                     studentId,
                     episodeId: membership.episodeId,
                     groupId: membership.groupId,
+                    groupName: group?.name ?? membership.groupName ?? null,
                     stageId: stage.id,
+                    stageName: stage.name,
+                    stageOrder: stage.stageOrder,
                     targetAmountAtCompletion: stage.targetAmount,
                     progressAmountAtCompletion: progress.progressAmount,
                     markedBy,
@@ -73,7 +83,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
             }),
             this.prisma.readingClubMembership.update({
                 where: { studentId },
-                data: { currentStageId: nextStage?.id ?? null, stageStartedAt: new Date(), manualProgressAmount: 0 },
+                data: { currentStageId: nextStage?.id ?? null, stageName: nextStage?.name ?? null, stageStartedAt: new Date(), manualProgressAmount: 0 },
             }),
         ]);
         const student = await this.prisma.libraryStudent.findUnique({ where: { id: studentId } });
@@ -101,7 +111,19 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         }
         return updated;
     }
-    /** Every pending (not-yet-delivered) reward for one reader — feeds library_circulation's scan-page hook (§ the confirm-on-scan requirement) and this module's own reader detail page. */
+    /**
+     * Every pending (not-yet-delivered) reward for one reader — feeds
+     * library_circulation's scan-page hook (§ the confirm-on-scan requirement)
+     * and this module's own reader detail page. `groupName`/`stageName` come
+     * from the completion's own snapshot (READING_CLUB-D16), never a live
+     * join — `rewardDescription` still needs a live stage lookup since it was
+     * never snapshotted onto the completion (only the identifying name was);
+     * a stage deleted after completion but before reward delivery loses its
+     * reward description text here, which is an accepted, documented gap (see
+     * DECISIONS.md) since the reward itself doesn't change based on stage
+     * config UI wording — the identifying group/stage NAME is what matters
+     * for "which reward is this".
+     */
     async listPendingRewards(studentId) {
         const completions = await this.prisma.readingClubStageCompletion.findMany({
             where: { studentId, rewardStatus: 'pending' },
@@ -109,19 +131,14 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         });
         if (completions.length === 0)
             return [];
-        const stageIds = [...new Set(completions.map((c) => c.stageId))];
-        const groupIds = [...new Set(completions.map((c) => c.groupId))];
-        const [stages, groups] = await Promise.all([
-            this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
-            this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } }),
-        ]);
+        const stageIds = [...new Set(completions.map((c) => c.stageId).filter((id) => id !== null))];
+        const stages = await this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } });
         const stagesById = new Map(stages.map((s) => [s.id, s]));
-        const groupsById = new Map(groups.map((g) => [g.id, g]));
         return completions.map((completion) => ({
             id: completion.id,
-            groupName: groupsById.get(completion.groupId)?.name ?? null,
-            stageName: stagesById.get(completion.stageId)?.name ?? null,
-            rewardDescription: stagesById.get(completion.stageId)?.rewardDescription ?? null,
+            groupName: completion.groupName,
+            stageName: completion.stageName,
+            rewardDescription: (completion.stageId ? stagesById.get(completion.stageId)?.rewardDescription : null) ?? null,
             completedAt: completion.completedAt,
         }));
     }
@@ -144,19 +161,19 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         if (completions.length === 0)
             return [];
         const studentIds = [...new Set(completions.map((c) => c.studentId))];
-        const stageIds = [...new Set(completions.map((c) => c.stageId))];
-        const groupIds = [...new Set(completions.map((c) => c.groupId))];
-        const [students, stages, groups] = await Promise.all([
+        const stageIds = [...new Set(completions.map((c) => c.stageId).filter((id) => id !== null))];
+        const [students, stages] = await Promise.all([
             this.prisma.libraryStudent.findMany({ where: { id: { in: studentIds } } }),
             this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
-            this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } }),
         ]);
         const studentsById = new Map(students.map((s) => [s.id, s]));
         const userIds = students.map((s) => s.userId);
         const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
         const usersById = new Map(users.map((u) => [u.id, u]));
         const stagesById = new Map(stages.map((s) => [s.id, s]));
-        const groupsById = new Map(groups.map((g) => [g.id, g]));
+        // groupName/stageName come from each completion's own snapshot
+        // (READING_CLUB-D16), never a live join — see listPendingRewards' own
+        // docblock for why rewardDescription alone still needs one.
         return completions.map((completion) => {
             const student = studentsById.get(completion.studentId);
             const user = student ? usersById.get(student.userId) : undefined;
@@ -165,9 +182,9 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
                 studentId: completion.studentId,
                 studentCode: student?.code ?? null,
                 studentName: user?.name ?? null,
-                groupName: groupsById.get(completion.groupId)?.name ?? null,
-                stageName: stagesById.get(completion.stageId)?.name ?? null,
-                rewardDescription: stagesById.get(completion.stageId)?.rewardDescription ?? null,
+                groupName: completion.groupName,
+                stageName: completion.stageName,
+                rewardDescription: (completion.stageId ? stagesById.get(completion.stageId)?.rewardDescription : null) ?? null,
                 completedAt: completion.completedAt,
             };
         });

@@ -834,12 +834,21 @@ model ReadingClubStage {
 /// anchors the live "books returned since entering this stage" progress
 /// query; `manualProgressAmount` is the librarian-entered running total,
 /// used only for `targetType = 'pages'` stages.
+///
+/// `groupId`/`currentStageId` are nullable and `ON DELETE SET NULL`
+/// (migration 003) — a librarian can now delete a group/stage that a reader
+/// is actively assigned to (READING_CLUB-D16); `groupName`/`stageName` are
+/// snapshotted at assign/moveStage time so the membership still displays a
+/// sensible name even after that happens (never re-derived from a live join
+/// that could return null).
 model ReadingClubMembership {
   id                   String   @id @default(uuid()) @db.Uuid
   studentId            String   @unique @map("student_id") @db.Uuid
   episodeId            String   @map("episode_id") @db.Uuid
-  groupId              String   @map("group_id") @db.Uuid
+  groupId              String?  @map("group_id") @db.Uuid
+  groupName            String?  @map("group_name")
   currentStageId       String?  @map("current_stage_id") @db.Uuid
+  stageName            String?  @map("stage_name")
   stageStartedAt       DateTime @default(now()) @map("stage_started_at")
   manualProgressAmount Int      @default(0) @map("manual_progress_amount")
   assignedBy           String   @map("assigned_by") @db.Uuid
@@ -855,12 +864,23 @@ model ReadingClubMembership {
 /// Append-only: one row per "librarian marked this stage finished" event.
 /// `rewardStatus` tracks physical reward delivery independently of stage
 /// progression — see modules/reading_club/backend/stage-completions.service.ts.
+///
+/// `groupId`/`stageId` are nullable and `ON DELETE SET NULL` (migration
+/// 003) — the group/stage a completion happened in can later be deleted by
+/// the librarian (READING_CLUB-D16); `groupName`/`stageName`/`stageOrder`
+/// are snapshotted at completion time (same philosophy as
+/// `targetAmountAtCompletion`/`progressAmountAtCompletion` just below) so
+/// this append-only row keeps displaying correctly forever, independent of
+/// whether the live group/stage row still exists.
 model ReadingClubStageCompletion {
   id                          String    @id @default(uuid()) @db.Uuid
   studentId                   String    @map("student_id") @db.Uuid
   episodeId                   String    @map("episode_id") @db.Uuid
-  groupId                     String    @map("group_id") @db.Uuid
-  stageId                     String    @map("stage_id") @db.Uuid
+  groupId                     String?   @map("group_id") @db.Uuid
+  groupName                   String?   @map("group_name")
+  stageId                     String?   @map("stage_id") @db.Uuid
+  stageName                   String?   @map("stage_name")
+  stageOrder                  Int?      @map("stage_order")
   targetAmountAtCompletion    Int       @map("target_amount_at_completion")
   progressAmountAtCompletion  Int       @map("progress_amount_at_completion")
   completedAt                 DateTime  @default(now()) @map("completed_at")
@@ -885,8 +905,10 @@ model ReadingClubStageBookEntry {
   id            String    @id @default(uuid()) @db.Uuid
   studentId     String    @map("student_id") @db.Uuid
   episodeId     String    @map("episode_id") @db.Uuid
-  groupId       String    @map("group_id") @db.Uuid
-  stageId       String    @map("stage_id") @db.Uuid
+  groupId       String?   @map("group_id") @db.Uuid
+  groupName     String?   @map("group_name")
+  stageId       String?   @map("stage_id") @db.Uuid
+  stageName     String?   @map("stage_name")
   borrowingId   String?   @map("borrowing_id") @db.Uuid
   bookCopyId    String?   @map("book_copy_id") @db.Uuid
   bookTitle     String    @map("book_title")
