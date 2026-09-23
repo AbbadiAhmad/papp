@@ -22,7 +22,6 @@ import {
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
@@ -31,6 +30,7 @@ import { readingClubApi, type CreateGroupInput, type ReadingClubGroup, type Upda
 import { EpisodeSwitcher } from './EpisodeSwitcher';
 import { GroupFormDialog } from './GroupFormDialog';
 import { StagesManagerDialog } from './StagesManagerDialog';
+import { TypeToConfirmDialog } from './TypeToConfirmDialog';
 
 /** "The librarian can create multiple groups, each group contains multiple stages" — this page is the configuration surface for both (docs/DOCUMENTATION.md explains why this is plain entity CRUD, not the manifest's `settings[]` blob). */
 export function GroupsListPage() {
@@ -48,6 +48,12 @@ export function GroupsListPage() {
     else next.delete('episodeId');
     setSearchParams(next);
   };
+
+  // Dashboard stats give the real, current `memberCount` per group — used
+  // only to warn the librarian in the type-to-confirm dialog below about
+  // how many readers are actively assigned before they delete (never a
+  // block, READING_CLUB-D16 — deletion always succeeds regardless).
+  const { data: dashboardStats } = useGuardedQuery(() => readingClubApi.getDashboardStats(episodeId || undefined));
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ReadingClubGroup | null>(null);
@@ -76,14 +82,21 @@ export function GroupsListPage() {
   const handleDelete = async () => {
     if (!pendingDelete) return;
     try {
-      await gated('reading_club.groups.delete', () => readingClubApi.removeGroup(pendingDelete.id));
+      const result = await gated('reading_club.groups.delete', () => readingClubApi.removeGroup(pendingDelete.id));
       reload();
+      if (result && result.affectedActiveReaderCount > 0) {
+        setSnackbar(t('reading_club.groups.delete_affected_readers', { count: result.affectedActiveReaderCount }));
+      }
     } catch (error) {
       setSnackbar(extractErrorMessage(error));
     } finally {
       setPendingDelete(null);
     }
   };
+
+  const pendingDeleteMemberCount = pendingDelete
+    ? (dashboardStats?.groups.find((g) => g.id === pendingDelete.id)?.memberCount ?? 0)
+    : 0;
 
   return (
     <Box>
@@ -165,12 +178,17 @@ export function GroupsListPage() {
 
       <StagesManagerDialog open={stagesGroup !== null} group={stagesGroup} onClose={() => setStagesGroup(null)} onChanged={reload} />
 
-      <ConfirmDialog
+      <TypeToConfirmDialog
         open={pendingDelete !== null}
         title={t('reading_club.groups.delete_title')}
         description={t('reading_club.groups.delete_confirm', { name: pendingDelete?.name ?? '' })}
+        warning={
+          pendingDeleteMemberCount > 0 || (pendingDelete?.stages.length ?? 0) > 0
+            ? t('reading_club.groups.delete_warning', { readerCount: pendingDeleteMemberCount, stageCount: pendingDelete?.stages.length ?? 0 })
+            : null
+        }
+        expectedText={pendingDelete?.name ?? ''}
         confirmLabel={t('core.common.delete')}
-        confirmColor="error"
         onCancel={() => setPendingDelete(null)}
         onConfirm={handleDelete}
       />

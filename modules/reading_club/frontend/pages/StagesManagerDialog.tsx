@@ -22,10 +22,10 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi, type ReadingClubGroup, type ReadingClubStage, type StageTargetType } from '../api';
+import { TypeToConfirmDialog } from './TypeToConfirmDialog';
 
 const emptyForm = { stageOrder: 1, name: '', targetType: 'books' as StageTargetType, targetAmount: 5, rewardDescription: '' };
 
@@ -47,6 +47,7 @@ export function StagesManagerDialog({
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ReadingClubStage | null>(null);
+  const [pendingDeleteReaderCount, setPendingDeleteReaderCount] = useState(0);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -57,6 +58,22 @@ export function StagesManagerDialog({
       resetForm(groupStages.length);
     }
   }, [open, group]);
+
+  // Real "readers currently on this stage" count for the type-to-confirm
+  // dialog's warning — fetched fresh when a delete is requested (never a
+  // block, READING_CLUB-D16 — purely informational).
+  const openDeleteConfirm = async (stage: ReadingClubStage) => {
+    setPendingDelete(stage);
+    setPendingDeleteReaderCount(0);
+    try {
+      const stats = await readingClubApi.getDashboardStats();
+      const statGroup = stats.groups.find((g) => g.id === group?.id);
+      const statStage = statGroup?.stages.find((s) => s.id === stage.id);
+      setPendingDeleteReaderCount(statStage?.readersOnStageCount ?? 0);
+    } catch {
+      // Best-effort only — the type-to-confirm requirement itself still applies even if this count fails to load.
+    }
+  };
 
   const resetForm = (existingCount: number) => {
     setEditingStage(null);
@@ -116,6 +133,7 @@ export function StagesManagerDialog({
       setError(extractErrorMessage(err));
     } finally {
       setPendingDelete(null);
+      setPendingDeleteReaderCount(0);
     }
   };
 
@@ -158,7 +176,7 @@ export function StagesManagerDialog({
                       </IconButton>
                     </Can>
                     <Can permission="reading_club.groups.delete">
-                      <IconButton size="small" onClick={() => setPendingDelete(stage)} aria-label={t('core.common.delete')}>
+                      <IconButton size="small" onClick={() => openDeleteConfirm(stage)} aria-label={t('core.common.delete')}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Can>
@@ -234,12 +252,13 @@ export function StagesManagerDialog({
         <Button onClick={onClose}>{t('core.common.close')}</Button>
       </DialogActions>
 
-      <ConfirmDialog
+      <TypeToConfirmDialog
         open={pendingDelete !== null}
         title={t('reading_club.stages.delete_title')}
         description={t('reading_club.stages.delete_confirm', { name: pendingDelete?.name ?? '' })}
+        warning={pendingDeleteReaderCount > 0 ? t('reading_club.stages.delete_warning', { readerCount: pendingDeleteReaderCount }) : null}
+        expectedText={pendingDelete?.name ?? ''}
         confirmLabel={t('core.common.delete')}
-        confirmColor="error"
         onCancel={() => setPendingDelete(null)}
         onConfirm={handleDelete}
       />

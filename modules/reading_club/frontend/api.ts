@@ -64,11 +64,22 @@ export interface ReaderListItem {
   progress: StageProgress | null;
 }
 
+/**
+ * `groupId`/`currentStageId` are nullable — a librarian can now delete the
+ * group/stage a reader is actively assigned to (READING_CLUB-D16), which
+ * sets these to null (`ON DELETE SET NULL`). `groupName`/`stageName` are
+ * this membership's own snapshot, taken fresh on every assign/moveStage
+ * call — always read THESE for display, never re-derive from groupId/
+ * currentStageId, since they keep showing the right name even once the
+ * live row is gone.
+ */
 export interface ReadingClubMembership {
   id: string;
   studentId: string;
-  groupId: string;
+  groupId: string | null;
+  groupName: string | null;
   currentStageId: string | null;
+  stageName: string | null;
   stageStartedAt: string;
   manualProgressAmount: number;
   assignedBy: string;
@@ -76,12 +87,16 @@ export interface ReadingClubMembership {
   updatedAt: string;
 }
 
+/** `groupId`/`stageId` are nullable — the group/stage this completion happened in may since have been deleted (READING_CLUB-D16). `groupName`/`stageName`/`stageOrder` are this row's own permanent snapshot — always read these for display, never groupId/stageId. */
 export interface ReadingClubStageCompletion {
   id: string;
   studentId: string;
   episodeId: string;
-  groupId: string;
-  stageId: string;
+  groupId: string | null;
+  groupName: string | null;
+  stageId: string | null;
+  stageName: string | null;
+  stageOrder: number | null;
   targetAmountAtCompletion: number;
   progressAmountAtCompletion: number;
   completedAt: string;
@@ -92,12 +107,8 @@ export interface ReadingClubStageCompletion {
   createdAt: string;
 }
 
-/** A reader's own completion history row — extends the base completion with its (possibly PRIOR) group/stage identity, since a reader can have completions from a group they've since moved out of (READING_CLUB-D7). */
-export interface ReaderCompletionRow extends ReadingClubStageCompletion {
-  groupName: string | null;
-  stageName: string | null;
-  stageOrder: number | null;
-}
+/** A reader's own completion history row — same shape as `ReadingClubStageCompletion` now that groupName/stageName/stageOrder live on the base type itself (READING_CLUB-D16); kept as a distinct alias since call sites already reference it by this name. */
+export type ReaderCompletionRow = ReadingClubStageCompletion;
 
 export interface ReadingClubEpisode {
   id: string;
@@ -116,12 +127,15 @@ export interface CreateEpisodeInput {
 export type BookEntrySource = 'auto' | 'manual';
 export type BookEntryStatus = 'active' | 'discarded';
 
+/** `groupId`/`stageId` are nullable — same READING_CLUB-D16 reasoning as `ReadingClubStageCompletion`; `groupName`/`stageName` are this entry's own snapshot, always read for display. */
 export interface ReadingClubStageBookEntry {
   id: string;
   studentId: string;
   episodeId: string;
-  groupId: string;
-  stageId: string;
+  groupId: string | null;
+  groupName: string | null;
+  stageId: string | null;
+  stageName: string | null;
   borrowingId: string | null;
   bookCopyId: string | null;
   bookTitle: string;
@@ -209,14 +223,16 @@ export const readingClubApi = {
   getGroup: (id: string) => apiClient.get<ReadingClubGroup>(`${BASE}/groups/${id}`).then((r) => r.data),
   createGroup: (dto: CreateGroupInput) => apiClient.post<ReadingClubGroup>(`${BASE}/groups`, dto).then((r) => r.data),
   updateGroup: (id: string, dto: UpdateGroupInput) => apiClient.patch<ReadingClubGroup>(`${BASE}/groups/${id}`, dto).then((r) => r.data),
-  removeGroup: (id: string) => apiClient.delete<void>(`${BASE}/groups/${id}`).then((r) => r.data),
+  /** Deletion is always allowed now, even with history against this group (READING_CLUB-D16) — the response reports how many readers were actively assigned at delete time, purely informational (the frontend's type-to-confirm dialog already warned beforehand). */
+  removeGroup: (id: string) => apiClient.delete<{ affectedActiveReaderCount: number }>(`${BASE}/groups/${id}`).then((r) => r.data),
 
   // Stages
   createStage: (groupId: string, dto: CreateStageInput) =>
     apiClient.post<ReadingClubStage>(`${BASE}/groups/${groupId}/stages`, dto).then((r) => r.data),
   updateStage: (stageId: string, dto: UpdateStageInput) =>
     apiClient.patch<ReadingClubStage>(`${BASE}/groups/stages/${stageId}`, dto).then((r) => r.data),
-  removeStage: (stageId: string) => apiClient.delete<void>(`${BASE}/groups/stages/${stageId}`).then((r) => r.data),
+  /** Deletion is always allowed now, even with history against this stage (READING_CLUB-D16) — see `removeGroup` above. */
+  removeStage: (stageId: string) => apiClient.delete<{ affectedActiveReaderCount: number }>(`${BASE}/groups/stages/${stageId}`).then((r) => r.data),
 
   // Readers / memberships
   listReaders: (filter: { episodeId?: string; groupId?: string; stageId?: string; search?: string } = {}) => {

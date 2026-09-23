@@ -189,6 +189,15 @@ export function ReaderDetailPage() {
               </Card>
             ) : reader.group ? (
               <Alert severity="info">{t('reading_club.readers.group_finished')}</Alert>
+            ) : reader.membership?.groupName ? (
+              // READING_CLUB-D16: the group/stage this reader was actively
+              // assigned to was deleted by a librarian — their membership
+              // row still exists (groupId/currentStageId are now null) and
+              // still shows what it WAS via its own name snapshot, but the
+              // reader needs a fresh assignment to keep progressing.
+              <Alert severity="warning">
+                {t('reading_club.readers.group_deleted', { groupName: reader.membership.groupName })}
+              </Alert>
             ) : (
               <Alert severity="warning">{t('reading_club.readers.not_assigned')}</Alert>
             )}
