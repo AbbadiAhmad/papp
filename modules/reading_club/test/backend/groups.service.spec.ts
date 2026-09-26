@@ -38,6 +38,11 @@ function buildService(prisma: MockPrisma, episodes: Partial<EpisodesService> = d
 function defaultEpisodesMock(): Partial<EpisodesService> {
   return {
     getCurrentEpisode: jest.fn(async () => ({ id: 'ep-current', name: 'Current', isCurrent: true })) as unknown as EpisodesService['getCurrentEpisode'],
+    // `listGroups`/`getDashboardStats` (no explicit `episodeId`) resolve the
+    // current episode via this null-safe lookup, not `getCurrentEpisode`
+    // (READING_CLUB-D17) — defaults to "one exists" here; the "no current
+    // episode at all" case is exercised by its own dedicated tests below.
+    findCurrentEpisodeOrNull: jest.fn(async () => ({ id: 'ep-current', name: 'Current', isCurrent: true })) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
     assertEpisodeIsCurrent: jest.fn(async () => undefined) as unknown as EpisodesService['assertEpisodeIsCurrent'],
   };
 }
@@ -133,6 +138,32 @@ describe('GroupsService', () => {
 
       await expect(closedEpisodeService.removeStage('s1')).rejects.toThrow('closed');
       expect(prisma.readingClubStage.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listGroups — no current episode (READING_CLUB-D17)', () => {
+    it('returns an empty list, not a thrown error, when episodeId is omitted and no episode is current', async () => {
+      const episodes: Partial<EpisodesService> = {
+        findCurrentEpisodeOrNull: jest.fn(async () => null) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
+      };
+      const noCurrentEpisodeService = buildService(prisma, episodes);
+
+      await expect(noCurrentEpisodeService.listGroups()).resolves.toEqual([]);
+      expect(prisma.readingClubGroup.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDashboardStats — no current episode (READING_CLUB-D17)', () => {
+    it('returns an all-zero/empty stats object, not a thrown error, when episodeId is omitted and no episode is current', async () => {
+      const episodes: Partial<EpisodesService> = {
+        findCurrentEpisodeOrNull: jest.fn(async () => null) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
+      };
+      const noCurrentEpisodeService = buildService(prisma, episodes);
+
+      const stats = await noCurrentEpisodeService.getDashboardStats();
+
+      expect(stats).toEqual({ totalGroups: 0, totalActiveReaders: 0, groups: [] });
+      expect(prisma.readingClubGroup.findMany).not.toHaveBeenCalled();
     });
   });
 

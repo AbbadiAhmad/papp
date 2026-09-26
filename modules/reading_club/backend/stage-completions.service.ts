@@ -145,7 +145,14 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getPendingRewardsCount(episodeId?: string): Promise<number> {
-    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    let resolvedEpisodeId = episodeId;
+    if (!resolvedEpisodeId) {
+      const current = await this.episodes.findCurrentEpisodeOrNull();
+      // No current episode at all (READING_CLUB-D17) -> zero pending
+      // rewards is the correct representation, not a thrown 404.
+      if (!current) return 0;
+      resolvedEpisodeId = current.id;
+    }
     return this.prisma.readingClubStageCompletion.count({ where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' } });
   }
 
@@ -156,7 +163,14 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
    * cuts).
    */
   async listAllPendingRewards(episodeId?: string) {
-    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    let resolvedEpisodeId = episodeId;
+    if (!resolvedEpisodeId) {
+      const current = await this.episodes.findCurrentEpisodeOrNull();
+      // No current episode at all (READING_CLUB-D17) -> an empty list is
+      // the correct representation, not a thrown 404.
+      if (!current) return [];
+      resolvedEpisodeId = current.id;
+    }
     const completions = await this.prisma.readingClubStageCompletion.findMany({
       where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' },
       orderBy: { completedAt: 'asc' },

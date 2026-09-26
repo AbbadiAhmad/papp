@@ -189,4 +189,26 @@ describe('StageCompletionsService', () => {
       expect(prisma.readingClubStage.findMany).toHaveBeenCalledWith({ where: { id: { in: [] } } });
     });
   });
+
+  describe('getPendingRewardsCount / listAllPendingRewards — no current episode (READING_CLUB-D17)', () => {
+    it('getPendingRewardsCount returns 0, not a thrown error, when episodeId is omitted and no episode is current', async () => {
+      const episodes: Partial<EpisodesService> = {
+        findCurrentEpisodeOrNull: jest.fn(async () => null) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
+      };
+      const service = buildService(prisma, {}, episodes);
+
+      await expect(service.getPendingRewardsCount()).resolves.toBe(0);
+      expect(prisma.readingClubStageCompletion.count).not.toHaveBeenCalled();
+    });
+
+    it('listAllPendingRewards returns an empty list, not a thrown error, when episodeId is omitted and no episode is current', async () => {
+      const episodes: Partial<EpisodesService> = {
+        findCurrentEpisodeOrNull: jest.fn(async () => null) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
+      };
+      const service = buildService(prisma, {}, episodes);
+
+      await expect(service.listAllPendingRewards()).resolves.toEqual([]);
+      expect(prisma.readingClubStageCompletion.findMany).not.toHaveBeenCalled();
+    });
+  });
 });

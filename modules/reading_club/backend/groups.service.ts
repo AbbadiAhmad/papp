@@ -40,9 +40,19 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
 
   // --- Groups ------------------------------------------------------------
 
-  /** `episodeId` omitted -> current episode's groups. */
+  /**
+   * `episodeId` omitted -> current episode's groups. Returns an empty list
+   * (rather than throwing) when there is no current episode at all — a
+   * reasonable real-world state after the current episode is deleted and
+   * before a new one is started (READING_CLUB-D17), not an error.
+   */
   async listGroups(episodeId?: string) {
-    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    let resolvedEpisodeId = episodeId;
+    if (!resolvedEpisodeId) {
+      const current = await this.episodes.findCurrentEpisodeOrNull();
+      if (!current) return [];
+      resolvedEpisodeId = current.id;
+    }
     return this.prisma.readingClubGroup.findMany({
       where: { episodeId: resolvedEpisodeId },
       orderBy: { createdAt: 'desc' },
@@ -54,7 +64,13 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.getGroupOrThrow(id);
   }
 
-  /** `dto.episodeId` omitted -> the current episode (READING_CLUB-D12). Always rejected if the resolved episode isn't current. */
+  /**
+   * `dto.episodeId` omitted -> the current episode (READING_CLUB-D12).
+   * Always rejected if the resolved episode isn't current — including the
+   * "no current episode exists at all" case (READING_CLUB-D17), which reads
+   * naturally as a 404 from `getCurrentEpisode()`'s own message ("create one
+   * first") rather than a separate error path.
+   */
   async createGroup(dto: CreateGroupDto, createdBy: string) {
     const episodeId = dto.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     await this.episodes.assertEpisodeIsCurrent(episodeId);
@@ -175,9 +191,23 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.readingClubStage.findFirst({ where: { groupId }, orderBy: { stageOrder: 'asc' } });
   }
 
-  /** §18 dashboard: per-group/per-stage reader counts — real aggregate counts, never mock data. `episodeId` omitted -> current episode. */
+  /**
+   * §18 dashboard: per-group/per-stage reader counts — real aggregate
+   * counts, never mock data. `episodeId` omitted -> current episode. When
+   * there is no current episode at all (e.g. the librarian just deleted it
+   * and hasn't started a new one, READING_CLUB-D17), returns an all-zero/
+   * empty stats object instead of throwing — a "no active episode" state is
+   * normal, not an error.
+   */
   async getDashboardStats(episodeId?: string) {
-    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    let resolvedEpisodeId = episodeId;
+    if (!resolvedEpisodeId) {
+      const current = await this.episodes.findCurrentEpisodeOrNull();
+      if (!current) {
+        return { totalGroups: 0, totalActiveReaders: 0, groups: [] };
+      }
+      resolvedEpisodeId = current.id;
+    }
     const groups = await this.prisma.readingClubGroup.findMany({
       where: { episodeId: resolvedEpisodeId },
       orderBy: { name: 'asc' },

@@ -33,6 +33,11 @@ function createMockPrisma(): MockPrisma {
 function defaultEpisodesMock(): Partial<EpisodesService> {
   return {
     getCurrentEpisode: jest.fn(async () => ({ id: 'ep-current', name: 'Current', isCurrent: true })) as unknown as EpisodesService['getCurrentEpisode'],
+    // `listReaders` (no explicit `episodeId`) resolves the current episode
+    // via this null-safe lookup, not `getCurrentEpisode` (READING_CLUB-D17)
+    // — defaults to "one exists" here; the "no current episode" case has its
+    // own dedicated test below.
+    findCurrentEpisodeOrNull: jest.fn(async () => ({ id: 'ep-current', name: 'Current', isCurrent: true })) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
     assertEpisodeIsCurrent: jest.fn(async () => undefined) as unknown as EpisodesService['assertEpisodeIsCurrent'],
   };
 }
@@ -351,6 +356,18 @@ describe('MembershipsService', () => {
       expect(rows[0]).toEqual(
         expect.objectContaining({ studentId: 'student-1', groupName: 'Grade 3 Readers', stageName: null }),
       );
+    });
+  });
+
+  describe('listReaders — no current episode (READING_CLUB-D17)', () => {
+    it('returns an empty list, not a thrown error, when episodeId is omitted and no episode is current', async () => {
+      const episodes: Partial<EpisodesService> = {
+        findCurrentEpisodeOrNull: jest.fn(async () => null) as unknown as EpisodesService['findCurrentEpisodeOrNull'],
+      };
+      const noCurrentEpisodeService = buildService(prisma, episodes);
+
+      await expect(noCurrentEpisodeService.listReaders()).resolves.toEqual([]);
+      expect(prisma.readingClubMembership.findMany).not.toHaveBeenCalled();
     });
   });
 });

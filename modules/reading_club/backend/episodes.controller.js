@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const create_episode_dto_1 = require("./dto/create-episode.dto");
 const episodes_service_1 = require("./episodes.service");
 const platform_1 = require("./platform");
+const fetchEpisodeState = (prisma, req) => prisma.readingClubEpisode.findUnique({ where: { id: req.params.id } });
 /**
  * Episodes (seasons/years). Read access reuses `reading_club.groups.view`
  * (READING_CLUB-D12 — everyone who can browse groups needs to know which
@@ -40,6 +41,26 @@ let EpisodesController = class EpisodesController {
     }
     async create(dto, user) {
         return this.episodes.createEpisode(dto, user.userId);
+    }
+    /**
+     * Real cascade-blast-radius counts (groups/readers/completions/book
+     * entries) for the frontend's type-to-confirm delete dialog to show
+     * BEFORE the librarian types the episode's name (READING_CLUB-D17) — same
+     * permission as the delete itself, since seeing this preview only matters
+     * to someone who could actually delete.
+     */
+    async deletePreview(id) {
+        return this.episodes.getDeletePreview(id);
+    }
+    /**
+     * Full cascade delete (READING_CLUB-D17) — any episode, including the
+     * current one. Unlike group/stage deletion (READING_CLUB-D16), there is no
+     * history-preservation angle: deleting the episode removes its own
+     * groups/stages and every membership/completion/book-entry scoped to it,
+     * full stop.
+     */
+    async remove(id) {
+        return this.episodes.deleteEpisode(id);
     }
 };
 exports.EpisodesController = EpisodesController;
@@ -75,6 +96,23 @@ __decorate([
     __metadata("design:paramtypes", [create_episode_dto_1.CreateEpisodeDto, Object]),
     __metadata("design:returntype", Promise)
 ], EpisodesController.prototype, "create", null);
+__decorate([
+    (0, common_1.Get)(':id/delete-preview'),
+    (0, platform_1.RequirePermission)('reading_club.episodes.manage'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], EpisodesController.prototype, "deletePreview", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    (0, platform_1.RequirePermission)('reading_club.episodes.manage'),
+    (0, platform_1.Audit)({ category: 'reading_club.episodes', entityType: 'ReadingClubEpisode', action: 'delete', fetchState: fetchEpisodeState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], EpisodesController.prototype, "remove", null);
 exports.EpisodesController = EpisodesController = __decorate([
     (0, common_1.Controller)('api/reading-club/episodes'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

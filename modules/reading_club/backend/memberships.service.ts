@@ -55,7 +55,15 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
    * their linked `users.name`.
    */
   async listReaders(filter: { episodeId?: string; groupId?: string; stageId?: string; search?: string } = {}) {
-    const episodeId = filter.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    let episodeId = filter.episodeId;
+    if (!episodeId) {
+      const current = await this.episodes.findCurrentEpisodeOrNull();
+      // No current episode at all (e.g. just deleted, none started yet,
+      // READING_CLUB-D17) -> an empty reader list is the correct, non-error
+      // representation of "no active episode", not a thrown 404.
+      if (!current) return [];
+      episodeId = current.id;
+    }
     const memberships = await this.prisma.readingClubMembership.findMany({
       where: {
         episodeId,

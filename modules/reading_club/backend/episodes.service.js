@@ -73,6 +73,67 @@ let EpisodesService = EpisodesService_1 = class EpisodesService {
         const results = await this.prisma.$transaction(ops);
         return results[results.length - 1];
     }
+    /**
+     * Real counts of everything a delete would cascade away — feeds the
+     * frontend's blast-radius warning before the librarian types the
+     * confirmation name (READING_CLUB-D17). Cheap aggregate counts, no row
+     * data fetched.
+     */
+    async getDeletePreview(id) {
+        const episode = await this.getEpisodeOrThrow(id);
+        const groupIds = (await this.prisma.readingClubGroup.findMany({ where: { episodeId: id }, select: { id: true } })).map((g) => g.id);
+        const [groupCount, readerCount, completionCount, bookEntryCount] = await Promise.all([
+            Promise.resolve(groupIds.length),
+            this.prisma.readingClubMembership.count({ where: { episodeId: id } }),
+            this.prisma.readingClubStageCompletion.count({ where: { episodeId: id } }),
+            this.prisma.readingClubStageBookEntry.count({ where: { episodeId: id } }),
+        ]);
+        return {
+            episodeId: id,
+            isCurrent: episode.isCurrent,
+            groupCount,
+            readerCount,
+            completionCount,
+            bookEntryCount,
+        };
+    }
+    /**
+     * Full cascade delete (READING_CLUB-D17) — deliberately different from the
+     * group/stage delete-with-history feature (READING_CLUB-D16): deleting the
+     * EPISODE ITSELF removes the whole context it defines, so there is no
+     * "keep the history but null the reference" angle here — if the episode
+     * is gone, everything scoped under it (its own groups/stages plus every
+     * membership/completion/book-entry carrying its `episode_id`) is gone too,
+     * full stop. No new migration/FK change: no FK currently points AT
+     * `reading_club_episodes` with any ON DELETE action (confirmed by reading
+     * 001/002/003 in full — the default is blocking/NO ACTION), so this is
+     * implemented as an explicit ordered transaction, deleting children before
+     * parents, the same pattern `GroupsService.removeGroup` already uses for
+     * its own stages. Any episode is deletable, including the current one —
+     * deleting the current episode simply leaves none current (no
+     * auto-promotion of another episode; the librarian starts/selects a new
+     * one explicitly via the existing "start new episode" flow).
+     */
+    async deleteEpisode(id) {
+        const episode = await this.getEpisodeOrThrow(id);
+        const groupIds = (await this.prisma.readingClubGroup.findMany({ where: { episodeId: id }, select: { id: true } })).map((g) => g.id);
+        const preview = await this.getDeletePreview(id);
+        await this.prisma.$transaction([
+            this.prisma.readingClubStageBookEntry.deleteMany({ where: { episodeId: id } }),
+            this.prisma.readingClubStageCompletion.deleteMany({ where: { episodeId: id } }),
+            this.prisma.readingClubMembership.deleteMany({ where: { episodeId: id } }),
+            ...(groupIds.length > 0 ? [this.prisma.readingClubStage.deleteMany({ where: { groupId: { in: groupIds } } })] : []),
+            this.prisma.readingClubGroup.deleteMany({ where: { episodeId: id } }),
+            this.prisma.readingClubEpisode.delete({ where: { id } }),
+        ]);
+        return {
+            affectedGroupCount: preview.groupCount,
+            affectedReaderCount: preview.readerCount,
+            affectedCompletionCount: preview.completionCount,
+            affectedBookEntryCount: preview.bookEntryCount,
+            wasCurrent: episode.isCurrent,
+        };
+    }
 };
 exports.EpisodesService = EpisodesService;
 exports.EpisodesService = EpisodesService = EpisodesService_1 = __decorate([
