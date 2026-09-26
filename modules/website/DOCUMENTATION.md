@@ -68,6 +68,10 @@ The one design question this module had to answer explicitly (root chat: "is Mar
 - **No drag-and-drop block/menu reordering** — `PageEditorPage`/`MenuEditorPage` use up/down icon buttons only, matching the "much simpler than Odoo" brief; a fast-follow if real drag-and-drop is wanted later.
 - **Public `/site/*` routes render inside the same `PageLayout` chrome as the rest of the app when reached by an already-authenticated user** (same as `library_catalog`'s own public availability page — see `App.tsx`'s route wiring) — a fully chrome-free public browsing experience for a logged-in visitor was not built; an anonymous visitor with no session sees the page standalone (no sidebar/top bar app chrome beyond `TopBar`).
 
+## Down migrations (root D48 / D86)
+
+`migrations/down/001_create_website_tables.sql` now exists — the structural inverse of the up-migration (drops every table this module created, child-before-parent: `website_menu_items` → `website_blocks` → `website_pages`), applied by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. Before this, `--drop-data` on this module silently left every table in place. See root D86 for the platform-level dependency guard added alongside this.
+
 ## How to extend
 
 Follow `docs/FEATURE_TEMPLATE.md` for any new endpoint or block type (manifest permission → guard → `@Audit` → locale keys in `ar`+`en` → tests). Adding a new block `type` touches four places together: the `WEBSITE_BLOCK_TYPES` const in `backend/dto/replace-blocks.dto.ts`, `emptyConfigFor()` in `frontend/api.ts`, `BlockEditor.tsx`, and `BlockRenderer.tsx` — keep all four in sync or the admin/public render paths will disagree.

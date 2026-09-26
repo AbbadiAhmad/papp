@@ -152,3 +152,9 @@ VALUES ('library_catalog', '005_add_review_moderation.sql', '7a77e8cd8f3c9505184
 ```
 
 `apps/api/prisma/schema.prisma`'s `LibraryCatalogBookRating` model already has the three new fields — re-run `npx prisma generate` after pulling this change.
+
+### Down migrations (root D48 / D86)
+
+`migrations/down/001_create_books_table.sql`, `down/002_create_book_copies_table.sql`, `down/003_add_copy_history.sql` now exist — the structural inverse of each up-migration of the same number, applied in descending filename order (`003` → `002` → `001`) by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. `003`'s down drops the `history` column/GIN index it added; `002`'s down drops `library_catalog_book_copies` and its ENUM type; `001`'s down drops `library_catalog_books`. Before this, `--drop-data` on this module silently left every table in place (no `migrations/down/` existed at all) — see root D86 for the platform-level fix (a dependency guard was added alongside this so uninstalling this module while `library_circulation` still depends on it is now rejected, not just a docs warning).
+
+**Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003` and will fail partway (or leave the ratings table behind) until those two down-migrations are added. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003.

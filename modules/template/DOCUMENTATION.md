@@ -54,6 +54,10 @@ Frontend (`basePath: /template`):
 - **`roleAccessLocked` and the module-settings UI are both real gaps, not bugs in this module** — see Permissions above and root `docs/DECISIONS.md` D70/D71. Don't "fix" them locally in a copy of this module; they're platform-wide.
 - **`readDefaultStatus`/`SettingsService` read `system_settings` with a plain `findUnique`, no caching** — fine for a template and for a setting read only on create; a module reading its own settings on every request of a hot path should add a cache the way core's own `SettingsService` does.
 
+## Down migrations (root D48 / D86)
+
+`migrations/down/001_create_template_items_table.sql` now exists — the structural inverse of the up-migration (drops `template_items` and its ENUM type), applied by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. Copy this same one-down-file-per-up-migration shape when scaffolding a new module from this one. See root D86 for the platform-level dependency guard added alongside this.
+
 ## How to extend / how to copy this as a new module
 
 This IS the "how to extend" instructions, since the whole point of this module is being copied (`docs/MODULE_SPEC.md` §10 has the short version too):
