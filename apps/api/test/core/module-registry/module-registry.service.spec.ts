@@ -473,6 +473,7 @@ describe('ModuleRegistryService', () => {
   describe('uninstall()', () => {
     it('without dropData: deletes permissions/menu but never touches system_settings, and skips the down-migration path', async () => {
       prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([]);
       prisma.moduleRegistryEntry.update.mockResolvedValue({ key: 'valid_module', status: 'disabled' });
       const downMigrationsSpy = jest
         .spyOn(service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }, 'runDownMigrationsIfPresent')
@@ -485,6 +486,99 @@ describe('ModuleRegistryService', () => {
       expect(prisma.systemSetting.upsert).not.toHaveBeenCalled();
       expect(downMigrationsSpy).not.toHaveBeenCalled();
       expect(i18n.rebuild).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Platform-level dependency guard (root DECISIONS.md D86): reads every
+     * OTHER installed module's own manifestSnapshot.dependsOn generically —
+     * never a hardcoded pair — and rejects uninstall when a dependent is
+     * still installed. Covers: rejection with a dependent present, success
+     * with none present (both with and without dropData), and that the
+     * check genuinely reads MULTIPLE modules' manifests rather than special-
+     * casing any one pair.
+     */
+    describe('dependency guard (assertNoInstalledDependents)', () => {
+      it('rejects with ConflictException naming the dependent module when an installed module depends on the one being uninstalled', async () => {
+        prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+        prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+          { key: 'valid_module', status: 'installed', manifestSnapshot: { dependsOn: [] } },
+          {
+            key: 'dependent_module',
+            status: 'installed',
+            manifestSnapshot: { dependsOn: ['valid_module'] },
+          },
+        ]);
+
+        await expect(service.uninstall('valid_module', false)).rejects.toBeInstanceOf(ConflictException);
+        await expect(service.uninstall('valid_module', false)).rejects.toThrow(/dependent_module/);
+
+        expect(prisma.moduleRegistryEntry.update).not.toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ status: 'uninstalling' }) }),
+        );
+      });
+
+      it('rejects the drop-data path the same way, before any destructive step (down-migrations never run)', async () => {
+        prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+        prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+          { key: 'other_dependent', status: 'installed', manifestSnapshot: { dependsOn: ['valid_module'] } },
+        ]);
+        const downMigrationsSpy = jest
+          .spyOn(service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }, 'runDownMigrationsIfPresent')
+          .mockResolvedValue(undefined);
+
+        await expect(service.uninstall('valid_module', true)).rejects.toBeInstanceOf(ConflictException);
+
+        expect(downMigrationsSpy).not.toHaveBeenCalled();
+        expect(prisma.moduleMenuEntry.deleteMany).not.toHaveBeenCalled();
+        expect(prisma.permission.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('succeeds (both with and without dropData) when no installed module depends on the one being uninstalled', async () => {
+        prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+        prisma.moduleRegistryEntry.update.mockResolvedValue({ key: 'valid_module', status: 'disabled' });
+        // Two OTHER installed modules present, neither depending on valid_module.
+        prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+          { key: 'unrelated_a', status: 'installed', manifestSnapshot: { dependsOn: [] } },
+          { key: 'unrelated_b', status: 'installed', manifestSnapshot: { dependsOn: ['unrelated_a'] } },
+        ]);
+        jest
+          .spyOn(service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }, 'runDownMigrationsIfPresent')
+          .mockResolvedValue(undefined);
+
+        await expect(service.uninstall('valid_module', false)).resolves.toBeDefined();
+        await expect(service.uninstall('valid_module', true)).resolves.toBeDefined();
+      });
+
+      it('reads multiple installed modules manifests to find the real dependent, not just a hardcoded pair', async () => {
+        prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'library_catalog', status: 'installed' });
+        prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+          { key: 'unrelated_a', status: 'installed', manifestSnapshot: { dependsOn: [] } },
+          { key: 'unrelated_b', status: 'installed', manifestSnapshot: { dependsOn: ['unrelated_a'] } },
+          { key: 'library_circulation', status: 'installed', manifestSnapshot: { dependsOn: ['library_catalog'] } },
+          { key: 'reading_club', status: 'installed', manifestSnapshot: { dependsOn: ['library_circulation'] } },
+        ]);
+
+        await expect(service.uninstall('library_catalog', false)).rejects.toThrow(/library_circulation/);
+        // reading_club depends on library_circulation, not library_catalog directly —
+        // uninstalling library_circulation must be rejected for THAT reason instead.
+        await expect(service.uninstall('library_circulation', false)).rejects.toThrow(/reading_club/);
+      });
+
+      it('ignores core and the module itself, and tolerates a missing/malformed manifestSnapshot', async () => {
+        prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+        prisma.moduleRegistryEntry.update.mockResolvedValue({ key: 'valid_module', status: 'disabled' });
+        prisma.moduleRegistryEntry.findMany.mockResolvedValue([
+          { key: 'core', status: 'installed', manifestSnapshot: { dependsOn: ['valid_module'] } },
+          { key: 'valid_module', status: 'installed', manifestSnapshot: { dependsOn: ['valid_module'] } },
+          { key: 'broken', status: 'installed', manifestSnapshot: null },
+          { key: 'also_broken', status: 'installed', manifestSnapshot: 'not-an-object' },
+        ]);
+        jest
+          .spyOn(service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }, 'runDownMigrationsIfPresent')
+          .mockResolvedValue(undefined);
+
+        await expect(service.uninstall('valid_module', false)).resolves.toBeDefined();
+      });
     });
 
     it('with dropData: attempts the down-migration path (mocked) exactly once, for the right key', async () => {
