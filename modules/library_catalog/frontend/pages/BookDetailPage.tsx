@@ -293,6 +293,14 @@ export function BookDetailPage() {
                         </Button>
                       ) : null}
                     </Stack>
+                    {book.myRating?.review && book.myRating.reviewStatus !== 'approved' ? (
+                      <Chip
+                        size="small"
+                        label={t(`library_catalog.ratings.review_status.${book.myRating.reviewStatus}`)}
+                        color={book.myRating.reviewStatus === 'rejected' ? 'error' : 'warning'}
+                        sx={{ alignSelf: 'flex-start' }}
+                      />
+                    ) : null}
                   </Stack>
                 </Can>
 
@@ -308,6 +316,13 @@ export function BookDetailPage() {
                           <Typography variant="caption" color="text.secondary">
                             {formatDateOnly(r.updatedAt, language)}
                           </Typography>
+                          {r.reviewStatus !== 'approved' ? (
+                            <Chip
+                              size="small"
+                              label={t(`library_catalog.ratings.review_status.${r.reviewStatus}`)}
+                              color={r.reviewStatus === 'rejected' ? 'error' : 'warning'}
+                            />
+                          ) : null}
                         </Stack>
                         {r.review ? (
                           <Typography variant="body2" sx={{ mt: 0.5 }}>

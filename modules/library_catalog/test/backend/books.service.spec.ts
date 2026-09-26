@@ -27,6 +27,7 @@ interface MockPrisma {
     findMany: jest.Mock;
     findUnique: jest.Mock;
     upsert: jest.Mock;
+    update: jest.Mock;
     delete: jest.Mock;
   };
   user: {
@@ -56,6 +57,7 @@ function createMockPrisma(): MockPrisma {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
       upsert: jest.fn(),
+      update: jest.fn(),
       delete: jest.fn(),
     },
     user: {
@@ -72,6 +74,9 @@ function ratingRow(overrides: Record<string, unknown> = {}) {
     userId: 'user-1',
     rating: 5,
     review: null,
+    reviewStatus: 'approved',
+    moderatedBy: null,
+    moderatedAt: null,
     createdAt: new Date('2026-01-02T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
     ...overrides,
@@ -607,7 +612,28 @@ describe('BooksService', () => {
         expect.objectContaining({ id: 'r1', userName: 'Sara', rating: 5, review: 'Loved it' }),
         expect.objectContaining({ id: 'r2', userName: 'Omar', rating: 3, review: null }),
       ]);
-      expect(result.myRating).toEqual({ rating: 5, review: 'Loved it' });
+      expect(result.myRating).toEqual({ rating: 5, review: 'Loved it', reviewStatus: 'approved' });
+    });
+
+    it('LIBRARY_CATALOG-D21: hides another reader\'s non-approved review from the public list, but always shows the caller their own', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ ...bookRow(), copies: [] });
+      prisma.libraryCatalogBookRating.findMany.mockResolvedValue([
+        ratingRow({ id: 'r1', userId: 'user-1', rating: 5, review: 'My own pending review', reviewStatus: 'pending' }),
+        ratingRow({ id: 'r2', userId: 'user-2', rating: 4, review: 'Someone else, still pending', reviewStatus: 'pending' }),
+        ratingRow({ id: 'r3', userId: 'user-3', rating: 2, review: 'Someone else, rejected', reviewStatus: 'rejected' }),
+        ratingRow({ id: 'r4', userId: 'user-4', rating: 3, review: 'Someone else, approved', reviewStatus: 'approved' }),
+      ]);
+
+      const result = await service.findById('book-1', 'user-1');
+
+      // The numeric average/count include EVERY rating regardless of review moderation.
+      expect(result.ratingsCount).toBe(4);
+      const visibleIds = result.ratings.map((r) => r.id);
+      expect(visibleIds).toContain('r1'); // the caller's own — always visible to them
+      expect(visibleIds).toContain('r4'); // approved — visible to everyone
+      expect(visibleIds).not.toContain('r2'); // someone else's pending review — hidden
+      expect(visibleIds).not.toContain('r3'); // someone else's rejected review — hidden
+      expect(result.myRating).toEqual({ rating: 5, review: 'My own pending review', reviewStatus: 'pending' });
     });
 
     it('returns myRating: null when currentUserId is omitted (e.g. a system/anonymous caller)', async () => {
@@ -631,14 +657,15 @@ describe('BooksService', () => {
   describe('rateBook — one row per (book, user), editable', () => {
     it('upserts keyed on the composite (bookId, userId) unique index', async () => {
       prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+      prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(null);
       prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
 
       await service.rateBook('book-1', 'user-1', { rating: 5, review: 'Great read' });
 
       expect(prisma.libraryCatalogBookRating.upsert).toHaveBeenCalledWith({
         where: { bookId_userId: { bookId: 'book-1', userId: 'user-1' } },
-        create: { bookId: 'book-1', userId: 'user-1', rating: 5, review: 'Great read' },
-        update: { rating: 5, review: 'Great read' },
+        create: { bookId: 'book-1', userId: 'user-1', rating: 5, review: 'Great read', reviewStatus: 'pending' },
+        update: { rating: 5, review: 'Great read', reviewStatus: 'pending', moderatedBy: null, moderatedAt: null },
       });
     });
 
@@ -647,6 +674,63 @@ describe('BooksService', () => {
 
       await expect(service.rateBook('missing', 'user-1', { rating: 4 })).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.libraryCatalogBookRating.upsert).not.toHaveBeenCalled();
+    });
+
+    describe('LIBRARY_CATALOG-D21: review moderation reset rules', () => {
+      it('a rating with no review text needs no moderation — reviewStatus is "approved"', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(null);
+        prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
+
+        await service.rateBook('book-1', 'user-1', { rating: 4 });
+
+        expect(prisma.libraryCatalogBookRating.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ create: expect.objectContaining({ reviewStatus: 'approved' }) }),
+        );
+      });
+
+      it('editing only the star rating (review text unchanged) preserves the existing reviewStatus and moderation record', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(
+          ratingRow({ review: 'Same text', reviewStatus: 'rejected', moderatedBy: 'mod-1' }),
+        );
+        prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
+
+        await service.rateBook('book-1', 'user-1', { rating: 2, review: 'Same text' });
+
+        const call = (prisma.libraryCatalogBookRating.upsert as jest.Mock).mock.calls[0][0];
+        expect(call.update.reviewStatus).toBe('rejected');
+        expect(call.update).not.toHaveProperty('moderatedBy');
+        expect(call.update).not.toHaveProperty('moderatedAt');
+      });
+
+      it('editing the review text resets reviewStatus to "pending" and clears any prior moderation decision', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(
+          ratingRow({ review: 'Old text', reviewStatus: 'approved', moderatedBy: 'mod-1', moderatedAt: new Date() }),
+        );
+        prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
+
+        await service.rateBook('book-1', 'user-1', { rating: 5, review: 'New, edited text' });
+
+        expect(prisma.libraryCatalogBookRating.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            update: expect.objectContaining({ review: 'New, edited text', reviewStatus: 'pending', moderatedBy: null, moderatedAt: null }),
+          }),
+        );
+      });
+
+      it('removing the review text (rating only) sets reviewStatus back to "approved"', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(ratingRow({ review: 'Something', reviewStatus: 'pending' }));
+        prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
+
+        await service.rateBook('book-1', 'user-1', { rating: 3 });
+
+        expect(prisma.libraryCatalogBookRating.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ update: expect.objectContaining({ review: null, reviewStatus: 'approved' }) }),
+        );
+      });
     });
   });
 
@@ -668,6 +752,70 @@ describe('BooksService', () => {
 
       await expect(service.removeRating('book-1', 'user-1')).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.libraryCatalogBookRating.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('review moderation queue (LIBRARY_CATALOG-D21)', () => {
+    describe('listPendingReviews', () => {
+      it('returns [] without any further queries when nothing is pending', async () => {
+        prisma.libraryCatalogBookRating.findMany.mockResolvedValue([]);
+
+        const result = await service.listPendingReviews();
+
+        expect(result).toEqual([]);
+        expect(prisma.libraryCatalogBook.findMany).not.toHaveBeenCalled();
+      });
+
+      it('joins book titles and rater names onto each pending review', async () => {
+        prisma.libraryCatalogBookRating.findMany.mockResolvedValue([
+          ratingRow({ id: 'r1', bookId: 'book-1', userId: 'user-1', review: 'Needs a look', reviewStatus: 'pending' }),
+        ]);
+        prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna' }]);
+        prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Sara' }]);
+
+        const result = await service.listPendingReviews();
+
+        expect(prisma.libraryCatalogBookRating.findMany).toHaveBeenCalledWith({
+          where: { reviewStatus: 'pending' },
+          orderBy: { updatedAt: 'asc' },
+        });
+        expect(result).toEqual([
+          expect.objectContaining({ id: 'r1', bookTitle: 'Kalila wa Dimna', userName: 'Sara', review: 'Needs a look' }),
+        ]);
+      });
+    });
+
+    describe('approveReview / rejectReview', () => {
+      it('approveReview sets reviewStatus=approved and records the moderator + timestamp', async () => {
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(ratingRow({ id: 'r1', reviewStatus: 'pending' }));
+        prisma.libraryCatalogBookRating.update.mockResolvedValue(ratingRow({ id: 'r1', reviewStatus: 'approved' }));
+
+        await service.approveReview('r1', 'mod-1');
+
+        expect(prisma.libraryCatalogBookRating.update).toHaveBeenCalledWith({
+          where: { id: 'r1' },
+          data: { reviewStatus: 'approved', moderatedBy: 'mod-1', moderatedAt: expect.any(Date) },
+        });
+      });
+
+      it('rejectReview sets reviewStatus=rejected and records the moderator + timestamp', async () => {
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(ratingRow({ id: 'r1', reviewStatus: 'pending' }));
+        prisma.libraryCatalogBookRating.update.mockResolvedValue(ratingRow({ id: 'r1', reviewStatus: 'rejected' }));
+
+        await service.rejectReview('r1', 'mod-1');
+
+        expect(prisma.libraryCatalogBookRating.update).toHaveBeenCalledWith({
+          where: { id: 'r1' },
+          data: { reviewStatus: 'rejected', moderatedBy: 'mod-1', moderatedAt: expect.any(Date) },
+        });
+      });
+
+      it('throws NotFoundException for an unknown rating id, never calling update', async () => {
+        prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(null);
+
+        await expect(service.approveReview('missing', 'mod-1')).rejects.toBeInstanceOf(NotFoundException);
+        expect(prisma.libraryCatalogBookRating.update).not.toHaveBeenCalled();
+      });
     });
   });
 });

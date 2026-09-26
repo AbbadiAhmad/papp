@@ -1,6 +1,7 @@
 {
   "library_catalog.menu.root": "Library",
   "library_catalog.menu.books": "Books",
+  "library_catalog.menu.moderate_reviews": "Moderate reviews",
 
   "library_catalog.perm.books.view": "View books",
   "library_catalog.perm.books.create": "Create books",
@@ -8,6 +9,7 @@
   "library_catalog.perm.books.delete": "Delete books",
   "library_catalog.perm.books.export": "Export books",
   "library_catalog.perm.books.rate": "Rate books",
+  "library_catalog.perm.books.moderate_ratings": "Approve/reject book reviews",
 
   "library_catalog.fields.title": "Title",
   "library_catalog.fields.author": "Author",
@@ -44,6 +46,13 @@
   "library_catalog.ratings.submit_button": "Submit rating",
   "library_catalog.ratings.remove_button": "Remove my rating",
   "library_catalog.ratings.anonymous_reader": "A reader",
+  "library_catalog.ratings.review_status.pending": "Awaiting approval",
+  "library_catalog.ratings.review_status.approved": "Approved",
+  "library_catalog.ratings.review_status.rejected": "Rejected",
+
+  "library_catalog.moderate_reviews.empty": "No reviews are waiting for approval.",
+  "library_catalog.moderate_reviews.approve_button": "Approve",
+  "library_catalog.moderate_reviews.reject_button": "Reject",
   "library_catalog.copies.qr_code": "QR code",
   "library_catalog.copies.status": "Status",
   "library_catalog.copies.condition": "Condition",

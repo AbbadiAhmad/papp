@@ -30,12 +30,15 @@ export interface LibraryBook {
   ratingsCount?: number;
 }
 
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+
 export interface BookRating {
   id: string;
   userId: string;
   userName: string | null;
   rating: number;
   review: string | null;
+  reviewStatus: ReviewStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +46,20 @@ export interface BookRating {
 export interface MyBookRating {
   rating: number;
   review: string | null;
+  reviewStatus: ReviewStatus;
+}
+
+/** One row from `GET /books/ratings/pending` — the librarian's review-moderation queue (LIBRARY_CATALOG-D21). */
+export interface PendingReview {
+  id: string;
+  bookId: string;
+  bookTitle: string | null;
+  userId: string;
+  userName: string | null;
+  rating: number;
+  review: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** `GET /books/:id`'s enriched shape — the plain `LibraryBook` fields plus the full ratings list and the caller's own rating. */
@@ -146,6 +163,11 @@ export const libraryCatalogApi = {
   rateBook: (bookId: string, dto: RateBookInput) =>
     apiClient.put<BookRating>(`/api/library/books/${bookId}/rating`, dto).then((r) => r.data),
   removeRating: (bookId: string) => apiClient.delete<void>(`/api/library/books/${bookId}/rating`).then((r) => r.data),
+
+  // Review moderation (LIBRARY_CATALOG-D21) — "the librarian has to approve the comments to publish it".
+  listPendingReviews: () => apiClient.get<PendingReview[]>('/api/library/books/ratings/pending').then((r) => r.data),
+  approveReview: (ratingId: string) => apiClient.post<BookRating>(`/api/library/books/ratings/${ratingId}/approve`).then((r) => r.data),
+  rejectReview: (ratingId: string) => apiClient.post<BookRating>(`/api/library/books/ratings/${ratingId}/reject`).then((r) => r.data),
 
   // Public — no Authorization header required (MODULE_SPEC.md §7); reused
   // `apiClient` still opportunistically attaches one if present (a logged-in

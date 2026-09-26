@@ -346,19 +346,29 @@ model LibraryCatalogBook {
 /// without a relation traversal" pattern as every other module's own
 /// `createdBy`/`assignedBy`-shaped columns; the rater's display name is
 /// joined in the service layer via a separate `prisma.user.findMany` call.
+/// `reviewStatus` (LIBRARY_CATALOG-D21 — "the librarian has to approve the
+/// comments to publish it") gates only the WRITTEN review, never the star
+/// `rating` itself, which always counts toward the average immediately.
+/// Defaults to 'approved' so a rating with no review text needs no
+/// moderation at all — see BooksService.rateBook()'s own docblock for when
+/// it resets to 'pending'.
 model LibraryCatalogBookRating {
-  id        String   @id @default(uuid()) @db.Uuid
-  bookId    String   @map("book_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  rating    Int
-  review    String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  bookId       String    @map("book_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  rating       Int
+  review       String?
+  reviewStatus String    @default("approved") @map("review_status")
+  moderatedBy  String?   @map("moderated_by") @db.Uuid
+  moderatedAt  DateTime? @map("moderated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@unique([bookId, userId])
   @@index([bookId])
+  @@index([reviewStatus])
   @@map("library_catalog_book_ratings")
 }
 

@@ -1,6 +1,7 @@
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { BookDetailPage } from './pages/BookDetailPage';
 import { BooksListPage } from './pages/BooksListPage';
+import { ModerateReviewsPage } from './pages/ModerateReviewsPage';
 import { PublicBookAvailabilityPage } from './pages/PublicBookAvailabilityPage';
 
 /**
@@ -13,6 +14,7 @@ import { PublicBookAvailabilityPage } from './pages/PublicBookAvailabilityPage';
 export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library/books', element: <BooksListPage /> },
   { path: '/library/books/:bookId', element: <BookDetailPage /> },
+  { path: '/library/reviews/moderate', element: <ModerateReviewsPage /> },
 ];
 
 export const publicRoutes: ModuleRouteEntry[] = [

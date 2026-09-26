@@ -29,10 +29,11 @@ const fetchCopyState = (prisma: PrismaClient, req: Request) =>
  * (see ./platform.ts's docblock for why it's a local instance, not an
  * import of core's).
  *
- * Route registration order matters within one controller: `export` and the
- * nested `:bookId/copies...` routes are declared BEFORE `:id` so Express
- * never mistakes "export" or a copies sub-path for a book id (the same
- * lesson apps/api/src/core/users/users.module.ts's docblock explains).
+ * Route registration order matters within one controller: `export`, the
+ * `ratings/*` moderation routes, and the nested `:bookId/copies...` routes
+ * are all declared BEFORE `:id` so Express never mistakes a literal
+ * single-segment path (or a copies sub-path) for a book id (the same lesson
+ * apps/api/src/core/users/users.module.ts's docblock explains).
  */
 @Controller('api/library/books')
 @UseGuards(MustChangePasswordGuard)
@@ -54,6 +55,31 @@ export class BooksController {
       'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
     });
     res.send(buffer);
+  }
+
+  // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
+  // "The librarian has to approve the comments to publish it" — a separate
+  // cross-book queue, not a privileged view of GET /books/:id's own ratings
+  // list (see BooksService.listPendingReviews's own docblock for why).
+
+  @Get('ratings/pending')
+  @RequirePermission('library_catalog.books.moderate_ratings')
+  async listPendingReviews() {
+    return this.books.listPendingReviews();
+  }
+
+  @Post('ratings/:ratingId/approve')
+  @RequirePermission('library_catalog.books.moderate_ratings')
+  @Audit({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'approve_review' })
+  async approveReview(@Param('ratingId', new ParseUUIDPipe()) ratingId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.books.approveReview(ratingId, user.userId);
+  }
+
+  @Post('ratings/:ratingId/reject')
+  @RequirePermission('library_catalog.books.moderate_ratings')
+  @Audit({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'reject_review' })
+  async rejectReview(@Param('ratingId', new ParseUUIDPipe()) ratingId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.books.rejectReview(ratingId, user.userId);
   }
 
   @Get(':id')

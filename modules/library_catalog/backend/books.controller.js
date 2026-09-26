@@ -36,10 +36,11 @@ const fetchCopyState = (prisma, req) => prisma.libraryCatalogBookCopy.findUnique
  * (see ./platform.ts's docblock for why it's a local instance, not an
  * import of core's).
  *
- * Route registration order matters within one controller: `export` and the
- * nested `:bookId/copies...` routes are declared BEFORE `:id` so Express
- * never mistakes "export" or a copies sub-path for a book id (the same
- * lesson apps/api/src/core/users/users.module.ts's docblock explains).
+ * Route registration order matters within one controller: `export`, the
+ * `ratings/*` moderation routes, and the nested `:bookId/copies...` routes
+ * are all declared BEFORE `:id` so Express never mistakes a literal
+ * single-segment path (or a copies sub-path) for a book id (the same lesson
+ * apps/api/src/core/users/users.module.ts's docblock explains).
  */
 let BooksController = class BooksController {
     books;
@@ -56,6 +57,19 @@ let BooksController = class BooksController {
             'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
         });
         res.send(buffer);
+    }
+    // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
+    // "The librarian has to approve the comments to publish it" — a separate
+    // cross-book queue, not a privileged view of GET /books/:id's own ratings
+    // list (see BooksService.listPendingReviews's own docblock for why).
+    async listPendingReviews() {
+        return this.books.listPendingReviews();
+    }
+    async approveReview(ratingId, user) {
+        return this.books.approveReview(ratingId, user.userId);
+    }
+    async rejectReview(ratingId, user) {
+        return this.books.rejectReview(ratingId, user.userId);
     }
     async findById(id, user) {
         return this.books.findById(id, user.userId);
@@ -120,6 +134,33 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "export", null);
+__decorate([
+    (0, common_1.Get)('ratings/pending'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "listPendingReviews", null);
+__decorate([
+    (0, common_1.Post)('ratings/:ratingId/approve'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'approve_review' }),
+    __param(0, (0, common_1.Param)('ratingId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "approveReview", null);
+__decorate([
+    (0, common_1.Post)('ratings/:ratingId/reject'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'reject_review' }),
+    __param(0, (0, common_1.Param)('ratingId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "rejectReview", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
