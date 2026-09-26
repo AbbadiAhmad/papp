@@ -94,6 +94,13 @@
   "reading_club.episodes.start_new_confirm": "سيؤدي بدء موسم جديد إلى إنهاء الموسم الحالي \"{{current}}\". هل تريد المتابعة؟",
   "reading_club.episodes.viewing_episode": "الموسم المعروض",
   "reading_club.episodes.viewing_past_readonly": "أنت تستعرض موسماً منتهياً للقراءة فقط. لا يمكن إجراء أي تعديل عليه.",
+  "reading_club.episodes.delete_title": "حذف الموسم",
+  "reading_club.episodes.delete_confirm": "حذف موسم \"{{name}}\"؟ سيؤدي هذا إلى حذف كل ما يتبع له بشكل نهائي — مجموعاته ومراحله الخاصة، وكل تعيين قارئ وإنجاز وسجل كتاب تم تسجيله ضمنه. بخلاف حذف مجموعة أو مرحلة، لن يبقى أي سجل تاريخي هنا.",
+  "reading_club.episodes.delete_current_warning": "\"{{name}}\" هو الموسم الحالي. بعد حذفه، لن يكون هناك موسم حالي إلى أن تبدأ موسماً جديداً.",
+  "reading_club.episodes.delete_counts_warning": "سيتم حذف {{groupCount}} مجموعة، و{{readerCount}} تعيين قارئ، و{{completionCount}} إنجاز، و{{bookEntryCount}} سجل كتاب بشكل نهائي.",
+  "reading_club.episodes.delete_empty_note": "لا توجد أي مجموعات أو قرّاء أو إنجازات أو سجلات كتب مسجّلة ضمن هذا الموسم.",
+  "reading_club.episodes.delete_success": "تم حذف موسم \"{{name}}\".",
+  "reading_club.episodes.delete_success_was_current": "تم حذف موسم \"{{name}}\". كان هو الموسم الحالي — لا يوجد موسم حالي الآن إلى أن تبدأ موسماً جديداً.",
 
   "reading_club.dashboard.pending_rewards_heading": "مكافآت بانتظار التسليم",
 

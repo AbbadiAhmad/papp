@@ -38,7 +38,7 @@ export function GroupsListPage() {
   const gated = useGatedCall();
   const [searchParams, setSearchParams] = useSearchParams();
   const episodeId = searchParams.get('episodeId') ?? '';
-  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisode());
+  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisodeOrNull());
   const isViewingPast = Boolean(episodeId) && episodeId !== currentEpisode?.id;
   const { status, data: groups, errorMessage, reload } = useGuardedQuery(() => readingClubApi.listGroups(episodeId || undefined));
 

@@ -35,7 +35,7 @@ export function ReadersListPage() {
   const [search, setSearch] = useState('');
   const [assignOpen, setAssignOpen] = useState(false);
 
-  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisode());
+  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisodeOrNull());
   const isViewingPast = Boolean(episodeId) && episodeId !== currentEpisode?.id;
 
   const { status, data: readers, errorMessage, reload } = useGuardedQuery(() =>

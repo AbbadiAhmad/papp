@@ -94,6 +94,13 @@
   "reading_club.episodes.start_new_confirm": "Starting a new episode will close the current episode \"{{current}}\". Continue?",
   "reading_club.episodes.viewing_episode": "Viewing episode",
   "reading_club.episodes.viewing_past_readonly": "You are viewing a closed episode, read-only. No changes can be made here.",
+  "reading_club.episodes.delete_title": "Delete episode",
+  "reading_club.episodes.delete_confirm": "Delete episode \"{{name}}\"? This permanently deletes everything that belongs to it — its own groups and stages, and every reader assignment, completion, and book entry recorded under it. Unlike deleting a group or stage, no history is preserved.",
+  "reading_club.episodes.delete_current_warning": "\"{{name}}\" is the current episode. After deleting it, no episode will be current until you start a new one.",
+  "reading_club.episodes.delete_counts_warning": "This will permanently delete {{groupCount}} group(s), {{readerCount}} reader assignment(s), {{completionCount}} completion(s), and {{bookEntryCount}} book entry/entries.",
+  "reading_club.episodes.delete_empty_note": "This episode has no groups, readers, completions, or book entries recorded under it.",
+  "reading_club.episodes.delete_success": "Episode \"{{name}}\" deleted.",
+  "reading_club.episodes.delete_success_was_current": "Episode \"{{name}}\" deleted. It was the current episode — no episode is current now until you start a new one.",
 
   "reading_club.dashboard.pending_rewards_heading": "Rewards awaiting delivery",
 

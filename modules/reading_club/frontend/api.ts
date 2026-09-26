@@ -1,5 +1,5 @@
 // Same-repo Vite import — see modules/template/frontend/api.ts's own docblock.
-import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import { apiClient, isNotFoundError } from '../../../apps/web/src/shared/api/httpClient';
 
 export type StageTargetType = 'books' | 'pages';
 export type RewardStatus = 'pending' | 'delivered';
@@ -215,7 +215,37 @@ export const readingClubApi = {
   // Episodes
   listEpisodes: () => apiClient.get<ReadingClubEpisode[]>(`${BASE}/episodes`).then((r) => r.data),
   getCurrentEpisode: () => apiClient.get<ReadingClubEpisode>(`${BASE}/episodes/current`).then((r) => r.data),
+  /**
+   * Same lookup as `getCurrentEpisode` but resolves to `null` (instead of
+   * rejecting) when there is no current episode — a normal state after an
+   * episode is deleted and before a new one is started (READING_CLUB-D17).
+   * Pages that only need to know "is the episode I'm viewing the current
+   * one" should use this, not `getCurrentEpisode`, so a missing current
+   * episode never turns the whole page into an error state.
+   */
+  getCurrentEpisodeOrNull: () =>
+    apiClient
+      .get<ReadingClubEpisode>(`${BASE}/episodes/current`)
+      .then((r) => r.data)
+      .catch((err) => {
+        if (isNotFoundError(err)) return null;
+        throw err;
+      }),
   createEpisode: (dto: CreateEpisodeInput) => apiClient.post<ReadingClubEpisode>(`${BASE}/episodes`, dto).then((r) => r.data),
+  /** Real cascade blast-radius counts, fetched before the type-to-confirm delete dialog is shown (READING_CLUB-D17). */
+  getEpisodeDeletePreview: (id: string) =>
+    apiClient
+      .get<{ episodeId: string; isCurrent: boolean; groupCount: number; readerCount: number; completionCount: number; bookEntryCount: number }>(
+        `${BASE}/episodes/${id}/delete-preview`,
+      )
+      .then((r) => r.data),
+  /** Full cascade delete — any episode, including the current one (READING_CLUB-D17). No history preservation, unlike group/stage delete. */
+  removeEpisode: (id: string) =>
+    apiClient
+      .delete<{ affectedGroupCount: number; affectedReaderCount: number; affectedCompletionCount: number; affectedBookEntryCount: number; wasCurrent: boolean }>(
+        `${BASE}/episodes/${id}`,
+      )
+      .then((r) => r.data),
 
   // Groups
   listGroups: (episodeId?: string) =>

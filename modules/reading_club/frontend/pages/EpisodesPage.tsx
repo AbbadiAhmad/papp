@@ -1,4 +1,5 @@
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import {
   Alert,
   Box,
@@ -8,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
   Snackbar,
   Stack,
@@ -18,6 +20,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
@@ -28,13 +31,22 @@ import { ConfirmDialog } from '../../../../apps/web/src/shared/components/Confir
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { Can } from '../../../../apps/web/src/shared/permissions';
-import { readingClubApi } from '../api';
+import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
+import { readingClubApi, type ReadingClubEpisode } from '../api';
+import { TypeToConfirmDialog } from './TypeToConfirmDialog';
 
 /** Episodes (seasons/years) — the top-level scope groups/stages/readers now live under. Lists every episode, highlights the current one, and lets a permitted user start a new one (which closes whatever was current). */
+interface DeletePreview {
+  groupCount: number;
+  readerCount: number;
+  completionCount: number;
+  bookEntryCount: number;
+}
+
 export function EpisodesPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
+  const gated = useGatedCall();
   const { status, data: episodes, errorMessage, reload } = useGuardedQuery(() => readingClubApi.listEpisodes());
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,6 +54,10 @@ export function EpisodesPage() {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+
+  const [pendingDelete, setPendingDelete] = useState<ReadingClubEpisode | null>(null);
+  const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false);
 
   const current = (episodes ?? []).find((e) => e.isCurrent) ?? null;
 
@@ -63,6 +79,60 @@ export function EpisodesPage() {
       setSaving(false);
     }
   };
+
+  const openDelete = async (episode: ReadingClubEpisode) => {
+    setPendingDelete(episode);
+    setDeletePreview(null);
+    setDeletePreviewLoading(true);
+    try {
+      const preview = await readingClubApi.getEpisodeDeletePreview(episode.id);
+      setDeletePreview(preview);
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setDeletePreviewLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const deleted = pendingDelete;
+    try {
+      const result = await gated('reading_club.episodes.manage', () => readingClubApi.removeEpisode(deleted.id));
+      reload();
+      setSnackbar(
+        result.wasCurrent
+          ? t('reading_club.episodes.delete_success_was_current', { name: deleted.name })
+          : t('reading_club.episodes.delete_success', { name: deleted.name }),
+      );
+    } catch (error) {
+      setSnackbar(extractErrorMessage(error));
+    } finally {
+      setPendingDelete(null);
+      setDeletePreview(null);
+    }
+  };
+
+  const deleteWarningLines: string[] = [];
+  if (pendingDelete?.isCurrent) {
+    deleteWarningLines.push(t('reading_club.episodes.delete_current_warning', { name: pendingDelete.name }));
+  }
+  if (deletePreview) {
+    const hasAnything =
+      deletePreview.groupCount > 0 || deletePreview.readerCount > 0 || deletePreview.completionCount > 0 || deletePreview.bookEntryCount > 0;
+    deleteWarningLines.push(
+      hasAnything
+        ? t('reading_club.episodes.delete_counts_warning', {
+            groupCount: deletePreview.groupCount,
+            readerCount: deletePreview.readerCount,
+            completionCount: deletePreview.completionCount,
+            bookEntryCount: deletePreview.bookEntryCount,
+          })
+        : t('reading_club.episodes.delete_empty_note'),
+    );
+  } else if (deletePreviewLoading) {
+    deleteWarningLines.push(t('core.common.loading'));
+  }
 
   return (
     <Box>
@@ -92,6 +162,7 @@ export function EpisodesPage() {
                 <TableCell>{t('core.common.status')}</TableCell>
                 <TableCell>{t('reading_club.episodes.starts_at')}</TableCell>
                 <TableCell>{t('reading_club.episodes.ends_at')}</TableCell>
+                <TableCell align="right">{t('core.common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -107,11 +178,20 @@ export function EpisodesPage() {
                   </TableCell>
                   <TableCell>{formatDateOnly(episode.startsAt, language)}</TableCell>
                   <TableCell>{episode.endsAt ? formatDateOnly(episode.endsAt, language) : '—'}</TableCell>
+                  <TableCell align="right">
+                    <Can permission="reading_club.episodes.manage">
+                      <Tooltip title={t('core.common.delete')}>
+                        <IconButton size="small" onClick={() => openDelete(episode)} aria-label={t('core.common.delete')}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Can>
+                  </TableCell>
                 </TableRow>
               ))}
               {(episodes ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4}>
+                  <TableCell colSpan={5}>
                     <Typography variant="body2" color="text.secondary">
                       {t('core.common.no_data')}
                     </Typography>
@@ -157,6 +237,20 @@ export function EpisodesPage() {
         confirmColor="primary"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={handleCreate}
+      />
+
+      <TypeToConfirmDialog
+        open={pendingDelete !== null}
+        title={t('reading_club.episodes.delete_title')}
+        description={t('reading_club.episodes.delete_confirm', { name: pendingDelete?.name ?? '' })}
+        warning={deleteWarningLines.length > 0 ? deleteWarningLines.join(' ') : null}
+        expectedText={pendingDelete?.name ?? ''}
+        confirmLabel={t('core.common.delete')}
+        onCancel={() => {
+          setPendingDelete(null);
+          setDeletePreview(null);
+        }}
+        onConfirm={handleDelete}
       />
 
       <Snackbar open={snackbar !== null} autoHideDuration={4000} onClose={() => setSnackbar(null)} message={snackbar} />
