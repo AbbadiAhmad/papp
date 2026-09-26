@@ -35,8 +35,8 @@ let GroupsController = class GroupsController {
     constructor(groups) {
         this.groups = groups;
     }
-    async list() {
-        return this.groups.listGroups();
+    async list(episodeId) {
+        return this.groups.listGroups(episodeId);
     }
     async findById(id) {
         return this.groups.getGroup(id);
@@ -47,8 +47,15 @@ let GroupsController = class GroupsController {
     async update(id, dto) {
         return this.groups.updateGroup(id, dto);
     }
+    /**
+     * Deletion is always allowed now, even with history against this group
+     * (READING_CLUB-D16) — no longer 204/No Content, since the response body
+     * now carries `affectedActiveReaderCount` (informational only, the
+     * frontend's type-to-confirm dialog already warned about it beforehand
+     * using the dashboard's own live counts).
+     */
     async remove(id) {
-        await this.groups.removeGroup(id);
+        return this.groups.removeGroup(id);
     }
     // --- Stages (nested under their group) ---------------------------------
     async listStages(groupId) {
@@ -60,16 +67,18 @@ let GroupsController = class GroupsController {
     async updateStage(stageId, dto) {
         return this.groups.updateStage(stageId, dto);
     }
+    /** Deletion is always allowed now, even with history against this stage (READING_CLUB-D16) — see `remove` above for why this is no longer 204/No Content. */
     async removeStage(stageId) {
-        await this.groups.removeStage(stageId);
+        return this.groups.removeStage(stageId);
     }
 };
 exports.GroupsController = GroupsController;
 __decorate([
     (0, common_1.Get)(),
     (0, platform_1.RequirePermission)('reading_club.groups.view'),
+    __param(0, (0, common_1.Query)('episodeId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], GroupsController.prototype, "list", null);
 __decorate([
@@ -102,7 +111,6 @@ __decorate([
 ], GroupsController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
-    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('reading_club.groups.delete'),
     (0, platform_1.Audit)({ category: 'reading_club.groups', entityType: 'ReadingClubGroup', action: 'delete', fetchState: fetchGroupState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
@@ -140,7 +148,6 @@ __decorate([
 ], GroupsController.prototype, "updateStage", null);
 __decorate([
     (0, common_1.Delete)('stages/:stageId'),
-    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('reading_club.groups.delete'),
     (0, platform_1.Audit)({ category: 'reading_club.groups', entityType: 'ReadingClubStage', action: 'delete', fetchState: fetchStageState }),
     __param(0, (0, common_1.Param)('stageId', new common_1.ParseUUIDPipe())),

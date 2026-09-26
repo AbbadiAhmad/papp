@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -20,10 +20,36 @@ export class StudentsController {
     return this.students.list();
   }
 
+  /**
+   * Searchable reader picker (Fines page's [Create Fine] dialog, Scan page's
+   * search-by-name lookup) — registered BEFORE `:id` so Express never treats
+   * "search" as an id (same lesson as every other module's own docblock on
+   * this, e.g. library_catalog's books.controller.ts).
+   */
+  @Get('search')
+  @RequirePermission('library_circulation.students.view')
+  async search(@Query('q') q: string) {
+    return this.students.search(q ?? '');
+  }
+
   @Get(':id')
   @RequirePermission('library_circulation.students.view')
   async findById(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.students.findById(id);
+  }
+
+  /** §3.2 "Reading History" tab — every borrowing ever, never just the active ones. */
+  @Get(':id/reading-history')
+  @RequirePermission('library_circulation.students.view')
+  async readingHistory(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getReadingHistory(id);
+  }
+
+  /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */
+  @Get(':id/action-history')
+  @RequirePermission('library_circulation.students.view')
+  async actionHistory(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getActionHistory(id);
   }
 
   @Post()

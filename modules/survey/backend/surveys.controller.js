@@ -79,7 +79,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('survey.surveys.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -88,7 +88,7 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, platform_1.RequirePermission)('survey.surveys.update'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update', fetchState: fetchSurveyState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_survey_dto_1.UpdateSurveyDto]),
@@ -99,7 +99,7 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('survey.surveys.delete'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'delete', fetchState: fetchSurveyState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -108,7 +108,7 @@ __decorate([
     (0, common_1.Post)(':id/publish'),
     (0, platform_1.RequirePermission)('survey.surveys.publish'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'publish', fetchState: fetchSurveyState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -117,7 +117,7 @@ __decorate([
     (0, common_1.Post)(':id/close'),
     (0, platform_1.RequirePermission)('survey.surveys.publish'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'close', fetchState: fetchSurveyState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -126,7 +126,7 @@ __decorate([
     (0, common_1.Put)(':id/structure'),
     (0, platform_1.RequirePermission)('survey.surveys.update'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, survey_structure_dto_1.SurveyStructureDto]),

@@ -29,6 +29,10 @@
   "library_catalog.books.edit_title": "تعديل الكتاب",
   "library_catalog.books.delete_title": "حذف الكتاب",
   "library_catalog.books.delete_confirm": "هل تريد حذف \"{{title}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+  "library_catalog.books.view_borrowing_history": "عرض سجل الإعارة",
+
+  "library_catalog.book.copies_section": "النسخة الأولى",
+  "library_catalog.book.add_copies_label": "كل كتاب يحتاج إلى نسخة فعلية واحدة على الأقل — أدخل رمز الاستجابة السريعة الخاص بها أدناه. يمكنك إضافة نسخ أخرى لاحقاً من صفحة الكتاب.",
 
   "library_catalog.copies.title": "النسخ",
 
@@ -52,6 +56,16 @@
   "library_catalog.copy_status.damaged": "تالفة",
   "library_catalog.copy_status.maintenance": "قيد الصيانة",
   "library_catalog.copy_status.reserved": "محجوزة",
+
+  "library_catalog.copies.view_history": "عرض السجل",
+  "library_catalog.copies.update_status": "تحديث الحالة",
+  "library_catalog.copies.mark_damaged": "تحديد كتالفة",
+  "library_catalog.copies.mark_lost": "تحديد كمفقودة",
+  "library_catalog.copies.mark_available": "تحديد كمتاحة",
+  "library_catalog.copies.history_title": "السجل — {{qrCode}}",
+  "library_catalog.copies.no_history": "لا توجد تغييرات مسجّلة في الحالة أو الحالة الفنية أو الموقع بعد.",
+  "library_catalog.copies.delete_title": "إزالة النسخة",
+  "library_catalog.copies.delete_confirm": "هل تريد إزالة النسخة \"{{qrCode}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
 
   "library_catalog.public.not_found": "تعذر العثور على هذا الكتاب.",
   "library_catalog.public.availability_summary": "{{available}} من {{total}} نسخة متاحة",

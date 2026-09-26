@@ -14,6 +14,8 @@ const class_validator_1 = require("class-validator");
 class BorrowDto {
     studentId;
     bookCopyId;
+    expectedReturnDate;
+    comments;
 }
 exports.BorrowDto = BorrowDto;
 __decorate([
@@ -24,3 +26,13 @@ __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
 ], BorrowDto.prototype, "bookCopyId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], BorrowDto.prototype, "expectedReturnDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], BorrowDto.prototype, "comments", void 0);

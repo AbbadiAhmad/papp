@@ -1,5 +1,6 @@
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { DashboardPage } from './pages/DashboardPage';
+import { EpisodesPage } from './pages/EpisodesPage';
 import { GroupsListPage } from './pages/GroupsListPage';
 import { ReaderDetailPage } from './pages/ReaderDetailPage';
 import { ReadersListPage } from './pages/ReadersListPage';
@@ -14,6 +15,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/reading-club/readers', element: <ReadersListPage /> },
   { path: '/reading-club/readers/:studentId', element: <ReaderDetailPage /> },
   { path: '/reading-club/groups', element: <GroupsListPage /> },
+  { path: '/reading-club/episodes', element: <EpisodesPage /> },
 ];
 
 /** No public routes — every screen needs an authenticated, permission-gated staff session. */

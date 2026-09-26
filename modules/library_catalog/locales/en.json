@@ -29,6 +29,10 @@
   "library_catalog.books.edit_title": "Edit book",
   "library_catalog.books.delete_title": "Delete book",
   "library_catalog.books.delete_confirm": "Delete \"{{title}}\"? This cannot be undone.",
+  "library_catalog.books.view_borrowing_history": "View borrowing history",
+
+  "library_catalog.book.copies_section": "First copy",
+  "library_catalog.book.add_copies_label": "Every book needs at least one physical copy — enter its QR code below. You can add more copies later from the book's page.",
 
   "library_catalog.copies.title": "Copies",
 
@@ -52,6 +56,16 @@
   "library_catalog.copy_status.damaged": "Damaged",
   "library_catalog.copy_status.maintenance": "Under maintenance",
   "library_catalog.copy_status.reserved": "Reserved",
+
+  "library_catalog.copies.view_history": "View history",
+  "library_catalog.copies.update_status": "Update status",
+  "library_catalog.copies.mark_damaged": "Mark damaged",
+  "library_catalog.copies.mark_lost": "Mark lost",
+  "library_catalog.copies.mark_available": "Mark available",
+  "library_catalog.copies.history_title": "History — {{qrCode}}",
+  "library_catalog.copies.no_history": "No status/condition/location changes recorded yet.",
+  "library_catalog.copies.delete_title": "Remove copy",
+  "library_catalog.copies.delete_confirm": "Remove copy \"{{qrCode}}\"? This cannot be undone.",
 
   "library_catalog.public.not_found": "This book could not be found.",
   "library_catalog.public.availability_summary": "{{available}} of {{total}} copies available",

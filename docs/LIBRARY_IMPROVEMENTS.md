@@ -1,8 +1,35 @@
 # Library Module Improvements — Enhancement Proposal
 
-**Status: Proposed enhancements to `library_catalog` and `library_circulation` modules.**
+**Status: All 14 sub-items implemented as of 2026-09-20 — see the implementation history below.**
 
 This document captures refinement requests to improve the user experience and functionality of the existing library modules. These are informed by usage patterns and gaps discovered after the initial implementation.
+
+## Implementation history (2026-09-20)
+
+An earlier pass through this codebase found the state below inconsistent with what the module `DECISIONS.md` files claimed (several entries marked `DECIDED`/`PROPOSED` didn't match real code — verified independently against actual source, not doc labels). All 14 sub-items were then implemented on branch `claude/library-improvements`, each with its own commit, Tier 1 (unit) coverage, and the full local CI pipeline (lint, build, backend unit/coverage/integration/e2e, frontend Playwright e2e) run twice — once at the midpoint and once at the end — both fully green.
+
+| Item | Status | Commit(s) |
+|---|---|---|
+| 1.1 Combined Book + Copy Add Flow | ✅ Implemented — backend (`e9a491f`) + the frontend form that was missing it | `0d9d852` |
+| 1.2 Total/Available Copies columns | ✅ Implemented (single combined column, not two) | `ea4c5bc` |
+| 1.3 Copies tab — Actions & Status | ✅ Implemented — action menu (View History/Update Status/Mark Damaged/Mark Lost/Remove) + status color coding | `6a731e2` |
+| 2.1 Book History (via circulation) | ✅ Implemented — new endpoint + BookHistoryPage in library_circulation, linked from BookDetailPage | `9a18e1c`, `a0d4f8f` |
+| 2.2 Copy History (via circulation) | ✅ Implemented — backend existed, CopyHistoryDialog now wires the previously-dead button | `9a18e1c` |
+| 3.1 Rename Student → Reader | ✅ Implemented — UI copy + the permission labels the first pass missed | `54d0682` |
+| 3.2 Reader Detail Page enrichment | ✅ Implemented — name/avatar/counts/status header + Reading History tab | `1be36de` |
+| 3.3 Reader Actions & History | ✅ Implemented — Actions tab backed by audit_log | `1be36de` |
+| 4.1 Divide Scan Page into sections | ✅ Implemented — real two-column MUI Grid | `3097e3a` |
+| 4.2 Reader — View Borrow History button | ✅ Implemented — ReaderHistoryDialog wired to the previously-dead button | `3097e3a` |
+| 4.3 Book — View Copy History popup | ✅ Implemented | `9a18e1c` |
+| 4.4 Previous Borrow Indicator | ✅ Implemented — real per-reader-per-copy history lookup, not just "checked out right now" | `3097e3a` |
+| 5.1 Borrow Dialog — Info & Comments | ✅ Implemented | `e9a491f` |
+| 6.1 Return Dialog — Info & Status | ✅ Implemented — CreateFineDialog closes the auto-suggest-but-never-create gap | `c0a1c2e` |
+
+**The one real bug found along the way (fixed in `0d9d852`):** `CreateBookDto.copy` was mandatory server-side but `BookFormDialog.tsx` never collected it — the New Book form failed validation on every submission. Not a missing enhancement, a live regression; fixed first, before anything else in this pass.
+
+**Module-boundary note (2.1):** the book-level borrowing-history view lives in `library_circulation` (`BookHistoryPage.tsx`), not as a tab on `library_catalog`'s `BookDetailPage.tsx` as the original sketch implied — `library_catalog` must never import from `library_circulation` (one-directional `dependsOn`, LIBRARY_CATALOG-D4/D7: the catalog module stands alone and is installable without circulation ever being present). `BookDetailPage.tsx` shows a plain link into the circulation page instead, shown only once `GET /modules/frontend-manifest` confirms circulation is actually installed.
+
+Per-section detail and the original proposal follow below; each heading still carries its per-item status tag inline.
 
 ---
 
@@ -20,6 +47,8 @@ The enhancements are organized into four feature areas:
 ## 1. Book Catalog & Copies UI Improvements
 
 ### 1.1 Combined Book + Copy Add Flow
+
+**Status:** ✅ **IMPLEMENTED** — backend (`e9a491f`) + the frontend form that was missing it (`0d9d852`)
 
 **Current state:** Adding a book is a two-step process: create the book, then add copies separately.
 
@@ -44,6 +73,8 @@ The enhancements are organized into four feature areas:
 
 ### 1.2 Book Catalog List — Available vs. Total Copies
 
+**Status:** ✅ **IMPLEMENTED** (single combined column, `ea4c5bc`)
+
 **Current state:** The books table shows only the list of books, no copy information.
 
 **Improvement:** Add two columns to the `BooksListPage` table:
@@ -61,6 +92,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 1.3 Book Copies — Actions and Status Visibility
+
+**Status:** ✅ **IMPLEMENTED** (`6a731e2`) — action menu (View History/Update Status/Mark Damaged/Mark Lost/Remove) + status color coding
 
 **Current state:** Book copies are visible only via `/library/books/:bookId/copies` (a nested list); no actions or status context at a glance.
 
@@ -97,6 +130,8 @@ The enhancements are organized into four feature areas:
 
 ### 2.1 Book History (via Circulation Module)
 
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`, `a0d4f8f`) — lives in library_circulation's own BookHistoryPage, linked from BookDetailPage (see module-boundary note above)
+
 **Current state:** No history view for a book.
 
 **Improvement:** When viewing a book (`BookDetailPage`), show a "History" tab that lists:
@@ -122,6 +157,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 2.2 Copy History (via Circulation Module)
+
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`) — CopyHistoryDialog wires the previously-dead button
 
 **Current state:** Copy status changes are only recorded in the audit log; no user-facing history.
 
@@ -149,6 +186,8 @@ The enhancements are organized into four feature areas:
 
 ### 3.1 Rename "Student" to "Reader"
 
+**Status:** ✅ **IMPLEMENTED** (`118f2b1`, permission labels finished in `54d0682`)
+
 **Current state:** The UI labels the entity "Student".
 
 **Improvement:** Rename throughout to "Reader" to be more inclusive (staff, teachers, or anyone who borrows books).
@@ -170,6 +209,8 @@ The enhancements are organized into four feature areas:
 ---
 
 ### 3.2 Reader List & Detail Page — Show More Information
+
+**Status:** ✅ **IMPLEMENTED** (`4a830d2`, enriched header + Reading History tab in `1be36de`)
 
 **Current state:** Reader list likely shows basic info (code, name, class); detail page shows borrowings.
 
@@ -212,6 +253,8 @@ The enhancements are organized into four feature areas:
 
 ### 3.3 Reader Actions & History
 
+**Status:** ✅ **IMPLEMENTED** (`1be36de`) — Actions tab backed by audit_log
+
 **Current state:** No dedicated "Actions" view for a reader.
 
 **Improvement:** Add an "Actions" section to the reader's detail page showing an audit trail of operations on their account:
@@ -234,6 +277,8 @@ The enhancements are organized into four feature areas:
 ## 4. Borrowing & Return Workflow — Enhanced Scan Page
 
 ### 4.1 Divide Scan Page into Reader and Books Sections
+
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — real two-column MUI Grid
 
 **Current state:** `ScanPage.tsx` has slots for scanning a student and a book in sequence.
 
@@ -274,6 +319,8 @@ The enhancements are organized into four feature areas:
 
 ### 4.2 Reader Section — View Borrow History Button
 
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — ReaderHistoryDialog wires the previously-dead button
+
 **Current state:** No quick way to see a reader's borrowing history from the scan page.
 
 **Improvement:** On the reader section (after scanning a reader QR), show a blue "View Borrow History" button that opens a side panel or modal showing:
@@ -297,6 +344,8 @@ With a "View Full History" link to the reader's detail page (§3.2).
 ---
 
 ### 4.3 Book Section — View Copy History Popup
+
+**Status:** ✅ **IMPLEMENTED** (`9a18e1c`)
 
 **Current state:** No history visibility for a copy on the scan page.
 
@@ -327,6 +376,8 @@ Last 10 Actions:
 
 ### 4.4 Notice: Previous Borrow Indicator
 
+**Status:** ✅ **IMPLEMENTED** (`3097e3a`) — real per-reader-per-copy history lookup, not just "checked out right now"
+
 **Current state:** When a librarian scans a reader then a book, there's no indication if they've borrowed it before.
 
 **Improvement:** If a reader has previously borrowed this book (same book, different copy, or same copy), show a notice banner:
@@ -349,6 +400,8 @@ Last 10 Actions:
 ## 5. Borrowing Flow Enhancements
 
 ### 5.1 Borrow Dialog — Information & Comments Fields
+
+**Status:** ✅ **IMPLEMENTED** (`e9a491f`)
 
 **Current state:** Borrowing probably shows minimal info (copy, reader, confirm button).
 
@@ -380,6 +433,8 @@ Last 10 Actions:
 ## 6. Return Flow Enhancements
 
 ### 6.1 Return Dialog — Information & Status
+
+**Status:** ✅ **IMPLEMENTED** (`4456ebf`, [Create Fine] flow added in `c0a1c2e`)
 
 **Current state:** Return probably shows minimal info and a confirm button.
 

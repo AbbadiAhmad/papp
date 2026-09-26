@@ -1,5 +1,8 @@
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import HistoryIcon from '@mui/icons-material/History';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import {
   Alert,
   Box,
@@ -10,6 +13,11 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   Rating,
   Stack,
@@ -22,16 +30,39 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
-import { formatDateOnly } from '../../../../apps/web/src/shared/format';
+import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { libraryCatalogApi, type CreateBookCopyInput, type LibraryBookCopy } from '../api';
+import {
+  libraryCatalogApi,
+  type BookCopyStatus,
+  type CopyHistoryEntry,
+  type CreateBookCopyInput,
+  type LibraryBookCopy,
+} from '../api';
+
+// 1.3: at-a-glance status color coding (docs/LIBRARY_IMPROVEMENTS.md §1.3) —
+// module-local const, matching every other module's own STATUS_COLOR
+// pattern (e.g. modules/library_circulation/frontend/pages/FinesPage.tsx,
+// modules/survey/frontend/pages/SurveysListPage.tsx) rather than a shared
+// cross-module helper, since no such helper exists anywhere in the
+// codebase yet and one module's status enum isn't another's.
+const COPY_STATUS_COLOR: Record<BookCopyStatus, 'success' | 'info' | 'error' | 'warning' | 'default'> = {
+  available: 'success',
+  borrowed: 'info',
+  lost: 'error',
+  damaged: 'warning',
+  maintenance: 'default',
+  reserved: 'info',
+};
 
 export function BookDetailPage() {
   const { bookId } = useParams<{ bookId: string }>();
@@ -49,6 +80,38 @@ export function BookDetailPage() {
   const [myReviewText, setMyReviewText] = useState('');
   const [ratingBusy, setRatingBusy] = useState(false);
   const [ratingInitializedFor, setRatingInitializedFor] = useState<string | null>(null);
+
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuCopy, setMenuCopy] = useState<LibraryBookCopy | null>(null);
+  const [historyCopy, setHistoryCopy] = useState<LibraryBookCopy | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<CopyHistoryEntry[] | null>(null);
+  const [pendingRemoveCopy, setPendingRemoveCopy] = useState<LibraryBookCopy | null>(null);
+
+  // §2.1 (docs/LIBRARY_IMPROVEMENTS.md): borrowing history is
+  // library_circulation's data, not this (standalone, dependency-free)
+  // module's own — library_catalog must never import from
+  // library_circulation directly (LIBRARY_CATALOG-D4/D7's one-directional
+  // dependsOn), so this only ever shows a plain link into that module's
+  // own page, and only once it's confirmed installed. GET
+  // /modules/frontend-manifest needs no specific permission (just being
+  // logged in), unlike GET /modules — safe to call from any role that can
+  // view a book, not just modules.view holders.
+  const [circulationInstalled, setCirculationInstalled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    modulesApi
+      .getFrontendManifest()
+      .then((manifests) => {
+        if (!cancelled) setCirculationInstalled(manifests.some((m) => m.key === 'library_circulation'));
+      })
+      .catch(() => {
+        // Silently no-op: link just stays hidden, same as any other
+        // module-manifest fetch failure elsewhere in the shell.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleEditCopy = (copy: LibraryBookCopy) => {
     setEditingCopy(copy);
@@ -96,6 +159,51 @@ export function BookDetailPage() {
     }
   };
 
+  const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, copy: LibraryBookCopy) => {
+    setMenuAnchor(event.currentTarget);
+    setMenuCopy(copy);
+  };
+  const handleCloseMenu = () => {
+    setMenuAnchor(null);
+    setMenuCopy(null);
+  };
+
+  const handleQuickStatus = async (copy: LibraryBookCopy, newStatus: BookCopyStatus) => {
+    handleCloseMenu();
+    try {
+      await gated('library_catalog.books.update', () =>
+        libraryCatalogApi.updateCopy(bookId as string, copy.id, { status: newStatus }),
+      );
+      reload();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const handleViewHistory = async (copy: LibraryBookCopy) => {
+    handleCloseMenu();
+    setHistoryCopy(copy);
+    try {
+      const entries = await libraryCatalogApi.getCopyHistory(bookId as string, copy.id);
+      setHistoryEntries(entries);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+      setHistoryCopy(null);
+    }
+  };
+
+  const handleRemoveCopy = async () => {
+    if (!pendingRemoveCopy) return;
+    try {
+      await gated('library_catalog.books.delete', () => libraryCatalogApi.removeCopy(bookId as string, pendingRemoveCopy.id));
+      reload();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setPendingRemoveCopy(null);
+    }
+  };
+
   return (
     <Box>
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
@@ -107,6 +215,11 @@ export function BookDetailPage() {
                 <Typography variant="body2" color="text.secondary">
                   {book.author ?? t('library_catalog.fields.no_author')} · {book.category ?? '—'}
                 </Typography>
+                {circulationInstalled ? (
+                  <RouterLink to={`/library-circulation/books/${book.id}/history`}>
+                    <Typography variant="body2">{t('library_catalog.books.view_borrowing_history')}</Typography>
+                  </RouterLink>
+                ) : null}
               </Box>
               <Can permission="library_catalog.books.create">
                 <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
@@ -226,7 +339,11 @@ export function BookDetailPage() {
                     <TableRow key={copy.id} hover>
                       <TableCell>{copy.qrCode}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={t(`library_catalog.copy_status.${copy.status}`)} />
+                        <Chip
+                          size="small"
+                          color={COPY_STATUS_COLOR[copy.status]}
+                          label={t(`library_catalog.copy_status.${copy.status}`)}
+                        />
                       </TableCell>
                       <TableCell>{copy.condition ?? '—'}</TableCell>
                       <TableCell>{copy.location ?? '—'}</TableCell>
@@ -234,11 +351,13 @@ export function BookDetailPage() {
                         {copy.acquisitionDate ? formatDateOnly(copy.acquisitionDate, language) : '—'}
                       </TableCell>
                       <TableCell align="right">
-                        <Can permission="library_catalog.books.update">
-                          <IconButton size="small" onClick={() => handleEditCopy(copy)} aria-label={t('core.common.edit')}>
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Can>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleOpenMenu(e, copy)}
+                          aria-label={t('core.common.actions')}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -248,6 +367,99 @@ export function BookDetailPage() {
           </Stack>
         ) : null}
       </QueryStateGate>
+
+      <Menu anchorEl={menuAnchor} open={menuAnchor !== null} onClose={handleCloseMenu}>
+        <MenuItem onClick={() => menuCopy && handleViewHistory(menuCopy)}>
+          <HistoryIcon fontSize="small" sx={{ me: 1 }} />
+          {t('library_catalog.copies.view_history')}
+        </MenuItem>
+        <Can permission="library_catalog.books.update">
+          <MenuItem
+            onClick={() => {
+              if (!menuCopy) return;
+              handleCloseMenu();
+              handleEditCopy(menuCopy);
+            }}
+          >
+            <EditIcon fontSize="small" sx={{ me: 1 }} />
+            {t('library_catalog.copies.update_status')}
+          </MenuItem>
+          <MenuItem onClick={() => menuCopy && handleQuickStatus(menuCopy, 'damaged')} disabled={menuCopy?.status === 'damaged'}>
+            {t('library_catalog.copies.mark_damaged')}
+          </MenuItem>
+          <MenuItem onClick={() => menuCopy && handleQuickStatus(menuCopy, 'lost')} disabled={menuCopy?.status === 'lost'}>
+            {t('library_catalog.copies.mark_lost')}
+          </MenuItem>
+          <MenuItem
+            onClick={() => menuCopy && handleQuickStatus(menuCopy, 'available')}
+            disabled={menuCopy?.status === 'available'}
+          >
+            {t('library_catalog.copies.mark_available')}
+          </MenuItem>
+        </Can>
+        <Can permission="library_catalog.books.delete">
+          <MenuItem
+            onClick={() => {
+              if (!menuCopy) return;
+              const copy = menuCopy;
+              handleCloseMenu();
+              setPendingRemoveCopy(copy);
+            }}
+          >
+            <DeleteIcon fontSize="small" sx={{ me: 1 }} />
+            {t('core.common.delete')}
+          </MenuItem>
+        </Can>
+      </Menu>
+
+      <Dialog open={historyCopy !== null} onClose={() => setHistoryCopy(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {t('library_catalog.copies.history_title', { qrCode: historyCopy?.qrCode ?? '' })}
+        </DialogTitle>
+        <DialogContent>
+          {historyEntries === null ? (
+            <Typography variant="body2" color="text.secondary">
+              {t('core.common.loading')}
+            </Typography>
+          ) : historyEntries.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {t('library_catalog.copies.no_history')}
+            </Typography>
+          ) : (
+            <List dense>
+              {historyEntries
+                .slice()
+                .reverse()
+                .map((entry, index) => (
+                  <ListItem key={index} divider>
+                    <ListItemText
+                      primary={formatDateTime(entry.timestamp, language)}
+                      secondary={Object.entries(entry.changes)
+                        .map(
+                          ([field, change]) =>
+                            `${t(`library_catalog.copies.${field}`, field)}: ${change.before ?? '—'} → ${change.after ?? '—'}`,
+                        )
+                        .join(' · ')}
+                    />
+                  </ListItem>
+                ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryCopy(null)}>{t('core.common.close')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={pendingRemoveCopy !== null}
+        title={t('library_catalog.copies.delete_title')}
+        description={t('library_catalog.copies.delete_confirm', { qrCode: pendingRemoveCopy?.qrCode ?? '' })}
+        confirmLabel={t('core.common.delete')}
+        confirmColor="error"
+        onCancel={() => setPendingRemoveCopy(null)}
+        onConfirm={handleRemoveCopy}
+      />
 
       <AddCopyDialog
         open={copyDialogOpen}

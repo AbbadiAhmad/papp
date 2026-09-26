@@ -19,11 +19,15 @@ const notifications_module_1 = require("../../../apps/api/dist/core/notification
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const confirm_reward_controller_1 = require("./confirm-reward.controller");
 const dashboard_controller_1 = require("./dashboard.controller");
+const episodes_controller_1 = require("./episodes.controller");
+const episodes_service_1 = require("./episodes.service");
 const groups_controller_1 = require("./groups.controller");
 const groups_service_1 = require("./groups.service");
 const memberships_controller_1 = require("./memberships.controller");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
+const stage_book_entries_controller_1 = require("./stage-book-entries.controller");
+const stage_book_entries_service_1 = require("./stage-book-entries.service");
 const stage_completions_controller_1 = require("./stage-completions.controller");
 const stage_completions_service_1 = require("./stage-completions.service");
 /**
@@ -38,11 +42,21 @@ exports.ReadingClubModule = ReadingClubModule;
 exports.ReadingClubModule = ReadingClubModule = __decorate([
     (0, common_1.Module)({
         imports: [notifications_module_1.NotificationsModule],
-        controllers: [groups_controller_1.GroupsController, memberships_controller_1.MembershipsController, stage_completions_controller_1.StageCompletionsController, confirm_reward_controller_1.ConfirmRewardController, dashboard_controller_1.DashboardController],
+        controllers: [
+            episodes_controller_1.EpisodesController,
+            groups_controller_1.GroupsController,
+            memberships_controller_1.MembershipsController,
+            stage_completions_controller_1.StageCompletionsController,
+            stage_book_entries_controller_1.StageBookEntriesController,
+            confirm_reward_controller_1.ConfirmRewardController,
+            dashboard_controller_1.DashboardController,
+        ],
         providers: [
+            episodes_service_1.EpisodesService,
             groups_service_1.GroupsService,
             memberships_service_1.MembershipsService,
             stage_completions_service_1.StageCompletionsService,
+            stage_book_entries_service_1.StageBookEntriesService,
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
         ],
     })

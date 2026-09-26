@@ -61,7 +61,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('website.pages.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -79,7 +79,7 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, platform_1.RequirePermission)('website.pages.update'),
     (0, platform_1.Audit)({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_page_dto_1.UpdatePageDto]),
@@ -90,25 +90,27 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('website.pages.delete'),
     (0, platform_1.Audit)({ category: 'website.pages', entityType: 'WebsitePage', action: 'delete', fetchState: fetchPageState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], PagesController.prototype, "remove", null);
 __decorate([
     (0, common_1.Post)(':id/publish'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, platform_1.RequirePermission)('website.pages.publish'),
     (0, platform_1.Audit)({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], PagesController.prototype, "publish", null);
 __decorate([
     (0, common_1.Post)(':id/unpublish'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, platform_1.RequirePermission)('website.pages.publish'),
     (0, platform_1.Audit)({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -117,7 +119,7 @@ __decorate([
     (0, common_1.Put)(':id/blocks'),
     (0, platform_1.RequirePermission)('website.pages.update'),
     (0, platform_1.Audit)({ category: 'website.pages', entityType: 'WebsitePage', action: 'update', fetchState: fetchPageState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, replace_blocks_dto_1.ReplaceBlocksDto]),

@@ -218,7 +218,7 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
       const fines = await request(app!.getHttpServer())
         .get(`/api/library-circulation/fines?studentId=${studentId}`)
         .set('Authorization', `Bearer ${assistant.token}`);
-      expect(fines.body.some((f: { id: string }) => f.id === fineId)).toBe(true);
+      expect(fines.body.fines.some((f: { id: string }) => f.id === fineId)).toBe(true);
     });
 
     it('records a full payment against the fine and issues a receipt', async () => {
@@ -260,6 +260,98 @@ describe('library_circulation module (e2e, real install + real HTTP)', () => {
       expect(res.body.students).toBeGreaterThanOrEqual(1);
       expect(res.body.availableCopies + res.body.borrowedCopies).toBeGreaterThanOrEqual(1);
       expect(res.body.paidFinesTotal).toBeGreaterThan(0); // the fine paid above
+    });
+  });
+
+  describe('extend loan', () => {
+    let extendCopyId: string;
+    let extendStudentId: string;
+    let extendBorrowingId: string;
+
+    beforeAll(async () => {
+      const admin = await fixtureForRole(app!, 'admin');
+      const bookRes = await request(app!.getHttpServer())
+        .post('/api/library/books')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ title: 'Fixture Book for extend-loan e2e', copy: { qrCode: `E2E-EXTEND-QR-INITIAL-${Date.now()}`, status: 'available' } });
+      const copyRes = await request(app!.getHttpServer())
+        .post(`/api/library/books/${bookRes.body.id}/copies`)
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ qrCode: `E2E-EXTEND-QR-${Date.now()}` });
+      extendCopyId = copyRes.body.id;
+
+      const studentRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/students')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ name: 'Extend Fixture Student', email: `extend-${Date.now()}@school.test`, code: `STU-EXTEND-${Date.now()}` });
+      extendStudentId = studentRes.body.id;
+
+      const borrowRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/borrow')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ studentId: extendStudentId, bookCopyId: extendCopyId });
+      extendBorrowingId = borrowRes.body.id;
+    }, 60_000);
+
+    it('requires "library_circulation.extend" — granted roles (admin, library_assistant) succeed, others 403, anonymous 401', async () => {
+      const originalDueAt = new Date((await request(app!.getHttpServer())
+        .get(`/api/library-circulation/students/${extendStudentId}`)
+        .set('Authorization', `Bearer ${(await fixtureForRole(app!, 'admin')).token}`)).body.activeBorrowings[0].dueAt);
+
+      const admin = await fixtureForRole(app!, 'admin');
+      const adminNewDueDate = new Date(originalDueAt.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const adminRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ borrowingId: extendBorrowingId, newDueDate: adminNewDueDate });
+      expect(adminRes.status).toBe(201);
+      expect(new Date(adminRes.body.dueAt).toISOString()).toBe(adminNewDueDate);
+
+      const assistant = await fixtureForRole(app!, 'library_assistant');
+      const assistantNewDueDate = new Date(originalDueAt.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+      const assistantRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .set('Authorization', `Bearer ${assistant.token}`)
+        .send({ borrowingId: extendBorrowingId, newDueDate: assistantNewDueDate });
+      expect(assistantRes.status).toBe(201);
+
+      const finance = await fixtureForRole(app!, 'finance');
+      const financeRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .set('Authorization', `Bearer ${finance.token}`)
+        .send({ borrowingId: extendBorrowingId, newDueDate: new Date(originalDueAt.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString() });
+      expect(financeRes.status).toBe(403);
+
+      const reader = await fixtureForRole(app!, 'reader');
+      const readerRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .set('Authorization', `Bearer ${reader.token}`)
+        .send({ borrowingId: extendBorrowingId, newDueDate: new Date(originalDueAt.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString() });
+      expect(readerRes.status).toBe(403);
+
+      const anonRes = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .send({ borrowingId: extendBorrowingId, newDueDate: new Date(originalDueAt.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString() });
+      expect(anonRes.status).toBe(401);
+
+      const row = await app!
+        .get(PrismaService)
+        .auditLog.findFirst({ where: { category: 'library_circulation.borrowings', action: 'update', entityId: extendBorrowingId } });
+      expect(row).not.toBeNull(); // audited (rule 2 — old/new dueAt captured via fetchState)
+    });
+
+    it('§22-style guard: rejects a new due date that is not after the current due date', async () => {
+      const admin = await fixtureForRole(app!, 'admin');
+      const student = await request(app!.getHttpServer())
+        .get(`/api/library-circulation/students/${extendStudentId}`)
+        .set('Authorization', `Bearer ${admin.token}`);
+      const currentDueAt = student.body.activeBorrowings[0].dueAt;
+
+      const res = await request(app!.getHttpServer())
+        .post('/api/library-circulation/extend')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ borrowingId: extendBorrowingId, newDueDate: currentDueAt });
+      expect(res.status).toBe(409);
     });
   });
 

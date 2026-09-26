@@ -21,20 +21,39 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
+import { useSearchParams } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi, type CreateGroupInput, type ReadingClubGroup, type UpdateGroupInput } from '../api';
+import { EpisodeSwitcher } from './EpisodeSwitcher';
 import { GroupFormDialog } from './GroupFormDialog';
 import { StagesManagerDialog } from './StagesManagerDialog';
+import { TypeToConfirmDialog } from './TypeToConfirmDialog';
 
 /** "The librarian can create multiple groups, each group contains multiple stages" — this page is the configuration surface for both (docs/DOCUMENTATION.md explains why this is plain entity CRUD, not the manifest's `settings[]` blob). */
 export function GroupsListPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const { status, data: groups, errorMessage, reload } = useGuardedQuery(() => readingClubApi.listGroups());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const episodeId = searchParams.get('episodeId') ?? '';
+  const { data: currentEpisode } = useGuardedQuery(() => readingClubApi.getCurrentEpisode());
+  const isViewingPast = Boolean(episodeId) && episodeId !== currentEpisode?.id;
+  const { status, data: groups, errorMessage, reload } = useGuardedQuery(() => readingClubApi.listGroups(episodeId || undefined));
+
+  const setEpisodeFilter = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('episodeId', value);
+    else next.delete('episodeId');
+    setSearchParams(next);
+  };
+
+  // Dashboard stats give the real, current `memberCount` per group — used
+  // only to warn the librarian in the type-to-confirm dialog below about
+  // how many readers are actively assigned before they delete (never a
+  // block, READING_CLUB-D16 — deletion always succeeds regardless).
+  const { data: dashboardStats } = useGuardedQuery(() => readingClubApi.getDashboardStats(episodeId || undefined));
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ReadingClubGroup | null>(null);
@@ -63,8 +82,11 @@ export function GroupsListPage() {
   const handleDelete = async () => {
     if (!pendingDelete) return;
     try {
-      await gated('reading_club.groups.delete', () => readingClubApi.removeGroup(pendingDelete.id));
+      const result = await gated('reading_club.groups.delete', () => readingClubApi.removeGroup(pendingDelete.id));
       reload();
+      if (result && result.affectedActiveReaderCount > 0) {
+        setSnackbar(t('reading_club.groups.delete_affected_readers', { count: result.affectedActiveReaderCount }));
+      }
     } catch (error) {
       setSnackbar(extractErrorMessage(error));
     } finally {
@@ -72,17 +94,26 @@ export function GroupsListPage() {
     }
   };
 
+  const pendingDeleteMemberCount = pendingDelete
+    ? (dashboardStats?.groups.find((g) => g.id === pendingDelete.id)?.memberCount ?? 0)
+    : 0;
+
   return (
     <Box>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4" component="h2">
           {t('reading_club.menu.groups')}
         </Typography>
-        <Can permission="reading_club.groups.create">
-          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>
-            {t('reading_club.groups.create_button')}
-          </Button>
-        </Can>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <EpisodeSwitcher episodeId={episodeId} onEpisodeChange={setEpisodeFilter} />
+          {!isViewingPast ? (
+            <Can permission="reading_club.groups.create">
+              <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>
+                {t('reading_club.groups.create_button')}
+              </Button>
+            </Can>
+          ) : null}
+        </Stack>
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
@@ -116,20 +147,25 @@ export function GroupsListPage() {
                         <ListAltIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Can permission="reading_club.groups.update">
-                      <Tooltip title={t('core.common.edit')}>
-                        <IconButton size="small" onClick={() => openEdit(group)} aria-label={t('core.common.edit')}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Can>
-                    <Can permission="reading_club.groups.delete">
-                      <Tooltip title={t('core.common.delete')}>
-                        <IconButton size="small" onClick={() => setPendingDelete(group)} aria-label={t('core.common.delete')}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Can>
+                    {/* StagesManagerDialog itself still shows Can-gated add/edit/delete controls, which the backend rejects for a non-current episode anyway (defense in depth); viewing a past episode's stages read-only is intentional. */}
+                    {!isViewingPast ? (
+                      <Can permission="reading_club.groups.update">
+                        <Tooltip title={t('core.common.edit')}>
+                          <IconButton size="small" onClick={() => openEdit(group)} aria-label={t('core.common.edit')}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Can>
+                    ) : null}
+                    {!isViewingPast ? (
+                      <Can permission="reading_club.groups.delete">
+                        <Tooltip title={t('core.common.delete')}>
+                          <IconButton size="small" onClick={() => setPendingDelete(group)} aria-label={t('core.common.delete')}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Can>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}
@@ -142,12 +178,17 @@ export function GroupsListPage() {
 
       <StagesManagerDialog open={stagesGroup !== null} group={stagesGroup} onClose={() => setStagesGroup(null)} onChanged={reload} />
 
-      <ConfirmDialog
+      <TypeToConfirmDialog
         open={pendingDelete !== null}
         title={t('reading_club.groups.delete_title')}
         description={t('reading_club.groups.delete_confirm', { name: pendingDelete?.name ?? '' })}
+        warning={
+          pendingDeleteMemberCount > 0 || (pendingDelete?.stages.length ?? 0) > 0
+            ? t('reading_club.groups.delete_warning', { readerCount: pendingDeleteMemberCount, stageCount: pendingDelete?.stages.length ?? 0 })
+            : null
+        }
+        expectedText={pendingDelete?.name ?? ''}
         confirmLabel={t('core.common.delete')}
-        confirmColor="error"
         onCancel={() => setPendingDelete(null)}
         onConfirm={handleDelete}
       />

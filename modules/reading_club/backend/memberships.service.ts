@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { AssignMembershipDto } from './dto/assign-membership.dto';
 import { MoveStageDto } from './dto/move-stage.dto';
 import { UpdateProgressDto } from './dto/update-progress.dto';
+import { EpisodesService } from './episodes.service';
 
 const ACTIVE_BORROWING_RETURNED_STATUS = 'returned';
 
@@ -35,6 +36,8 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MembershipsService.name);
   private readonly prisma = new PrismaClient();
 
+  constructor(private readonly episodes: EpisodesService) {}
+
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
     this.logger.log('reading_club (memberships) Prisma client connected');
@@ -51,9 +54,11 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
    * (filters)". Free-text search matches the library student's `code` or
    * their linked `users.name`.
    */
-  async listReaders(filter: { groupId?: string; stageId?: string; search?: string } = {}) {
+  async listReaders(filter: { episodeId?: string; groupId?: string; stageId?: string; search?: string } = {}) {
+    const episodeId = filter.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     const memberships = await this.prisma.readingClubMembership.findMany({
       where: {
+        episodeId,
         groupId: filter.groupId,
         currentStageId: filter.stageId,
       },
@@ -67,9 +72,12 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
     const usersById = new Map(users.map((u) => [u.id, u]));
 
-    const groupIds = [...new Set(memberships.map((m) => m.groupId))];
-    const groups = await this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } });
-    const groupsById = new Map(groups.map((g) => [g.id, g]));
+    // Stage lookup is still needed to compute LIVE progress for a reader
+    // still actively on a (necessarily live, non-deleted) stage — but the
+    // DISPLAYED group/stage name always comes from the membership's own
+    // snapshot (READING_CLUB-D16), never this join, so a membership whose
+    // live group/stage was since deleted still shows the right name instead
+    // of null.
     const stageIds = memberships.map((m) => m.currentStageId).filter((id): id is string => id !== null);
     const stages = await this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } });
     const stagesById = new Map(stages.map((s) => [s.id, s]));
@@ -85,9 +93,9 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
           studentCode: student?.code ?? null,
           studentName: user?.name ?? null,
           groupId: membership.groupId,
-          groupName: groupsById.get(membership.groupId)?.name ?? null,
+          groupName: membership.groupName,
           currentStageId: membership.currentStageId,
-          stageName: stage?.name ?? null,
+          stageName: membership.stageName,
           stageOrder: stage?.stageOrder ?? null,
           progress,
         };
@@ -99,21 +107,39 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     return rows.filter((row) => row.studentCode?.toLowerCase().includes(needle) || row.studentName?.toLowerCase().includes(needle));
   }
 
-  async getReaderDetail(studentId: string) {
+  /**
+   * `actingUserId` is used only as `added_by` if this call triggers the
+   * per-stage book-entries auto-sync (a GET needs SOME acting user for that
+   * write — there's no "system user" pattern elsewhere in this codebase, see
+   * READING_CLUB-D13) — pass `null` to skip the sync entirely (e.g. from a
+   * context with no authenticated caller).
+   */
+  async getReaderDetail(studentId: string, actingUserId: string | null = null) {
     const student = await this.prisma.libraryStudent.findUnique({ where: { id: studentId } });
     if (!student) throw new NotFoundException('Reader (library student) not found');
     const user = await this.prisma.user.findUnique({ where: { id: student.userId } });
     const membership = await this.prisma.readingClubMembership.findUnique({ where: { studentId } });
 
+    // A membership's `groupId`/`currentStageId` can now be null — set by
+    // `ON DELETE SET NULL` (migration 003) when the librarian deletes the
+    // group/stage this reader was actively assigned to (READING_CLUB-D16).
+    // `group`/`stage` below stay the LIVE rows (used for e.g. the "move
+    // stage" picker's list of sibling stages) and are simply null in that
+    // case — the reader shows as unassigned/needing re-assignment, their
+    // membership row's own `groupName`/`stageName` snapshot still shows
+    // what they WERE in (see the frontend's handling of this).
     let group = null;
     let stage = null;
     let progress: StageProgress | null = null;
-    if (membership) {
+    if (membership?.groupId) {
       group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId } });
       if (membership.currentStageId) {
         stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
         if (stage) {
           progress = await this.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
+          if (actingUserId) {
+            await this.syncStageBookEntries(membership, stage, actingUserId);
+          }
         }
       }
     }
@@ -122,6 +148,20 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       where: { studentId },
       orderBy: { completedAt: 'desc' },
     });
+
+    // Every completion's group/stage NAME comes from its own snapshot
+    // (`groupName`/`stageName`/`stageOrder`, taken at markComplete time),
+    // never a live join — a completion is append-only history and must
+    // display correctly forever, including after its group/stage row is
+    // later deleted (READING_CLUB-D16; a live join would return null the
+    // moment that happens, silently breaking the group/stage columns this
+    // session's earlier commit just added).
+    const completionRows = completions.map((completion) => ({
+      ...completion,
+      groupName: completion.groupName,
+      stageName: completion.stageName,
+      stageOrder: completion.stageOrder,
+    }));
 
     return {
       studentId: student.id,
@@ -132,39 +172,108 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       group,
       stage,
       progress,
-      completions,
+      completions: completionRows,
     };
   }
 
-  /** Assigns a reader to a group (first assignment, or moving them to a different group). */
+  /**
+   * Auto-populates `reading_club_stage_book_entries` from returned
+   * borrowings inside the reader's current stage window — the SAME window
+   * `computeStageProgress` uses for books-type stages (`returnedAt >=
+   * stageStartedAt`), so the book list and the progress count never diverge.
+   * Applies to BOTH books-type and pages-type stages (READING_CLUB-D13): the
+   * sync condition is the stage window, not the stage's targetType. Dedups
+   * by `borrowingId` existence regardless of status (active OR discarded —
+   * a discarded auto-entry is never re-inserted).
+   */
+  private async syncStageBookEntries(
+    membership: { studentId: string; episodeId: string; groupId: string | null; groupName: string | null; stageName: string | null; currentStageId: string | null; stageStartedAt: Date },
+    stage: { id: string },
+    actingUserId: string,
+  ): Promise<void> {
+    const returnedBorrowings = await this.prisma.libraryBorrowing.findMany({
+      where: { studentId: membership.studentId, status: ACTIVE_BORROWING_RETURNED_STATUS, returnedAt: { gte: membership.stageStartedAt } },
+    });
+    if (returnedBorrowings.length === 0) return;
+
+    const alreadySynced = await this.prisma.readingClubStageBookEntry.findMany({
+      where: { borrowingId: { in: returnedBorrowings.map((b) => b.id) } },
+      select: { borrowingId: true },
+    });
+    const alreadySyncedIds = new Set(alreadySynced.map((e) => e.borrowingId));
+    const toSync = returnedBorrowings.filter((b) => !alreadySyncedIds.has(b.id));
+    if (toSync.length === 0) return;
+
+    for (const borrowing of toSync) {
+      const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: borrowing.bookCopyId } });
+      const book = copy ? await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } }) : null;
+      await this.prisma.readingClubStageBookEntry.create({
+        data: {
+          studentId: membership.studentId,
+          episodeId: membership.episodeId,
+          groupId: membership.groupId,
+          groupName: membership.groupName,
+          stageId: stage.id,
+          stageName: membership.stageName,
+          borrowingId: borrowing.id,
+          bookCopyId: copy?.id ?? null,
+          bookTitle: book?.title ?? 'Unknown',
+          bookCode: copy?.qrCode ?? null,
+          source: 'auto',
+          addedBy: actingUserId,
+        },
+      });
+    }
+  }
+
+  /**
+   * Assigns a reader to a group (first assignment, or moving them to a
+   * different group). The membership's `episodeId` follows the TARGET
+   * GROUP's own episode; rejected unless that episode is current
+   * (READING_CLUB-D12). `groupName`/`stageName` are snapshotted fresh here
+   * (READING_CLUB-D16) — every write path re-snapshots, so the CURRENT
+   * membership's displayed name is always exactly what it was assigned as,
+   * never stale, and keeps displaying correctly even if the live group/
+   * stage is later deleted out from under this reader.
+   */
   async assign(dto: AssignMembershipDto, assignedBy: string) {
     const group = await this.prisma.readingClubGroup.findUnique({ where: { id: dto.groupId } });
     if (!group) throw new NotFoundException('Group not found');
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
 
     let stageId = dto.stageId ?? null;
+    let stageName: string | null = null;
     if (stageId) {
       const stage = await this.prisma.readingClubStage.findUnique({ where: { id: stageId } });
       if (!stage || stage.groupId !== dto.groupId) {
         throw new BadRequestException('The given stage does not belong to the target group');
       }
+      stageName = stage.name;
     } else {
       const firstStage = await this.prisma.readingClubStage.findFirst({ where: { groupId: dto.groupId }, orderBy: { stageOrder: 'asc' } });
       stageId = firstStage?.id ?? null;
+      stageName = firstStage?.name ?? null;
     }
 
     return this.prisma.readingClubMembership.upsert({
       where: { studentId: dto.studentId },
       create: {
         studentId: dto.studentId,
+        episodeId: group.episodeId,
         groupId: dto.groupId,
+        groupName: group.name,
         currentStageId: stageId,
+        stageName,
         stageStartedAt: new Date(),
         manualProgressAmount: 0,
         assignedBy,
       },
       update: {
+        episodeId: group.episodeId,
         groupId: dto.groupId,
+        groupName: group.name,
         currentStageId: stageId,
+        stageName,
         stageStartedAt: new Date(),
         manualProgressAmount: 0,
         assignedBy,
@@ -172,22 +281,24 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. */
+  /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. Rejected unless the membership's episode is current. Re-snapshots `stageName` (READING_CLUB-D16). */
   async moveStage(studentId: string, dto: MoveStageDto) {
     const membership = await this.getMembershipOrThrow(studentId);
+    await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
     const stage = await this.prisma.readingClubStage.findUnique({ where: { id: dto.stageId } });
     if (!stage || stage.groupId !== membership.groupId) {
       throw new BadRequestException('The given stage does not belong to this reader\'s current group');
     }
     return this.prisma.readingClubMembership.update({
       where: { studentId },
-      data: { currentStageId: stage.id, stageStartedAt: new Date(), manualProgressAmount: 0 },
+      data: { currentStageId: stage.id, stageName: stage.name, stageStartedAt: new Date(), manualProgressAmount: 0 },
     });
   }
 
-  /** Records the librarian's manually-tracked running progress amount — the only progress source for a `pages`-type stage (no page-count data exists in the catalog to compute it automatically). */
+  /** Records the librarian's manually-tracked running progress amount — the only progress source for a `pages`-type stage (no page-count data exists in the catalog to compute it automatically). Rejected unless the membership's episode is current. */
   async updateManualProgress(studentId: string, dto: UpdateProgressDto) {
-    await this.getMembershipOrThrow(studentId);
+    const membership = await this.getMembershipOrThrow(studentId);
+    await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
     return this.prisma.readingClubMembership.update({
       where: { studentId },
       data: { manualProgressAmount: dto.manualProgressAmount },

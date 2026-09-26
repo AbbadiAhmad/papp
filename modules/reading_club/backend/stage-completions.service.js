@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StageCompletionsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const episodes_service_1 = require("./episodes.service");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
 /**
@@ -30,11 +31,13 @@ const notifications_sender_1 = require("./notifications-sender");
  */
 let StageCompletionsService = StageCompletionsService_1 = class StageCompletionsService {
     memberships;
+    episodes;
     notifications;
     logger = new common_1.Logger(StageCompletionsService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(memberships, notifications) {
+    constructor(memberships, episodes, notifications) {
         this.memberships = memberships;
+        this.episodes = episodes;
         this.notifications = notifications;
     }
     async onModuleInit() {
@@ -46,20 +49,32 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
     }
     async markComplete(studentId, markedBy) {
         const membership = await this.memberships.getMembershipOrThrow(studentId);
+        await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
         const stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
         if (!stage)
             throw new common_1.NotFoundException('Current stage not found');
         const progress = await this.memberships.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
+        // A membership with a live `currentStageId` (guaranteed by
+        // getMembershipOrThrow) always has a live `groupId` too — a stage
+        // cannot outlive its own group (removeGroup deletes its stages first,
+        // which would have already nulled currentStageId via ON DELETE SET
+        // NULL) — so this non-null assertion mirrors the one on
+        // `currentStageId` just above, not a new assumption.
         const nextStage = await this.prisma.readingClubStage.findFirst({
             where: { groupId: membership.groupId, stageOrder: { gt: stage.stageOrder } },
             orderBy: { stageOrder: 'asc' },
         });
+        const group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId } });
         const [completion] = await this.prisma.$transaction([
             this.prisma.readingClubStageCompletion.create({
                 data: {
                     studentId,
+                    episodeId: membership.episodeId,
                     groupId: membership.groupId,
+                    groupName: group?.name ?? membership.groupName ?? null,
                     stageId: stage.id,
+                    stageName: stage.name,
+                    stageOrder: stage.stageOrder,
                     targetAmountAtCompletion: stage.targetAmount,
                     progressAmountAtCompletion: progress.progressAmount,
                     markedBy,
@@ -68,7 +83,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
             }),
             this.prisma.readingClubMembership.update({
                 where: { studentId },
-                data: { currentStageId: nextStage?.id ?? null, stageStartedAt: new Date(), manualProgressAmount: 0 },
+                data: { currentStageId: nextStage?.id ?? null, stageName: nextStage?.name ?? null, stageStartedAt: new Date(), manualProgressAmount: 0 },
             }),
         ]);
         const student = await this.prisma.libraryStudent.findUnique({ where: { id: studentId } });
@@ -96,7 +111,19 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         }
         return updated;
     }
-    /** Every pending (not-yet-delivered) reward for one reader — feeds library_circulation's scan-page hook (§ the confirm-on-scan requirement) and this module's own reader detail page. */
+    /**
+     * Every pending (not-yet-delivered) reward for one reader — feeds
+     * library_circulation's scan-page hook (§ the confirm-on-scan requirement)
+     * and this module's own reader detail page. `groupName`/`stageName` come
+     * from the completion's own snapshot (READING_CLUB-D16), never a live
+     * join — `rewardDescription` still needs a live stage lookup since it was
+     * never snapshotted onto the completion (only the identifying name was);
+     * a stage deleted after completion but before reward delivery loses its
+     * reward description text here, which is an accepted, documented gap (see
+     * DECISIONS.md) since the reward itself doesn't change based on stage
+     * config UI wording — the identifying group/stage NAME is what matters
+     * for "which reward is this".
+     */
     async listPendingRewards(studentId) {
         const completions = await this.prisma.readingClubStageCompletion.findMany({
             where: { studentId, rewardStatus: 'pending' },
@@ -104,24 +131,63 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         });
         if (completions.length === 0)
             return [];
-        const stageIds = [...new Set(completions.map((c) => c.stageId))];
-        const groupIds = [...new Set(completions.map((c) => c.groupId))];
-        const [stages, groups] = await Promise.all([
-            this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
-            this.prisma.readingClubGroup.findMany({ where: { id: { in: groupIds } } }),
-        ]);
+        const stageIds = [...new Set(completions.map((c) => c.stageId).filter((id) => id !== null))];
+        const stages = await this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } });
         const stagesById = new Map(stages.map((s) => [s.id, s]));
-        const groupsById = new Map(groups.map((g) => [g.id, g]));
         return completions.map((completion) => ({
             id: completion.id,
-            groupName: groupsById.get(completion.groupId)?.name ?? null,
-            stageName: stagesById.get(completion.stageId)?.name ?? null,
-            rewardDescription: stagesById.get(completion.stageId)?.rewardDescription ?? null,
+            groupName: completion.groupName,
+            stageName: completion.stageName,
+            rewardDescription: (completion.stageId ? stagesById.get(completion.stageId)?.rewardDescription : null) ?? null,
             completedAt: completion.completedAt,
         }));
     }
-    async getPendingRewardsCount() {
-        return this.prisma.readingClubStageCompletion.count({ where: { rewardStatus: 'pending' } });
+    async getPendingRewardsCount(episodeId) {
+        const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+        return this.prisma.readingClubStageCompletion.count({ where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' } });
+    }
+    /**
+     * Every pending reward ACROSS ALL readers, scoped to the given/current
+     * episode — feeds the dashboard's pending-rewards list (item C). Realistic
+     * scale for a school reading club, so no pagination (see manifest scope
+     * cuts).
+     */
+    async listAllPendingRewards(episodeId) {
+        const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+        const completions = await this.prisma.readingClubStageCompletion.findMany({
+            where: { episodeId: resolvedEpisodeId, rewardStatus: 'pending' },
+            orderBy: { completedAt: 'asc' },
+        });
+        if (completions.length === 0)
+            return [];
+        const studentIds = [...new Set(completions.map((c) => c.studentId))];
+        const stageIds = [...new Set(completions.map((c) => c.stageId).filter((id) => id !== null))];
+        const [students, stages] = await Promise.all([
+            this.prisma.libraryStudent.findMany({ where: { id: { in: studentIds } } }),
+            this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } } }),
+        ]);
+        const studentsById = new Map(students.map((s) => [s.id, s]));
+        const userIds = students.map((s) => s.userId);
+        const users = await this.prisma.user.findMany({ where: { id: { in: userIds } } });
+        const usersById = new Map(users.map((u) => [u.id, u]));
+        const stagesById = new Map(stages.map((s) => [s.id, s]));
+        // groupName/stageName come from each completion's own snapshot
+        // (READING_CLUB-D16), never a live join — see listPendingRewards' own
+        // docblock for why rewardDescription alone still needs one.
+        return completions.map((completion) => {
+            const student = studentsById.get(completion.studentId);
+            const user = student ? usersById.get(student.userId) : undefined;
+            return {
+                id: completion.id,
+                studentId: completion.studentId,
+                studentCode: student?.code ?? null,
+                studentName: user?.name ?? null,
+                groupName: completion.groupName,
+                stageName: completion.stageName,
+                rewardDescription: (completion.stageId ? stagesById.get(completion.stageId)?.rewardDescription : null) ?? null,
+                completedAt: completion.completedAt,
+            };
+        });
     }
     /** Never lets a notification failure fail the underlying action (matches library_circulation.CirculationService's own `notifyStudent`, §23's UX addition, not a correctness requirement). */
     async notifyReader(userId, category, title, bodyMarkdown) {
@@ -136,6 +202,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
 exports.StageCompletionsService = StageCompletionsService;
 exports.StageCompletionsService = StageCompletionsService = StageCompletionsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __param(1, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
-    __metadata("design:paramtypes", [memberships_service_1.MembershipsService, Object])
+    __param(2, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
+    __metadata("design:paramtypes", [memberships_service_1.MembershipsService,
+        episodes_service_1.EpisodesService, Object])
 ], StageCompletionsService);

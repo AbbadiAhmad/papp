@@ -15,6 +15,8 @@ class CreateGroupDto {
     name;
     description;
     isActive;
+    /** Omitted -> the current episode (READING_CLUB-D12). */
+    episodeId;
 }
 exports.CreateGroupDto = CreateGroupDto;
 __decorate([
@@ -32,3 +34,8 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CreateGroupDto.prototype, "isActive", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsUUID)(),
+    __metadata("design:type", String)
+], CreateGroupDto.prototype, "episodeId", void 0);

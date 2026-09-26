@@ -4,6 +4,7 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { CreateStageDto } from './dto/create-stage.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { EpisodesService } from './episodes.service';
 
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
@@ -14,12 +15,19 @@ const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
  * `system_settings` JSON blob — a relational, orderable list of stages per
  * group doesn't fit that shape, see DECISIONS.md).
  *
+ * Every group belongs to exactly one episode (READING_CLUB-D10) — reads
+ * accept an optional `episodeId` (defaulting to the current episode) so a
+ * past, closed episode's groups/stages remain browsable read-only; writes
+ * are always rejected outside the current episode (READING_CLUB-D12).
+ *
  * Own dedicated `PrismaClient` (D57 pattern, same as every other module).
  */
 @Injectable()
 export class GroupsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GroupsService.name);
   private readonly prisma = new PrismaClient();
+
+  constructor(private readonly episodes: EpisodesService) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -32,8 +40,11 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
 
   // --- Groups ------------------------------------------------------------
 
-  async listGroups() {
+  /** `episodeId` omitted -> current episode's groups. */
+  async listGroups(episodeId?: string) {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     return this.prisma.readingClubGroup.findMany({
+      where: { episodeId: resolvedEpisodeId },
       orderBy: { createdAt: 'desc' },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
@@ -43,34 +54,48 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.getGroupOrThrow(id);
   }
 
+  /** `dto.episodeId` omitted -> the current episode (READING_CLUB-D12). Always rejected if the resolved episode isn't current. */
   async createGroup(dto: CreateGroupDto, createdBy: string) {
+    const episodeId = dto.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
+    await this.episodes.assertEpisodeIsCurrent(episodeId);
     return this.prisma.readingClubGroup.create({
-      data: { name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
+      data: { episodeId, name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
   }
 
   async updateGroup(id: string, dto: UpdateGroupDto) {
-    await this.getGroupOrThrow(id);
+    const group = await this.getGroupOrThrow(id);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     return this.prisma.readingClubGroup.update({
       where: { id },
       data: { name: dto.name, description: dto.description, isActive: dto.isActive },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
   }
 
-  /** Rejects deleting a group any reader has ever been assigned to or completed a stage in — history is permanent, same ethos as library_circulation §10/§22. */
-  async removeGroup(id: string): Promise<void> {
-    await this.getGroupOrThrow(id);
-    const [membershipCount, completionCount] = await Promise.all([
-      this.prisma.readingClubMembership.count({ where: { groupId: id } }),
-      this.prisma.readingClubStageCompletion.count({ where: { groupId: id } }),
-    ]);
-    if (membershipCount > 0 || completionCount > 0) {
-      throw new ConflictException('This group has readers assigned or completion history and cannot be deleted.');
-    }
+  /**
+   * Deletion is now ALWAYS allowed, regardless of history (READING_CLUB-D16
+   * — a deliberate user request, not a bug fix: the librarian wants to
+   * reconfigure a season's groups/stages without losing that season's
+   * already-earned reward/completion history). History rows survive via
+   * `ON DELETE SET NULL` (migration 003) plus their own name snapshot
+   * (`groupName`/`stageName`, taken at write time) — this method no longer
+   * needs to touch history rows itself, Postgres does it automatically.
+   * Still returns `affectedActiveReaderCount` so a caller (the frontend's
+   * type-to-confirm dialog) can warn about the blast radius before calling
+   * this — never a block, purely informational once this method actually
+   * runs (the count reflects state just before deletion).
+   */
+  async removeGroup(id: string): Promise<{ affectedActiveReaderCount: number }> {
+    const group = await this.getGroupOrThrow(id);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+    const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { groupId: id } });
     await this.prisma.$transaction([
       this.prisma.readingClubStage.deleteMany({ where: { groupId: id } }),
       this.prisma.readingClubGroup.delete({ where: { id } }),
     ]);
+    return { affectedActiveReaderCount };
   }
 
   // --- Stages --------------------------------------------------------------
@@ -81,7 +106,8 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createStage(groupId: string, dto: CreateStageDto) {
-    await this.getGroupOrThrow(groupId);
+    const group = await this.getGroupOrThrow(groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     try {
       return await this.prisma.readingClubStage.create({
         data: {
@@ -99,7 +125,9 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateStage(stageId: string, dto: UpdateStageDto) {
-    await this.getStageOrThrow(stageId);
+    const stage = await this.getStageOrThrow(stageId);
+    const group = await this.getGroupOrThrow(stage.groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     try {
       return await this.prisma.readingClubStage.update({
         where: { id: stageId },
@@ -116,17 +144,22 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Rejects deleting a stage any reader is currently on or has ever completed — same permanence rule as a group. */
-  async removeStage(stageId: string): Promise<void> {
-    await this.getStageOrThrow(stageId);
-    const [currentCount, completionCount] = await Promise.all([
-      this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } }),
-      this.prisma.readingClubStageCompletion.count({ where: { stageId } }),
-    ]);
-    if (currentCount > 0 || completionCount > 0) {
-      throw new ConflictException('This stage has readers currently on it or completion history and cannot be deleted.');
-    }
+  /**
+   * Deletion is now ALWAYS allowed, regardless of history — same
+   * READING_CLUB-D16 decision as `removeGroup`. A reader currently on this
+   * stage has their `currentStageId` set to NULL automatically (`ON DELETE
+   * SET NULL`, migration 003); their membership's own `stageName` snapshot
+   * (taken at assign/moveStage time) keeps their row displaying sensibly.
+   * Returns `affectedActiveReaderCount` for the same caller-side warning
+   * purpose as `removeGroup` — informational only, never a block.
+   */
+  async removeStage(stageId: string): Promise<{ affectedActiveReaderCount: number }> {
+    const stage = await this.getStageOrThrow(stageId);
+    const group = await this.getGroupOrThrow(stage.groupId);
+    await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+    const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } });
     await this.prisma.readingClubStage.delete({ where: { id: stageId } });
+    return { affectedActiveReaderCount };
   }
 
   /** The stage immediately after `currentStage` in its own group's order, or `null` if `currentStage` is the last one. */
@@ -142,15 +175,23 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.readingClubStage.findFirst({ where: { groupId }, orderBy: { stageOrder: 'asc' } });
   }
 
-  /** §18 dashboard: per-group/per-stage reader counts — real aggregate counts, never mock data. */
-  async getDashboardStats() {
+  /** §18 dashboard: per-group/per-stage reader counts — real aggregate counts, never mock data. `episodeId` omitted -> current episode. */
+  async getDashboardStats(episodeId?: string) {
+    const resolvedEpisodeId = episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     const groups = await this.prisma.readingClubGroup.findMany({
+      where: { episodeId: resolvedEpisodeId },
       orderBy: { name: 'asc' },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
-    const memberships = await this.prisma.readingClubMembership.findMany();
+    const memberships = await this.prisma.readingClubMembership.findMany({ where: { episodeId: resolvedEpisodeId } });
+    // A membership whose live group was deleted out from under its reader
+    // (READING_CLUB-D16) has `groupId = null` — it still counts toward
+    // `totalActiveReaders` (the reader is still a club member, just
+    // unassigned) but can't be attributed to any group's own per-group
+    // stats below.
     const membershipsByGroup = new Map<string, typeof memberships>();
     for (const membership of memberships) {
+      if (!membership.groupId) continue;
       const list = membershipsByGroup.get(membership.groupId) ?? [];
       list.push(membership);
       membershipsByGroup.set(membership.groupId, list);
@@ -182,7 +223,10 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   // --- internals -----------------------------------------------------------
 
   private async getGroupOrThrow(id: string) {
-    const group = await this.prisma.readingClubGroup.findUnique({ where: { id } });
+    const group = await this.prisma.readingClubGroup.findUnique({
+      where: { id },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
+    });
     if (!group) throw new NotFoundException('Group not found');
     return group;
   }

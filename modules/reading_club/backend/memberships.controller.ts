@@ -17,14 +17,19 @@ export class MembershipsController {
 
   @Get()
   @RequirePermission('reading_club.memberships.view')
-  async list(@Query('groupId') groupId?: string, @Query('stageId') stageId?: string, @Query('search') search?: string) {
-    return this.memberships.listReaders({ groupId, stageId, search });
+  async list(
+    @Query('groupId') groupId?: string,
+    @Query('stageId') stageId?: string,
+    @Query('search') search?: string,
+    @Query('episodeId') episodeId?: string,
+  ) {
+    return this.memberships.listReaders({ episodeId, groupId, stageId, search });
   }
 
   @Get(':studentId')
   @RequirePermission('reading_club.memberships.view')
-  async findById(@Param('studentId', new ParseUUIDPipe()) studentId: string) {
-    return this.memberships.getReaderDetail(studentId);
+  async findById(@Param('studentId', new ParseUUIDPipe()) studentId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.memberships.getReaderDetail(studentId, user.userId);
   }
 
   @Post('assign')

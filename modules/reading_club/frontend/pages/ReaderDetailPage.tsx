@@ -34,6 +34,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
+import { StageBookEntriesCard } from './StageBookEntriesCard';
 
 /** A reader's reading-club profile: current group/stage, live progress, action buttons, and the append-only stage-completion/reward history. */
 export function ReaderDetailPage() {
@@ -188,9 +189,20 @@ export function ReaderDetailPage() {
               </Card>
             ) : reader.group ? (
               <Alert severity="info">{t('reading_club.readers.group_finished')}</Alert>
+            ) : reader.membership?.groupName ? (
+              // READING_CLUB-D16: the group/stage this reader was actively
+              // assigned to was deleted by a librarian — their membership
+              // row still exists (groupId/currentStageId are now null) and
+              // still shows what it WAS via its own name snapshot, but the
+              // reader needs a fresh assignment to keep progressing.
+              <Alert severity="warning">
+                {t('reading_club.readers.group_deleted', { groupName: reader.membership.groupName })}
+              </Alert>
             ) : (
               <Alert severity="warning">{t('reading_club.readers.not_assigned')}</Alert>
             )}
+
+            {reader.group && reader.stage ? <StageBookEntriesCard studentId={reader.studentId} /> : null}
 
             <Paper>
               <Box sx={{ p: 2 }}>
@@ -206,6 +218,8 @@ export function ReaderDetailPage() {
                     <Table size="small">
                       <TableHead>
                         <TableRow>
+                          <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
+                          <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
                           <TableCell>{t('reading_club.readers.completed_at')}</TableCell>
                           <TableCell>{t('reading_club.readers.reward_status')}</TableCell>
                           <TableCell align="right">{t('core.common.actions')}</TableCell>
@@ -214,6 +228,14 @@ export function ReaderDetailPage() {
                       <TableBody>
                         {reader.completions.map((completion) => (
                           <TableRow key={completion.id}>
+                            <TableCell>{completion.groupName ?? '—'}</TableCell>
+                            <TableCell>
+                              {completion.stageName
+                                ? completion.stageOrder !== null
+                                  ? `${completion.stageOrder}. ${completion.stageName}`
+                                  : completion.stageName
+                                : '—'}
+                            </TableCell>
                             <TableCell>{formatDateOnly(completion.completedAt, language)}</TableCell>
                             <TableCell>
                               <Chip

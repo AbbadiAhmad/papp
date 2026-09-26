@@ -10,11 +10,15 @@ import { NotificationsModule } from '../../../apps/api/dist/core/notifications/n
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
 import { ConfirmRewardController } from './confirm-reward.controller';
 import { DashboardController } from './dashboard.controller';
+import { EpisodesController } from './episodes.controller';
+import { EpisodesService } from './episodes.service';
 import { GroupsController } from './groups.controller';
 import { GroupsService } from './groups.service';
 import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
+import { StageBookEntriesController } from './stage-book-entries.controller';
+import { StageBookEntriesService } from './stage-book-entries.service';
 import { StageCompletionsController } from './stage-completions.controller';
 import { StageCompletionsService } from './stage-completions.service';
 
@@ -26,11 +30,21 @@ import { StageCompletionsService } from './stage-completions.service';
  */
 @Module({
   imports: [NotificationsModule],
-  controllers: [GroupsController, MembershipsController, StageCompletionsController, ConfirmRewardController, DashboardController],
+  controllers: [
+    EpisodesController,
+    GroupsController,
+    MembershipsController,
+    StageCompletionsController,
+    StageBookEntriesController,
+    ConfirmRewardController,
+    DashboardController,
+  ],
   providers: [
+    EpisodesService,
     GroupsService,
     MembershipsService,
     StageCompletionsService,
+    StageBookEntriesService,
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
   ],
 })

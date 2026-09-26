@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -28,8 +28,8 @@ export class GroupsController {
 
   @Get()
   @RequirePermission('reading_club.groups.view')
-  async list() {
-    return this.groups.listGroups();
+  async list(@Query('episodeId') episodeId?: string) {
+    return this.groups.listGroups(episodeId);
   }
 
   @Get(':id')
@@ -52,12 +52,18 @@ export class GroupsController {
     return this.groups.updateGroup(id, dto);
   }
 
+  /**
+   * Deletion is always allowed now, even with history against this group
+   * (READING_CLUB-D16) — no longer 204/No Content, since the response body
+   * now carries `affectedActiveReaderCount` (informational only, the
+   * frontend's type-to-confirm dialog already warned about it beforehand
+   * using the dashboard's own live counts).
+   */
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('reading_club.groups.delete')
   @Audit({ category: 'reading_club.groups', entityType: 'ReadingClubGroup', action: 'delete', fetchState: fetchGroupState })
-  async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
-    await this.groups.removeGroup(id);
+  async remove(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.groups.removeGroup(id);
   }
 
   // --- Stages (nested under their group) ---------------------------------
@@ -82,11 +88,11 @@ export class GroupsController {
     return this.groups.updateStage(stageId, dto);
   }
 
+  /** Deletion is always allowed now, even with history against this stage (READING_CLUB-D16) — see `remove` above for why this is no longer 204/No Content. */
   @Delete('stages/:stageId')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @RequirePermission('reading_club.groups.delete')
   @Audit({ category: 'reading_club.groups', entityType: 'ReadingClubStage', action: 'delete', fetchState: fetchStageState })
-  async removeStage(@Param('stageId', new ParseUUIDPipe()) stageId: string): Promise<void> {
-    await this.groups.removeStage(stageId);
+  async removeStage(@Param('stageId', new ParseUUIDPipe()) stageId: string) {
+    return this.groups.removeStage(stageId);
   }
 }
