@@ -11,6 +11,7 @@ import {
   DialogTitle,
   IconButton,
   Paper,
+  Rating,
   Stack,
   Table,
   TableBody,
@@ -44,10 +45,55 @@ export function BookDetailPage() {
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [editingCopy, setEditingCopy] = useState<LibraryBookCopy | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [myRatingValue, setMyRatingValue] = useState<number | null>(null);
+  const [myReviewText, setMyReviewText] = useState('');
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingInitializedFor, setRatingInitializedFor] = useState<string | null>(null);
 
   const handleEditCopy = (copy: LibraryBookCopy) => {
     setEditingCopy(copy);
     setCopyDialogOpen(true);
+  };
+
+  // Pre-fill the "rate this book" widget with the caller's own existing
+  // rating once per book load — never re-synced on every render, so the
+  // reader's in-progress edit isn't clobbered by a background reload.
+  if (book && ratingInitializedFor !== book.id) {
+    setRatingInitializedFor(book.id);
+    setMyRatingValue(book.myRating?.rating ?? null);
+    setMyReviewText(book.myRating?.review ?? '');
+  }
+
+  const submitMyRating = async () => {
+    if (!bookId || !myRatingValue) return;
+    setRatingBusy(true);
+    setError(null);
+    try {
+      await gated('library_catalog.books.rate', () =>
+        libraryCatalogApi.rateBook(bookId, { rating: myRatingValue, review: myReviewText.trim() || undefined }),
+      );
+      reload();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setRatingBusy(false);
+    }
+  };
+
+  const removeMyRating = async () => {
+    if (!bookId) return;
+    setRatingBusy(true);
+    setError(null);
+    try {
+      await gated('library_catalog.books.rate', () => libraryCatalogApi.removeRating(bookId));
+      setMyRatingValue(null);
+      setMyReviewText('');
+      reload();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setRatingBusy(false);
+    }
   };
 
   return (
@@ -86,6 +132,79 @@ export function BookDetailPage() {
                     {t('library_catalog.fields.language')}: {book.language ?? '—'}
                   </Typography>
                 </Stack>
+              </Stack>
+            </Paper>
+
+            <Paper sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Typography variant="h6">{t('library_catalog.ratings.title')}</Typography>
+                  {book.ratingsCount ? (
+                    <>
+                      <Rating value={book.averageRating ?? 0} precision={0.1} readOnly />
+                      <Typography variant="body2" color="text.secondary">
+                        {(book.averageRating ?? 0).toFixed(1)} ({t('library_catalog.ratings.count', { count: book.ratingsCount })})
+                      </Typography>
+                    </>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      {t('library_catalog.ratings.none_yet')}
+                    </Typography>
+                  )}
+                </Stack>
+
+                <Can permission="library_catalog.books.rate">
+                  <Stack spacing={1} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="subtitle2">{t('library_catalog.ratings.rate_this_book')}</Typography>
+                    <Rating
+                      value={myRatingValue}
+                      onChange={(_, value) => setMyRatingValue(value)}
+                      disabled={ratingBusy}
+                    />
+                    <TextField
+                      label={t('library_catalog.ratings.review_label')}
+                      value={myReviewText}
+                      onChange={(e) => setMyReviewText(e.target.value)}
+                      multiline
+                      minRows={2}
+                      disabled={ratingBusy}
+                      fullWidth
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="contained" size="small" onClick={submitMyRating} disabled={ratingBusy || !myRatingValue}>
+                        {t('library_catalog.ratings.submit_button')}
+                      </Button>
+                      {book.myRating ? (
+                        <Button size="small" onClick={removeMyRating} disabled={ratingBusy}>
+                          {t('library_catalog.ratings.remove_button')}
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Can>
+
+                {book.ratings.length > 0 ? (
+                  <Stack spacing={1.5} divider={<Box sx={{ borderBottom: 1, borderColor: 'divider' }} />}>
+                    {book.ratings.map((r) => (
+                      <Box key={r.id}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                            {r.userName ?? t('library_catalog.ratings.anonymous_reader')}
+                          </Typography>
+                          <Rating value={r.rating} size="small" readOnly />
+                          <Typography variant="caption" color="text.secondary">
+                            {formatDateOnly(r.updatedAt, language)}
+                          </Typography>
+                        </Stack>
+                        {r.review ? (
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            {r.review}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    ))}
+                  </Stack>
+                ) : null}
               </Stack>
             </Paper>
 

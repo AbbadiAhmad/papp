@@ -7,6 +7,7 @@
   "library_catalog.perm.books.update": "Update books",
   "library_catalog.perm.books.delete": "Delete books",
   "library_catalog.perm.books.export": "Export books",
+  "library_catalog.perm.books.rate": "Rate books",
 
   "library_catalog.fields.title": "Title",
   "library_catalog.fields.author": "Author",
@@ -30,6 +31,15 @@
   "library_catalog.books.delete_confirm": "Delete \"{{title}}\"? This cannot be undone.",
 
   "library_catalog.copies.title": "Copies",
+
+  "library_catalog.ratings.title": "Ratings & reviews",
+  "library_catalog.ratings.none_yet": "No ratings yet",
+  "library_catalog.ratings.count": "{{count}} rating(s)",
+  "library_catalog.ratings.rate_this_book": "Rate this book",
+  "library_catalog.ratings.review_label": "Review (optional)",
+  "library_catalog.ratings.submit_button": "Submit rating",
+  "library_catalog.ratings.remove_button": "Remove my rating",
+  "library_catalog.ratings.anonymous_reader": "A reader",
   "library_catalog.copies.qr_code": "QR code",
   "library_catalog.copies.status": "Status",
   "library_catalog.copies.condition": "Condition",

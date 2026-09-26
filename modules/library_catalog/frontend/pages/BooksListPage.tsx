@@ -8,6 +8,7 @@ import {
   Button,
   IconButton,
   Paper,
+  Rating,
   Snackbar,
   Stack,
   Table,
@@ -130,6 +131,7 @@ export function BooksListPage() {
                 <TableCell>{t('library_catalog.fields.title')}</TableCell>
                 <TableCell>{t('library_catalog.fields.author')}</TableCell>
                 <TableCell>{t('library_catalog.fields.category')}</TableCell>
+                <TableCell>{t('library_catalog.ratings.title')}</TableCell>
                 <TableCell>{t('library_catalog.fields.total_copies')}</TableCell>
                 <TableCell>{t('library_catalog.fields.created_at')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
@@ -143,6 +145,20 @@ export function BooksListPage() {
                   </TableCell>
                   <TableCell>{book.author ?? '—'}</TableCell>
                   <TableCell>{book.category ?? '—'}</TableCell>
+                  <TableCell>
+                    {book.ratingsCount ? (
+                      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                        <Rating value={book.averageRating ?? 0} precision={0.1} size="small" readOnly />
+                        <Typography variant="caption" color="text.secondary">
+                          ({book.ratingsCount})
+                        </Typography>
+                      </Stack>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">
+                        {t('library_catalog.ratings.none_yet')}
+                      </Typography>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {(book.availableCopies ?? 0)} / {(book.totalCopies ?? 0)}
                   </TableCell>

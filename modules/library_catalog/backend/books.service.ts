@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 
@@ -60,20 +61,30 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         copies: true,
       },
     });
+    const ratingAggregates = await this.prisma.libraryCatalogBookRating.groupBy({
+      by: ['bookId'],
+      where: { bookId: { in: books.map((book) => book.id) } },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+    const ratingsByBook = new Map(ratingAggregates.map((agg) => [agg.bookId, agg]));
     return books.map((book) => {
       const totalCopies = book._count.copies;
       const availableCopies = book.copies.filter((c) => c.status === LibraryCatalogBookCopyStatus.available).length;
+      const ratingAgg = ratingsByBook.get(book.id);
       return {
         ...book,
         totalCopies,
         availableCopies,
+        averageRating: ratingAgg?._avg.rating ?? null,
+        ratingsCount: ratingAgg?._count.rating ?? 0,
         copies: undefined,
         _count: undefined,
       };
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, currentUserId?: string) {
     const book = await this.prisma.libraryCatalogBook.findUnique({
       where: { id },
       include: { copies: { orderBy: { createdAt: 'asc' } } },
@@ -81,7 +92,28 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     if (!book) {
       throw new NotFoundException(`Book "${id}" not found`);
     }
-    return book;
+
+    const ratings = await this.prisma.libraryCatalogBookRating.findMany({ where: { bookId: id }, orderBy: { updatedAt: 'desc' } });
+    const raterIds = [...new Set(ratings.map((r) => r.userId))];
+    const raters = raterIds.length ? await this.prisma.user.findMany({ where: { id: { in: raterIds } }, select: { id: true, name: true } }) : [];
+    const raterNameById = new Map(raters.map((r) => [r.id, r.name]));
+    const myRatingRow = currentUserId ? ratings.find((r) => r.userId === currentUserId) : undefined;
+
+    return {
+      ...book,
+      averageRating: ratings.length ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : null,
+      ratingsCount: ratings.length,
+      ratings: ratings.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        userName: raterNameById.get(r.userId) ?? null,
+        rating: r.rating,
+        review: r.review,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+      myRating: myRatingRow ? { rating: myRatingRow.rating, review: myRatingRow.review } : null,
+    };
   }
 
   async create(dto: CreateBookDto) {
@@ -176,7 +208,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
     return this.prisma.libraryCatalogBookCopy.update({
       where: { id: copy.id },
-      data: { ...dto, history: updatedHistory },
+      data: { ...dto, history: updatedHistory as unknown as Prisma.InputJsonValue },
     });
   }
 
@@ -193,6 +225,30 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       }
       throw err;
     }
+  }
+
+  // --- Ratings (LIBRARY_CATALOG-D20) ---------------------------------------
+  // One row per (book, user), editable — "rate" always upserts the caller's
+  // OWN rating (self-scoped, gated by `library_catalog.books.rate`, never a
+  // rate-on-behalf-of-someone-else endpoint). Reading the list/aggregate
+  // needs only `books.view`, same permission the rest of the book detail
+  // page already requires.
+
+  async rateBook(bookId: string, userId: string, dto: RateBookDto) {
+    await this.ensureBookExists(bookId);
+    return this.prisma.libraryCatalogBookRating.upsert({
+      where: { bookId_userId: { bookId, userId } },
+      create: { bookId, userId, rating: dto.rating, review: dto.review },
+      update: { rating: dto.rating, review: dto.review },
+    });
+  }
+
+  async removeRating(bookId: string, userId: string): Promise<void> {
+    const existing = await this.prisma.libraryCatalogBookRating.findUnique({ where: { bookId_userId: { bookId, userId } } });
+    if (!existing) {
+      throw new NotFoundException('You have not rated this book');
+    }
+    await this.prisma.libraryCatalogBookRating.delete({ where: { id: existing.id } });
   }
 
   // --- History (Feature 2.1) --------------------------------------------------

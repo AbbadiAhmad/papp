@@ -334,9 +334,32 @@ model LibraryCatalogBook {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  copies LibraryCatalogBookCopy[]
+  copies  LibraryCatalogBookCopy[]
+  ratings LibraryCatalogBookRating[]
 
   @@map("library_catalog_books")
+}
+
+/// 1-5 star rating + optional written review, one per (book, user), editable
+/// (LIBRARY_CATALOG-D20). `userId` is a plain scalar column, no Prisma
+/// relation to the core `User` model — same "cross-module/cross-concern FK
+/// without a relation traversal" pattern as every other module's own
+/// `createdBy`/`assignedBy`-shaped columns; the rater's display name is
+/// joined in the service layer via a separate `prisma.user.findMany` call.
+model LibraryCatalogBookRating {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookId    String   @map("book_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  rating    Int
+  review    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, userId])
+  @@index([bookId])
+  @@map("library_catalog_book_ratings")
 }
 
 /// One row per physical, individually-trackable copy of a Book

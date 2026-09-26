@@ -22,6 +22,16 @@ interface MockPrisma {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  libraryCatalogBookRating: {
+    groupBy: jest.Mock;
+    findMany: jest.Mock;
+    findUnique: jest.Mock;
+    upsert: jest.Mock;
+    delete: jest.Mock;
+  };
+  user: {
+    findMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -41,7 +51,30 @@ function createMockPrisma(): MockPrisma {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    libraryCatalogBookRating: {
+      groupBy: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      delete: jest.fn(),
+    },
+    user: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     $transaction: jest.fn((fn) => fn({ libraryCatalogBook: {}, libraryCatalogBookCopy: {} })),
+  };
+}
+
+function ratingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'rating-1',
+    bookId: 'book-1',
+    userId: 'user-1',
+    rating: 5,
+    review: null,
+    createdAt: new Date('2026-01-02T00:00:00Z'),
+    updatedAt: new Date('2026-01-02T00:00:00Z'),
+    ...overrides,
   };
 }
 
@@ -138,10 +171,33 @@ describe('BooksService', () => {
           ...bookRow(),
           totalCopies: 3,
           availableCopies: 2,
+          averageRating: null,
+          ratingsCount: 0,
           _count: undefined,
           copies: undefined,
         },
       ]);
+    });
+
+    it('merges the ratings aggregate (LIBRARY_CATALOG-D20) into each book, keyed by bookId', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        { ...bookRow({ id: 'book-1' }), _count: { copies: 0 }, copies: [] },
+        { ...bookRow({ id: 'book-2' }), _count: { copies: 0 }, copies: [] },
+      ]);
+      prisma.libraryCatalogBookRating.groupBy.mockResolvedValue([
+        { bookId: 'book-1', _avg: { rating: 4.5 }, _count: { rating: 2 } },
+      ]);
+
+      const result = await service.list({});
+
+      expect(prisma.libraryCatalogBookRating.groupBy).toHaveBeenCalledWith({
+        by: ['bookId'],
+        where: { bookId: { in: ['book-1', 'book-2'] } },
+        _avg: { rating: true },
+        _count: { rating: true },
+      });
+      expect(result[0]).toMatchObject({ averageRating: 4.5, ratingsCount: 2 });
+      expect(result[1]).toMatchObject({ averageRating: null, ratingsCount: 0 });
     });
 
     it('filters by search (case-insensitive contains on title) and category when supplied', async () => {
@@ -515,6 +571,103 @@ describe('BooksService', () => {
       prisma.libraryCatalogBook.findUnique.mockResolvedValue(null);
 
       await expect(service.getAvailability('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('findById — ratings (LIBRARY_CATALOG-D20)', () => {
+    it('returns null averageRating/zero ratingsCount/no myRating for a book nobody has rated', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ ...bookRow(), copies: [] });
+      prisma.libraryCatalogBookRating.findMany.mockResolvedValue([]);
+
+      const result = await service.findById('book-1', 'user-1');
+
+      expect(result.averageRating).toBeNull();
+      expect(result.ratingsCount).toBe(0);
+      expect(result.ratings).toEqual([]);
+      expect(result.myRating).toBeNull();
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+    });
+
+    it('computes the average, joins rater names, and surfaces the caller\'s own rating separately', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ ...bookRow(), copies: [] });
+      prisma.libraryCatalogBookRating.findMany.mockResolvedValue([
+        ratingRow({ id: 'r1', userId: 'user-1', rating: 5, review: 'Loved it' }),
+        ratingRow({ id: 'r2', userId: 'user-2', rating: 3, review: null }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-1', name: 'Sara' },
+        { id: 'user-2', name: 'Omar' },
+      ]);
+
+      const result = await service.findById('book-1', 'user-1');
+
+      expect(result.averageRating).toBe(4);
+      expect(result.ratingsCount).toBe(2);
+      expect(result.ratings).toEqual([
+        expect.objectContaining({ id: 'r1', userName: 'Sara', rating: 5, review: 'Loved it' }),
+        expect.objectContaining({ id: 'r2', userName: 'Omar', rating: 3, review: null }),
+      ]);
+      expect(result.myRating).toEqual({ rating: 5, review: 'Loved it' });
+    });
+
+    it('returns myRating: null when currentUserId is omitted (e.g. a system/anonymous caller)', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ ...bookRow(), copies: [] });
+      prisma.libraryCatalogBookRating.findMany.mockResolvedValue([ratingRow({ userId: 'user-1' })]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Sara' }]);
+
+      const result = await service.findById('book-1');
+
+      expect(result.myRating).toBeNull();
+    });
+
+    it('throws NotFoundException for an unknown book before ever querying ratings', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue(null);
+
+      await expect(service.findById('missing', 'user-1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.libraryCatalogBookRating.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rateBook — one row per (book, user), editable', () => {
+    it('upserts keyed on the composite (bookId, userId) unique index', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+      prisma.libraryCatalogBookRating.upsert.mockResolvedValue(ratingRow());
+
+      await service.rateBook('book-1', 'user-1', { rating: 5, review: 'Great read' });
+
+      expect(prisma.libraryCatalogBookRating.upsert).toHaveBeenCalledWith({
+        where: { bookId_userId: { bookId: 'book-1', userId: 'user-1' } },
+        create: { bookId: 'book-1', userId: 'user-1', rating: 5, review: 'Great read' },
+        update: { rating: 5, review: 'Great read' },
+      });
+    });
+
+    it('throws NotFoundException for an unknown book, never touching the rating table', async () => {
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue(null);
+
+      await expect(service.rateBook('missing', 'user-1', { rating: 4 })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.libraryCatalogBookRating.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeRating', () => {
+    it('deletes the caller\'s own rating row', async () => {
+      prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(ratingRow({ id: 'rating-9' }));
+      prisma.libraryCatalogBookRating.delete.mockResolvedValue(ratingRow({ id: 'rating-9' }));
+
+      await service.removeRating('book-1', 'user-1');
+
+      expect(prisma.libraryCatalogBookRating.findUnique).toHaveBeenCalledWith({
+        where: { bookId_userId: { bookId: 'book-1', userId: 'user-1' } },
+      });
+      expect(prisma.libraryCatalogBookRating.delete).toHaveBeenCalledWith({ where: { id: 'rating-9' } });
+    });
+
+    it('throws NotFoundException when the caller never rated this book, never calling delete', async () => {
+      prisma.libraryCatalogBookRating.findUnique.mockResolvedValue(null);
+
+      await expect(service.removeRating('book-1', 'user-1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.libraryCatalogBookRating.delete).not.toHaveBeenCalled();
     });
   });
 });

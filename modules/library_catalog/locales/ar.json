@@ -7,6 +7,7 @@
   "library_catalog.perm.books.update": "تعديل الكتب",
   "library_catalog.perm.books.delete": "حذف الكتب",
   "library_catalog.perm.books.export": "تصدير الكتب",
+  "library_catalog.perm.books.rate": "تقييم الكتب",
 
   "library_catalog.fields.title": "العنوان",
   "library_catalog.fields.author": "المؤلف",
@@ -30,6 +31,15 @@
   "library_catalog.books.delete_confirm": "هل تريد حذف \"{{title}}\"؟ لا يمكن التراجع عن هذا الإجراء.",
 
   "library_catalog.copies.title": "النسخ",
+
+  "library_catalog.ratings.title": "التقييمات والمراجعات",
+  "library_catalog.ratings.none_yet": "لا توجد تقييمات بعد",
+  "library_catalog.ratings.count": "{{count}} تقييم",
+  "library_catalog.ratings.rate_this_book": "قيّم هذا الكتاب",
+  "library_catalog.ratings.review_label": "مراجعة (اختياري)",
+  "library_catalog.ratings.submit_button": "إرسال التقييم",
+  "library_catalog.ratings.remove_button": "حذف تقييمي",
+  "library_catalog.ratings.anonymous_reader": "قارئ",
   "library_catalog.copies.qr_code": "رمز الاستجابة السريعة",
   "library_catalog.copies.status": "الحالة",
   "library_catalog.copies.condition": "الحالة الفنية",

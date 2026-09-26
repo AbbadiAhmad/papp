@@ -1,13 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
-import { Audit, MustChangePasswordGuard, RequirePermission } from './platform';
+import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -57,8 +58,8 @@ export class BooksController {
 
   @Get(':id')
   @RequirePermission('library_catalog.books.view')
-  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.books.findById(id);
+  async findById(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.books.findById(id, user.userId);
   }
 
   @Post()
@@ -132,5 +133,27 @@ export class BooksController {
   })
   async removeCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.books.removeCopy(bookId, id);
+  }
+
+  // --- Ratings (LIBRARY_CATALOG-D20) ---------------------------------------
+  // Self-scoped: always the CALLER's own rating (@CurrentUser()), never a
+  // rate-on-someone-else's-behalf endpoint — `books.rate` is grantable to
+  // any role, not hardcoded to "reader" (see manifest.json/DECISIONS.md).
+  // The full ratings list + aggregate + the caller's own rating are already
+  // returned by `GET /books/:id` (`findById` above) — no separate list route.
+
+  @Put(':bookId/rating')
+  @RequirePermission('library_catalog.books.rate')
+  @Audit({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'upsert' })
+  async rateBook(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Body() dto: RateBookDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.books.rateBook(bookId, user.userId, dto);
+  }
+
+  @Delete(':bookId/rating')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('library_catalog.books.rate')
+  @Audit({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'delete' })
+  async removeRating(@Param('bookId', new ParseUUIDPipe()) bookId: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.books.removeRating(bookId, user.userId);
   }
 }
