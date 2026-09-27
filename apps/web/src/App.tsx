@@ -206,14 +206,10 @@ function AppRoutes() {
             </RequirePermissionRoute>
           }
         />
-        {/* D12 (ARCHITECTURE.md §7.4): reachable by any authenticated user —
-            code={null} always allows once permissions have loaded (see
-            PermissionsMatrixPage's own docblock for why the PAGE itself
-            still has no client-side pre-check beyond that). */}
         <Route
           path="/permissions"
           element={
-            <RequirePermissionRoute code={null}>
+            <RequirePermissionRoute code="permissions.view">
               <PermissionsMatrixPage />
             </RequirePermissionRoute>
           }
@@ -245,7 +241,7 @@ function AppRoutes() {
         <Route
           path="/notifications"
           element={
-            <RequirePermissionRoute code={null}>
+            <RequirePermissionRoute code="notifications.view">
               <NotificationsInboxPage />
             </RequirePermissionRoute>
           }

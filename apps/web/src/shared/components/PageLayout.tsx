@@ -43,7 +43,7 @@ import { useModuleFrontendManifests } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
 
-/** `requiredPermission: '__always__'` means "always shown once authenticated" (self-scoped page, or the D12 Permissions page) — mirrors `ResolvedMenuLeaf`'s shape exactly so both core and module leaves render through the same `NavLeafItem`. */
+/** `requiredPermission: '__always__'` means "always shown once authenticated" (a genuinely self-scoped page, e.g. the dashboard) — mirrors `ResolvedMenuLeaf`'s shape exactly so both core and module leaves render through the same `NavLeafItem`. */
 const ALWAYS_ALLOWED = '__always__';
 
 /**
@@ -60,17 +60,11 @@ const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
   { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED },
   { type: 'leaf', id: 'users', labelKey: 'core.menu.users', iconName: undefined, route: '/users', requiredPermission: 'users.view' },
   { type: 'leaf', id: 'roles', labelKey: 'core.menu.roles', iconName: undefined, route: '/roles', requiredPermission: 'roles.view' },
-  // requiredPermission stays ALWAYS_ALLOWED deliberately (D12, ARCHITECTURE.md
-  // §7.4): the admin role must reach this page even with every grant
-  // stripped — the PAGE's own real calls (gated `permissions.view`/
-  // `roles.view` with a PermissionsPageGuard admin bypass) are the actual
-  // boundary, never a client-side pre-check. See PermissionsMatrixPage's
-  // own docblock.
-  { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: ALWAYS_ALLOWED },
+  { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: 'permissions.view' },
   { type: 'leaf', id: 'my-permissions', labelKey: 'core.menu.myPermissions', iconName: undefined, route: '/my-permissions', requiredPermission: 'permissions.view_my' },
   { type: 'leaf', id: 'sessions', labelKey: 'core.menu.sessions', iconName: undefined, route: '/sessions', requiredPermission: 'sessions.view_my' },
   { type: 'leaf', id: 'audit', labelKey: 'core.menu.audit', iconName: undefined, route: '/audit', requiredPermission: 'audit.view' },
-  { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: ALWAYS_ALLOWED },
+  { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: 'notifications.view' },
   { type: 'leaf', id: 'settings', labelKey: 'core.menu.settings', iconName: undefined, route: '/settings', requiredPermission: 'users.settings.view' },
   { type: 'leaf', id: 'modules', labelKey: 'core.menu.modules', iconName: undefined, route: '/modules', requiredPermission: 'modules.view' },
 ];
