@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { assertPasswordMeetsPolicy } from '../auth/password-policy.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { toPublicRole } from '../roles/role.presenter';
 import { RolesService } from '../roles/roles.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -52,9 +53,34 @@ export class UsersService {
     return this.settings.get<PasswordPolicy>(PASSWORD_POLICY_KEY);
   }
 
+  /**
+   * TWO flat queries, never a nested Prisma `include: { userRoles: { include:
+   * { role: true } } }` — that shape previously caused real timeouts and was
+   * "fixed" by dropping role data from this endpoint entirely rather than
+   * finding a faster equivalent, silently breaking the Users table's Roles
+   * column and the edit dialog's role checkboxes (both read
+   * `PublicUser.roles`, which was left always `undefined`). A separate
+   * `userRole.findMany` + `role.findMany`, grouped in application code,
+   * returns the identical data without Prisma's nested-include query plan.
+   */
   async list(): Promise<PublicUser[]> {
-    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
-    return users.map((user) => toPublicUser(user));
+    const [users, userRoles, roles] = await Promise.all([
+      this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } }),
+      this.prisma.userRole.findMany(),
+      this.prisma.role.findMany(),
+    ]);
+    const rolesById = new Map(roles.map((role) => [role.id, toPublicRole(role)]));
+    const roleIdsByUser = new Map<string, string[]>();
+    for (const userRole of userRoles) {
+      const list = roleIdsByUser.get(userRole.userId) ?? [];
+      list.push(userRole.roleId);
+      roleIdsByUser.set(userRole.userId, list);
+    }
+    return users.map((user) => {
+      const userRoleIds = roleIdsByUser.get(user.id) ?? [];
+      const userPublicRoles = userRoleIds.map((roleId) => rolesById.get(roleId)).filter((role) => role !== undefined);
+      return toPublicUser(user, userPublicRoles);
+    });
   }
 
   /**
