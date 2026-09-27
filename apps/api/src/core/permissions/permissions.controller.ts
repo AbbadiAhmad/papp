@@ -7,25 +7,8 @@ import { MustChangePasswordGuard } from '../../common/guards/must-change-passwor
 import type { PrismaService } from '../../prisma/prisma.service';
 import { SetRoleGrantsDto } from './dto/set-role-grants.dto';
 import { PublicPermission } from './permission.presenter';
-import { PermissionCheckDelegatedToPermissionsPageGuard, PermissionsPageGuard } from './permissions-page.guard';
 import { PermissionsService } from './permissions.service';
 
-/**
- * Phase 6 extension of D12 (found via real-browser verification: a
- * zero-grant admin could reach the grants sub-resource per the original D12
- * exception, but not `GET /permissions` — so the Permissions page itself
- * couldn't render its own matrix rows for that exact admin). The catalog
- * listing here now ALSO delegates to `PermissionsPageGuard` via
- * `@PermissionCheckDelegatedToPermissionsPageGuard()`, same as the grants
- * sub-resource — this does not add a second hardcoded role check anywhere
- * (`PermissionsPageGuard` in `permissions-page.guard.ts` remains the one
- * file with that logic, per ARCHITECTURE.md §7.4); it only widens which
- * routes are ALLOWED to delegate to that single, already-sanctioned guard.
- * For every non-admin caller the behavior is byte-for-byte identical to the
- * plain `permissions.view` check this replaced — the delegation only ever
- * changes the outcome for the `admin` role itself (`GET /roles`'s analogous
- * `roles.view` listing got the same treatment, see roles.controller.ts).
- */
 // Phase 3 @Audit fetchState: the role's grant list as sorted codes — called
 // before AND after the handler by AuditInterceptor, so the audit row's
 // old/new pair is the full grant diff (ARCHITECTURE.md §8.2).
@@ -47,7 +30,7 @@ export class PermissionsController {
   /**
    * The reduced "My Permissions" view: the caller's OWN effective grants,
    * as full catalog rows — distinct from the admin `GET /permissions`
-   * matrix above (`permissions.view`, D12 admin-bypass-eligible). Gated by
+   * matrix above (plain `permissions.view`). Gated by
    * `permissions.view_my` (migration 0010), seeded to all 4 base roles by
    * default — every account can see what it itself is allowed to do,
    * without needing `permissions.view` (which would also let it see every
@@ -60,24 +43,18 @@ export class PermissionsController {
   }
 
   @Get()
-  @UseGuards(PermissionsPageGuard)
-  @PermissionCheckDelegatedToPermissionsPageGuard()
   @RequirePermission('permissions.view')
   async list(): Promise<PublicPermission[]> {
     return this.permissionsService.list();
   }
 
   @Get('roles/:roleId/grants')
-  @UseGuards(PermissionsPageGuard)
-  @PermissionCheckDelegatedToPermissionsPageGuard()
   @RequirePermission('permissions.view')
   async getRoleGrants(@Param('roleId') roleId: string): Promise<string[]> {
     return this.permissionsService.getRoleGrants(roleId);
   }
 
   @Put('roles/:roleId/grants')
-  @UseGuards(PermissionsPageGuard)
-  @PermissionCheckDelegatedToPermissionsPageGuard()
   @RequirePermission('permissions.grant')
   @Audit({
     category: 'core.permissions',

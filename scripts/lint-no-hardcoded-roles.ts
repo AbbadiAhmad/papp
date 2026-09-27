@@ -2,10 +2,12 @@
 /**
  * scripts/lint-no-hardcoded-roles.ts
  *
- * D12/D46/ARCHITECTURE.md §7.4: every action is permission-gated by a
+ * D46/ARCHITECTURE.md §7.4: every action is permission-gated by a
  * permission CODE, never a hardcoded role name — with exactly one sanctioned
- * exception in the whole codebase (the Permissions page always being
- * reachable by `admin`), living in exactly one file:
+ * exception in the whole codebase (structurally protecting `admin`'s own
+ * `permissions.view`/`permissions.grant` grants from ever being revoked —
+ * see `docs/DECISIONS.md`, the entry superseding the old D12 "Permissions
+ * page always reachable by admin" bypass), living in exactly one file:
  * `apps/api/src/core/permissions/permissions-page.guard.ts`.
  *
  * This script is the CI backstop for that rule (the file's own doc-comment
@@ -21,8 +23,8 @@
  *   4. `role.code` compared with ===/!==/==/!= (any RHS — a comparison
  *      against a role's code at all is the smell, regardless of literal).
  *   5. `.roles.includes(` (a raw roles-array membership check, the shape
- *      the D12 doc-comment calls out as the other half of "the one
- *      sanctioned exception").
+ *      that historically showed up as the other half of this same kind of
+ *      exception).
  *
  * Comments are stripped before matching (block `/* *\/` and line `//`) so
  * this script doesn't flag the many doc-comments in the codebase that

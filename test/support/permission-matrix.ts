@@ -22,9 +22,8 @@
  *    or a mocked guard;
  *  - resolves "does this role hold this permission" fresh from
  *    `role_permissions` on every call (mirrors PermissionGuard's own
- *    "never cached" contract), so a spec that changes grants mid-file
- *    (e.g. the D12 zero-grant-admin scenario) is always checked against
- *    truth, not a stale snapshot.
+ *    "never cached" contract), so a spec that changes grants mid-file is
+ *    always checked against truth, not a stale snapshot.
  *
  * One fixture user per (app instance, role code) is created and cached —
  * cheap enough (one bcrypt/argon2 hash + one login) and avoids creating a
@@ -127,8 +126,8 @@ export async function userIdFor(app: INestApplication, role: RoleCode): Promise<
 /**
  * Creates a standalone real user (not one of the cached role fixtures) with
  * an arbitrary base role, and logs them in for real. Useful when a spec
- * needs its own disposable account (e.g. the D12 zero-grant-admin scenario,
- * or a session-revocation test) without disturbing the shared role fixtures.
+ * needs its own disposable account (e.g. a session-revocation test) without
+ * disturbing the shared role fixtures.
  */
 export async function createUserWithRole(
   app: INestApplication,
