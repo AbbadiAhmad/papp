@@ -37,6 +37,9 @@ model ModuleRegistryEntry {
   installedAt      DateTime?    @map("installed_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
   manifestSnapshot Json?        @map("manifest_snapshot")
+  /// True once `--drop-data` uninstall has actually run for this module key
+  /// (0011_add_module_data_dropped.sql) — reset to false on a fresh install.
+  dataDropped      Boolean      @default(false) @map("data_dropped")
 
   @@map("module_registry")
 }

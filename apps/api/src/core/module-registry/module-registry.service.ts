@@ -254,6 +254,9 @@ export class ModuleRegistryService {
           installedAt: new Date(),
           version: manifest.version,
           manifestSnapshot: this.toJson(manifest),
+          // Fresh install lifecycle — nothing has been dropped yet, even if
+          // a PRIOR install of this same key once had --drop-data run on it.
+          dataDropped: false,
         },
       });
     });
@@ -375,7 +378,10 @@ export class ModuleRegistryService {
       );
     }
 
-    const finalRow = await this.prisma.moduleRegistryEntry.update({ where: { key }, data: { status: 'disabled' } });
+    const finalRow = await this.prisma.moduleRegistryEntry.update({
+      where: { key },
+      data: { status: 'disabled', dataDropped: dropData },
+    });
     this.i18n.rebuild();
     this.logger.log(`Module "${key}" uninstalled (status left "disabled"; system_settings rows kept per D26).`);
     return toPublicModuleEntry(finalRow);

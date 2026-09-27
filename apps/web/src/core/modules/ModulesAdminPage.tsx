@@ -197,41 +197,55 @@ export function ModulesAdminPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(modules ?? []).map((entry) => (
-                <TableRow key={entry.key} hover>
-                  <TableCell>{entry.key}</TableCell>
-                  <TableCell>{entry.version}</TableCell>
-                  <TableCell>
-                    <Chip size="small" color={STATUS_COLOR[entry.status]} label={t(`core.modules.status.${entry.status}`)} />
-                  </TableCell>
-                  <TableCell align="right">
-                    {entry.key !== 'core' ? (
-                      <>
-                        <Can permission="modules.upgrade">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleUpgrade(entry.key)}
-                            disabled={restarting}
-                            aria-label={t('core.modules.upgrade')}
-                          >
-                            <UpgradeIcon fontSize="small" />
-                          </IconButton>
-                        </Can>
-                        <Can permission="modules.uninstall">
-                          <IconButton
-                            size="small"
-                            onClick={() => setUninstallTarget(entry)}
-                            disabled={restarting}
-                            aria-label={t('core.modules.uninstall')}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Can>
-                      </>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {/* A `disabled` module with `dataDropped` has nothing left in the
+                  database worth showing — it's functionally identical to a
+                  module never installed at all, and still reachable via the
+                  install dropdown above (listAvailableToInstall includes any
+                  non-active-status row) if the librarian wants it back. */}
+              {(modules ?? [])
+                .filter((entry) => !(entry.status === 'disabled' && entry.dataDropped))
+                .map((entry) => (
+                  <TableRow key={entry.key} hover>
+                    <TableCell>{entry.key}</TableCell>
+                    <TableCell>{entry.version}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Chip size="small" color={STATUS_COLOR[entry.status]} label={t(`core.modules.status.${entry.status}`)} />
+                        {entry.status === 'disabled' && !entry.dataDropped ? (
+                          <Typography variant="caption" color="text.secondary">
+                            {t('core.modules.data_preserved_notice')}
+                          </Typography>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      {entry.key !== 'core' ? (
+                        <>
+                          <Can permission="modules.upgrade">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleUpgrade(entry.key)}
+                              disabled={restarting}
+                              aria-label={t('core.modules.upgrade')}
+                            >
+                              <UpgradeIcon fontSize="small" />
+                            </IconButton>
+                          </Can>
+                          <Can permission="modules.uninstall">
+                            <IconButton
+                              size="small"
+                              onClick={() => setUninstallTarget(entry)}
+                              disabled={restarting}
+                              aria-label={t('core.modules.uninstall')}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Can>
+                        </>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </TableContainer>

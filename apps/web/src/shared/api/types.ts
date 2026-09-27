@@ -171,6 +171,7 @@ export interface PublicModuleEntry {
   installedAt: string | null;
   updatedAt: string;
   manifestSnapshot: unknown;
+  dataDropped: boolean;
 }
 
 /**

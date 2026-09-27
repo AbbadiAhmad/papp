@@ -259,6 +259,13 @@ describe('ModuleRegistryService', () => {
         'replaceMenuEntries',
       ]);
 
+      // A fresh install always resets dataDropped — a PRIOR install of this
+      // same key may have had --drop-data run on it, but this lifecycle
+      // starts with nothing dropped yet (0011_add_module_data_dropped.sql).
+      expect(prisma.moduleRegistryEntry.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { key: 'valid_module' }, data: expect.objectContaining({ status: 'installed', dataDropped: false }) }),
+      );
+
       expect(migrationRunner.applyDirectory).toHaveBeenCalledWith(
         expect.stringContaining(join('valid_module', 'migrations')),
         'valid_module',
@@ -486,6 +493,32 @@ describe('ModuleRegistryService', () => {
       expect(prisma.systemSetting.upsert).not.toHaveBeenCalled();
       expect(downMigrationsSpy).not.toHaveBeenCalled();
       expect(i18n.rebuild).toHaveBeenCalledTimes(1);
+      expect(prisma.moduleRegistryEntry.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'disabled', dataDropped: false }) }),
+      );
+    });
+
+    /**
+     * `dataDropped` (0011_add_module_data_dropped.sql) is what lets the
+     * Modules admin page tell "disabled, data still in the DB" (D26 safe-by-
+     * default) apart from "disabled, data actually gone" — set from the
+     * caller's own `dropData` flag regardless of whether that module's
+     * `migrations/down/` coverage is complete (it records the ATTEMPT, not a
+     * completeness guarantee — see library_catalog's own known-gap note).
+     */
+    it('with dropData: sets dataDropped true on the final registry row', async () => {
+      prisma.moduleRegistryEntry.findUnique.mockResolvedValue({ key: 'valid_module', status: 'installed' });
+      prisma.moduleRegistryEntry.findMany.mockResolvedValue([]);
+      prisma.moduleRegistryEntry.update.mockResolvedValue({ key: 'valid_module', status: 'disabled', dataDropped: true });
+      jest
+        .spyOn(service as unknown as { runDownMigrationsIfPresent: (key: string) => Promise<void> }, 'runDownMigrationsIfPresent')
+        .mockResolvedValue(undefined);
+
+      await service.uninstall('valid_module', true);
+
+      expect(prisma.moduleRegistryEntry.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'disabled', dataDropped: true }) }),
+      );
     });
 
     /**
