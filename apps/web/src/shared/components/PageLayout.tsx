@@ -17,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -64,6 +65,7 @@ const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
   { type: 'leaf', id: 'my-permissions', labelKey: 'core.menu.myPermissions', iconName: undefined, route: '/my-permissions', requiredPermission: 'permissions.view_my' },
   { type: 'leaf', id: 'sessions', labelKey: 'core.menu.sessions', iconName: undefined, route: '/sessions', requiredPermission: 'sessions.view_my' },
   { type: 'leaf', id: 'audit', labelKey: 'core.menu.audit', iconName: undefined, route: '/audit', requiredPermission: 'audit.view' },
+  { type: 'leaf', id: 'backup', labelKey: 'core.menu.backup', iconName: undefined, route: '/backup', requiredPermission: 'backup.export' },
   { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: 'notifications.view' },
   { type: 'leaf', id: 'settings', labelKey: 'core.menu.settings', iconName: undefined, route: '/settings', requiredPermission: 'users.settings.view' },
   { type: 'leaf', id: 'modules', labelKey: 'core.menu.modules', iconName: undefined, route: '/modules', requiredPermission: 'modules.view' },
@@ -78,6 +80,7 @@ const CORE_ICONS: Record<string, ReactNode> = {
   'my-permissions': <ShieldIcon />,
   sessions: <LockPersonIcon />,
   audit: <HistoryIcon />,
+  backup: <CloudDownloadIcon />,
   notifications: <NotificationsIcon />,
   settings: <SettingsIcon />,
   modules: <ExtensionIcon />,

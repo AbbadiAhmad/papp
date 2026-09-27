@@ -42,6 +42,12 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Database backup/restore (docs/DECISIONS.md D43 resolution): AES-256
+      # encryption key for the exported backup archive. Empty (default) means
+      # the feature reports itself as unconfigured — same disabled-by-default
+      # stance as SMTP_HOST above, not an admin-tunable system_settings value
+      # (it's a secret, same category as JWT_SECRET).
+      BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
     ports:
       - "${API_HOST_PORT:-3000}:3000"
     volumes:

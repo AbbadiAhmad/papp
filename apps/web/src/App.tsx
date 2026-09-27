@@ -25,6 +25,7 @@ import { PermissionsMatrixPage } from './core/permissions/PermissionsMatrixPage'
 import { MyPermissionsPage } from './core/permissions/MyPermissionsPage';
 import { SessionsPage } from './core/sessions/SessionsPage';
 import { AuditPage } from './core/audit/AuditPage';
+import { BackupPage } from './core/backup/BackupPage';
 import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
@@ -235,6 +236,14 @@ function AppRoutes() {
           element={
             <RequirePermissionRoute code="audit.view">
               <AuditPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/backup"
+          element={
+            <RequirePermissionRoute code="backup.export">
+              <BackupPage />
             </RequirePermissionRoute>
           }
         />

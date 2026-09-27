@@ -6,6 +6,7 @@ import { PermissionGuard } from './common/guards/permission.guard';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './core/auth/auth.module';
+import { BackupModule } from './core/backup/backup.module';
 import { I18nModule } from './core/i18n/i18n.module';
 import { ModuleRegistryModule } from './core/module-registry/module-registry.module';
 import { NotificationsModule } from './core/notifications/notifications.module';
@@ -29,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module';
     SessionsModule,
     UsersModule,
     RolesModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [

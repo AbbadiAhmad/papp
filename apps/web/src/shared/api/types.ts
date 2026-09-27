@@ -90,6 +90,12 @@ export interface PurgeResult {
   rowsDeleted: number;
 }
 
+export interface BackupInfo {
+  platformVersion: string;
+  schemaFingerprint: string;
+  backupConfigured: boolean;
+}
+
 export interface AuditQueryParams {
   category?: string;
   entityType?: string;
