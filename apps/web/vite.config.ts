@@ -40,6 +40,7 @@ const CORE_API_PATH_PREFIXES = [
   '/modules',
   '/i18n',
   '/health',
+  '/backup',
 ];
 
 /**
