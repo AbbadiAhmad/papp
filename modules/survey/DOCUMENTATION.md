@@ -81,6 +81,10 @@ Frontend (`basePath: /survey`):
 - **`linear_scale`/`rating` questions with an empty `config`** default to a 1–5 range client-side (`TakeSurveyPage.tsx`'s `QuestionInput`) — the builder lets you override `min`/`max`, but a question saved without ever touching those fields still renders sensibly.
 - **`modules/**` has no lint or unit-test coverage from any tool in this repo, and a Jest unit test cannot import `ResponsesService` at all** (it constructor-injects three `apps/api/dist/**` classes, which throws under this repo's Jest/Node combination the moment anything requires `@nestjs/common` from compiled `.js`) — see root `D68`. `logic-engine.ts` and `SurveysService.validateStructure` are unit-tested directly; `ResponsesService`'s actual behavior is covered by `apps/web/tests/e2e/survey.spec.ts` instead.
 
+## Down migrations (root D48 / D86)
+
+`migrations/down/001_create_survey_tables.sql` now exists — the structural inverse of the up-migration (drops every table this module created, child-before-parent: `survey_answers` down through `survey_surveys`, then the four ENUM types), applied by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. Before this, `--drop-data` on this module silently left every table in place. See root D86 for the platform-level dependency guard added alongside this (reads every installed module's manifest `dependsOn` generically — this module has no known dependents today, but the guard would reject uninstalling it if one existed).
+
 ## How to extend
 
 - **A new question type**: add it to `SURVEY_QUESTION_TYPES` (backend `dto/survey-structure.dto.ts` AND frontend `api.ts` — kept as two independent literal arrays, must stay in sync by hand), add a case to `ResponsesService.validateAnswerShape` (answer-shape validation), a case to `TakeSurveyPage.tsx`'s `QuestionInput` (respondent-facing input), and a branch in `ReportsService.getSummary` (how it aggregates) — plus new `survey.question_type.<type>` locale keys in both `ar.json`/`en.json`.

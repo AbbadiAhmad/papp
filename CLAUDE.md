@@ -23,7 +23,7 @@ Core (always installed, never uninstallable): Auth, Sessions, Users (incl. Setti
 
 ## Non-negotiable rules (see SKILL.md for the full checklist)
 
-1. Every action is permission-gated by a permission **code**, never a hardcoded role name — the one exception (Permissions page always reachable by `admin`) is documented in `ARCHITECTURE.md` §7.4 and must never be duplicated elsewhere.
+1. Every action is permission-gated by a permission **code**, never a hardcoded role name — the one exception (structurally protecting `permissions.view`/`permissions.grant` from ever being revoked from the `admin` role) is documented in `ARCHITECTURE.md` §7.4 and must never be duplicated elsewhere.
 2. Every create/update/delete is audit-logged with old/new values, except fields marked `@Sensitive()` (passwords, tokens, hashes). Audit entries are only ever removed via the manual, admin-triggered purge with a cutoff capped at yesterday (`ARCHITECTURE.md` §8.4) — never a silent/automatic delete.
 3. Every module ships its own `ar` + confirmed-language locale files (D19) — a module without Arabic strings fails install validation. (Notification templates are the one exception — operator-authored content in `system_settings`, not developer i18n keys, per D22.)
 4. Numerals: Western Arabic digits (0-9) everywhere, even in Arabic UI (D6). Calendar: Gregorian everywhere (D7). Both are pinned explicitly in the shared format utilities, never left to locale defaults.

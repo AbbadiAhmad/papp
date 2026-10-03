@@ -1,112 +1,29 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
-import { REQUIRE_PERMISSION_KEY } from '../../common/decorators/require-permission.decorator';
-import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { PermissionsService } from './permissions.service';
-
 /**
  * The `admin` role CODE, as a named export — the one other place in the
- * codebase allowed to compare against it is `RolesService`/`UsersService`'s
- * last-active-admin guard (see their own docblocks): "the platform must
- * always keep at least one active admin" is the same category of
- * platform-bootstrap/safety concern this file's own D12 exception is, so
- * the role-name-shaped comparison itself lives HERE (the one sanctioned
- * file, scripts/lint-no-hardcoded-roles.ts's own allowlist) as a plain,
- * exported constant + helper, imported by value everywhere else needs it —
- * never re-compared against a literal in a second file.
+ * codebase allowed to compare against it is `RolesService`'s
+ * last-active-admin guard and `PermissionsService`'s protected-grant guard
+ * (see their own docblocks): "the platform must always keep at least one
+ * active admin" and "the admin role must always retain `permissions.view`/
+ * `permissions.grant`" are the same category of platform-bootstrap/safety
+ * concern, so the role-name-shaped comparison itself lives HERE (the one
+ * sanctioned file, `scripts/lint-no-hardcoded-roles.ts`'s own allowlist) as a
+ * plain, exported constant + helper, imported by value everywhere else
+ * needs it — never re-compared against a literal in a second file.
+ *
+ * This file used to also hold `PermissionsPageGuard`, the D12
+ * ("admin always reaches the Permissions page regardless of its own
+ * grants") bypass — removed once `permissions.view`/`permissions.grant`
+ * became structurally impossible to revoke from `admin` (see
+ * `PermissionsService.setRoleGrants`'s guard), which made the D12 bypass
+ * unnecessary: an admin can never actually reach a zero-grant state for
+ * those two codes any more, so the page never needs a special-cased access
+ * rule, only the plain `permissions.view` check every other page already
+ * uses. See `docs/ARCHITECTURE.md` §7.4 and `docs/DECISIONS.md` (the entry
+ * that supersedes D12) for the full history.
  */
 export const PROTECTED_ADMIN_ROLE_CODE = 'admin';
 
-/** `true` iff `code` is the one role every "must always have a holder" invariant protects. The only place outside this file allowed to CALL this is the last-active-admin guard (RolesService/UsersService) — never re-implement the comparison itself elsewhere. */
+/** `true` iff `code` is the one role every "must always hold X" invariant protects. The only places outside this file allowed to CALL this are the last-active-admin guard (RolesService) and the protected-grant guard (PermissionsService) — never re-implement the comparison itself elsewhere. */
 export function isProtectedAdminRoleCode(code: string): boolean {
   return code === PROTECTED_ADMIN_ROLE_CODE;
-}
-
-/**
- * *** THE single hard-coded D12 exception in the entire codebase. ***
- *
- * ARCHITECTURE.md §7.4 / docs/DECISIONS.md D12: "Admin always has access to
- * the Permissions page, regardless of its own permission grants." This is
- * the one, explicit, code-reviewed bypass — checking `role.code === 'admin'`
- * IN ADDITION TO the normal permission check (OR, not instead of).
- *
- * This must be the ONLY file anywhere in this codebase containing a
- * role-name-shaped conditional (`role.code === 'admin'`, `.includes('admin')`,
- * a string-literal role check, etc.). If you think you need a second one —
- * e.g. "admin should always see the Modules screen too" — the answer is
- * always "grant admin the permission by default in the seed migration,
- * don't hardcode a second bypass." Stop and raise it with the user instead.
- * (Enforced later by scripts/lint-no-hardcoded-roles.ts, Phase 7 — this
- * comment is the primary defense in the meantime.)
- *
- * Applied via `@PermissionCheckDelegatedToPermissionsPageGuard()` only on
- * the read-only routes the Permissions PAGE itself needs to fully render
- * and operate for a zero-grant admin: the grant-management sub-resource
- * (`PermissionsController`'s `roles/:roleId/grants`) and the two catalog
- * listings that sub-resource's UI is built from (`GET /permissions`,
- * `GET /roles` — widened in Phase 6 after real-browser testing showed a
- * zero-grant admin could edit grants but not see the catalogs needed to
- * render the matrix in the first place). Everywhere else in the codebase
- * uses plain `PermissionGuard`, with no admin bypass, full stop — this
- * remains the only FILE containing role-name-shaped logic, per D12.
- *
- * Role codes are resolved FRESH from the database on every request
- * (`PermissionsService.getRoleCodesForUser`), exactly like effective
- * permissions — never cached, never read from a JWT claim. See this
- * Developer agent's report for the reasoning on why roles are looked up
- * fresh rather than embedded in the access token for this phase.
- */
-/**
- * Phase 5 (global-guard switch): now that `PermissionGuard` is registered as
- * a global APP_GUARD, it would run on the grant-management endpoints too and
- * reject an admin who lacks the literal permission BEFORE this guard's D12
- * bypass ever gets a chance — silently breaking "admin always has access to
- * the Permissions page." This metadata key tells the global `PermissionGuard`
- * to stand down on exactly the handlers where THIS guard is applied instead.
- *
- * It lives in this file on purpose: it is part of the same single sanctioned
- * D12 exception, not a general-purpose escape hatch. Never apply
- * `@PermissionCheckDelegatedToPermissionsPageGuard()` to a handler that does
- * not also carry `@UseGuards(PermissionsPageGuard)` — that would leave the
- * handler with NO permission check at all.
- */
-export const PERMISSION_CHECK_DELEGATED_KEY = 'permissionCheckDelegatedToPermissionsPageGuard';
-export const PermissionCheckDelegatedToPermissionsPageGuard = (): MethodDecorator =>
-  SetMetadata(PERMISSION_CHECK_DELEGATED_KEY, true);
-
-@Injectable()
-export class PermissionsPageGuard implements CanActivate {
-  constructor(
-    private readonly reflector: Reflector,
-    private readonly permissionsService: PermissionsService,
-  ) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
-    const user = (request as Request & { user?: AuthenticatedUser }).user;
-    if (!user) {
-      throw new UnauthorizedException('Authentication required');
-    }
-
-    const roleCodes = await this.permissionsService.getRoleCodesForUser(user.userId);
-    if (roleCodes.includes('admin')) {
-      // *** THE one sanctioned exception — see file-level docblock. ***
-      return true;
-    }
-
-    const requiredPermission = this.reflector.getAllAndOverride<string | undefined>(REQUIRE_PERMISSION_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (!requiredPermission) {
-      return true;
-    }
-
-    const effectivePermissions = await this.permissionsService.getEffectivePermissionCodes(user.userId);
-    if (!effectivePermissions.has(requiredPermission)) {
-      throw new ForbiddenException(`Missing required permission: ${requiredPermission}`);
-    }
-    return true;
-  }
 }

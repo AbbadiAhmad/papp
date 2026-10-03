@@ -78,7 +78,7 @@ NestJS app
 └── <feature modules>      — installed dynamically at runtime (see MODULE_SPEC.md)
 ```
 
-Each **core** module above is itself permission-gated the same way a feature module would be (see §7) — the base platform doesn't get special-cased application logic, only the Permissions page gets a special-cased **access rule** (§7.4).
+Each **core** module above is itself permission-gated the same way a feature module would be (see §7) — the base platform doesn't get special-cased application logic; the one narrow exception is a structural safeguard on the admin role's own permission grants, not a page's access rule (§7.4).
 
 ## 6. Security & sessions
 
@@ -138,7 +138,13 @@ Permissions are **registered by each module's manifest** (core platform register
 
 ### 7.4 The one hard-coded exception
 
-Rule D12 ("admin can always reach the Permissions page regardless of grants") is implemented as a single, explicit, code-reviewed bypass: the Permissions page's guard checks `role.code === 'admin'` **in addition to** the normal permission check (`OR`, not instead of). This is the **only** place in the codebase allowed to special-case a role by name — documented here so it's never "reinvented" elsewhere by accident. Every other page/action/API must go through the normal permission table with no hardcoded role checks. This rule is also encoded in the AI-agent skill (`.claude/skills/papp-add-feature/SKILL.md`) so future generated code doesn't add new hardcoded role checks.
+There is **no hardcoded role-name bypass anywhere in application logic** — the Permissions page (and every other page/action/API) is gated by a plain permission code, exactly like everything else, with no special case for `admin`.
+
+This closes out the original D12 rule ("admin can always reach the Permissions page regardless of grants"), which used to be implemented as an explicit `role.code === 'admin'` bypass on the Permissions page's guard. That bypass existed to solve a real problem — an admin who had every grant stripped (including by their own mistake on the Permissions matrix) could otherwise be permanently locked out of the one page that could fix it — but it did so by special-casing a role name in application logic, which is exactly the pattern this platform otherwise forbids everywhere else.
+
+The current design solves the same problem a level lower, structurally, instead: `permissions.view` and `permissions.grant` can **never be revoked from the `admin` role** — any attempt to submit a grant set for `admin` that drops either code is rejected outright (`PermissionsService.setRoleGrants`'s guard). Once admin can never actually reach a zero-grant state for those two codes, the Permissions page never needs a bypass at all — it uses the exact same `permissions.view` check every other page uses.
+
+This still leaves **one** narrow, sanctioned, role-name-comparing exception in the codebase — `apps/api/src/core/permissions/permissions-page.guard.ts`'s `PROTECTED_ADMIN_ROLE_CODE`/`isProtectedAdminRoleCode` — but its purpose changed: it no longer bypasses a permission check, it only identifies which role's own grants are protected from a specific revoke. The same helper backs `RolesService`'s pre-existing "cannot remove the last active admin user from the admin role" guard, since both are the same category of platform-bootstrap safety invariant (protecting the admin role's own integrity), just applied to a different resource (a role's permission grants vs. a user's role membership). This remains the **only** file in the codebase allowed to special-case a role by name — documented here so it's never "reinvented" elsewhere by accident; every other page/action/API must go through the normal permission table with no hardcoded role checks. This rule is also encoded in the AI-agent skill (`.claude/skills/papp-add-feature/SKILL.md`) so future generated code doesn't add new hardcoded role checks.
 
 ### 7.5 Public / anonymous routes (D34)
 

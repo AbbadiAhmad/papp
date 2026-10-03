@@ -19,12 +19,21 @@ library_catalog_book_copies(
   condition, location, acquisition_date, created_at, updated_at,
   history JSONB[] DEFAULT '[]'
 )
+library_catalog_book_ratings(
+  id, book_id -> books(id) ON DELETE CASCADE, user_id -> users(id),
+  rating SMALLINT CHECK(1-5), review TEXT NULL,
+  review_status TEXT CHECK(pending|approved|rejected) DEFAULT 'approved',
+  moderated_by -> users(id) NULL, moderated_at NULL,
+  created_at, updated_at, UNIQUE(book_id, user_id)
+)
 ```
 
 - `status` is a real Postgres `ENUM` (`library_catalog_book_copy_status`), not a `TEXT` + `CHECK` — required for Prisma's `enum` mapping (see the migration's own comment; the same lesson core's `0000`/`0005` migrations already learned).
 - Deleting a book **cascades** to its copies — a copy cannot outlive its title. A future circulation module deciding to block that delete when a copy has borrowing history is that module's job, not this one's (see Known gotchas).
 - `updated_at` exists on both tables specifically so `@Audit`'s before/after diff on an `update` has more than just the one changed field to show.
 - `history` (Feature 2.1 — D18) is a JSONB array tracking up to 100 most recent changes to `status`, `condition`, and `location`. Each entry records `{ timestamp, changes: { field: { before, after } } }`. The `getCopyHistory` endpoint retrieves these entries. See DECISIONS.md D18 for the migration application process.
+- `library_catalog_book_ratings` (LIBRARY_CATALOG-D20) is one row per (book, user) — `UNIQUE(book_id, user_id)`, `rating` a plain `SMALLINT` + `CHECK` (not a Prisma `enum` — no need for one, unlike copy `status`), `review` optional free text. `user_id` is a plain scalar column with no Prisma relation to the core `User` model; the rater's display name is joined in `BooksService` via a separate `prisma.user.findMany` call, not a Prisma `include`. Re-rating UPSERTs the same row — there is never a second rating row for the same reader/book pair. Deleting a book cascades to its ratings (`ON DELETE CASCADE`, same as copies).
+- `review_status`/`moderated_by`/`moderated_at` (LIBRARY_CATALOG-D21 — "the librarian has to approve the comments to publish it") gate only the WRITTEN review text; the numeric `rating` always counts toward the average the moment it's submitted, moderated or not. Defaults to `'approved'` so a bare star rating (no review) never needs moderation. See "Review moderation" under Routes below for the full workflow.
 
 ## Permissions
 
@@ -35,8 +44,10 @@ library_catalog_book_copies(
 | `library_catalog.books.update` | Edit a book, update a copy's status/condition/location | `BooksController.update/updateCopy` |
 | `library_catalog.books.delete` | Delete a book (and, via cascade, its copies), or remove a single copy directly | `BooksController.remove/removeCopy` |
 | `library_catalog.books.export` | Download the books list as `.xlsx` | `BooksController.export` |
+| `library_catalog.books.rate` | Create/update/delete the CALLER'S OWN rating+review for a book (never someone else's) | `BooksController.rateBook/removeRating` |
+| `library_catalog.books.moderate_ratings` | List the pending-review queue, approve or reject a review | `BooksController.listPendingReviews/approveReview/rejectReview` |
 
-`defaultRolePermissions`: `admin` gets all 5; `library_assistant` gets view/create/update (no delete/export); `finance` gets none; `reader` gets view only. The public availability route (below) needs no permission at all — there is no user to check one against.
+`defaultRolePermissions`: `admin` gets all 7; `library_assistant` gets view/create/update/rate/moderate_ratings (no delete/export); `finance` gets none; `reader` gets view+rate (never moderation — moderating is a librarian/admin action). The public availability route (below) needs no permission at all — there is no user to check one against. `books.rate`/`books.moderate_ratings` are intentionally NOT hardcoded to any one role — see DECISIONS.md D20/D21: whoever holds the code can do the action, matching every other permission-gated action on this platform.
 
 ## Routes
 
@@ -44,10 +55,23 @@ Backend (`apiPrefix: /api/library`):
 - `GET/POST /books`, `GET/PATCH/DELETE /books/:id`, `GET /books/export` — `BooksController`, all `@RequirePermission`-gated as above.
 - `GET/POST /books/:bookId/copies`, `PATCH/DELETE /books/:bookId/copies/:id` — same controller, copies sub-resource. `DELETE` is gated by `books.delete` (not a separate code, matching the sub-resource pattern), and fails with 409 if the copy has `library_circulation` borrowing history (no `ON DELETE CASCADE` on that FK — see LIBRARY_CATALOG-D8).
 - `GET /public/books/:id/availability` — `PublicBooksController`, `@Public()` + `PublicThrottlerGuard` (D34 — even though it's a read, applied "for consistency" per the module's own build notes) + `@Audit(...)` (deliberately, to exercise the `actor_type='anonymous'` audit path — see that controller's own docblock).
+- `PUT/DELETE /books/:bookId/rating` — `BooksController`, `books.rate`-gated, always the CALLER's own rating (`@CurrentUser()`, never a `:userId` param). `GET /books/:id` (`findById`) already returns the full ratings list + live average + the caller's own `myRating` — there is no separate `GET .../ratings` list route.
+- `GET /books/ratings/pending`, `POST /books/ratings/:ratingId/approve`, `POST /books/ratings/:ratingId/reject` — `BooksController`, `books.moderate_ratings`-gated. See "Review moderation" below for the full workflow these implement.
+
+### Review moderation — how a librarian approves (or rejects) a comment (LIBRARY_CATALOG-D21)
+
+**The rule**: a reader's star rating (1-5) is never gated — it's added to a book's average the instant it's submitted. Only the WRITTEN review text needs a librarian's approval before anyone besides its own author can see it.
+
+1. A reader (or anyone holding `library_catalog.books.rate`) submits a rating + optional review from the book detail page (`PUT /api/library/books/:bookId/rating`). If they left the review blank, nothing further happens — `reviewStatus` is `'approved'` by default and the rating shows immediately. If they wrote a review, the row is saved with `reviewStatus = 'pending'` — visible only to that reader on their own book page (with an "Awaiting approval" chip) until it's moderated.
+2. Anyone holding `library_catalog.books.moderate_ratings` (`admin`/`library_assistant` by default) opens **Library → Moderate reviews** (`/library/reviews/moderate`, `ModerateReviewsPage.tsx`) — this calls `GET /api/library/books/ratings/pending`, which lists every pending review across every book (book title, reviewer name, star rating, the comment text, when it was submitted).
+3. Clicking **Approve** (`POST /api/library/books/ratings/:ratingId/approve`) sets `reviewStatus = 'approved'`, records `moderatedBy`/`moderatedAt`, and the comment becomes visible to everyone on that book's page immediately. Clicking **Reject** (`POST /.../reject`) sets `reviewStatus = 'rejected'` instead — the comment stays hidden from everyone but its own author (who sees a "Rejected" chip); the star rating is completely unaffected either way.
+4. If the reader later EDITS their review text, it resets to `'pending'` again (and clears the old `moderatedBy`/`moderatedAt`) — a previously-approved comment can never silently stay published after being changed. Editing only the star value (leaving the same review text) does **not** reset an already-moderated review. Clearing the review text entirely returns `reviewStatus` to `'approved'` — there's nothing left to moderate.
+5. Both actions are `@Audit`-logged (`category: 'library_catalog.ratings'`, `action: 'approve_review'`/`'reject_review'`) — the audit log itself is the permanent record of who approved/rejected which comment and when, in addition to the `moderated_by`/`moderated_at` columns on the row.
 
 Frontend (`basePath: /library`):
 - `/library/books` (authenticated, `books.view`) → `BooksListPage.tsx`
 - `/library/books/:bookId` (authenticated, `books.view`) → `BookDetailPage.tsx`
+- `/library/reviews/moderate` (authenticated, `books.moderate_ratings`) → `ModerateReviewsPage.tsx` — the approval queue described above.
 - `/library/public/books/:bookId/availability` (**public**) → `PublicBookAvailabilityPage.tsx` — mounted in every `AppRoutes` branch (anonymous/must-change-password/authenticated), never behind a login redirect.
 
 ## Key files
@@ -57,6 +81,7 @@ Frontend (`basePath: /library`):
 - `backend/public.controller.ts` — the one deliberate public route; read its docblock before adding another public endpoint anywhere in this module.
 - `backend/platform.ts` — the local `@Public()`/`@RequirePermission()`/`@Audit()`/`@CurrentUser()`/`MustChangePasswordGuard` shims every module needs (D57) plus the one real cross-module import (`PublicThrottlerGuard` from `apps/api/dist/...`).
 - `frontend/api.ts` — typed API client + `downloadBlob` helper (reused verbatim by `survey`'s own `api.ts`).
+- `frontend/pages/ModerateReviewsPage.tsx` — the librarian's review-approval queue (LIBRARY_CATALOG-D21), reading `GET /books/ratings/pending` and calling approve/reject.
 
 ## Known gotchas
 
@@ -93,3 +118,43 @@ The platform currently **does not auto-apply migrations on startup** (root D47).
    - The checksum must match what `MigrationRunnerService.computeChecksum()` calculates for the SQL file. Run the API and check logs if unsure.
 
 **Future**: Once the platform supports automatic migration discovery/application on module install (root D47), this manual step will no longer be needed.
+
+### Migration D20 — book ratings
+
+`modules/library_catalog/migrations/004_create_book_ratings_table.sql` creates `library_catalog_book_ratings`. Apply the same way:
+
+```bash
+psql $DATABASE_URL -f modules/library_catalog/migrations/004_create_book_ratings_table.sql
+```
+
+Then register it (checksum is `sha256(file contents, utf8)`, matching `MigrationRunnerService.checksumOf`):
+
+```sql
+INSERT INTO module_migrations (module_key, filename, checksum)
+VALUES ('library_catalog', '004_create_book_ratings_table.sql', 'e8439b0de876b4964dde0a8c6985d0a24f1b9986939bbe175fe5f4905f3339a8');
+```
+
+`apps/api/prisma/schema.prisma`'s `LibraryCatalogBookRating` model is already hand-maintained to match — re-run `npx prisma generate` (never `migrate`) after pulling this change.
+
+### Migration D21 — review moderation
+
+`modules/library_catalog/migrations/005_add_review_moderation.sql` adds `review_status`/`moderated_by`/`moderated_at` to `library_catalog_book_ratings`. Apply the same way:
+
+```bash
+psql $DATABASE_URL -f modules/library_catalog/migrations/005_add_review_moderation.sql
+```
+
+Then register it:
+
+```sql
+INSERT INTO module_migrations (module_key, filename, checksum)
+VALUES ('library_catalog', '005_add_review_moderation.sql', '7a77e8cd8f3c950518490a02a0a22694da748eb3392da1395c69558c3cbc4348');
+```
+
+`apps/api/prisma/schema.prisma`'s `LibraryCatalogBookRating` model already has the three new fields — re-run `npx prisma generate` after pulling this change.
+
+### Down migrations (root D48 / D86)
+
+`migrations/down/001_create_books_table.sql`, `down/002_create_book_copies_table.sql`, `down/003_add_copy_history.sql` now exist — the structural inverse of each up-migration of the same number, applied in descending filename order (`003` → `002` → `001`) by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. `003`'s down drops the `history` column/GIN index it added; `002`'s down drops `library_catalog_book_copies` and its ENUM type; `001`'s down drops `library_catalog_books`. Before this, `--drop-data` on this module silently left every table in place (no `migrations/down/` existed at all) — see root D86 for the platform-level fix (a dependency guard was added alongside this so uninstalling this module while `library_circulation` still depends on it is now rejected, not just a docs warning).
+
+**Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003` and will fail partway (or leave the ratings table behind) until those two down-migrations are added. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003.

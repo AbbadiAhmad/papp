@@ -90,6 +90,12 @@ export interface PurgeResult {
   rowsDeleted: number;
 }
 
+export interface BackupInfo {
+  platformVersion: string;
+  schemaFingerprint: string;
+  backupConfigured: boolean;
+}
+
 export interface AuditQueryParams {
   category?: string;
   entityType?: string;
@@ -171,6 +177,7 @@ export interface PublicModuleEntry {
   installedAt: string | null;
   updatedAt: string;
   manifestSnapshot: unknown;
+  dataDropped: boolean;
 }
 
 /**

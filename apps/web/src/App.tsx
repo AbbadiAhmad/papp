@@ -6,7 +6,7 @@ import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
-import { TopBar, PageLayout } from './shared/components/PageLayout';
+import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageLayout';
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
 import * as authApi from './shared/api/auth';
 import { LoginPage } from './core/auth/LoginPage';
@@ -25,6 +25,7 @@ import { PermissionsMatrixPage } from './core/permissions/PermissionsMatrixPage'
 import { MyPermissionsPage } from './core/permissions/MyPermissionsPage';
 import { SessionsPage } from './core/sessions/SessionsPage';
 import { AuditPage } from './core/audit/AuditPage';
+import { BackupPage } from './core/backup/BackupPage';
 import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
@@ -206,14 +207,10 @@ function AppRoutes() {
             </RequirePermissionRoute>
           }
         />
-        {/* D12 (ARCHITECTURE.md §7.4): reachable by any authenticated user —
-            code={null} always allows once permissions have loaded (see
-            PermissionsMatrixPage's own docblock for why the PAGE itself
-            still has no client-side pre-check beyond that). */}
         <Route
           path="/permissions"
           element={
-            <RequirePermissionRoute code={null}>
+            <RequirePermissionRoute code="permissions.view">
               <PermissionsMatrixPage />
             </RequirePermissionRoute>
           }
@@ -243,9 +240,17 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/backup"
+          element={
+            <RequirePermissionRoute code="backup.export">
+              <BackupPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
           path="/notifications"
           element={
-            <RequirePermissionRoute code={null}>
+            <RequirePermissionRoute code="notifications.view">
               <NotificationsInboxPage />
             </RequirePermissionRoute>
           }
@@ -302,10 +307,12 @@ function ThemedShell() {
         <CssBaseline />
         <BrowserRouter>
           <AuthProvider>
-            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-              <TopBar />
-              <AppRoutes />
-            </Box>
+            <MobileNavProvider>
+              <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                <TopBar />
+                <AppRoutes />
+              </Box>
+            </MobileNavProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

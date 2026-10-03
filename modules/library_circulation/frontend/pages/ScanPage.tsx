@@ -1,4 +1,5 @@
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import {
   Alert,
@@ -23,9 +24,11 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
+import { useModuleFrontendManifests } from '../../../../apps/web/src/shared/modules/useInstalledModules';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import {
   libraryCirculationApi,
@@ -39,6 +42,7 @@ import {
   type ScanStudentResult,
   type StudentSearchResult,
 } from '../api';
+import { readingClubIntegration, type ReadingClubPendingReward } from '../readingClubIntegration';
 import { BorrowDialog } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
@@ -60,6 +64,7 @@ export function ScanPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
+  const { status: authStatus, mustChangePassword, hasPermission } = useAuth();
   const [code, setCode] = useState('');
   const [student, setStudent] = useState<ScanStudentResult | null>(null);
   const [bookCopy, setBookCopy] = useState<ScanBookCopyResult | null>(null);
@@ -92,6 +97,17 @@ export function ScanPage() {
   const [activeBorrowings, setActiveBorrowings] = useState<ActiveBorrowingForStudent[]>([]);
   const [readerFines, setReaderFines] = useState<LibraryFine[]>([]);
   const [readerSectionsLoading, setReaderSectionsLoading] = useState(false);
+  const [pendingRewards, setPendingRewards] = useState<ReadingClubPendingReward[]>([]);
+
+  // "The circulation module, when searching a reader (scan page), shows a
+  // hook that the student has finished the stage and won an award. The
+  // librarian can confirm they handed the reader their present (recorded on
+  // the reading club module)." — entirely optional/additive: hidden whenever
+  // reading_club isn't installed or the caller lacks the permission, never a
+  // hard dependency of this page (see readingClubIntegration.ts docblock).
+  const installedManifests = useModuleFrontendManifests(authStatus === 'authenticated' && !mustChangePassword);
+  const readingClubInstalled = installedManifests?.some((m) => m.key === 'reading_club') ?? false;
+  const canSeeRewards = readingClubInstalled && hasPermission('reading_club.memberships.view');
 
   useEffect(() => {
     if (!student) {
@@ -145,12 +161,41 @@ export function ScanPage() {
     };
   }, [student, bookCopy]);
 
+  useEffect(() => {
+    if (!canSeeRewards || !student) {
+      setPendingRewards([]);
+      return;
+    }
+    let cancelled = false;
+    readingClubIntegration
+      .getPendingRewards(student.student.id)
+      .then((rewards) => {
+        if (!cancelled) setPendingRewards(rewards);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingRewards([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeRewards, student]);
+
+  const confirmReadingClubReward = async (completionId: string) => {
+    try {
+      await readingClubIntegration.confirmReward(completionId);
+      setPendingRewards((current) => current.filter((r) => r.id !== completionId));
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
   const reset = () => {
     setStudent(null);
     setBookCopy(null);
     setCode('');
     setError(null);
     setMessage(null);
+    setPendingRewards([]);
   };
 
   const scanCode = async (rawCode: string) => {
@@ -497,6 +542,40 @@ export function ScanPage() {
                         </List>
                       )}
                     </Box>
+
+                    {/* Reading Club hook (optional, only when the reading_club module is installed) */}
+                    {pendingRewards.length > 0 ? (
+                      <>
+                        <Divider />
+                        <Box sx={{ p: 1.5, bgcolor: 'warning.lighter', borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }}>
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                            <EmojiEventsIcon color="warning" fontSize="small" />
+                            <Typography variant="subtitle2">{t('library_circulation.scan.reading_club_reward_heading')}</Typography>
+                          </Stack>
+                          <Stack spacing={1.5}>
+                            {pendingRewards.map((reward) => (
+                              <Box
+                                key={reward.id}
+                                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}
+                              >
+                                <Typography variant="body2">
+                                  {t('library_circulation.scan.reading_club_reward_line', {
+                                    group: reward.groupName ?? '',
+                                    stage: reward.stageName ?? '',
+                                    reward: reward.rewardDescription ?? t('library_circulation.scan.reading_club_reward_unspecified'),
+                                  })}
+                                </Typography>
+                                <Can permission="reading_club.stage_completions.confirm_reward">
+                                  <Button size="small" variant="contained" color="warning" onClick={() => confirmReadingClubReward(reward.id)}>
+                                    {t('library_circulation.scan.reading_club_confirm_reward_button')}
+                                  </Button>
+                                </Can>
+                              </Box>
+                            ))}
+                          </Stack>
+                        </Box>
+                      </>
+                    ) : null}
                   </Stack>
                 </CardContent>
               </Card>

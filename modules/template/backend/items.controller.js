@@ -34,11 +34,11 @@ let ItemsController = class ItemsController {
     async list() {
         return this.items.list();
     }
-    async findById(id) {
-        return this.items.findById(id);
-    }
     async create(dto, user) {
         return this.items.create(dto, user.userId);
+    }
+    async findById(id) {
+        return this.items.findById(id);
     }
     async update(id, dto) {
         return this.items.update(id, dto);
@@ -56,14 +56,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ItemsController.prototype, "list", null);
 __decorate([
-    (0, common_1.Get)(':id'),
-    (0, platform_1.RequirePermission)('template.items.view'),
-    __param(0, (0, common_1.Param)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
-], ItemsController.prototype, "findById", null);
-__decorate([
     (0, common_1.Post)(),
     (0, platform_1.RequirePermission)('template.items.create'),
     (0, platform_1.Audit)({ category: 'template.items', entityType: 'TemplateItem', action: 'create' }),
@@ -74,10 +66,18 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ItemsController.prototype, "create", null);
 __decorate([
+    (0, common_1.Get)(':id'),
+    (0, platform_1.RequirePermission)('template.items.view'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], ItemsController.prototype, "findById", null);
+__decorate([
     (0, common_1.Patch)(':id'),
     (0, platform_1.RequirePermission)('template.items.update'),
     (0, platform_1.Audit)({ category: 'template.items', entityType: 'TemplateItem', action: 'update', fetchState: fetchItemState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, update_item_dto_1.UpdateItemDto]),
@@ -88,7 +88,7 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('template.items.delete'),
     (0, platform_1.Audit)({ category: 'template.items', entityType: 'TemplateItem', action: 'delete', fetchState: fetchItemState }),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)

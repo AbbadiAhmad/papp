@@ -18,6 +18,7 @@ const books_service_1 = require("./books.service");
 const create_book_copy_dto_1 = require("./dto/create-book-copy.dto");
 const create_book_dto_1 = require("./dto/create-book.dto");
 const list_books_dto_1 = require("./dto/list-books.dto");
+const rate_book_dto_1 = require("./dto/rate-book.dto");
 const update_book_copy_dto_1 = require("./dto/update-book-copy.dto");
 const update_book_dto_1 = require("./dto/update-book.dto");
 const platform_1 = require("./platform");
@@ -35,10 +36,11 @@ const fetchCopyState = (prisma, req) => prisma.libraryCatalogBookCopy.findUnique
  * (see ./platform.ts's docblock for why it's a local instance, not an
  * import of core's).
  *
- * Route registration order matters within one controller: `export` and the
- * nested `:bookId/copies...` routes are declared BEFORE `:id` so Express
- * never mistakes "export" or a copies sub-path for a book id (the same
- * lesson apps/api/src/core/users/users.module.ts's docblock explains).
+ * Route registration order matters within one controller: `export`, the
+ * `ratings/*` moderation routes, and the nested `:bookId/copies...` routes
+ * are all declared BEFORE `:id` so Express never mistakes a literal
+ * single-segment path (or a copies sub-path) for a book id (the same lesson
+ * apps/api/src/core/users/users.module.ts's docblock explains).
  */
 let BooksController = class BooksController {
     books;
@@ -56,8 +58,21 @@ let BooksController = class BooksController {
         });
         res.send(buffer);
     }
-    async findById(id) {
-        return this.books.findById(id);
+    // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
+    // "The librarian has to approve the comments to publish it" — a separate
+    // cross-book queue, not a privileged view of GET /books/:id's own ratings
+    // list (see BooksService.listPendingReviews's own docblock for why).
+    async listPendingReviews() {
+        return this.books.listPendingReviews();
+    }
+    async approveReview(ratingId, user) {
+        return this.books.approveReview(ratingId, user.userId);
+    }
+    async rejectReview(ratingId, user) {
+        return this.books.rejectReview(ratingId, user.userId);
+    }
+    async findById(id, user) {
+        return this.books.findById(id, user.userId);
     }
     async create(dto) {
         return this.books.create(dto);
@@ -89,6 +104,18 @@ let BooksController = class BooksController {
     async removeCopy(bookId, id) {
         await this.books.removeCopy(bookId, id);
     }
+    // --- Ratings (LIBRARY_CATALOG-D20) ---------------------------------------
+    // Self-scoped: always the CALLER's own rating (@CurrentUser()), never a
+    // rate-on-someone-else's-behalf endpoint — `books.rate` is grantable to
+    // any role, not hardcoded to "reader" (see manifest.json/DECISIONS.md).
+    // The full ratings list + aggregate + the caller's own rating are already
+    // returned by `GET /books/:id` (`findById` above) — no separate list route.
+    async rateBook(bookId, dto, user) {
+        return this.books.rateBook(bookId, user.userId, dto);
+    }
+    async removeRating(bookId, user) {
+        await this.books.removeRating(bookId, user.userId);
+    }
 };
 exports.BooksController = BooksController;
 __decorate([
@@ -108,11 +135,39 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "export", null);
 __decorate([
+    (0, common_1.Get)('ratings/pending'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "listPendingReviews", null);
+__decorate([
+    (0, common_1.Post)('ratings/:ratingId/approve'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'approve_review' }),
+    __param(0, (0, common_1.Param)('ratingId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "approveReview", null);
+__decorate([
+    (0, common_1.Post)('ratings/:ratingId/reject'),
+    (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'reject_review' }),
+    __param(0, (0, common_1.Param)('ratingId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "rejectReview", null);
+__decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "findById", null);
 __decorate([
@@ -204,6 +259,28 @@ __decorate([
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "removeCopy", null);
+__decorate([
+    (0, common_1.Put)(':bookId/rating'),
+    (0, platform_1.RequirePermission)('library_catalog.books.rate'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'upsert' }),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, rate_book_dto_1.RateBookDto, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "rateBook", null);
+__decorate([
+    (0, common_1.Delete)(':bookId/rating'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, platform_1.RequirePermission)('library_catalog.books.rate'),
+    (0, platform_1.Audit)({ category: 'library_catalog.ratings', entityType: 'LibraryCatalogBookRating', action: 'delete' }),
+    __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "removeRating", null);
 exports.BooksController = BooksController = __decorate([
     (0, common_1.Controller)('api/library/books'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

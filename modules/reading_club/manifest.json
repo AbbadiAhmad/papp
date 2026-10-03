@@ -1,0 +1,165 @@
+{
+  "key": "reading_club",
+  "name": "Reading Club",
+  "version": "1.0.0",
+  "compatibleAppVersion": ">=0.1.0 <1.0.0",
+  "dependsOn": ["library_circulation"],
+  "description": "Reading groups made of ordered stages (books or pages), reader assignment/progress tracking, and stage-completion rewards — built on library_circulation's students/borrowing history.",
+
+  "migrations": {
+    "dir": "migrations"
+  },
+
+  "locales": {
+    "supported": ["ar", "en"],
+    "dir": "locales"
+  },
+
+  "permissions": [
+    { "code": "reading_club.groups.view", "category": "reading_club", "descriptionKey": "reading_club.perm.groups.view" },
+    { "code": "reading_club.groups.create", "category": "reading_club", "descriptionKey": "reading_club.perm.groups.create" },
+    { "code": "reading_club.groups.update", "category": "reading_club", "descriptionKey": "reading_club.perm.groups.update" },
+    { "code": "reading_club.groups.delete", "category": "reading_club", "descriptionKey": "reading_club.perm.groups.delete" },
+    { "code": "reading_club.memberships.view", "category": "reading_club", "descriptionKey": "reading_club.perm.memberships.view" },
+    { "code": "reading_club.memberships.assign", "category": "reading_club", "descriptionKey": "reading_club.perm.memberships.assign" },
+    { "code": "reading_club.memberships.update_progress", "category": "reading_club", "descriptionKey": "reading_club.perm.memberships.update_progress" },
+    { "code": "reading_club.stage_completions.mark", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.mark" },
+    { "code": "reading_club.stage_completions.confirm_reward", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.confirm_reward" },
+    { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" },
+    { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" }
+  ],
+
+  "defaultRolePermissions": {
+    "admin": [
+      "reading_club.groups.view",
+      "reading_club.groups.create",
+      "reading_club.groups.update",
+      "reading_club.groups.delete",
+      "reading_club.memberships.view",
+      "reading_club.memberships.assign",
+      "reading_club.memberships.update_progress",
+      "reading_club.stage_completions.mark",
+      "reading_club.stage_completions.confirm_reward",
+      "reading_club.dashboard.view",
+      "reading_club.episodes.manage"
+    ],
+    "library_assistant": [
+      "reading_club.groups.view",
+      "reading_club.groups.create",
+      "reading_club.groups.update",
+      "reading_club.groups.delete",
+      "reading_club.memberships.view",
+      "reading_club.memberships.assign",
+      "reading_club.memberships.update_progress",
+      "reading_club.stage_completions.mark",
+      "reading_club.stage_completions.confirm_reward",
+      "reading_club.dashboard.view",
+      "reading_club.episodes.manage"
+    ],
+    "finance": [],
+    "reader": []
+  },
+
+  "roleAccessPolicy": "grantable",
+  "roleAccessLocked": {},
+
+  "settings": [],
+
+  "menu": [
+    {
+      "id": "reading_club.root",
+      "labelKey": "reading_club.menu.root",
+      "icon": "AutoStories",
+      "parentId": null,
+      "order": 22,
+      "route": "/reading-club/dashboard",
+      "requiredPermission": "reading_club.dashboard.view"
+    },
+    {
+      "id": "reading_club.dashboard",
+      "labelKey": "reading_club.menu.dashboard",
+      "icon": "Dashboard",
+      "parentId": "reading_club.root",
+      "order": 0,
+      "route": "/reading-club/dashboard",
+      "requiredPermission": "reading_club.dashboard.view"
+    },
+    {
+      "id": "reading_club.readers",
+      "labelKey": "reading_club.menu.readers",
+      "icon": "Group",
+      "parentId": "reading_club.root",
+      "order": 1,
+      "route": "/reading-club/readers",
+      "requiredPermission": "reading_club.memberships.view"
+    },
+    {
+      "id": "reading_club.groups",
+      "labelKey": "reading_club.menu.groups",
+      "icon": "Settings",
+      "parentId": "reading_club.root",
+      "order": 2,
+      "route": "/reading-club/groups",
+      "requiredPermission": "reading_club.groups.view"
+    },
+    {
+      "id": "reading_club.episodes",
+      "labelKey": "reading_club.menu.episodes",
+      "icon": "Event",
+      "parentId": "reading_club.root",
+      "order": 3,
+      "route": "/reading-club/episodes",
+      "requiredPermission": "reading_club.groups.view"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "/reading-club/dashboard",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.dashboard.view",
+      "component": "frontend/pages/DashboardPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/readers",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.memberships.view",
+      "component": "frontend/pages/ReadersListPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/readers/:studentId",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.memberships.view",
+      "component": "frontend/pages/ReaderDetailPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/groups",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.groups.view",
+      "component": "frontend/pages/GroupsListPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/episodes",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.groups.view",
+      "component": "frontend/pages/EpisodesPage.tsx"
+    }
+  ],
+
+  "frontend": {
+    "basePath": "/reading-club",
+    "entry": "frontend/routes.tsx",
+    "landingPage": "/reading-club/dashboard"
+  },
+
+  "backend": {
+    "entry": "backend/reading-club.module.js",
+    "apiPrefix": "/api/reading-club"
+  },
+
+  "lifecycle": {
+    "onInstall": null,
+    "onUpgrade": null,
+    "onUninstall": null
+  }
+}

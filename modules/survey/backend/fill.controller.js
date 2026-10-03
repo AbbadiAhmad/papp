@@ -48,7 +48,7 @@ let FillController = class FillController {
 exports.FillController = FillController;
 __decorate([
     (0, common_1.Get)(':id/fill'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
@@ -56,7 +56,7 @@ __decorate([
 ], FillController.prototype, "getForFilling", null);
 __decorate([
     (0, common_1.Post)(':id/fill'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, platform_1.CurrentUser)()),
     __param(3, (0, common_1.Req)()),

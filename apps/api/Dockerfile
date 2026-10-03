@@ -32,6 +32,12 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
 
+# postgresql16-client provides pg_dump/pg_restore/psql — needed by
+# BackupService (core/backup/) and cli-db.ts's restore path (docs/DECISIONS.md
+# D43 resolution). Alpine's postgresql16-client matches the `db` service's
+# postgres:16-alpine image (docker-compose.yml).
+RUN apk add --no-cache postgresql16-client
+
 COPY --from=build /repo/package.json /repo/package-lock.json* ./
 COPY --from=build /repo/tsconfig.base.json ./
 COPY --from=build /repo/packages/shared-types/package.json packages/shared-types/package.json

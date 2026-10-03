@@ -1,6 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isProtectedAdminRoleCode } from './permissions-page.guard';
 import { toPublicPermission, PublicPermission } from './permission.presenter';
+
+/**
+ * The two permission codes that must never be revocable from the `admin`
+ * role (see `setRoleGrants` below). Structurally prevents the platform from
+ * ever reaching the "admin holds zero grants" state that the old D12
+ * `PermissionsPageGuard` bypass existed to work around — see
+ * `docs/DECISIONS.md` (the entry superseding D12) and `ARCHITECTURE.md`
+ * §7.4 for the full history.
+ */
+export const ADMIN_PROTECTED_PERMISSION_CODES = ['permissions.view', 'permissions.grant'] as const;
 
 @Injectable()
 export class PermissionsService {
@@ -26,9 +37,20 @@ export class PermissionsService {
    * Sets a role's FULL grant set (see SetRoleGrantsDto). Re-validates every
    * code against the live catalog (never trusts the caller's list blindly)
    * and applies the diff in a single transaction.
+   *
+   * Guarded against ever revoking `permissions.view`/`permissions.grant`
+   * from the `admin` role specifically (`assertAdminKeepsProtectedGrants`
+   * below) — the structural replacement for the old D12
+   * `PermissionsPageGuard` bypass: once admin can never actually lose these
+   * two grants, the Permissions page never needs a special-cased access
+   * rule, only the same plain `permissions.view` check every other page
+   * uses. Every OTHER permission can still be freely revoked from admin,
+   * and these two codes can still be freely revoked from any OTHER role —
+   * this check is scoped to exactly that one (role, permission-code) pair.
    */
   async setRoleGrants(roleId: string, permissionCodes: string[], grantedBy?: string): Promise<string[]> {
-    await this.assertRoleExists(roleId);
+    const role = await this.assertRoleExists(roleId);
+    this.assertAdminKeepsProtectedGrants(role.code, permissionCodes);
 
     const uniqueCodes = Array.from(new Set(permissionCodes));
     const permissions = await this.prisma.permission.findMany({ where: { code: { in: uniqueCodes } } });
@@ -88,22 +110,33 @@ export class PermissionsService {
   }
 
   /**
-   * The role CODES (not permissions) the user currently holds, resolved
-   * fresh. Used only by `PermissionsPageGuard` — the single, explicitly
-   * sanctioned D12 exception (ARCHITECTURE.md §7.4) — and nowhere else.
+   * Throws `ForbiddenException` iff `roleCode` is the protected `admin` role
+   * AND the incoming FULL grant set (`nextPermissionCodes` — this is a
+   * full-replace API, not a delta) would drop one of
+   * `ADMIN_PROTECTED_PERMISSION_CODES`. Every other role is unaffected, and
+   * every other permission code can still be freely revoked from admin.
+   * Same exception type as `RolesService.assertNotLastActiveAdmin` — this is
+   * the same category of platform-bootstrap safety invariant, just applied
+   * to a role's own permission grants instead of a user's role membership.
    */
-  async getRoleCodesForUser(userId: string): Promise<string[]> {
-    const userRoles = await this.prisma.userRole.findMany({
-      where: { userId },
-      include: { role: true },
-    });
-    return userRoles.map((ur) => ur.role.code);
+  private assertAdminKeepsProtectedGrants(roleCode: string, nextPermissionCodes: string[]): void {
+    if (!isProtectedAdminRoleCode(roleCode)) {
+      return;
+    }
+    const nextCodes = new Set(nextPermissionCodes);
+    const missing = ADMIN_PROTECTED_PERMISSION_CODES.filter((code) => !nextCodes.has(code));
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `Cannot revoke ${missing.join(', ')} from the admin role — at least one active admin must always be able to view and manage permissions.`,
+      );
+    }
   }
 
-  private async assertRoleExists(roleId: string): Promise<void> {
+  private async assertRoleExists(roleId: string): Promise<{ id: string; code: string }> {
     const role = await this.prisma.role.findUnique({ where: { id: roleId } });
     if (!role) {
       throw new NotFoundException('Role not found');
     }
+    return role;
   }
 }

@@ -104,12 +104,13 @@ export class RolesService {
    *
    * Deliberately counts by the `admin` role code, not `isSystem` — imported
    * from `permissions-page.guard.ts` (`PROTECTED_ADMIN_ROLE_CODE`/
-   * `isProtectedAdminRoleCode`), the ONE sanctioned D12 file allowed to
+   * `isProtectedAdminRoleCode`), the ONE sanctioned file allowed to
    * name a role by code at all (`scripts/lint-no-hardcoded-roles.ts`'s own
    * allowlist) — this platform-bootstrap/safety invariant is the same
-   * category of concern as that file's own exception, so the actual
-   * role-name comparison lives there, imported by value here rather than
-   * re-implemented as a second hardcoded check.
+   * category of concern as `PermissionsService.setRoleGrants`'s own
+   * protected-grant guard (that file's other sanctioned caller), so the
+   * actual role-name comparison lives there, imported by value here rather
+   * than re-implemented as a second hardcoded check.
    */
   async assertNotLastActiveAdmin(tx: Prisma.TransactionClient | PrismaClient, candidateUserId: string): Promise<void> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LAST_ADMIN_GUARD_ADVISORY_LOCK_KEY})`;

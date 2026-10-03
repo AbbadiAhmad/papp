@@ -1,0 +1,24 @@
+-- 0011_add_module_data_dropped.sql
+--
+-- Tracks whether a module's own data tables were ever actually dropped via
+-- `--drop-data` uninstall, distinct from the module simply being `disabled`
+-- (D26 safe-by-default: plain uninstall keeps data). `false` is the correct
+-- default for every pre-existing row too — before this column existed,
+-- D26's own behavior meant no module's data had ever been dropped through
+-- any path this column doesn't also cover.
+--
+-- Set to `true` inside `ModuleRegistryService.uninstall(key, dropData: true)`
+-- regardless of whether that module's `migrations/down/` coverage is
+-- complete — it records that a drop was REQUESTED and attempted, not a
+-- guarantee every table is gone (a module with partial `down/` coverage is
+-- a separate, module-level gap, not something this flag papers over). Reset
+-- to `false` on a fresh `install()` — a new install lifecycle starts with
+-- nothing dropped yet.
+--
+-- Feeds the Modules admin page (apps/web/src/core/modules/ModulesAdminPage.tsx):
+-- a `disabled` module with `data_dropped = true` is hidden from the main
+-- list (its data is genuinely gone, nothing meaningful to show); a
+-- `disabled` module with `data_dropped = false` shows an inline notice that
+-- its data is still present in the database.
+
+ALTER TABLE module_registry ADD COLUMN IF NOT EXISTS data_dropped BOOLEAN NOT NULL DEFAULT false;

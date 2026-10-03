@@ -1,12 +1,15 @@
 {
   "library_catalog.menu.root": "المكتبة",
   "library_catalog.menu.books": "الكتب",
+  "library_catalog.menu.moderate_reviews": "مراجعة التعليقات",
 
   "library_catalog.perm.books.view": "عرض الكتب",
   "library_catalog.perm.books.create": "إضافة كتب",
   "library_catalog.perm.books.update": "تعديل الكتب",
   "library_catalog.perm.books.delete": "حذف الكتب",
   "library_catalog.perm.books.export": "تصدير الكتب",
+  "library_catalog.perm.books.rate": "تقييم الكتب",
+  "library_catalog.perm.books.moderate_ratings": "الموافقة على تعليقات الكتب أو رفضها",
 
   "library_catalog.fields.title": "العنوان",
   "library_catalog.fields.author": "المؤلف",
@@ -34,6 +37,22 @@
   "library_catalog.book.add_copies_label": "كل كتاب يحتاج إلى نسخة فعلية واحدة على الأقل — أدخل رمز الاستجابة السريعة الخاص بها أدناه. يمكنك إضافة نسخ أخرى لاحقاً من صفحة الكتاب.",
 
   "library_catalog.copies.title": "النسخ",
+
+  "library_catalog.ratings.title": "التقييمات والمراجعات",
+  "library_catalog.ratings.none_yet": "لا توجد تقييمات بعد",
+  "library_catalog.ratings.count": "{{count}} تقييم",
+  "library_catalog.ratings.rate_this_book": "قيّم هذا الكتاب",
+  "library_catalog.ratings.review_label": "مراجعة (اختياري)",
+  "library_catalog.ratings.submit_button": "إرسال التقييم",
+  "library_catalog.ratings.remove_button": "حذف تقييمي",
+  "library_catalog.ratings.anonymous_reader": "قارئ",
+  "library_catalog.ratings.review_status.pending": "بانتظار الموافقة",
+  "library_catalog.ratings.review_status.approved": "تمت الموافقة",
+  "library_catalog.ratings.review_status.rejected": "مرفوض",
+
+  "library_catalog.moderate_reviews.empty": "لا توجد تعليقات بانتظار الموافقة.",
+  "library_catalog.moderate_reviews.approve_button": "موافقة",
+  "library_catalog.moderate_reviews.reject_button": "رفض",
   "library_catalog.copies.qr_code": "رمز الاستجابة السريعة",
   "library_catalog.copies.status": "الحالة",
   "library_catalog.copies.condition": "الحالة الفنية",

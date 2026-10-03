@@ -1,7 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { PERMISSION_CHECK_DELEGATED_KEY } from '../../core/permissions/permissions-page.guard';
 import { PermissionsService } from '../../core/permissions/permissions.service';
 import { AuthenticatedUser } from '../decorators/current-user.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -36,9 +35,16 @@ import { REQUIRE_PERMISSION_KEY } from '../decorators/require-permission.decorat
  *  - `@RequirePermission` + no user + NOT public → 401 (JwtAuthGuard missing
  *    would be a wiring bug; with it global this means the route was public
  *    to JwtAuthGuard but not here, which cannot happen — same key).
- *  - `@PermissionCheckDelegatedToPermissionsPageGuard()` → stand down; the
- *    route-scoped `PermissionsPageGuard` (the single D12 exception) performs
- *    the check instead, including its admin bypass. See that file.
+ *
+ * The Permissions page used to have a route-scoped bypass guard here
+ * (`PermissionsPageGuard`, the old D12 "admin always reaches the
+ * Permissions page" exception) that this guard stood down for via a
+ * delegated-check metadata key. Removed once `permissions.view`/
+ * `permissions.grant` became structurally impossible to revoke from
+ * `admin` (`PermissionsService.setRoleGrants`'s guard) — the Permissions
+ * page now goes through this exact same plain check as every other page,
+ * no exceptions. See `docs/ARCHITECTURE.md` §7.4 and `docs/DECISIONS.md`
+ * (the entry superseding D12) for the full history.
  */
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -48,16 +54,6 @@ export class PermissionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const delegated = this.reflector.getAllAndOverride<boolean>(PERMISSION_CHECK_DELEGATED_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (delegated) {
-      // D12: PermissionsPageGuard (controller-scoped, runs after this global
-      // guard) owns the check for exactly these handlers.
-      return true;
-    }
-
     const requiredPermission = this.reflector.getAllAndOverride<string | undefined>(REQUIRE_PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),

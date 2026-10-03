@@ -1,9 +1,12 @@
+import { ForbiddenException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { PermissionsService } from '../../../src/core/permissions/permissions.service';
 
 interface MockPrisma {
   rolePermission: {
     findMany: jest.Mock;
+    deleteMany: jest.Mock;
+    upsert: jest.Mock;
   };
   userRole: {
     findMany: jest.Mock;
@@ -11,13 +14,19 @@ interface MockPrisma {
   permission: {
     findMany: jest.Mock;
   };
+  role: {
+    findUnique: jest.Mock;
+  };
+  $transaction: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   return {
-    rolePermission: { findMany: jest.fn() },
+    rolePermission: { findMany: jest.fn(), deleteMany: jest.fn(), upsert: jest.fn() },
     userRole: { findMany: jest.fn() },
     permission: { findMany: jest.fn() },
+    role: { findUnique: jest.fn() },
+    $transaction: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -129,26 +138,67 @@ describe('PermissionsService', () => {
     });
   });
 
-  describe('getRoleCodesForUser', () => {
-    it('resolves role codes via user_roles with the role included', async () => {
-      prisma.userRole.findMany.mockResolvedValue([
-        { userId: 'user-1', roleId: 'r1', role: { id: 'r1', code: 'admin' } },
-        { userId: 'user-1', roleId: 'r2', role: { id: 'r2', code: 'reader' } },
-      ]);
+  /**
+   * The structural replacement for the old D12 `PermissionsPageGuard`
+   * bypass (`docs/DECISIONS.md`, the entry superseding D12 /
+   * `ARCHITECTURE.md` §7.4): `admin` can never actually be left holding
+   * zero grants for `permissions.view`/`permissions.grant`, because
+   * revoking either from `admin` specifically is rejected outright. Every
+   * OTHER permission can still be freely revoked from admin, and these two
+   * codes can still be freely revoked from any OTHER role.
+   */
+  describe('setRoleGrants — protected admin grants', () => {
+    function roleRow(overrides: Record<string, unknown> = {}) {
+      return { id: 'role-1', code: 'admin', nameI18nKey: 'roles.admin', isSystem: true, ...overrides };
+    }
 
-      const codes = await service.getRoleCodesForUser('user-1');
-
-      expect(prisma.userRole.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
-        include: { role: true },
-      });
-      expect(codes).toEqual(['admin', 'reader']);
+    beforeEach(() => {
+      // setRoleGrants re-validates every code against the live catalog —
+      // the tests below always submit a set that fully round-trips.
+      prisma.rolePermission.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.rolePermission.upsert.mockResolvedValue({});
+      prisma.rolePermission.findMany.mockResolvedValue([]);
     });
 
-    it('returns an empty array for a user with no roles', async () => {
-      prisma.userRole.findMany.mockResolvedValue([]);
+    it('rejects revoking permissions.view from the admin role', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow());
+      prisma.permission.findMany.mockResolvedValue([{ id: 'perm-grant', code: 'permissions.grant' }]);
 
-      await expect(service.getRoleCodesForUser('user-1')).resolves.toEqual([]);
+      await expect(service.setRoleGrants('role-1', ['permissions.grant'])).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects revoking permissions.grant from the admin role', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow());
+      prisma.permission.findMany.mockResolvedValue([{ id: 'perm-view', code: 'permissions.view' }]);
+
+      await expect(service.setRoleGrants('role-1', ['permissions.view'])).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('allows revoking some OTHER permission from admin as long as both protected codes remain', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow());
+      prisma.permission.findMany.mockResolvedValue([
+        { id: 'perm-view', code: 'permissions.view' },
+        { id: 'perm-grant', code: 'permissions.grant' },
+      ]);
+      prisma.rolePermission.findMany.mockResolvedValue([
+        { permission: { code: 'permissions.view' } },
+        { permission: { code: 'permissions.grant' } },
+      ]);
+
+      await expect(
+        service.setRoleGrants('role-1', ['permissions.view', 'permissions.grant']),
+      ).resolves.toEqual(['permissions.grant', 'permissions.view']);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows revoking permissions.view/permissions.grant from a NON-admin role', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow({ id: 'role-2', code: 'finance', isSystem: true }));
+      prisma.permission.findMany.mockResolvedValue([]);
+
+      await expect(service.setRoleGrants('role-2', [])).resolves.toEqual([]);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 });

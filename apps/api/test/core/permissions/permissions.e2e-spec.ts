@@ -4,12 +4,7 @@ import request from 'supertest';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { createTestApp } from '../../support/bootstrap-app';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
-import {
-  ALL_ROLE_CODES,
-  createUserWithRole,
-  expectPermissionEnforced,
-  fixtureForRole,
-} from '../../../../../test/support/permission-matrix';
+import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../../test/support/permission-matrix';
 
 describe('Permissions (e2e)', () => {
   let container: StartedPostgreSqlContainer | undefined;
@@ -90,65 +85,70 @@ describe('Permissions (e2e)', () => {
     });
   });
 
-  describe('D12: zero-grant admin still reaches the Permissions page (the one sanctioned role-name exception)', () => {
-    it('an admin with EVERY grant stripped can still list permissions/roles and read/write role grants', async () => {
+  describe('admin role grant protection (structural replacement for the old D12 bypass)', () => {
+    it('rejects revoking permissions.view/permissions.grant from the admin role, but allows revoking any other permission', async () => {
       const prisma = app!.get(PrismaService);
       const adminRole = await prisma.role.findUniqueOrThrow({ where: { code: 'admin' } });
+      const admin = await fixtureForRole(app!, 'admin');
 
-      // A dedicated, disposable admin account (never the shared fixture) so
-      // stripping its grants can't affect any other test in this file.
-      const zeroGrantAdmin = await createUserWithRole(app!, 'admin', { label: 'zero-grant-admin' });
-
-      const originalGrants = await prisma.rolePermission.findMany({ where: { roleId: adminRole.id } });
-      expect(originalGrants.length).toBeGreaterThan(0); // sanity: admin really does start with grants
-
-      await prisma.rolePermission.deleteMany({ where: { roleId: adminRole.id } });
+      const originalGrants = await prisma.rolePermission.findMany({
+        where: { roleId: adminRole.id },
+        include: { permission: true },
+      });
+      const originalCodes = originalGrants.map((g) => g.permission.code);
+      expect(originalCodes).toEqual(expect.arrayContaining(['permissions.view', 'permissions.grant']));
 
       try {
-        const effective = await prisma.rolePermission.findMany({ where: { roleId: adminRole.id } });
-        expect(effective).toHaveLength(0); // confirms the admin role is genuinely zero-grant now
+        // Attempting to submit admin's full grant set MINUS permissions.view
+        // is rejected outright — the write never happens.
+        const withoutView = await request(app!.getHttpServer())
+          .put(`/permissions/roles/${adminRole.id}/grants`)
+          .set('Authorization', `Bearer ${admin.token}`)
+          .send({ permissionCodes: originalCodes.filter((c) => c !== 'permissions.view') });
+        expect(withoutView.status).toBe(403);
 
-        const listPermissions = await request(app!.getHttpServer())
-          .get('/permissions')
-          .set('Authorization', `Bearer ${zeroGrantAdmin.token}`);
-        expect(listPermissions.status).toBe(200);
+        const withoutGrant = await request(app!.getHttpServer())
+          .put(`/permissions/roles/${adminRole.id}/grants`)
+          .set('Authorization', `Bearer ${admin.token}`)
+          .send({ permissionCodes: originalCodes.filter((c) => c !== 'permissions.grant') });
+        expect(withoutGrant.status).toBe(403);
 
-        const listRoles = await request(app!.getHttpServer())
-          .get('/roles')
-          .set('Authorization', `Bearer ${zeroGrantAdmin.token}`);
-        expect(listRoles.status).toBe(200);
+        const stillIntact = await prisma.rolePermission.findMany({ where: { roleId: adminRole.id } });
+        expect(stillIntact).toHaveLength(originalGrants.length); // confirms neither rejected write partially applied
 
-        const readerRole = await prisma.role.findUniqueOrThrow({ where: { code: 'reader' } });
-        const getGrants = await request(app!.getHttpServer())
-          .get(`/permissions/roles/${readerRole.id}/grants`)
-          .set('Authorization', `Bearer ${zeroGrantAdmin.token}`);
-        expect(getGrants.status).toBe(200);
-
-        const setGrants = await request(app!.getHttpServer())
-          .put(`/permissions/roles/${readerRole.id}/grants`)
-          .set('Authorization', `Bearer ${zeroGrantAdmin.token}`)
-          .send({ permissionCodes: ['users.view'] });
-        // The zero-grant admin genuinely reaches the grant-write endpoint via
-        // PermissionsPageGuard's D12 bypass (@PermissionCheckDelegatedToPermissionsPageGuard
-        // stands the global PermissionGuard down here) even though it holds
-        // literally zero real grants of its own.
-        expect(setGrants.status).toBe(200);
-
-        // A non-admin caller with zero grants, by contrast, is still 403'd —
-        // proving this is the admin-role bypass and NOT "no user is ever checked".
-        const zeroGrantReader = await createUserWithRole(app!, 'reader', { label: 'zero-grant-reader-control' });
-        const controlRes = await request(app!.getHttpServer())
-          .get('/permissions')
-          .set('Authorization', `Bearer ${zeroGrantReader.token}`);
-        expect(controlRes.status).toBe(403);
+        // Revoking some OTHER permission from admin (keeping both protected
+        // codes) still succeeds — this is not a blanket "admin is immutable"
+        // rule, only the two protected codes are guarded.
+        const dropOther = originalCodes.filter((c) => c !== 'audit.view');
+        const otherOk = await request(app!.getHttpServer())
+          .put(`/permissions/roles/${adminRole.id}/grants`)
+          .set('Authorization', `Bearer ${admin.token}`)
+          .send({ permissionCodes: dropOther });
+        expect(otherOk.status).toBe(200);
+        expect(otherOk.body).toEqual(expect.arrayContaining(['permissions.view', 'permissions.grant']));
+        expect(otherOk.body).not.toEqual(expect.arrayContaining(['audit.view']));
       } finally {
         // Restore the admin role's real grants so nothing else in this
         // process (later tests, later spec files sharing the worker) is affected.
+        await prisma.rolePermission.deleteMany({ where: { roleId: adminRole.id } });
         await prisma.rolePermission.createMany({
           data: originalGrants.map((g) => ({ roleId: g.roleId, permissionId: g.permissionId, grantedBy: g.grantedBy })),
           skipDuplicates: true,
         });
       }
+    });
+
+    it('still allows revoking permissions.view/permissions.grant from a NON-admin role', async () => {
+      const prisma = app!.get(PrismaService);
+      const admin = await fixtureForRole(app!, 'admin');
+      const financeRole = await prisma.role.findUniqueOrThrow({ where: { code: 'finance' } });
+
+      const res = await request(app!.getHttpServer())
+        .put(`/permissions/roles/${financeRole.id}/grants`)
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ permissionCodes: [] });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
     });
   });
 });

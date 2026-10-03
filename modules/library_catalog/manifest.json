@@ -20,7 +20,9 @@
     { "code": "library_catalog.books.create", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.create" },
     { "code": "library_catalog.books.update", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.update" },
     { "code": "library_catalog.books.delete", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.delete" },
-    { "code": "library_catalog.books.export", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.export" }
+    { "code": "library_catalog.books.export", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.export" },
+    { "code": "library_catalog.books.rate", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.rate" },
+    { "code": "library_catalog.books.moderate_ratings", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.moderate_ratings" }
   ],
 
   "defaultRolePermissions": {
@@ -29,11 +31,19 @@
       "library_catalog.books.create",
       "library_catalog.books.update",
       "library_catalog.books.delete",
-      "library_catalog.books.export"
+      "library_catalog.books.export",
+      "library_catalog.books.rate",
+      "library_catalog.books.moderate_ratings"
     ],
-    "library_assistant": ["library_catalog.books.view", "library_catalog.books.create", "library_catalog.books.update"],
+    "library_assistant": [
+      "library_catalog.books.view",
+      "library_catalog.books.create",
+      "library_catalog.books.update",
+      "library_catalog.books.rate",
+      "library_catalog.books.moderate_ratings"
+    ],
     "finance": [],
-    "reader": ["library_catalog.books.view"]
+    "reader": ["library_catalog.books.view", "library_catalog.books.rate"]
   },
 
   "roleAccessPolicy": "grantable",
@@ -58,6 +68,14 @@
       "order": 1,
       "route": "/library/books",
       "requiredPermission": "library_catalog.books.view"
+    },
+    {
+      "id": "library_catalog.reviews.moderate",
+      "labelKey": "library_catalog.menu.moderate_reviews",
+      "parentId": "library_catalog.root",
+      "order": 2,
+      "route": "/library/reviews/moderate",
+      "requiredPermission": "library_catalog.books.moderate_ratings"
     }
   ],
 
@@ -78,6 +96,12 @@
       "pattern": "/library/public/books/:bookId/availability",
       "access": "public",
       "component": "frontend/pages/PublicBookAvailabilityPage.tsx"
+    },
+    {
+      "pattern": "/library/reviews/moderate",
+      "access": "authenticated",
+      "requiredPermission": "library_catalog.books.moderate_ratings",
+      "component": "frontend/pages/ModerateReviewsPage.tsx"
     }
   ],
 

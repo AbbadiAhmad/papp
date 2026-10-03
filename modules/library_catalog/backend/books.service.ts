@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 
@@ -60,20 +61,30 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         copies: true,
       },
     });
+    const ratingAggregates = await this.prisma.libraryCatalogBookRating.groupBy({
+      by: ['bookId'],
+      where: { bookId: { in: books.map((book) => book.id) } },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+    const ratingsByBook = new Map(ratingAggregates.map((agg) => [agg.bookId, agg]));
     return books.map((book) => {
       const totalCopies = book._count.copies;
       const availableCopies = book.copies.filter((c) => c.status === LibraryCatalogBookCopyStatus.available).length;
+      const ratingAgg = ratingsByBook.get(book.id);
       return {
         ...book,
         totalCopies,
         availableCopies,
+        averageRating: ratingAgg?._avg.rating ?? null,
+        ratingsCount: ratingAgg?._count.rating ?? 0,
         copies: undefined,
         _count: undefined,
       };
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, currentUserId?: string) {
     const book = await this.prisma.libraryCatalogBook.findUnique({
       where: { id },
       include: { copies: { orderBy: { createdAt: 'asc' } } },
@@ -81,7 +92,39 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     if (!book) {
       throw new NotFoundException(`Book "${id}" not found`);
     }
-    return book;
+
+    // ALL ratings count toward the average/count — moderation only gates the
+    // WRITTEN review text, never the numeric star score (LIBRARY_CATALOG-D21).
+    const ratings = await this.prisma.libraryCatalogBookRating.findMany({ where: { bookId: id }, orderBy: { updatedAt: 'desc' } });
+    const raterIds = [...new Set(ratings.map((r) => r.userId))];
+    const raters = raterIds.length ? await this.prisma.user.findMany({ where: { id: { in: raterIds } }, select: { id: true, name: true } }) : [];
+    const raterNameById = new Map(raters.map((r) => [r.id, r.name]));
+    const myRatingRow = currentUserId ? ratings.find((r) => r.userId === currentUserId) : undefined;
+
+    // A review only appears in the PUBLIC list once approved — with one
+    // exception: the caller always sees their OWN review regardless of its
+    // moderation status, so they know what they submitted and its state.
+    // A moderator reviews/acts on pending items through the dedicated
+    // `listPendingReviews`/`approveReview`/`rejectReview` queue below, not
+    // by getting a privileged view of this same list.
+    const visibleRatings = ratings.filter((r) => r.reviewStatus === 'approved' || r.userId === currentUserId);
+
+    return {
+      ...book,
+      averageRating: ratings.length ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : null,
+      ratingsCount: ratings.length,
+      ratings: visibleRatings.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        userName: raterNameById.get(r.userId) ?? null,
+        rating: r.rating,
+        review: r.review,
+        reviewStatus: r.reviewStatus,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+      myRating: myRatingRow ? { rating: myRatingRow.rating, review: myRatingRow.review, reviewStatus: myRatingRow.reviewStatus } : null,
+    };
   }
 
   async create(dto: CreateBookDto) {
@@ -176,7 +219,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
     return this.prisma.libraryCatalogBookCopy.update({
       where: { id: copy.id },
-      data: { ...dto, history: updatedHistory as Prisma.InputJsonValue },
+      data: { ...dto, history: updatedHistory as unknown as Prisma.InputJsonValue },
     });
   }
 
@@ -193,6 +236,105 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       }
       throw err;
     }
+  }
+
+  // --- Ratings (LIBRARY_CATALOG-D20) ---------------------------------------
+  // One row per (book, user), editable — "rate" always upserts the caller's
+  // OWN rating (self-scoped, gated by `library_catalog.books.rate`, never a
+  // rate-on-behalf-of-someone-else endpoint). Reading the list/aggregate
+  // needs only `books.view`, same permission the rest of the book detail
+  // page already requires.
+
+  /**
+   * "The librarian has to approve the comments to publish it"
+   * (LIBRARY_CATALOG-D21): a review with no text needs no moderation at all
+   * (`reviewStatus` stays/starts 'approved'). Submitting or editing NON-EMPTY
+   * review text always resets `reviewStatus` to 'pending' and clears any
+   * prior moderation decision — a previously-approved comment that gets
+   * edited must be re-approved, never grandfathered in silently. Editing
+   * only the star rating (leaving the review text unchanged) never disturbs
+   * an already-approved/-rejected review's status.
+   */
+  async rateBook(bookId: string, userId: string, dto: RateBookDto) {
+    await this.ensureBookExists(bookId);
+    const existing = await this.prisma.libraryCatalogBookRating.findUnique({ where: { bookId_userId: { bookId, userId } } });
+    const newReview = dto.review ?? null;
+    const reviewChanged = (existing?.review ?? null) !== newReview;
+    const reviewStatus = !newReview ? 'approved' : reviewChanged ? 'pending' : existing!.reviewStatus;
+
+    return this.prisma.libraryCatalogBookRating.upsert({
+      where: { bookId_userId: { bookId, userId } },
+      create: { bookId, userId, rating: dto.rating, review: newReview, reviewStatus },
+      update: {
+        rating: dto.rating,
+        review: newReview,
+        reviewStatus,
+        ...(reviewChanged ? { moderatedBy: null, moderatedAt: null } : {}),
+      },
+    });
+  }
+
+  async removeRating(bookId: string, userId: string): Promise<void> {
+    const existing = await this.prisma.libraryCatalogBookRating.findUnique({ where: { bookId_userId: { bookId, userId } } });
+    if (!existing) {
+      throw new NotFoundException('You have not rated this book');
+    }
+    await this.prisma.libraryCatalogBookRating.delete({ where: { id: existing.id } });
+  }
+
+  // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
+  // A separate, dedicated queue rather than a privileged view of `findById`'s
+  // own ratings list (see that method's own docblock) — matches this
+  // platform's existing "moderation/admin queue as its own screen" pattern
+  // (e.g. the Users Excel-import preview, the Audit purge screen).
+
+  /** Every review awaiting a decision, across every book — oldest first (first submitted, first reviewed). */
+  async listPendingReviews() {
+    const pending = await this.prisma.libraryCatalogBookRating.findMany({
+      where: { reviewStatus: 'pending' },
+      orderBy: { updatedAt: 'asc' },
+    });
+    if (pending.length === 0) return [];
+
+    const bookIds = [...new Set(pending.map((r) => r.bookId))];
+    const userIds = [...new Set(pending.map((r) => r.userId))];
+    const [books, raters] = await Promise.all([
+      this.prisma.libraryCatalogBook.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } }),
+      this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }),
+    ]);
+    const bookTitleById = new Map(books.map((b) => [b.id, b.title]));
+    const raterNameById = new Map(raters.map((r) => [r.id, r.name]));
+
+    return pending.map((r) => ({
+      id: r.id,
+      bookId: r.bookId,
+      bookTitle: bookTitleById.get(r.bookId) ?? null,
+      userId: r.userId,
+      userName: raterNameById.get(r.userId) ?? null,
+      rating: r.rating,
+      review: r.review,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+  }
+
+  async approveReview(ratingId: string, moderatorId: string) {
+    return this.moderateReview(ratingId, 'approved', moderatorId);
+  }
+
+  async rejectReview(ratingId: string, moderatorId: string) {
+    return this.moderateReview(ratingId, 'rejected', moderatorId);
+  }
+
+  private async moderateReview(ratingId: string, reviewStatus: 'approved' | 'rejected', moderatorId: string) {
+    const existing = await this.prisma.libraryCatalogBookRating.findUnique({ where: { id: ratingId } });
+    if (!existing) {
+      throw new NotFoundException(`Rating "${ratingId}" not found`);
+    }
+    return this.prisma.libraryCatalogBookRating.update({
+      where: { id: ratingId },
+      data: { reviewStatus, moderatedBy: moderatorId, moderatedAt: new Date() },
+    });
   }
 
   // --- History (Feature 2.1) --------------------------------------------------

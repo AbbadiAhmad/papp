@@ -9,6 +9,7 @@ export interface PublicModuleEntry {
   installedAt: Date | null;
   updatedAt: Date;
   manifestSnapshot: unknown;
+  dataDropped: boolean;
 }
 
 export function toPublicModuleEntry(row: ModuleRegistryEntry): PublicModuleEntry {
@@ -19,6 +20,7 @@ export function toPublicModuleEntry(row: ModuleRegistryEntry): PublicModuleEntry
     installedAt: row.installedAt,
     updatedAt: row.updatedAt,
     manifestSnapshot: row.manifestSnapshot,
+    dataDropped: row.dataDropped,
   };
 }
 

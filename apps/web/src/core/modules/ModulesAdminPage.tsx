@@ -30,6 +30,37 @@ import { modulesApi } from '../../shared/api/modules';
 import { useGatedCall, Can } from '../../shared/permissions';
 import type { AvailableModuleEntry, ModuleStatus, PublicModuleEntry } from '../../shared/api/types';
 
+const RESTART_POLL_INTERVAL_MS = 500;
+const RESTART_POLL_TIMEOUT_MS = 20_000;
+
+/**
+ * Install/upgrade succeed over HTTP, then the api container deliberately
+ * exits right after the response flushes (D15 orchestrated restart —
+ * module-registry.controller.ts's `res.on('finish', ...)`) so
+ * docker-compose's `restart: unless-stopped` can bring it back with the
+ * new/updated module mounted. That leaves a real, expected ~1-2s window
+ * where the api is unreachable — calling `reload()` immediately during that
+ * window surfaces as a raw "Network Error" even though the operation
+ * actually succeeded (reported by the user: install/upgrade show this,
+ * plain uninstall never does, since uninstall alone never restarts
+ * anything — see module-registry.controller.ts's own uninstall docblock).
+ * Poll `GET /modules` (the same read this page needs anyway) until the api
+ * is back, tolerating network errors along the way, instead of surfacing
+ * the restart race as a user-facing error.
+ */
+async function waitForApiRestart(): Promise<void> {
+  const deadline = Date.now() + RESTART_POLL_TIMEOUT_MS;
+  for (;;) {
+    try {
+      await modulesApi.list();
+      return;
+    } catch {
+      if (Date.now() >= deadline) return;
+      await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
+    }
+  }
+}
+
 const STATUS_COLOR: Record<ModuleStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   installed: 'success',
   installing: 'info',
@@ -58,6 +89,7 @@ export function ModulesAdminPage() {
 
   const [installKey, setInstallKey] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
   const [uninstallTarget, setUninstallTarget] = useState<PublicModuleEntry | null>(null);
   const [dropData, setDropData] = useState(false);
 
@@ -66,10 +98,14 @@ export function ModulesAdminPage() {
     try {
       await gated('modules.install', () => modulesApi.install(installKey));
       setInstallKey('');
+      setRestarting(true);
+      await waitForApiRestart();
       reload();
       reloadAvailable();
     } catch (err) {
       setError(extractErrorMessage(err));
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -77,9 +113,13 @@ export function ModulesAdminPage() {
     setError(null);
     try {
       await gated('modules.upgrade', () => modulesApi.upgrade(key));
+      setRestarting(true);
+      await waitForApiRestart();
       reload();
     } catch (err) {
       setError(extractErrorMessage(err));
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -127,11 +167,17 @@ export function ModulesAdminPage() {
               </MenuItem>
             ))}
           </TextField>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={handleInstall} disabled={!installKey}>
+          <Button startIcon={<AddIcon />} variant="contained" onClick={handleInstall} disabled={!installKey || restarting}>
             {t('core.modules.install')}
           </Button>
         </Stack>
       </Can>
+
+      {restarting ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('core.modules.restarting_notice')}
+        </Alert>
+      ) : null}
 
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -151,31 +197,55 @@ export function ModulesAdminPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(modules ?? []).map((entry) => (
-                <TableRow key={entry.key} hover>
-                  <TableCell>{entry.key}</TableCell>
-                  <TableCell>{entry.version}</TableCell>
-                  <TableCell>
-                    <Chip size="small" color={STATUS_COLOR[entry.status]} label={t(`core.modules.status.${entry.status}`)} />
-                  </TableCell>
-                  <TableCell align="right">
-                    {entry.key !== 'core' ? (
-                      <>
-                        <Can permission="modules.upgrade">
-                          <IconButton size="small" onClick={() => handleUpgrade(entry.key)} aria-label={t('core.modules.upgrade')}>
-                            <UpgradeIcon fontSize="small" />
-                          </IconButton>
-                        </Can>
-                        <Can permission="modules.uninstall">
-                          <IconButton size="small" onClick={() => setUninstallTarget(entry)} aria-label={t('core.modules.uninstall')}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Can>
-                      </>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {/* A `disabled` module with `dataDropped` has nothing left in the
+                  database worth showing — it's functionally identical to a
+                  module never installed at all, and still reachable via the
+                  install dropdown above (listAvailableToInstall includes any
+                  non-active-status row) if the librarian wants it back. */}
+              {(modules ?? [])
+                .filter((entry) => !(entry.status === 'disabled' && entry.dataDropped))
+                .map((entry) => (
+                  <TableRow key={entry.key} hover>
+                    <TableCell>{entry.key}</TableCell>
+                    <TableCell>{entry.version}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Chip size="small" color={STATUS_COLOR[entry.status]} label={t(`core.modules.status.${entry.status}`)} />
+                        {entry.status === 'disabled' && !entry.dataDropped ? (
+                          <Typography variant="caption" color="text.secondary">
+                            {t('core.modules.data_preserved_notice')}
+                          </Typography>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      {entry.key !== 'core' ? (
+                        <>
+                          <Can permission="modules.upgrade">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleUpgrade(entry.key)}
+                              disabled={restarting}
+                              aria-label={t('core.modules.upgrade')}
+                            >
+                              <UpgradeIcon fontSize="small" />
+                            </IconButton>
+                          </Can>
+                          <Can permission="modules.uninstall">
+                            <IconButton
+                              size="small"
+                              onClick={() => setUninstallTarget(entry)}
+                              disabled={restarting}
+                              aria-label={t('core.modules.uninstall')}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Can>
+                        </>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </TableContainer>

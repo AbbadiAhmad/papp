@@ -25,32 +25,20 @@ import { rolesApi } from '../../shared/api/roles';
 import type { PublicPermission, PublicRole } from '../../shared/api/types';
 
 /**
- * D12 (ARCHITECTURE.md §7.4 / docs/DECISIONS.md D12): "admin always reaches
- * the Permissions page regardless of its own permission grants." This
- * page is intentionally NOT wrapped in `useGuardedQuery`/redirected to
- * `/forbidden` the way every other list page is — per BUILD_PLAN.md Phase 6,
- * its route must be reachable by ANYONE authenticated, and the page's OWN
- * behavior is what proves the bypass, not a client-side pre-check (there is
- * no reliable client-side "is this user admin" signal anyway: the login
- * response carries no role/permission claims — ARCHITECTURE.md §6.1/D45 —
- * and the JWT itself only carries `sub`/`sid`).
+ * Reachable exactly like any other page — the route is gated by the plain
+ * `permissions.view` permission (`App.tsx`'s `RequirePermissionRoute`), and
+ * the sidebar entry (`PageLayout.tsx`) uses the same code. There is no more
+ * special-cased "admin always gets in" bypass: `permissions.view`/
+ * `permissions.grant` are now structurally impossible to revoke from the
+ * `admin` role (`PermissionsService.setRoleGrants`'s guard), which is what
+ * made the old D12 `PermissionsPageGuard` exception unnecessary in the
+ * first place — see `docs/ARCHITECTURE.md` §7.4 and `docs/DECISIONS.md`
+ * (the entry superseding D12) for the full history.
  *
- * *** A genuine backend gap this page exposes (reported, not fixed — out of
- * this Developer agent's apps/api/** scope) ***: `PermissionsPageGuard`'s
- * D12 bypass is wired ONLY onto `GET/PUT /permissions/roles/:roleId/grants`
- * (permissions.controller.ts). `GET /roles` and `GET /permissions` (the
- * catalog + role list this matrix needs to render at all) go through the
- * NORMAL `PermissionGuard` with NO bypass — gated by `roles.view` /
- * `permissions.view` respectively. A truly zero-grant admin (holding
- * `admin` but with every grant stripped) can therefore reach this route and
- * successfully call the two grants endpoints for a role it already knows
- * the ID of, but CANNOT discover the role list or the permission catalog
- * through any endpoint the committed backend exposes. This page degrades to
- * a manual-role-ID fallback for exactly that case (see `DegradedGrantEditor`
- * below) rather than silently pretending the matrix loaded — see this
- * Developer agent's final report for the recommended backend fix (extend
- * the D12 delegation to those two GET endpoints, since they are read-only
- * catalog/role listings, not grant mutations).
+ * `DegradedGrantEditor` below is a defensive fallback for the (now
+ * effectively unreachable, but still handled rather than left to crash)
+ * case where `GET /roles`/`GET /permissions` 403 for some other reason —
+ * it re-uses the real grants endpoints with a manually-entered role ID.
  */
 export function PermissionsMatrixPage() {
   const { t } = useTranslation();

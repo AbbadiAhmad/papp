@@ -271,7 +271,7 @@ A module's `manifest.json` `settings` array (§2) declares its own admin-editabl
 
 ### 8.2 Reading and writing
 
-Read through the same cached `SettingsService` core already uses (`ARCHITECTURE.md` §6.3) — modules don't get their own separate settings-storage mechanism, just their own namespaced keys in the one shared table. Writing a module's setting requires the `requiredPermission` declared alongside it (which must itself be one of the module's own declared `permissions`, §2) — never hardcoded to `admin`, same rule as everything else in this platform (`ARCHITECTURE.md` §7.4 stays the only hardcoded-role exception anywhere).
+Read through the same cached `SettingsService` core already uses (`ARCHITECTURE.md` §6.3) — modules don't get their own separate settings-storage mechanism, just their own namespaced keys in the one shared table. Writing a module's setting requires the `requiredPermission` declared alongside it (which must itself be one of the module's own declared `permissions`, §2) — never hardcoded to `admin`, same rule as everything else in this platform (`ARCHITECTURE.md` §7.4 stays the only hardcoded-role exception anywhere, and even that one only protects two specific permission codes from being revoked from `admin` — it is never an access-check bypass).
 
 ### 8.3 Settings UI
 

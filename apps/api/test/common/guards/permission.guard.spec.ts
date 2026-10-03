@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { PermissionGuard } from '../../../src/common/guards/permission.guard';
 import { IS_PUBLIC_KEY } from '../../../src/common/decorators/public.decorator';
 import { REQUIRE_PERMISSION_KEY } from '../../../src/common/decorators/require-permission.decorator';
-import { PERMISSION_CHECK_DELEGATED_KEY } from '../../../src/core/permissions/permissions-page.guard';
 
 interface MockReflector {
   getAllAndOverride: jest.Mock;
@@ -30,17 +29,14 @@ const authenticatedRequest = () => ({
 });
 
 /**
- * The guard checks THREE distinct reflector keys per call (delegated →
- * required-permission → is-public), so the mock must answer by key rather
- * than a single blanket `mockReturnValue` — otherwise a value meant for one
- * key (e.g. the required-permission string) leaks into another (e.g. the
- * D12-delegation check), which is exactly what broke this suite when Phase 5
- * added the delegated-check branch ahead of the pre-existing permission
- * check. `metadata()` below sets up per-key answers explicitly.
+ * The guard checks TWO distinct reflector keys per call (required-permission
+ * → is-public), so the mock must answer by key rather than a single blanket
+ * `mockReturnValue` — otherwise a value meant for one key (e.g. the
+ * required-permission string) leaks into the other. `metadata()` below sets
+ * up per-key answers explicitly.
  */
-function metadata(reflector: MockReflector, values: { requiredPermission?: string; isPublic?: boolean; delegated?: boolean }): void {
+function metadata(reflector: MockReflector, values: { requiredPermission?: string; isPublic?: boolean }): void {
   reflector.getAllAndOverride.mockImplementation((key: unknown) => {
-    if (key === PERMISSION_CHECK_DELEGATED_KEY) return values.delegated;
     if (key === REQUIRE_PERMISSION_KEY) return values.requiredPermission;
     if (key === IS_PUBLIC_KEY) return values.isPublic;
     throw new Error(`Unexpected reflector key in test: ${String(key)}`);
@@ -133,14 +129,6 @@ describe('PermissionGuard', () => {
   it('allows an anonymous request on a @Public() route with no permission check', async () => {
     metadata(reflector, { requiredPermission: 'users.read', isPublic: true });
     const context = createContext({});
-
-    await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(permissionsService.getEffectivePermissionCodes).not.toHaveBeenCalled();
-  });
-
-  it('stands down when the D12 delegated-check flag is set, regardless of the permission grant', async () => {
-    metadata(reflector, { requiredPermission: 'permissions.grant', delegated: true });
-    const context = createContext(authenticatedRequest());
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(permissionsService.getEffectivePermissionCodes).not.toHaveBeenCalled();

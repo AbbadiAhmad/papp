@@ -26,6 +26,51 @@ export interface LibraryBook {
   totalCopies?: number;
   availableCopies?: number;
   copies?: LibraryBookCopy[];
+  averageRating?: number | null;
+  ratingsCount?: number;
+}
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+
+export interface BookRating {
+  id: string;
+  userId: string;
+  userName: string | null;
+  rating: number;
+  review: string | null;
+  reviewStatus: ReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MyBookRating {
+  rating: number;
+  review: string | null;
+  reviewStatus: ReviewStatus;
+}
+
+/** One row from `GET /books/ratings/pending` — the librarian's review-moderation queue (LIBRARY_CATALOG-D21). */
+export interface PendingReview {
+  id: string;
+  bookId: string;
+  bookTitle: string | null;
+  userId: string;
+  userName: string | null;
+  rating: number;
+  review: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /books/:id`'s enriched shape — the plain `LibraryBook` fields plus the full ratings list and the caller's own rating. */
+export interface LibraryBookDetail extends LibraryBook {
+  ratings: BookRating[];
+  myRating: MyBookRating | null;
+}
+
+export interface RateBookInput {
+  rating: number;
+  review?: string;
 }
 
 export interface LibraryBookCopy {
@@ -95,7 +140,7 @@ export interface CopyHistoryEntry {
 export const libraryCatalogApi = {
   listBooks: (params?: { search?: string; category?: string }) =>
     apiClient.get<LibraryBook[]>('/api/library/books', { params }).then((r) => r.data),
-  getBook: (id: string) => apiClient.get<LibraryBook>(`/api/library/books/${id}`).then((r) => r.data),
+  getBook: (id: string) => apiClient.get<LibraryBookDetail>(`/api/library/books/${id}`).then((r) => r.data),
   createBook: (dto: CreateBookInput) => apiClient.post<LibraryBook>('/api/library/books', dto).then((r) => r.data),
   updateBook: (id: string, dto: UpdateBookInput) =>
     apiClient.patch<LibraryBook>(`/api/library/books/${id}`, dto).then((r) => r.data),
@@ -114,6 +159,15 @@ export const libraryCatalogApi = {
     apiClient
       .get<CopyHistoryEntry[]>(`/api/library/books/${bookId}/copies/${copyId}/catalog-history`, { params: { limit } })
       .then((r) => r.data),
+
+  rateBook: (bookId: string, dto: RateBookInput) =>
+    apiClient.put<BookRating>(`/api/library/books/${bookId}/rating`, dto).then((r) => r.data),
+  removeRating: (bookId: string) => apiClient.delete<void>(`/api/library/books/${bookId}/rating`).then((r) => r.data),
+
+  // Review moderation (LIBRARY_CATALOG-D21) — "the librarian has to approve the comments to publish it".
+  listPendingReviews: () => apiClient.get<PendingReview[]>('/api/library/books/ratings/pending').then((r) => r.data),
+  approveReview: (ratingId: string) => apiClient.post<BookRating>(`/api/library/books/ratings/${ratingId}/approve`).then((r) => r.data),
+  rejectReview: (ratingId: string) => apiClient.post<BookRating>(`/api/library/books/ratings/${ratingId}/reject`).then((r) => r.data),
 
   // Public — no Authorization header required (MODULE_SPEC.md §7); reused
   // `apiClient` still opportunistically attaches one if present (a logged-in

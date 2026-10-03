@@ -33,7 +33,11 @@ test.describe('Language switch / RTL', () => {
 
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const drawerBox = await page.locator('.MuiDrawer-paper').boundingBox();
+    // Scoped to `.MuiDrawer-docked` (the always-visible desktop sidebar):
+    // PageLayout.tsx also mounts a mobile overlay `Drawer` kept in the DOM
+    // via `ModalProps={{ keepMounted: true }}`, so a bare `.MuiDrawer-paper`
+    // resolves to two elements at this (desktop) viewport width.
+    const drawerBox = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
     expect(drawerBox).not.toBeNull();
     // Mirrored to the physical right edge in RTL (stylis-plugin-rtl flips
     // the drawer's `left:0` CSS to `right:0` — see PageLayout.tsx).
@@ -63,10 +67,14 @@ test.describe('Language switch / RTL', () => {
 
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    // library_catalog.root has 2+ children, so PageLayout.tsx's NavGroup
+    // renders it as a collapsible heading (Collapse unmountOnExit) — expand
+    // it first, in its own now-English label, before the child link exists.
+    await page.getByRole('button', { name: TEXT.en.libraryMenuGroup, exact: true }).click();
     // The sidebar's own label is now real English copy, not just the dir attribute.
     await expect(page.getByText(TEXT.en.booksMenu, { exact: true })).toBeVisible();
 
-    const drawerBoxLtr = await page.locator('.MuiDrawer-paper').boundingBox();
+    const drawerBoxLtr = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
     expect(drawerBoxLtr).not.toBeNull();
     // Back on the physical left edge in LTR.
     expect(drawerBoxLtr!.x).toBeLessThan(20);
@@ -86,7 +94,7 @@ test.describe('Language switch / RTL', () => {
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
 
-    const drawerBoxRtl = await page.locator('.MuiDrawer-paper').boundingBox();
+    const drawerBoxRtl = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
     expect(drawerBoxRtl).not.toBeNull();
     expect(drawerBoxRtl!.x + drawerBoxRtl!.width).toBeGreaterThan(viewport!.width - 20);
   });

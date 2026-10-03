@@ -63,7 +63,7 @@ exports.ResponsesController = ResponsesController;
 __decorate([
     (0, common_1.Get)(':id/responses/export'),
     (0, platform_1.RequirePermission)('survey.responses.export'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, Object]),
@@ -72,7 +72,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id/report/summary'),
     (0, platform_1.RequirePermission)('survey.responses.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -80,7 +80,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id/report/dataset'),
     (0, platform_1.RequirePermission)('survey.responses.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -88,7 +88,7 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id/responses'),
     (0, platform_1.RequirePermission)('survey.responses.view'),
-    __param(0, (0, common_1.Param)('id')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
@@ -96,8 +96,8 @@ __decorate([
 __decorate([
     (0, common_1.Get)(':id/responses/:responseId'),
     (0, platform_1.RequirePermission)('survey.responses.view'),
-    __param(0, (0, common_1.Param)('id')),
-    __param(1, (0, common_1.Param)('responseId')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('responseId', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
@@ -107,8 +107,8 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
     (0, platform_1.RequirePermission)('survey.responses.delete'),
     (0, platform_1.Audit)({ category: 'survey.responses', entityType: 'SurveyResponse', action: 'delete', entityIdParam: 'responseId', fetchState: fetchResponseState }),
-    __param(0, (0, common_1.Param)('id')),
-    __param(1, (0, common_1.Param)('responseId')),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('responseId', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)

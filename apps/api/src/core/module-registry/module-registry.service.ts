@@ -254,6 +254,9 @@ export class ModuleRegistryService {
           installedAt: new Date(),
           version: manifest.version,
           manifestSnapshot: this.toJson(manifest),
+          // Fresh install lifecycle — nothing has been dropped yet, even if
+          // a PRIOR install of this same key once had --drop-data run on it.
+          dataDropped: false,
         },
       });
     });
@@ -353,6 +356,8 @@ export class ModuleRegistryService {
       throw new ConflictException(`Module "${key}" cannot be uninstalled from status "${existing.status}"`);
     }
 
+    await this.assertNoInstalledDependents(key);
+
     await this.prisma.moduleRegistryEntry.update({ where: { key }, data: { status: 'uninstalling' } });
 
     // De-registered immediately (MODULE_SPEC.md §5): menu rows + the
@@ -373,7 +378,10 @@ export class ModuleRegistryService {
       );
     }
 
-    const finalRow = await this.prisma.moduleRegistryEntry.update({ where: { key }, data: { status: 'disabled' } });
+    const finalRow = await this.prisma.moduleRegistryEntry.update({
+      where: { key },
+      data: { status: 'disabled', dataDropped: dropData },
+    });
     this.i18n.rebuild();
     this.logger.log(`Module "${key}" uninstalled (status left "disabled"; system_settings rows kept per D26).`);
     return toPublicModuleEntry(finalRow);
@@ -551,6 +559,35 @@ export class ModuleRegistryService {
   }
 
   // --- Uninstall sub-steps --------------------------------------------------
+
+  /**
+   * Platform-level dependency guard (root DECISIONS.md D86): reads every
+   * OTHER currently-`installed` module's own `manifestSnapshot.dependsOn`
+   * (never a hardcoded pair — MODULE_SPEC.md §2's `dependsOn` is the single
+   * source of truth) and rejects uninstalling `key` if any of them declares
+   * a dependency on it. Runs for EVERY uninstall (both with and without
+   * `--drop-data`) — dropping menus/permissions out from under a still-
+   * installed dependent is exactly as unsafe as dropping its tables would
+   * be, since that dependent module's own controllers/services assume
+   * `key`'s tables/permissions/rows keep existing (e.g. `reading_club`
+   * reads `library_circulation`'s `library_borrowings` directly, root D85).
+   * Uses the same `manifestSnapshot` rows `validateAgainstPlatform` already
+   * reads for basePath/apiPrefix collisions — no new query shape needed.
+   */
+  private async assertNoInstalledDependents(key: string): Promise<void> {
+    const installedRows = await this.prisma.moduleRegistryEntry.findMany({ where: { status: 'installed' } });
+
+    for (const row of installedRows) {
+      if (row.key === 'core' || row.key === key) continue;
+      const manifest = row.manifestSnapshot as unknown as ModuleManifest | null;
+      if (!manifest || typeof manifest !== 'object' || !Array.isArray(manifest.dependsOn)) continue;
+      if (manifest.dependsOn.includes(key)) {
+        throw new ConflictException(
+          `Cannot uninstall "${key}": "${row.key}" depends on it and is still installed. Uninstall "${row.key}" first.`,
+        );
+      }
+    }
+  }
 
   /**
    * §5: "--drop-data confirmation that runs a module-provided down migration

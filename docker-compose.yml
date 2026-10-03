@@ -29,6 +29,12 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-papp}:${POSTGRES_PASSWORD:-papp}@db:5432/${POSTGRES_DB:-papp}?schema=public
       PORT: ${PORT:-3000}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — see .env.example}
+      # Must match WEB_PORT (see the `web` service below) or every browser
+      # request fails CORS — main.ts falls back to http://localhost:5173
+      # ONLY when this is entirely unset, which no longer matches once
+      # WEB_PORT is changed from its own default.
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
       # Notification Center email channel (all optional — when SMTP_HOST is
       # unset the api logs rendered mail instead of delivering it).
       SMTP_HOST: ${SMTP_HOST:-}
@@ -36,8 +42,14 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Database backup/restore (docs/DECISIONS.md D43 resolution): AES-256
+      # encryption key for the exported backup archive. Empty (default) means
+      # the feature reports itself as unconfigured — same disabled-by-default
+      # stance as SMTP_HOST above, not an admin-tunable system_settings value
+      # (it's a secret, same category as JWT_SECRET).
+      BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
     ports:
-      - "${PORT:-3000}:3000"
+      - "${API_HOST_PORT:-3000}:3000"
     volumes:
       # Dev convenience: bind-mounts the host's modules/ straight over the
       # image's own baked-in copy (see apps/api/Dockerfile's `COPY modules

@@ -149,7 +149,7 @@ The system must support more than one academic year; previous years' data is nev
 
 Wants a comprehensive backup/export mechanism (students, books, borrowings, returns, fines, financial data) with historical records never lost across academic years.
 
-**Resolved (D43):** a generic backup/restore capability is deferred — to be added later as its own base-platform feature, not assumed satisfied by per-entity Excel export and not built now. No phase assigned yet.
+**Resolved (D43, built per D89):** a generic backup/restore capability was built as a core platform feature — whole-database `pg_dump` export (permission-gated HTTP endpoint, downloads an AES-256-encrypted archive) and a server-side CLI restore (`scripts/manageDB.sh restore`, never exposed over HTTP). Covers every module's tables uniformly, including this one's — not a per-entity Excel export equivalent, a real full-database snapshot.
 
 ## 36. Security
 

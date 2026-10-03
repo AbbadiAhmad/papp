@@ -134,5 +134,18 @@
   "core.modules.uninstall_confirm_title": "Uninstall module \"{{key}}\"",
   "core.modules.uninstall_data_kept_notice": "The module's data and settings are kept unless you also explicitly choose to drop the data.",
   "core.modules.drop_data_checkbox": "Also drop the module's data (drop-data) — cannot be undone",
-  "core.modules.deployment_note": "Deployment note: modules/ is live-mounted into the api container, so an edited manifest.json or backend file appears inside it immediately — but it only takes effect after \"docker compose restart api\" (module code loads once at startup). A frontend module change needs a real \"docker compose build web\" instead — the web container has no live mount; its files are bundled at build time. Installing, upgrading or uninstalling a module through this page restarts the api container automatically — you never need to do that step yourself for those actions."
+  "core.modules.deployment_note": "Deployment note: modules/ is live-mounted into the api container, so an edited manifest.json or backend file appears inside it immediately — but it only takes effect after \"docker compose restart api\" (module code loads once at startup). A frontend module change needs a real \"docker compose build web\" instead — the web container has no live mount; its files are bundled at build time. Installing or upgrading a module through this page restarts the api container automatically (takes a few seconds; a \"restarting\" notice shows while it happens) — you never need to do that step yourself. Uninstalling a module never restarts the container at all.",
+  "core.modules.restarting_notice": "The api server is restarting to load the module — this may take a few seconds, please wait...",
+  "core.modules.data_preserved_notice": "This module's data is still in the database. Install it again to restore it, or uninstall with \"delete data\" checked to remove it permanently.",
+
+  "core.backup.platformVersion": "Platform version",
+  "core.backup.schemaFingerprint": "Schema fingerprint",
+  "core.backup.backupConfigured": "Backup configured",
+  "core.backup.notConfiguredHint": "Set BACKUP_ENCRYPTION_PASSWORD on the api service to enable exporting backups.",
+  "core.backup.exportSection": "Export backup",
+  "core.backup.exportHint": "Downloads an AES-256-encrypted archive containing a full database dump. Store it somewhere safe — it can restore the entire database, including every module's data.",
+  "core.backup.exportButton": "Export backup",
+  "core.backup.exporting": "Exporting...",
+  "core.backup.restoreSection": "Restore",
+  "core.backup.restoreCliNotice": "Restore is not available from this page. It requires an exclusive database lock that would otherwise hang the running app, so it must be run from the server using this command:"
 }
