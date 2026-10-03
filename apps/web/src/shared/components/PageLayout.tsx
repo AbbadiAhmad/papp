@@ -15,7 +15,9 @@ import {
   Toolbar,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -27,11 +29,12 @@ import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
-import { useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
@@ -43,6 +46,29 @@ import { resolveMenuIcon } from '../modules/menuIcons';
 import { useModuleFrontendManifests } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
+
+/**
+ * Shared open/close state for the mobile (below `sm`) overlay drawer.
+ * `TopBar` (the hamburger button) and `PageLayout` (the `Drawer` itself) are
+ * rendered as siblings, not nested, in `App.tsx`'s `ThemedShell` — `TopBar`
+ * mounts even when anonymous (no drawer exists yet), `PageLayout` only once
+ * authenticated — so a plain lifted-state prop can't bridge them; a small
+ * context colocated with the two components it connects is simpler here
+ * than reaching for prop-drilling through `App.tsx` or a whole new file.
+ */
+const MobileNavContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null);
+
+export function MobileNavProvider({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const value = useMemo(() => ({ open, setOpen }), [open]);
+  return <MobileNavContext.Provider value={value}>{children}</MobileNavContext.Provider>;
+}
+
+function useMobileNav() {
+  const ctx = useContext(MobileNavContext);
+  if (!ctx) throw new Error('useMobileNav must be used within a MobileNavProvider');
+  return ctx;
+}
 
 /** `requiredPermission: '__always__'` means "always shown once authenticated" (a genuinely self-scoped page, e.g. the dashboard) — mirrors `ResolvedMenuLeaf`'s shape exactly so both core and module leaves render through the same `NavLeafItem`. */
 const ALWAYS_ALLOWED = '__always__';
@@ -236,6 +262,9 @@ export function TopBar() {
   const { language, setLanguage } = useLanguage();
   const { status, user, logout } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [langMenuAnchor, setLangMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -248,6 +277,19 @@ export function TopBar() {
   return (
     <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar sx={{ gap: 2 }}>
+        {/* Hamburger only once authenticated (that's the only time PageLayout's
+            drawer exists) and only on mobile — desktop keeps the always-visible
+            permanent sidebar, no toggle needed. */}
+        {status === 'authenticated' && isMobile ? (
+          <IconButton
+            color="inherit"
+            edge="start"
+            onClick={() => setMobileNavOpen(!mobileNavOpen)}
+            aria-label={t('core.common.menu')}
+          >
+            <MenuIcon />
+          </IconButton>
+        ) : null}
         <Typography variant="h6" component="h1" sx={{ flexGrow: 1, fontWeight: 700 }}>
           papp
         </Typography>
@@ -333,14 +375,37 @@ export function TopBar() {
  * RTL plugin alone correctly renders on the physical right in RTL mode.
  */
 export function PageLayout({ children }: { children: ReactNode }) {
+  const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
+  const closeMobileNav = () => setMobileNavOpen(false);
+
   return (
     <Box sx={{ display: 'flex', flexGrow: 1 }}>
+      {/* Mobile (below `sm`): a temporary overlay drawer toggled by TopBar's
+          hamburger button, closing itself after a nav click or backdrop tap —
+          never both variants mounted-and-visible at the same breakpoint. */}
+      <Drawer
+        variant="temporary"
+        anchor="left"
+        open={mobileNavOpen}
+        onClose={closeMobileNav}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', sm: 'none' },
+          [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+        }}
+      >
+        <Toolbar />
+        <NavList onNavigate={closeMobileNav} />
+      </Drawer>
+
+      {/* Desktop (`sm` and up): today's always-visible permanent sidebar, unchanged. */}
       <Drawer
         variant="permanent"
         anchor="left"
         sx={{
           width: DRAWER_WIDTH,
           flexShrink: 0,
+          display: { xs: 'none', sm: 'block' },
           [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' },
         }}
       >
@@ -348,7 +413,7 @@ export function PageLayout({ children }: { children: ReactNode }) {
         <NavList />
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, minWidth: 0 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
         <Toolbar />
         {children}
       </Box>

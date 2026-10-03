@@ -21,6 +21,12 @@ test.describe('Library Catalog smoke flow', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
+    // library_catalog.root has 2+ children (Books, moderate reviews), so
+    // PageLayout.tsx's NavGroup renders it as a collapsible heading — the
+    // "Books" leaf link doesn't exist in the DOM (Collapse unmountOnExit)
+    // until the group is expanded. Click the "المكتبة" heading first.
+    await page.getByRole('button', { name: TEXT.ar.libraryMenuGroup, exact: true }).click();
+
     // Navigate via the real sidebar link (library_catalog.menu.books, only
     // shown because the account really holds library_catalog.books.view).
     const [booksResponse] = await Promise.all([

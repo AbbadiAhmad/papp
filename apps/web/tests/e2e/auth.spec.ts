@@ -28,7 +28,11 @@ test.describe('Login flow', () => {
     // form disappeared".
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
     await expect(page.getByLabel(READER_USER.name, { exact: true })).toBeVisible();
-    await expect(page.locator('.MuiDrawer-root')).toBeVisible();
+    // Two `.MuiDrawer-root`s are in the DOM at desktop viewport width — the
+    // always-visible permanent sidebar and the mobile overlay drawer (kept
+    // mounted but hidden via `ModalProps={{ keepMounted: true }}`, see
+    // PageLayout.tsx). Scope to the permanent one specifically.
+    await expect(page.locator('.MuiDrawer-root.MuiDrawer-docked')).toBeVisible();
   });
 
   test('invalid credentials show a real server-produced error', async ({ page }) => {

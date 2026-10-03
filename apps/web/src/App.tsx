@@ -6,7 +6,7 @@ import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
-import { TopBar, PageLayout } from './shared/components/PageLayout';
+import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageLayout';
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
 import * as authApi from './shared/api/auth';
 import { LoginPage } from './core/auth/LoginPage';
@@ -307,10 +307,12 @@ function ThemedShell() {
         <CssBaseline />
         <BrowserRouter>
           <AuthProvider>
-            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-              <TopBar />
-              <AppRoutes />
-            </Box>
+            <MobileNavProvider>
+              <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                <TopBar />
+                <AppRoutes />
+              </Box>
+            </MobileNavProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

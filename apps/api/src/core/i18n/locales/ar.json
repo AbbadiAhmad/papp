@@ -99,6 +99,7 @@
   "core.common.loading": "جارٍ التحميل…",
   "core.common.error": "حدث خطأ",
   "core.common.language": "اللغة",
+  "core.common.menu": "القائمة",
   "core.common.no_data": "لا توجد بيانات",
   "core.common.status": "الحالة"
 }
