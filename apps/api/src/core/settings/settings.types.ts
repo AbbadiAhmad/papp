@@ -65,6 +65,17 @@ export const NOTIFICATION_CATEGORIES_KEY = 'notifications.categories';
  * admin opts in via PUT /settings/registration.
  */
 export const ALLOW_SELF_REGISTRATION_KEY = 'users.allow_self_registration';
+/**
+ * system_settings key: "users.self_registration_role_code" — plain JSONB
+ * string, or `null` when not yet configured (seeded by 0013). The role code
+ * a self-registered account is assigned. papp is a general back-office
+ * platform (CLAUDE.md), not Library-specific, so this can never be a
+ * hardcoded role like "reader" — every deployment's role set beyond the
+ * four seeded base roles is operator-defined. `null` means
+ * `POST /auth/register` rejects until an admin picks a real role from
+ * Settings -> Self-Registration.
+ */
+export const SELF_REGISTRATION_ROLE_CODE_KEY = 'users.self_registration_role_code';
 export const PUBLIC_ENDPOINT_RATE_LIMIT_KEY = 'security.public_endpoint_rate_limit';
 /** Prefix for every template key; full key = prefix + templateKey. */
 export const NOTIFICATION_TEMPLATE_KEY_PREFIX = 'notifications.templates.';

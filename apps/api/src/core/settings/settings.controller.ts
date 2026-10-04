@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
+import { RolesService } from '../roles/roles.service';
 import { assertValidTemplates, UpdateNotificationTemplatesDto } from './dto/update-notification-templates.dto';
 import { UpdatePasswordPolicyDto } from './dto/update-password-policy.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
@@ -13,6 +14,7 @@ import {
   NotificationTemplate,
   PASSWORD_POLICY_KEY,
   PasswordPolicy,
+  SELF_REGISTRATION_ROLE_CODE_KEY,
   TOKEN_LIFETIMES_KEY,
   TokenLifetimes,
 } from './settings.types';
@@ -45,7 +47,10 @@ import {
 @Controller('settings')
 @UseGuards(MustChangePasswordGuard)
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly rolesService: RolesService,
+  ) {}
 
   // --- Tab 1: Password Policy (D23) ---------------------------------------
 
@@ -117,21 +122,38 @@ export class SettingsController {
     return this.getNotificationTemplates();
   }
 
-  // --- Tab 4: Self-Registration (D41) --------------------------------------
+  // --- Tab 4: Self-Registration (D41/D91) ----------------------------------
 
   @Get('registration')
   @RequirePermission('users.settings.view')
-  async getRegistration(): Promise<{ allowSelfRegistration: boolean }> {
+  async getRegistration(): Promise<{ allowSelfRegistration: boolean; selfRegistrationRoleCode: string | null }> {
     const allowSelfRegistration = await this.settingsService.get<boolean>(ALLOW_SELF_REGISTRATION_KEY);
-    return { allowSelfRegistration };
+    const selfRegistrationRoleCode = await this.settingsService.get<string | null>(SELF_REGISTRATION_ROLE_CODE_KEY);
+    return { allowSelfRegistration, selfRegistrationRoleCode };
   }
 
+  /**
+   * D91: `selfRegistrationRoleCode` must reference a REAL role — checked
+   * here against the `roles` table (never trusted as a bare string, since
+   * `AuthService.register()` has no way to validate it again except at
+   * registration time, when it's too late to give the admin a clear error).
+   * Omitting the field from the body leaves the current value unchanged
+   * (e.g. toggling `allowSelfRegistration` alone doesn't require re-sending
+   * the role code every time).
+   */
   @Put('registration')
   @RequirePermission('users.settings.update')
   async updateRegistration(
     @Body() dto: UpdateRegistrationDto,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ allowSelfRegistration: boolean }> {
+  ): Promise<{ allowSelfRegistration: boolean; selfRegistrationRoleCode: string | null }> {
+    if (dto.selfRegistrationRoleCode !== undefined) {
+      const role = await this.rolesService.findByCode(dto.selfRegistrationRoleCode);
+      if (!role) {
+        throw new BadRequestException(`No role with code "${dto.selfRegistrationRoleCode}" exists`);
+      }
+      await this.settingsService.set(SELF_REGISTRATION_ROLE_CODE_KEY, dto.selfRegistrationRoleCode, user.userId);
+    }
     await this.settingsService.set(ALLOW_SELF_REGISTRATION_KEY, dto.allowSelfRegistration, user.userId);
     return this.getRegistration();
   }

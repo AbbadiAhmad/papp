@@ -38,3 +38,23 @@ export async function getSetupStatus(): Promise<SetupStatus> {
 export async function createFirstAdmin(email: string, name: string, password: string): Promise<void> {
   await apiClient.post('/auth/setup', { email, name, password });
 }
+
+export interface RegistrationStatus {
+  allowSelfRegistration: boolean;
+}
+
+/**
+ * GET /auth/registration-status — @Public(), no auth. LoginPage calls this
+ * once to decide whether to show the "create an account" link at all; the
+ * real enforcement stays server-side in POST /auth/register regardless of
+ * what this reports (D41 follow-up).
+ */
+export async function getRegistrationStatus(): Promise<RegistrationStatus> {
+  const response = await apiClient.get<RegistrationStatus>('/auth/registration-status');
+  return response.data;
+}
+
+/** POST /auth/register — @Public(), no auth. D41 self-registration; always assigns the `reader` role, never auto-logs in (201, no tokens). */
+export async function register(email: string, name: string, password: string): Promise<void> {
+  await apiClient.post('/auth/register', { email, name, password });
+}

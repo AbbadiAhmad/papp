@@ -28,6 +28,7 @@ interface MockAuthService {
   register: jest.Mock;
   isSetupNeeded: jest.Mock;
   setupCreateFirstAdmin: jest.Mock;
+  isSelfRegistrationOpen: jest.Mock;
 }
 
 interface MockAuditLogWriter {
@@ -43,6 +44,7 @@ function createMockAuthService(): MockAuthService {
     register: jest.fn(),
     isSetupNeeded: jest.fn(),
     setupCreateFirstAdmin: jest.fn(),
+    isSelfRegistrationOpen: jest.fn(),
   };
 }
 
@@ -256,6 +258,20 @@ describe('AuthController', () => {
       authService.isSetupNeeded.mockResolvedValue(false);
 
       await expect(controller.getSetupStatus()).resolves.toEqual({ setupNeeded: false });
+    });
+  });
+
+  describe('getRegistrationStatus', () => {
+    it('reports allowSelfRegistration verbatim from AuthService', async () => {
+      authService.isSelfRegistrationOpen.mockResolvedValue(true);
+
+      await expect(controller.getRegistrationStatus()).resolves.toEqual({ allowSelfRegistration: true });
+    });
+
+    it('reports allowSelfRegistration: false when self-registration is off', async () => {
+      authService.isSelfRegistrationOpen.mockResolvedValue(false);
+
+      await expect(controller.getRegistrationStatus()).resolves.toEqual({ allowSelfRegistration: false });
     });
   });
 

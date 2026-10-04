@@ -1,0 +1,10 @@
+# Root DECISIONS.md PLATFORM-GAP-002: MigrationRunnerService's checksum
+# (D16) is a plain sha256 over a migration file's raw contents, so its
+# line endings are part of the hash. Without this file, Windows checkouts
+# (core.autocrlf=true, the Git-for-Windows default) silently convert every
+# *.sql file to CRLF, which flips its checksum relative to whatever was
+# recorded in module_migrations the first time that file was applied —
+# tripping the "already-applied migration must never be edited" guard on
+# a file nobody actually edited. Pin every migration to LF unconditionally
+# so checkout behavior is identical on every machine from now on.
+*.sql text eol=lf

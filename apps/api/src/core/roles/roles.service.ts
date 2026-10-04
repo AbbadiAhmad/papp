@@ -25,6 +25,12 @@ export class RolesService {
     return toPublicRole(role);
   }
 
+  /** Returns null rather than throwing — callers (e.g. SettingsController validating a configured role code) decide how to report "no such role" themselves. */
+  async findByCode(code: string): Promise<PublicRole | null> {
+    const role = await this.prisma.role.findUnique({ where: { code } });
+    return role ? toPublicRole(role) : null;
+  }
+
   async create(dto: CreateRoleDto): Promise<PublicRole> {
     try {
       // Roles created through the API are never `isSystem` — that flag is

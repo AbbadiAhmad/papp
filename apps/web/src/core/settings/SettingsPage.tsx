@@ -3,7 +3,11 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   Tab,
   Tabs,
@@ -15,9 +19,10 @@ import { useTranslation } from 'react-i18next';
 import { QueryStateGate } from '../../shared/components/QueryStateGate';
 import { useGuardedQuery } from '../../shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../shared/api/httpClient';
+import { rolesApi } from '../../shared/api/roles';
 import { settingsApi } from '../../shared/api/settings';
 import { useGatedCall } from '../../shared/permissions';
-import type { NotificationTemplate, PasswordPolicy, TokenLifetimes } from '../../shared/api/types';
+import type { NotificationTemplate, PasswordPolicy, PublicRole, TokenLifetimes } from '../../shared/api/types';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -262,26 +267,61 @@ function NotificationTemplatesForm({ initial }: { initial: Record<string, Notifi
 
 function RegistrationTab() {
   const { status, data, errorMessage, reload } = useGuardedQuery(() => settingsApi.getRegistration());
+  // D91: the role dropdown needs the full role list (any role, not just the
+  // four base ones) — a SEPARATE useGuardedQuery, same pattern as
+  // ModulesAdminPage's two independent fetches, rather than bundling it
+  // into settingsApi.getRegistration()'s own response (that endpoint stays
+  // one Users-module setting, not a roles-listing concern).
+  const rolesQuery = useGuardedQuery(() => rolesApi.list());
+
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
-      {data ? <RegistrationForm initial={data.allowSelfRegistration} /> : null}
+      <QueryStateGate status={rolesQuery.status} errorMessage={rolesQuery.errorMessage} onRetry={rolesQuery.reload}>
+        {data && rolesQuery.data ? (
+          <RegistrationForm
+            initialAllow={data.allowSelfRegistration}
+            initialRoleCode={data.selfRegistrationRoleCode}
+            roles={rolesQuery.data}
+          />
+        ) : null}
+      </QueryStateGate>
     </QueryStateGate>
   );
 }
 
-function RegistrationForm({ initial }: { initial: boolean }) {
+function RegistrationForm({
+  initialAllow,
+  initialRoleCode,
+  roles,
+}: {
+  initialAllow: boolean;
+  initialRoleCode: string | null;
+  roles: PublicRole[];
+}) {
   const { t } = useTranslation();
   const gated = useGatedCall();
-  const [allow, setAllow] = useState(initial);
+  const [allow, setAllow] = useState(initialAllow);
+  const [roleCode, setRoleCode] = useState(initialRoleCode ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   const save = async () => {
     setError(null);
     setSaved(false);
+    // Enabling self-registration with no role picked yet would just move
+    // the "not configured" failure from this form to every future
+    // registrant's POST /auth/register — catch it here instead, where an
+    // admin can actually fix it.
+    if (allow && !roleCode) {
+      setError(t('core.settings.registration.role_required'));
+      return;
+    }
     try {
-      const updated = await gated('users.settings.update', () => settingsApi.updateRegistration(allow));
+      const updated = await gated('users.settings.update', () =>
+        settingsApi.updateRegistration(allow, roleCode || undefined),
+      );
       setAllow(updated.allowSelfRegistration);
+      setRoleCode(updated.selfRegistrationRoleCode ?? '');
       setSaved(true);
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -296,6 +336,24 @@ function RegistrationForm({ initial }: { initial: boolean }) {
         control={<Checkbox checked={allow} onChange={(e) => setAllow(e.target.checked)} />}
         label={t('core.settings.registration.allow')}
       />
+      <FormControl fullWidth>
+        <InputLabel id="self-registration-role-label">{t('core.settings.registration.role')}</InputLabel>
+        <Select
+          labelId="self-registration-role-label"
+          label={t('core.settings.registration.role')}
+          value={roleCode}
+          onChange={(e) => setRoleCode(e.target.value)}
+        >
+          <MenuItem value="">
+            <em>{t('core.settings.registration.role_none')}</em>
+          </MenuItem>
+          {roles.map((role) => (
+            <MenuItem key={role.id} value={role.code}>
+              {t(role.nameI18nKey)}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
       <Box>
         <Button variant="contained" onClick={save}>
           {t('core.common.save')}
