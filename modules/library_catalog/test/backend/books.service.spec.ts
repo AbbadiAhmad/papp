@@ -434,6 +434,34 @@ describe('BooksService', () => {
       });
     });
 
+    describe('peekNextCopyCode (LIBRARY_CATALOG-D22 follow-up — "suggest the next code")', () => {
+      it('formats last_value + 1 as Bxxxxxx when the sequence has already been consumed (is_called = true)', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(6), is_called: true }]);
+
+        const result = await service.peekNextCopyCode();
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith('SELECT last_value, is_called FROM library_catalog_copy_code_seq');
+        expect(result).toBe('B000007');
+      });
+
+      it('formats last_value itself (not +1) when the sequence has never been consumed (is_called = false)', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(1), is_called: false }]);
+
+        const result = await service.peekNextCopyCode();
+
+        expect(result).toBe('B000001');
+      });
+
+      it('never calls nextval() — a peek must not consume the sequence', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(3), is_called: true }]);
+
+        await service.peekNextCopyCode();
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalledWith(expect.stringContaining('nextval'));
+      });
+    });
+
     describe('listCopies', () => {
       it('lists a book copies ordered by createdAt asc', async () => {
         prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });

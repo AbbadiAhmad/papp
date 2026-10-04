@@ -142,6 +142,19 @@ export class BooksController {
   // Books, not an independently-permissioned domain, per
   // docs/LIBRARY_MODULE_REQUIREMENTS.md §5).
 
+  // Registered before `:bookId/copies` for the same Express route-ordering
+  // reason as `export`/`ratings/*`/`copies/stickers*` above — `next-code`
+  // would otherwise be swallowed by `:bookId`. Gated by `books.create` (the
+  // same permission that actually creates a copy) rather than a new code —
+  // this is pure create-flow UX (LIBRARY_CATALOG-D22 follow-up: "suggest the
+  // next code" in the Add Book / Add Copy forms), not a separately
+  // grantable action.
+  @Get('copies/next-code')
+  @RequirePermission('library_catalog.books.create')
+  async peekNextCopyCode() {
+    return { qrCode: await this.books.peekNextCopyCode() };
+  }
+
   @Get(':bookId/copies')
   @RequirePermission('library_catalog.books.view')
   async listCopies(@Param('bookId', new ParseUUIDPipe()) bookId: string) {

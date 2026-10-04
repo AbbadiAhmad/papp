@@ -481,7 +481,33 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const rows = await client.$queryRawUnsafe<Array<{ nextval: bigint }>>(
       "SELECT nextval('library_catalog_copy_code_seq') AS nextval",
     );
-    return `${COPY_CODE_PREFIX}${rows[0].nextval.toString().padStart(COPY_CODE_DIGITS, '0')}`;
+    return this.formatCopyCode(rows[0].nextval);
+  }
+
+  /**
+   * Read-only preview of the code `nextCopyCode()` WOULD assign next,
+   * without consuming the sequence (LIBRARY_CATALOG-D22 follow-up —
+   * "suggest the next code" in the Add Book / Add Copy forms). Deliberately
+   * does NOT call `nextval()` — that would burn a real sequence value even
+   * if the librarian cancels the form, which is harmless for correctness
+   * (a gap in the sequence is fine) but wasteful/confusing to show a
+   * "suggested" code that then gets skipped. `SELECT * FROM <sequence>`
+   * reads `last_value`/`is_called` with zero side effects: the next real
+   * value is `last_value + 1` once the sequence has been consumed at least
+   * once (`is_called = true`), or `last_value` itself if it never has
+   * (`is_called = false`, i.e. this sequence's very first use).
+   */
+  async peekNextCopyCode(): Promise<string> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ last_value: bigint; is_called: boolean }>>(
+      'SELECT last_value, is_called FROM library_catalog_copy_code_seq',
+    );
+    const { last_value, is_called } = rows[0];
+    const next = is_called ? last_value + BigInt(1) : last_value;
+    return this.formatCopyCode(next);
+  }
+
+  private formatCopyCode(value: bigint): string {
+    return `${COPY_CODE_PREFIX}${value.toString().padStart(COPY_CODE_DIGITS, '0')}`;
   }
 
   private async ensureBookExists(id: string): Promise<void> {

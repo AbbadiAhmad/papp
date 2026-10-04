@@ -86,7 +86,8 @@ export interface LibraryBookCopy {
 }
 
 export interface CreateBookCopyInlineInput {
-  qrCode: string;
+  /** Optional (LIBRARY_CATALOG-D22) — omitted/blank auto-assigns the next Bxxxxxx code server-side. */
+  qrCode?: string;
   status?: BookCopyStatus;
   condition?: string;
   location?: string;
@@ -117,7 +118,8 @@ export interface UpdateBookCopyDto {
 }
 
 export interface CreateBookCopyInput {
-  qrCode: string;
+  /** Optional (LIBRARY_CATALOG-D22) — omitted/blank auto-assigns the next Bxxxxxx code server-side. */
+  qrCode?: string;
   status?: BookCopyStatus;
   condition?: string;
   location?: string;
@@ -166,6 +168,8 @@ export const libraryCatalogApi = {
   removeBook: (id: string) => apiClient.delete<void>(`/api/library/books/${id}`).then((r) => r.data),
   exportBooks: () => apiClient.get<Blob>('/api/library/books/export', { responseType: 'blob' }).then((r) => r.data),
 
+  /** Read-only suggested next `Bxxxxxx` code (LIBRARY_CATALOG-D22 follow-up) — does NOT consume the sequence, so cancelling the form burns nothing. */
+  peekNextCopyCode: () => apiClient.get<{ qrCode: string }>('/api/library/books/copies/next-code').then((r) => r.data.qrCode),
   listCopies: (bookId: string) =>
     apiClient.get<LibraryBookCopy[]>(`/api/library/books/${bookId}/copies`).then((r) => r.data),
   createCopy: (bookId: string, dto: CreateBookCopyInput) =>

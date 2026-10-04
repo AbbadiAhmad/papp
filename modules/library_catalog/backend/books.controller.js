@@ -107,6 +107,16 @@ let BooksController = class BooksController {
     // example declares no separate copies.* codes — copies are a sub-entity of
     // Books, not an independently-permissioned domain, per
     // docs/LIBRARY_MODULE_REQUIREMENTS.md §5).
+    // Registered before `:bookId/copies` for the same Express route-ordering
+    // reason as `export`/`ratings/*`/`copies/stickers*` above — `next-code`
+    // would otherwise be swallowed by `:bookId`. Gated by `books.create` (the
+    // same permission that actually creates a copy) rather than a new code —
+    // this is pure create-flow UX (LIBRARY_CATALOG-D22 follow-up: "suggest the
+    // next code" in the Add Book / Add Copy forms), not a separately
+    // grantable action.
+    async peekNextCopyCode() {
+        return { qrCode: await this.books.peekNextCopyCode() };
+    }
     async listCopies(bookId) {
         return this.books.listCopies(bookId);
     }
@@ -235,6 +245,13 @@ __decorate([
     __metadata("design:paramtypes", [list_copies_for_print_dto_1.ListCopiesForPrintDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "exportCopiesForPrint", null);
+__decorate([
+    (0, common_1.Get)('copies/next-code'),
+    (0, platform_1.RequirePermission)('library_catalog.books.create'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "peekNextCopyCode", null);
 __decorate([
     (0, common_1.Get)(':bookId/copies'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),

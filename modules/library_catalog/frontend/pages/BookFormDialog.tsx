@@ -13,10 +13,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import type { CreateBookInput, LibraryBook, UpdateBookInput } from '../api';
+import { libraryCatalogApi, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 
 interface Props {
   open: boolean;
@@ -52,11 +52,21 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
   // created together with its first physical copy in one transaction.
   // Never shown/sent on edit: a book's copies are their own sub-resource,
   // added/removed via the Copies tab, not through the book PATCH.
+  // qrCode itself is now OPTIONAL server-side (LIBRARY_CATALOG-D22) — left
+  // blank, the backend auto-assigns the next Bxxxxxx code. Pre-filled below
+  // with that SAME suggested code so the librarian sees/can edit it before
+  // saving, rather than a blank field with no code visible until after.
   const [copyQrCode, setCopyQrCode] = useState('');
   const [copyCondition, setCopyCondition] = useState('');
   const [copyLocation, setCopyLocation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isEdit) return;
+    libraryCatalogApi.peekNextCopyCode().then(setCopyQrCode).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only peek; `isEdit` is stable for this component's lifetime (see the key={book?.id ?? 'new'} remount in BookFormDialog above).
+  }, []);
 
   const handleSubmit = async () => {
     setError(null);
@@ -74,7 +84,11 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
           ? {}
           : {
               copy: {
-                qrCode: copyQrCode,
+                // Sent as undefined (never '') when cleared — the backend
+                // treats a present-but-empty qrCode as a validation error
+                // (@MinLength(1)), auto-generating only on a truly OMITTED
+                // field (LIBRARY_CATALOG-D22).
+                qrCode: copyQrCode.trim() || undefined,
                 condition: copyCondition || undefined,
                 location: copyLocation || undefined,
               },
@@ -143,7 +157,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
                     label={t('library_catalog.copies.qr_code')}
                     value={copyQrCode}
                     onChange={(e) => setCopyQrCode(e.target.value)}
-                    required
+                    helperText={t('library_catalog.copies.qr_code_suggested_hint')}
                   />
                   <TextField
                     label={t('library_catalog.copies.condition')}
@@ -165,11 +179,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
         <Button onClick={onClose} disabled={submitting}>
           {t('core.common.cancel')}
         </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={submitting || !title.trim() || (!isEdit && !copyQrCode.trim())}
-        >
+        <Button onClick={handleSubmit} variant="contained" disabled={submitting || !title.trim()}>
           {t('core.common.save')}
         </Button>
       </DialogActions>

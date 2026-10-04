@@ -529,7 +529,12 @@ function AddCopyDialog({
       setLocation(copy.location ?? '');
       setCondition(copy.condition ?? '');
     } else if (open && !copy) {
+      // qrCode is optional (LIBRARY_CATALOG-D22) — pre-fill with the
+      // suggested next Bxxxxxx code (read-only peek, doesn't consume the
+      // sequence) rather than leaving the field blank with no code visible
+      // until after saving. The librarian can still edit or clear it.
       setQrCode('');
+      libraryCatalogApi.peekNextCopyCode().then(setQrCode).catch(() => undefined);
       setLocation('');
       setCondition('');
     }
@@ -541,7 +546,10 @@ function AddCopyDialog({
       if (isEditing) {
         await onSubmit({ location: location || undefined, condition: condition || undefined });
       } else {
-        await onSubmit({ qrCode, location: location || undefined, condition: condition || undefined });
+        // Sent as undefined (never '') when cleared — a present-but-empty
+        // qrCode fails @MinLength(1); only a truly OMITTED field triggers
+        // server-side auto-generation.
+        await onSubmit({ qrCode: qrCode.trim() || undefined, location: location || undefined, condition: condition || undefined });
       }
       setQrCode('');
       setLocation('');
@@ -560,8 +568,8 @@ function AddCopyDialog({
             label={t('library_catalog.copies.qr_code')}
             value={qrCode}
             onChange={(e) => setQrCode(e.target.value)}
-            required
             autoFocus
+            helperText={isEditing ? undefined : t('library_catalog.copies.qr_code_suggested_hint')}
           />
           <TextField
             label={t('library_catalog.copies.condition')}
@@ -579,7 +587,7 @@ function AddCopyDialog({
         <Button onClick={onClose} disabled={submitting}>
           {t('core.common.cancel')}
         </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={submitting || !qrCode.trim()}>
+        <Button onClick={handleSubmit} variant="contained" disabled={submitting}>
           {t('core.common.save')}
         </Button>
       </DialogActions>

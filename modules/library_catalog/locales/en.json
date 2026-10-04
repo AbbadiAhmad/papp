@@ -57,6 +57,7 @@
   "library_catalog.moderate_reviews.approve_button": "Approve",
   "library_catalog.moderate_reviews.reject_button": "Reject",
   "library_catalog.copies.qr_code": "QR code",
+  "library_catalog.copies.qr_code_suggested_hint": "Suggested — you can edit it, or leave it blank to auto-generate.",
   "library_catalog.copies.status": "Status",
   "library_catalog.copies.condition": "Condition",
   "library_catalog.copies.location": "Location",
