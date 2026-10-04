@@ -124,7 +124,15 @@ let BooksService = BooksService_1 = class BooksService {
         const { copy, ...bookData } = dto;
         return this.prisma.$transaction(async (tx) => {
             const book = await tx.libraryCatalogBook.create({ data: bookData });
-            const qrCode = copy.qrCode?.trim() || (await this.nextCopyCode(tx));
+            // Every copy created — whether auto-assigned or typed in by hand —
+            // advances `library_catalog_copy_code_seq` (see `nextCopyCode()` and
+            // `reconcileCopyCodeSequence()` below for why a manually-typed code
+            // still needs to bump the sequence).
+            const manualCode = copy.qrCode?.trim();
+            const qrCode = manualCode || (await this.nextCopyCode(tx));
+            if (manualCode) {
+                await this.reconcileCopyCodeSequence(tx, manualCode);
+            }
             await tx.libraryCatalogBookCopy.create({
                 data: {
                     bookId: book.id,
@@ -171,6 +179,12 @@ let BooksService = BooksService_1 = class BooksService {
             }
         }
         const qrCode = requestedCode || (await this.nextCopyCode(this.prisma));
+        // See the matching comment in `create()` above — a manually-typed code
+        // (e.g. the librarian overrides the suggested one) still needs to bump
+        // the sequence so the NEXT suggestion is reevaluated and doesn't collide.
+        if (requestedCode) {
+            await this.reconcileCopyCodeSequence(this.prisma, requestedCode);
+        }
         return this.prisma.libraryCatalogBookCopy.create({
             data: {
                 bookId,
@@ -355,6 +369,7 @@ let BooksService = BooksService_1 = class BooksService {
             { header: 'category', key: 'category', width: 18 },
             { header: 'reading_level', key: 'readingLevel', width: 14 },
             { header: 'language', key: 'language', width: 12 },
+            { header: 'page_count', key: 'pageCount', width: 12 },
             { header: 'total_copies', key: 'totalCopies', width: 12 },
         ];
         for (const book of books) {
@@ -365,6 +380,7 @@ let BooksService = BooksService_1 = class BooksService {
                 category: book.category ?? '',
                 readingLevel: book.readingLevel ?? '',
                 language: book.language ?? '',
+                pageCount: book.pageCount ?? '',
                 totalCopies: book._count.copies,
             });
         }
@@ -455,6 +471,40 @@ let BooksService = BooksService_1 = class BooksService {
     }
     formatCopyCode(value) {
         return `${COPY_CODE_PREFIX}${value.toString().padStart(COPY_CODE_DIGITS, '0')}`;
+    }
+    /**
+     * Bug fix (user-reported, post-D22): the suggested next code shown by
+     * `peekNextCopyCode()` is pre-filled into the Add Book / Add Copy forms as
+     * an editable, already-populated text field rather than a blank one — so
+     * when the librarian accepts it as-is, it reaches `create()`/`createCopy()`
+     * as an explicit, non-blank `qrCode`, which took the "manually typed"
+     * branch and never called `nextCopyCode()` / consumed the sequence. Net
+     * effect: the suggestion never advanced on a normal add (bug 1), and typing
+     * in a genuinely different/concurrent code left the sequence just as stale
+     * (bug 2) — the next peek could re-suggest a value that was just taken.
+     *
+     * Fix: whenever a copy is created with an EXPLICIT code (accepted
+     * suggestion or a real manual/concurrent entry) that happens to match this
+     * module's own `Bxxxxxx` format, fast-forward the sequence with `setval()`
+     * so it's never behind the highest `Bxxxxxx` number actually in use — the
+     * next `peekNextCopyCode()` is always reevaluated off the up-to-date
+     * high-water mark. A manually-typed code OUTSIDE the `Bxxxxxx` format
+     * (free text, pre-D22 legacy codes) has no numeric value to reconcile and
+     * is left alone, same as before.
+     */
+    async reconcileCopyCodeSequence(client, enteredCode) {
+        const match = new RegExp(`^${COPY_CODE_PREFIX}(\\d{${COPY_CODE_DIGITS}})$`).exec(enteredCode);
+        if (!match)
+            return;
+        const enteredValue = BigInt(match[1]);
+        // `setval(seq, n, true)` makes `n` the sequence's `last_value` with
+        // `is_called = true`, i.e. the NEXT `nextval()` returns `n + 1` — exactly
+        // matching "a copy numbered `enteredValue` now exists, so don't suggest
+        // it (or anything at/under it) again". `GREATEST` against the sequence's
+        // own current value keeps this a no-op when the entered code is BEHIND
+        // the high-water mark already (e.g. an older/reused low number), so it
+        // can never move the sequence backwards.
+        await client.$queryRawUnsafe("SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)", enteredValue);
     }
     async ensureBookExists(id) {
         const exists = await this.prisma.libraryCatalogBook.findUnique({ where: { id }, select: { id: true } });

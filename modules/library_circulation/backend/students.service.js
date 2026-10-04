@@ -74,8 +74,22 @@ let StudentsService = class StudentsService {
     async onModuleDestroy() {
         await this.prisma.$disconnect();
     }
+    /**
+     * Bug fix (user-reported): the Students list page showed only `code` +
+     * `className` — no name — forcing the librarian to open each reader just
+     * to see who it was. `libraryStudent` doesn't store the name itself (D41:
+     * name lives on the platform `User`), so it's joined in here the same way
+     * `search()` above already does, just as one batched `User.findMany` by
+     * `userId` rather than a per-row lookup.
+     */
     async list() {
-        return this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
+        const students = await this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
+        const userIds = [...new Set(students.map((s) => s.userId))];
+        const users = userIds.length
+            ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+            : [];
+        const nameById = new Map(users.map((u) => [u.id, u.name]));
+        return students.map((s) => ({ ...s, name: nameById.get(s.userId) ?? null }));
     }
     /**
      * Fines page's reader picker (searchable, max 5 shown) and the Scan page's

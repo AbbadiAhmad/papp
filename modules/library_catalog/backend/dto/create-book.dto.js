@@ -70,6 +70,8 @@ class CreateBookDto {
     language;
     description;
     coverImage;
+    /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across a reader's stage book entries to auto-compute a `pages`-type stage's progress. */
+    pageCount;
     copy;
 }
 exports.CreateBookDto = CreateBookDto;
@@ -113,6 +115,13 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateBookDto.prototype, "coverImage", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsPositive)(),
+    __metadata("design:type", Number)
+], CreateBookDto.prototype, "pageCount", void 0);
 __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     (0, class_transformer_1.Type)(() => CreateBookCopyInlineDto),

@@ -100,7 +100,7 @@ let FinesService = FinesService_1 = class FinesService {
         const fines = await this.prisma.libraryFine.findMany({
             where: {
                 studentId: filter.studentId ?? (studentIds ? { in: studentIds } : undefined),
-                status: filter.status,
+                status: filter.status?.length ? { in: filter.status } : undefined,
                 fineTypeId: filter.fineTypeId,
                 createdBy: createdByIds ? { in: createdByIds } : undefined,
                 ...(Object.keys(createdAt).length ? { createdAt } : {}),

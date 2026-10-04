@@ -60,6 +60,7 @@ let StageBookEntriesService = StageBookEntriesService_1 = class StageBookEntries
                 bookCopyId: dto.bookCopyId ?? null,
                 bookTitle: dto.bookTitle,
                 bookCode: dto.bookCode ?? null,
+                pageCount: dto.pageCount ?? null,
                 comments: dto.comments ?? null,
                 source: 'manual',
                 addedBy,

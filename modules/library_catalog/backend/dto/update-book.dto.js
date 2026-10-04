@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateBookDto = void 0;
+const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 /** Every field optional — a PATCH only ever touches what's supplied. */
 class UpdateBookDto {
@@ -21,6 +22,8 @@ class UpdateBookDto {
     language;
     description;
     coverImage;
+    /** Optional (LIBRARY_CATALOG-D24) — see CreateBookDto's own docblock. */
+    pageCount;
 }
 exports.UpdateBookDto = UpdateBookDto;
 __decorate([
@@ -64,3 +67,10 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], UpdateBookDto.prototype, "coverImage", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsPositive)(),
+    __metadata("design:type", Number)
+], UpdateBookDto.prototype, "pageCount", void 0);
