@@ -157,4 +157,33 @@ describe('CameraScanDialog', () => {
     expect(await findByText(circulationEn['library_circulation.scan.camera_insecure_context_error'])).toBeTruthy();
     expect(html5QrcodeMock).not.toHaveBeenCalled();
   });
+
+  it('retries without the near-focus constraint when the browser rejects it, instead of giving up (user-reported regression)', async () => {
+    // The commit that added the near-focus `advanced` constraint assumed an
+    // unsupported one is silently dropped by the browser rather than
+    // rejecting `.start()` — the very next user report was the camera
+    // failing outright on two different platforms. This proves the fix:
+    // a rejected first attempt is retried once with plain `facingMode`
+    // before the dialog gives up and shows the error.
+    startMock.mockImplementationOnce(() => Promise.reject('OverconstrainedError: focusDistance'));
+    startMock.mockImplementationOnce(() => Promise.resolve(undefined));
+
+    const { queryByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(2));
+    const [firstCallConstraints] = startMock.mock.calls[0];
+    const [secondCallConstraints] = startMock.mock.calls[1];
+    expect(firstCallConstraints).toMatchObject({ advanced: expect.any(Array) });
+    expect(secondCallConstraints).toEqual({ facingMode: 'environment' });
+    expect(queryByText(circulationEn['library_circulation.scan.camera_error'])).toBeNull();
+  });
+
+  it('shows the error Alert when BOTH the near-focus attempt and the plain fallback attempt fail', async () => {
+    startMock.mockImplementation(() => Promise.reject('getUserMedia permission denied'));
+
+    const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    expect(await findByText(circulationEn['library_circulation.scan.camera_error'])).toBeTruthy();
+    expect(startMock).toHaveBeenCalledTimes(2); // both attempts made, neither assumed to succeed
+  });
 });

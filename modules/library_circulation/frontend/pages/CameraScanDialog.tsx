@@ -13,21 +13,27 @@ const SCANNER_ELEMENT_ID = 'library-circulation-camera-scanner';
  *
  * `focusMode`/`focusDistance` are W3C Image Capture MediaTrackConstraints,
  * forwarded by html5-qrcode straight into `getUserMedia`'s `video`
- * constraints. Support is real but uneven, so this is a *request*, not a
- * guarantee:
- *  - Android Chrome: supports `focusMode: 'manual'` + `focusDistance` on
- *    most devices — this is the actual fix for the reported behavior.
- *  - Desktop Chrome/Edge (Windows) webcams: `focusMode` support varies by
- *    UVC driver; `focusDistance` range support is less common.
- *  - iOS/macOS Safari (incl. any iOS WebView, so also iPhone Chrome/Firefox
- *    which are Safari-engine on iOS): WebKit does not implement these
- *    constraints at all — they're silently ignored and the OS's own
- *    autofocus heuristic keeps running, unchanged from today's behavior.
- * An unsupported constraint is dropped by the browser rather than
- * rejecting `.start()`, so no feature-detection/fallback branch is needed
- * here — every platform keeps working, iOS just doesn't get the fix.
- * `focusDistance` is in meters; 0.1 (10cm) comfortably covers "a sticker
- * held close to the phone" without clipping typical near-focus minimums.
+ * constraints (confirmed by reading `html5-qrcode`'s own source —
+ * `CameraImpl.create()` passes this object into `getUserMedia({video:
+ * videoConstraints})` completely unvalidated, no library-side fallback of
+ * its own). Support is genuinely uneven across engines.
+ *
+ * CORRECTION (user-reported regression, LIBRARY_CIRCULATION-D35): this
+ * docblock used to assert "an unsupported constraint is dropped by the
+ * browser rather than rejecting `.start()`, so no feature-detection/
+ * fallback branch is needed here" — that was an unverified assumption, not
+ * a confirmed fact, and it was wrong. The very next report after this
+ * constraint shipped was the camera failing immediately on BOTH iPhone
+ * (Safari/WebKit) and Windows (desktop Chrome/Edge), with no permission
+ * prompt at all — exactly the shape of `getUserMedia` rejecting before a
+ * device is ever touched. While the spec says an unsatisfiable *advanced*
+ * constraint set should just be skipped rather than failing the whole
+ * call, WebKit in particular has a documented history of being stricter
+ * about unrecognized `MediaTrackConstraints` members than Chrome is. Since
+ * this can't be fully confirmed without the exact failing device in hand,
+ * the safe fix is to stop depending on that assumption at all: `start()`
+ * is now attempted WITH this constraint first, and on any failure retried
+ * WITHOUT it before giving up — see `startWithFallback()` below.
  */
 const NEAR_FOCUS_VIDEO_CONSTRAINTS = {
   focusMode: 'manual',
@@ -170,9 +176,9 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
         return;
       }
       scannerRef.current = scanner;
-      scanner
-        .start(
-          { facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] },
+      const startWith = (videoConstraints: MediaTrackConstraints) =>
+        scanner.start(
+          videoConstraints,
           { fps: 10, qrbox: 250 },
           (decodedText) => {
             if (stoppedRef.current) return;
@@ -180,7 +186,23 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
             onDecodedRef.current(decodedText);
           },
           () => undefined, // per-frame "no code found yet" — not an error, ignored
-        )
+        );
+
+      // LIBRARY_CIRCULATION-D35: never assume the near-focus `advanced`
+      // constraint is harmless if unsupported (see this file's own
+      // docblock on `NEAR_FOCUS_VIDEO_CONSTRAINTS` — that assumption was
+      // the actual regression). If the browser rejects it, retry once with
+      // plain `facingMode` before giving up, so a stricter engine (or any
+      // future constraint-support quirk) degrades to "no near-focus boost"
+      // instead of "camera doesn't work at all".
+      startWith({ facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] })
+        .catch((err) => {
+          console.error(
+            '[CameraScanDialog] scanner.start() with the near-focus constraint failed, retrying without it',
+            err,
+          );
+          return startWith({ facingMode: 'environment' });
+        })
         .then(() => {
           startedRef.current = true;
           if (stopRequestedRef.current) {
@@ -188,7 +210,7 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
           }
         })
         .catch((err) => {
-          console.error('[CameraScanDialog] scanner.start() failed', err);
+          console.error('[CameraScanDialog] scanner.start() failed even without the near-focus constraint', err);
           setError(t('library_circulation.scan.camera_error'));
         });
     },
