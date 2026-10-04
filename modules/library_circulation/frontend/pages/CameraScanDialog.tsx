@@ -11,44 +11,16 @@ const SCANNER_ELEMENT_ID = 'library-circulation-camera-scanner';
  * `getUserMedia()` autofocus on many devices settles on a middle/far
  * distance and is slow to re-hunt for near objects. `focusMode`/
  * `focusDistance` are W3C Image Capture `MediaTrackConstraints` that ask
- * for near-focus; support is genuinely uneven across engines/devices, which
- * is fine — an unsupported *advanced* constraint set is spec-required to be
- * skipped, not to fail the whole call (verified against
- * `VideoConstraintsUtil.isMediaStreamConstraintsValid` below; `focusMode`/
- * `focusDistance` aren't in its banned-audio-key list, so this object
- * passes validation on every engine).
+ * for near-focus; support is uneven across devices, which is fine by
+ * design — an unsupported *advanced* constraint set is spec-required to be
+ * skipped, never to fail the whole call.
  *
- * LIBRARY_CIRCULATION-D36 — the REAL bug, two misdiagnoses in (D34, D35):
- * every attempt so far assumed `Html5Qrcode.start(cameraIdOrConfig, config,
- * …)`'s first argument accepts arbitrary `MediaTrackConstraints` the same
- * way a raw `getUserMedia({video: …})` call would. It does not. Read
- * `html5-qrcode`'s own source (`createVideoConstraints()`): `cameraIdOrConfig`
- * is ONLY ever a camera-selection hint — `{facingMode: '…'}` or
- * `{deviceId: '…'}`, and it throws `"'cameraIdOrConfig' object should have
- * exactly 1 key, if passed as an object, found 2 keys"` if given more than
- * one. This object (`facingMode` + `advanced`) was being passed AS
- * `cameraIdOrConfig` — a 2-key object — so `.start()` threw that exact
- * error on EVERY call, on every platform, since the very commit that added
- * it; the camera was broken from the first instant this constant started
- * being used, not something that only surfaced on iPhone/Windows. It just
- * happened to look environment-specific because this throw happens
- * SYNCHRONOUSLY inside `.start()`'s own `new Promise(...)` executor,
- * before `this.stateManagerProxy`'s already-started SCANNING transition
- * ever gets cancelled — corrupting the scanner's internal state so even a
- * same-session retry with valid args then failed differently ("Cannot
- * transition to a new state, already under transition"), which is what
- * actually chased this in circles across two prior "fixes": D34 (a real
- * but unrelated hardening) and D35 (a plausible-sounding but wrong theory,
- * still passing the SAME malformed 2-key object, just wrapped in a retry
- * that could never succeed either).
- *
- * The real fix needs no fallback/retry at all: pass ONLY `{facingMode:
- * 'environment'}` (1 key) as `cameraIdOrConfig`, and put this near-focus
- * constraint in the SECOND argument's dedicated `videoConstraints` field
- * instead — which the library docs its own self as "will override other
- * parameters like 'cameraIdOrConfig'" and is merged in as real
- * `getUserMedia` video constraints, no key-count restriction. See
- * `startWith()` below for the corrected call shape.
+ * Must go in `Html5Qrcode.start()`'s SECOND argument, as `videoConstraints`
+ * (see the `.start()` call below) — NOT in the first argument
+ * (`cameraIdOrConfig`), which only ever accepts a single-key camera-selection hint
+ * (`{facingMode: '…'}` or `{deviceId: '…'}`) and throws if given more keys.
+ * Full story (a real bug that took two wrong diagnoses to find):
+ * `modules/library_circulation/DECISIONS.md` LIBRARY_CIRCULATION-D34–D36.
  */
 const NEAR_FOCUS_VIDEO_CONSTRAINTS = {
   focusMode: 'manual',
@@ -154,26 +126,18 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       startedRef.current = false;
       stopRequestedRef.current = false;
 
-      // Third user-reported bug on this dialog: on both iPhone (Safari) and
-      // Windows (desktop Chrome/Edge) the error Alert appeared IMMEDIATELY,
-      // with no browser permission prompt at all and nothing in the console.
-      // Root cause (confirmed by reading html5-qrcode's own source,
-      // `src/camera/factories.ts`'s `CameraFactory.failIfNotSupported()`):
-      // `.start()` throws a bare string, `"navigator.mediaDevices not
-      // supported"`, SYNCHRONOUSLY-under-the-covers (an `async` function's
-      // `throw` becomes a rejected promise) the instant `getUserMedia` isn't
-      // exposed at all — which is exactly what happens in an insecure
-      // context (any origin that's neither `https:` nor `localhost`).
-      // `docker-compose.yml`'s `web` service serves plain HTTP, so opening
-      // the app via a LAN IP (the normal way to reach it from a phone or a
-      // second machine) hits this on every platform identically — no
-      // permission dialog is ever reached, matching the report exactly. The
-      // existing generic `.catch()` below also never logged the rejection
-      // reason anywhere, which is why "no error on console" held even
-      // though the library itself threw a precise one. Checked up front so
-      // the message told to the user is accurate instead of the generic
-      // "check permissions" one, which is actively misleading here — no
-      // permission was ever asked.
+      // `getUserMedia`/`navigator.mediaDevices` is genuinely absent (not
+      // merely unauthorized) on any origin that's neither `https:` nor
+      // `localhost` — a real W3C secure-context restriction, not specific
+      // to this app. Dormant today: this dev setup is reached via
+      // `localhost` (Docker port-forwarding), which the spec exempts, so
+      // this branch doesn't fire here. It only matters if this app is ever
+      // reached over plain HTTP via a non-`localhost` address (e.g. a LAN
+      // IP) — worth keeping so that scenario gets an accurate message
+      // instead of the generic "check permissions" one, which would be
+      // actively misleading (no permission is ever asked in that case).
+      // NOT the cause of any camera bug reported so far — see
+      // LIBRARY_CIRCULATION-D34/D36 in this module's DECISIONS.md.
       if (!navigator.mediaDevices?.getUserMedia) {
         console.error(
           '[CameraScanDialog] navigator.mediaDevices.getUserMedia is unavailable — the page is not running in a secure context (https:, or localhost). Camera access is impossible here regardless of OS-level permission state.',
@@ -195,31 +159,17 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       // hint — see this file's own `NEAR_FOCUS_VIDEO_CONSTRAINTS` docblock
       // (LIBRARY_CIRCULATION-D36) for why. Arbitrary constraints like the
       // near-focus request go in `videoConstraints` on the 2nd arg instead.
-      const startWith = (videoConstraints?: MediaTrackConstraints) =>
-        scanner.start(
+      scanner
+        .start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: 250, ...(videoConstraints ? { videoConstraints } : {}) },
+          { fps: 10, qrbox: 250, videoConstraints: { facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] } },
           (decodedText) => {
             if (stoppedRef.current) return;
             stoppedRef.current = true;
             onDecodedRef.current(decodedText);
           },
           () => undefined, // per-frame "no code found yet" — not an error, ignored
-        );
-
-      // Kept as a defensive fallback (not the primary fix — see
-      // LIBRARY_CIRCULATION-D36): even a VALID `videoConstraints` object
-      // could in principle still be rejected by a given device/engine, so a
-      // failure here retries once with no extra constraints at all before
-      // giving up, rather than assuming either outcome.
-      startWith({ facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] })
-        .catch((err) => {
-          console.error(
-            '[CameraScanDialog] scanner.start() with the near-focus constraint failed, retrying without it',
-            err,
-          );
-          return startWith();
-        })
+        )
         .then(() => {
           startedRef.current = true;
           if (stopRequestedRef.current) {
@@ -227,7 +177,7 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
           }
         })
         .catch((err) => {
-          console.error('[CameraScanDialog] scanner.start() failed even without the near-focus constraint', err);
+          console.error('[CameraScanDialog] scanner.start() failed', err);
           setError(t('library_circulation.scan.camera_error'));
         });
     },

@@ -139,17 +139,12 @@ describe('CameraScanDialog', () => {
     await waitFor(() => expect(stopMock).toHaveBeenCalledTimes(1)); // called exactly once, after start() actually resolved
   });
 
-  it('shows the insecure-context error (not the generic permissions one) and never constructs Html5Qrcode when getUserMedia is unavailable', async () => {
-    // Third user-reported bug: on iPhone AND Windows, the generic
-    // "check permissions" error appeared with no browser permission prompt
-    // at all and nothing logged to the console. Root cause (see
-    // CameraScanDialog.tsx's own docblock): the app was reached over plain
-    // HTTP (docker-compose's `web` service has no TLS) via a LAN IP, not
-    // `localhost` — an insecure context, where `navigator.mediaDevices`
-    // doesn't exist in ANY browser, so `html5-qrcode`'s own `.start()`
-    // rejects before ever requesting camera permission. This reproduces
-    // that exact environment and asserts the dialog now tells the user the
-    // real reason instead of the misleading "check permissions" message.
+  it('shows a distinct, accurate message (not the generic permissions one) when getUserMedia is unavailable — a real but dormant secure-context edge case, not the cause of any bug reported so far', async () => {
+    // navigator.mediaDevices genuinely doesn't exist outside a secure
+    // context (https:/localhost) in any browser — a real W3C restriction,
+    // not specific to this app. Reproduces that environment so the dialog
+    // shows an accurate message instead of the misleading "check
+    // permissions" one (no permission is ever asked in this case).
     Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true });
 
     const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
@@ -172,30 +167,11 @@ describe('CameraScanDialog', () => {
     expect(config).toMatchObject({ videoConstraints: { advanced: expect.any(Array) } });
   });
 
-  it('retries without the near-focus constraint when the browser still rejects it, instead of giving up', async () => {
-    // Defensive fallback, not the primary fix: even a spec-valid
-    // videoConstraints object could in principle be rejected by some
-    // device/engine. A rejected first attempt is retried once with no
-    // extra constraints before the dialog gives up and shows the error.
-    startMock.mockImplementationOnce(() => Promise.reject('OverconstrainedError: focusDistance'));
-    startMock.mockImplementationOnce(() => Promise.resolve(undefined));
-
-    const { queryByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
-
-    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(2));
-    const [, firstConfig] = startMock.mock.calls[0];
-    const [, secondConfig] = startMock.mock.calls[1];
-    expect(firstConfig).toMatchObject({ videoConstraints: { advanced: expect.any(Array) } });
-    expect(secondConfig).not.toHaveProperty('videoConstraints');
-    expect(queryByText(circulationEn['library_circulation.scan.camera_error'])).toBeNull();
-  });
-
-  it('shows the error Alert when BOTH the near-focus attempt and the plain fallback attempt fail', async () => {
+  it('shows the error Alert (not a crash) when scanner.start() fails for a real reason', async () => {
     startMock.mockImplementation(() => Promise.reject('getUserMedia permission denied'));
 
     const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
 
     expect(await findByText(circulationEn['library_circulation.scan.camera_error'])).toBeTruthy();
-    expect(startMock).toHaveBeenCalledTimes(2); // both attempts made, neither assumed to succeed
   });
 });
