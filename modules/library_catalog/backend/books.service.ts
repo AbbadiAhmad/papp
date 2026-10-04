@@ -410,6 +410,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       { header: 'category', key: 'category', width: 18 },
       { header: 'reading_level', key: 'readingLevel', width: 14 },
       { header: 'language', key: 'language', width: 12 },
+      { header: 'page_count', key: 'pageCount', width: 12 },
       { header: 'total_copies', key: 'totalCopies', width: 12 },
     ];
     for (const book of books) {
@@ -420,6 +421,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         category: book.category ?? '',
         readingLevel: book.readingLevel ?? '',
         language: book.language ?? '',
+        pageCount: book.pageCount ?? '',
         totalCopies: book._count.copies,
       });
     }

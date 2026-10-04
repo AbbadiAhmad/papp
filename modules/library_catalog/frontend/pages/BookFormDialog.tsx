@@ -48,6 +48,8 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
   const [readingLevel, setReadingLevel] = useState(book?.readingLevel ?? '');
   const [language, setLanguage] = useState(book?.language ?? '');
   const [description, setDescription] = useState(book?.description ?? '');
+  /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across stage book entries to auto-compute a `pages`-type stage's progress; kept as free text so the field can be genuinely blank rather than coerced to 0. */
+  const [pageCount, setPageCount] = useState(book?.pageCount != null ? String(book.pageCount) : '');
   // CreateBookDto.copy is mandatory (LIBRARY_CATALOG-D11) — every book is
   // created together with its first physical copy in one transaction.
   // Never shown/sent on edit: a book's copies are their own sub-resource,
@@ -80,6 +82,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
         readingLevel: readingLevel || undefined,
         language: language || undefined,
         description: description || undefined,
+        pageCount: pageCount.trim() ? Number(pageCount) : undefined,
         ...(isEdit
           ? {}
           : {
@@ -134,6 +137,14 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
             label={t('library_catalog.fields.language')}
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
+          />
+          <TextField
+            label={t('library_catalog.fields.page_count')}
+            type="number"
+            value={pageCount}
+            onChange={(e) => setPageCount(e.target.value)}
+            helperText={t('library_catalog.fields.page_count_hint')}
+            slotProps={{ htmlInput: { min: 1 } }}
           />
           <TextField
             label={t('library_catalog.fields.description')}

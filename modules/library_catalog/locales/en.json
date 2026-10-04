@@ -21,6 +21,8 @@
   "library_catalog.fields.category": "Category",
   "library_catalog.fields.reading_level": "Reading level",
   "library_catalog.fields.language": "Language",
+  "library_catalog.fields.page_count": "Page count",
+  "library_catalog.fields.page_count_hint": "Used by the Reading Club module to track pages-based stage progress.",
   "library_catalog.fields.description": "Description",
   "library_catalog.fields.cover_image": "Cover image",
   "library_catalog.fields.total_copies": "Copies",

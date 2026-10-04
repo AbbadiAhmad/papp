@@ -227,6 +227,11 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
           bookCopyId: copy?.id ?? null,
           bookTitle: book?.title ?? 'Unknown',
           bookCode: copy?.qrCode ?? null,
+          // Snapshotted from the catalog at sync time (LIBRARY_CATALOG-D24 /
+          // READING_CLUB-D18) — NULL if the book has no page_count set yet,
+          // same "contributes 0, never an error" handling as a missing
+          // manual value (see computeStageProgress below).
+          pageCount: book?.pageCount ?? null,
           source: 'auto',
           addedBy: actingUserId,
         },
@@ -313,19 +318,50 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * `pages`-type progress (LIBRARY_CATALOG-D24 / READING_CLUB-D18, user
+   * request: "the book's page number should be recorded and used in the
+   * club module where the stages depend on pages"): sums `pageCount` across
+   * the reader's ACTIVE (non-discarded) book entries for the given
+   * stage — both auto-synced entries (snapshotted from the catalog at sync
+   * time) and manual ones (the librarian's own typed-in value) count
+   * equally, same as the entry list itself treats them. A NULL `pageCount`
+   * (book has no catalog page count, or the librarian left it blank on a
+   * manual entry) contributes 0, never an error.
+   *
+   * `manualProgressAmount` is ADDED ON TOP, not replaced — a deliberate,
+   * user-confirmed design: it's the librarian's own adjustment for a case
+   * the entry list can't capture (a partially-read book, a correction),
+   * not a competing source of truth. Before this change it was pages
+   * progress's ONLY source; now it defaults to 0 for every new membership/
+   * stage move (`assign`/`moveStage` already reset it to 0) and existing
+   * non-zero values keep contributing until the librarian consciously
+   * resets them (`updateManualProgress`).
+   */
+  private async computeManualPagesProgress(studentId: string, groupId: string | null, stageId: string): Promise<number> {
+    const entries = await this.prisma.readingClubStageBookEntry.findMany({
+      where: { studentId, groupId, stageId, status: 'active' },
+      select: { pageCount: true },
+    });
+    return entries.reduce((sum, entry) => sum + (entry.pageCount ?? 0), 0);
+  }
+
   async computeStageProgress(
     studentId: string,
     stageStartedAt: Date,
     manualProgressAmount: number,
-    stage: { targetType: string; targetAmount: number },
+    stage: { id: string; groupId?: string | null; targetType: string; targetAmount: number },
   ): Promise<StageProgress> {
     const targetType = stage.targetType as 'books' | 'pages';
-    const progressAmount =
-      targetType === 'books'
-        ? await this.prisma.libraryBorrowing.count({
-            where: { studentId, status: ACTIVE_BORROWING_RETURNED_STATUS, returnedAt: { gte: stageStartedAt } },
-          })
-        : manualProgressAmount;
+    let progressAmount: number;
+    if (targetType === 'books') {
+      progressAmount = await this.prisma.libraryBorrowing.count({
+        where: { studentId, status: ACTIVE_BORROWING_RETURNED_STATUS, returnedAt: { gte: stageStartedAt } },
+      });
+    } else {
+      const fromEntries = await this.computeManualPagesProgress(studentId, stage.groupId ?? null, stage.id);
+      progressAmount = fromEntries + manualProgressAmount;
+    }
     return { targetType, targetAmount: stage.targetAmount, progressAmount, isComplete: progressAmount >= stage.targetAmount };
   }
 

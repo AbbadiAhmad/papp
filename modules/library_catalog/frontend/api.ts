@@ -21,6 +21,8 @@ export interface LibraryBook {
   language: string | null;
   description: string | null;
   coverImage: string | null;
+  /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across a reader's stage book entries to auto-compute a `pages`-type stage's progress. */
+  pageCount: number | null;
   createdAt: string;
   updatedAt: string;
   totalCopies?: number;
@@ -103,6 +105,8 @@ export interface CreateBookInput {
   language?: string;
   description?: string;
   coverImage?: string;
+  /** Optional (LIBRARY_CATALOG-D24) — see LibraryBook's own docblock. */
+  pageCount?: number;
   /** Mandatory server-side (CreateBookDto.copy, LIBRARY_CATALOG-D11) — every book is created with its first copy in the same transaction. */
   copy: CreateBookCopyInlineInput;
 }

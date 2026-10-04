@@ -52,6 +52,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [bookTitle, setBookTitle] = useState('');
   const [bookCode, setBookCode] = useState('');
+  const [pageCount, setPageCount] = useState('');
   const [comments, setComments] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
   const openAdd = () => {
     setBookTitle('');
     setBookCode('');
+    setPageCount('');
     setComments('');
     setError(null);
     setAddOpen(true);
@@ -77,6 +79,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
       await readingClubApi.addBookEntry(studentId, {
         bookTitle: bookTitle.trim(),
         bookCode: bookCode.trim() || undefined,
+        pageCount: pageCount.trim() ? Number(pageCount) : undefined,
         comments: comments.trim() || undefined,
       });
       setAddOpen(false);
@@ -136,6 +139,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
                 <TableRow>
                   <TableCell>{t('reading_club.book_entries.book_title')}</TableCell>
                   <TableCell>{t('reading_club.book_entries.book_code')}</TableCell>
+                  <TableCell>{t('reading_club.book_entries.page_count')}</TableCell>
                   <TableCell>{t('reading_club.book_entries.added_at')}</TableCell>
                   <TableCell align="right">{t('core.common.actions')}</TableCell>
                 </TableRow>
@@ -159,6 +163,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
                       </Stack>
                     </TableCell>
                     <TableCell>{entry.bookCode ?? '—'}</TableCell>
+                    <TableCell>{entry.pageCount ?? '—'}</TableCell>
                     <TableCell>{formatDateOnly(entry.addedAt, language)}</TableCell>
                     <TableCell align="right">
                       <Can permission="reading_club.memberships.update_progress">
@@ -206,6 +211,15 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
               value={bookCode}
               onChange={(e) => setBookCode(e.target.value)}
               disabled={saving}
+            />
+            <TextField
+              fullWidth
+              type="number"
+              label={t('reading_club.book_entries.page_count')}
+              value={pageCount}
+              onChange={(e) => setPageCount(e.target.value)}
+              disabled={saving}
+              slotProps={{ htmlInput: { min: 1 } }}
             />
             <TextField
               fullWidth

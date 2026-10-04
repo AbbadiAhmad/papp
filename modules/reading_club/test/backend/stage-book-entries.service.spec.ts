@@ -50,6 +50,36 @@ describe('StageBookEntriesService', () => {
         }),
       });
     });
+
+    it('bug fix (READING_CLUB-D18): accepts a manual pageCount, summed into pages-type progress alongside auto entries', async () => {
+      const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1' };
+      const memberships: Partial<MembershipsService> = {
+        getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+      };
+      const service = buildService(prisma, memberships);
+      prisma.readingClubStageBookEntry.create.mockResolvedValue({ id: 'entry-1', source: 'manual', pageCount: 150 });
+
+      await service.addManual('student-1', { bookTitle: 'A Book', pageCount: 150 }, 'librarian-1');
+
+      expect(prisma.readingClubStageBookEntry.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ pageCount: 150 }),
+      });
+    });
+
+    it('defaults pageCount to null when omitted, never throwing', async () => {
+      const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1' };
+      const memberships: Partial<MembershipsService> = {
+        getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+      };
+      const service = buildService(prisma, memberships);
+      prisma.readingClubStageBookEntry.create.mockResolvedValue({ id: 'entry-1', source: 'manual' });
+
+      await service.addManual('student-1', { bookTitle: 'A Book' }, 'librarian-1');
+
+      expect(prisma.readingClubStageBookEntry.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ pageCount: null }),
+      });
+    });
   });
 
   describe('discard vs delete', () => {

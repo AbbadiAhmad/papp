@@ -11,7 +11,7 @@ Book catalog: titles and their individually-tracked physical copies (by QR code)
 ```
 library_catalog_books(
   id, title, author, publisher, category, reading_level, language,
-  description, cover_image, created_at, updated_at
+  description, cover_image, page_count, created_at, updated_at
 )
 library_catalog_book_copies(
   id, book_id -> books(id) ON DELETE CASCADE,
@@ -36,6 +36,7 @@ library_catalog_book_ratings(
 - `library_catalog_book_ratings` (LIBRARY_CATALOG-D20) is one row per (book, user) — `UNIQUE(book_id, user_id)`, `rating` a plain `SMALLINT` + `CHECK` (not a Prisma `enum` — no need for one, unlike copy `status`), `review` optional free text. `user_id` is a plain scalar column with no Prisma relation to the core `User` model; the rater's display name is joined in `BooksService` via a separate `prisma.user.findMany` call, not a Prisma `include`. Re-rating UPSERTs the same row — there is never a second rating row for the same reader/book pair. Deleting a book cascades to its ratings (`ON DELETE CASCADE`, same as copies).
 - `review_status`/`moderated_by`/`moderated_at` (LIBRARY_CATALOG-D21 — "the librarian has to approve the comments to publish it") gate only the WRITTEN review text; the numeric `rating` always counts toward the average the moment it's submitted, moderated or not. Defaults to `'approved'` so a bare star rating (no review) never needs moderation. See "Review moderation" under Routes below for the full workflow.
 - `library_catalog_copy_code_seq` (LIBRARY_CATALOG-D22) — a Postgres `SEQUENCE`, not a table/column. `BooksService.nextCopyCode()` consults it (`SELECT nextval(...)`) to auto-assign a `Bxxxxxx` (6-digit zero-padded) `qr_code` whenever a copy is created with that field blank — `qr_code` itself stays a plain `TEXT UNIQUE` column with no DB-level `DEFAULT`, since the "B" + zero-pad formatting happens in application code. The librarian can still type in their own value instead; the sequence is only consulted when the field is omitted/blank.
+- `page_count` (LIBRARY_CATALOG-D24, migration 007) — optional `INTEGER CHECK(page_count > 0)`. Recorded on the Add/Edit Book form, shown on the book's detail page and in the Excel export. Consumed by the `reading_club` module: when a reader returns a borrowed copy, the book's `page_count` is snapshotted onto that stage's auto-created `reading_club_stage_book_entries` row, and summed across a stage's entries to auto-compute a `pages`-type stage's progress (see that module's own DECISIONS.md READING_CLUB-D18). A book with no `page_count` set (NULL) contributes 0 toward that sum, never an error — this field is never required.
 
 ## Permissions
 
@@ -192,10 +193,29 @@ VALUES ('library_catalog', '006_add_copy_code_sequence.sql', 'f91477d73e18596db9
 
 No `prisma generate` needed — a bare `SEQUENCE` has no Prisma model.
 
+### Migration D24 — book page count
+
+`modules/library_catalog/migrations/007_add_page_count.sql` adds `page_count INTEGER CHECK (page_count > 0)` to `library_catalog_books`. Apply the same way:
+
+```bash
+psql $DATABASE_URL -f modules/library_catalog/migrations/007_add_page_count.sql
+```
+
+Then register it:
+
+```sql
+INSERT INTO module_migrations (module_key, filename, checksum)
+VALUES ('library_catalog', '007_add_page_count.sql', '1d5a66c77d4d2ccda4ef3c3036b5cddbb5a1d2926376fc69eac4d1540107a9f5');
+```
+
+`apps/api/prisma/schema.prisma`'s `LibraryCatalogBook` model already has the new `pageCount Int?` field — re-run `npx prisma generate` after pulling this change. See `modules/reading_club/DOCUMENTATION.md`'s own migration-application section (READING_CLUB-D18) for the matching `reading_club` migration that consumes this field.
+
 ### Down migrations (root D48 / D86)
 
 `migrations/down/001_create_books_table.sql`, `down/002_create_book_copies_table.sql`, `down/003_add_copy_history.sql` now exist — the structural inverse of each up-migration of the same number, applied in descending filename order (`003` → `002` → `001`) by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. `003`'s down drops the `history` column/GIN index it added; `002`'s down drops `library_catalog_book_copies` and its ENUM type; `001`'s down drops `library_catalog_books`. Before this, `--drop-data` on this module silently left every table in place (no `migrations/down/` existed at all) — see root D86 for the platform-level fix (a dependency guard was added alongside this so uninstalling this module while `library_circulation` still depends on it is now rejected, not just a docs warning).
 
-**Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003` and will fail partway (or leave the ratings table behind) until those two down-migrations are added. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003.
+`down/007_add_page_count.sql` (LIBRARY_CATALOG-D24) was added alongside its up-migration — drops the `page_count` column.
+
+**Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql`/`006_add_copy_code_sequence.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...`/`down/006_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003`, then (once it hits 007, which DOES have a down) would still fail partway on the 004-006 gap. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003 (006 in particular needs `DROP SEQUENCE IF EXISTS library_catalog_copy_code_seq`, not a column drop).
 
 `down/006_add_copy_code_sequence.sql` (LIBRARY_CATALOG-D22) DOES exist (`DROP SEQUENCE IF EXISTS`) — but since the numbering gap at 004/005 above already breaks the descending-order `runDownMigrationsIfPresent` sweep before it would ever reach 006, this is latent until 004/005's down-migrations are written.

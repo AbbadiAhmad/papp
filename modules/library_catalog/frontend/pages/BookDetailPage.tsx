@@ -244,6 +244,9 @@ export function BookDetailPage() {
                   <Typography variant="body2">
                     {t('library_catalog.fields.language')}: {book.language ?? '—'}
                   </Typography>
+                  <Typography variant="body2">
+                    {t('library_catalog.fields.page_count')}: {book.pageCount ?? '—'}
+                  </Typography>
                 </Stack>
               </Stack>
             </Paper>

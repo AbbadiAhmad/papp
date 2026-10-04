@@ -334,6 +334,10 @@ model LibraryCatalogBook {
   language     String?
   description  String?
   coverImage   String?  @map("cover_image")
+  /// Optional — migration 007 (LIBRARY_CATALOG-D24). NULL for a book entered
+  /// before this column existed or not yet filled in; reading_club treats
+  /// that the same as 0 toward a pages-type stage's progress, never an error.
+  pageCount    Int?     @map("page_count")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -949,6 +953,11 @@ model ReadingClubStageBookEntry {
   bookCopyId    String?   @map("book_copy_id") @db.Uuid
   bookTitle     String    @map("book_title")
   bookCode      String?   @map("book_code")
+  /// Snapshotted per entry (migration 004, READING_CLUB-D18) — the linked
+  /// book's page_count at sync time for an auto entry, or the librarian's
+  /// own typed-in value for a manual one. NULL/0 contributes 0 toward a
+  /// pages-type stage's progress, never an error.
+  pageCount     Int?      @map("page_count")
   source        String
   comments      String?
   addedBy       String    @map("added_by") @db.Uuid

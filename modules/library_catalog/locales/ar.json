@@ -21,6 +21,8 @@
   "library_catalog.fields.category": "التصنيف",
   "library_catalog.fields.reading_level": "المستوى القرائي",
   "library_catalog.fields.language": "اللغة",
+  "library_catalog.fields.page_count": "عدد الصفحات",
+  "library_catalog.fields.page_count_hint": "يُستخدم في نادي القراءة لتتبع تقدّم المراحل المعتمدة على عدد الصفحات.",
   "library_catalog.fields.description": "الوصف",
   "library_catalog.fields.cover_image": "صورة الغلاف",
   "library_catalog.fields.total_copies": "عدد النسخ",
