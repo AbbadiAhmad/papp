@@ -6,6 +6,35 @@ import { useTranslation } from 'react-i18next';
 const SCANNER_ELEMENT_ID = 'library-circulation-camera-scanner';
 
 /**
+ * User-reported: the camera opens but doesn't refocus for a small, close-up
+ * QR code (book spine stickers are scanned from a few cm away). Default
+ * `getUserMedia()` autofocus on many devices settles on a middle/far
+ * distance and is slow to re-hunt for near objects.
+ *
+ * `focusMode`/`focusDistance` are W3C Image Capture MediaTrackConstraints,
+ * forwarded by html5-qrcode straight into `getUserMedia`'s `video`
+ * constraints. Support is real but uneven, so this is a *request*, not a
+ * guarantee:
+ *  - Android Chrome: supports `focusMode: 'manual'` + `focusDistance` on
+ *    most devices — this is the actual fix for the reported behavior.
+ *  - Desktop Chrome/Edge (Windows) webcams: `focusMode` support varies by
+ *    UVC driver; `focusDistance` range support is less common.
+ *  - iOS/macOS Safari (incl. any iOS WebView, so also iPhone Chrome/Firefox
+ *    which are Safari-engine on iOS): WebKit does not implement these
+ *    constraints at all — they're silently ignored and the OS's own
+ *    autofocus heuristic keeps running, unchanged from today's behavior.
+ * An unsupported constraint is dropped by the browser rather than
+ * rejecting `.start()`, so no feature-detection/fallback branch is needed
+ * here — every platform keeps working, iOS just doesn't get the fix.
+ * `focusDistance` is in meters; 0.1 (10cm) comfortably covers "a sticker
+ * held close to the phone" without clipping typical near-focus minimums.
+ */
+const NEAR_FOCUS_VIDEO_CONSTRAINTS = {
+  focusMode: 'manual',
+  focusDistance: 0.1,
+} as unknown as MediaTrackConstraintSet;
+
+/**
  * §6's first of three scan input methods ("1. كاميرا الجهاز"). Mounted only
  * while `open` — `Html5Qrcode.start()`/`.stop()` own the real
  * `getUserMedia()` camera stream lifecycle, torn down on unmount/close so
@@ -113,7 +142,7 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       scannerRef.current = scanner;
       scanner
         .start(
-          { facingMode: 'environment' },
+          { facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] },
           { fps: 10, qrbox: 250 },
           (decodedText) => {
             if (stoppedRef.current) return;
