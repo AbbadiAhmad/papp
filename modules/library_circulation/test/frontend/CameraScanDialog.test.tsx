@@ -158,23 +158,35 @@ describe('CameraScanDialog', () => {
     expect(html5QrcodeMock).not.toHaveBeenCalled();
   });
 
-  it('retries without the near-focus constraint when the browser rejects it, instead of giving up (user-reported regression)', async () => {
-    // The commit that added the near-focus `advanced` constraint assumed an
-    // unsupported one is silently dropped by the browser rather than
-    // rejecting `.start()` — the very next user report was the camera
-    // failing outright on two different platforms. This proves the fix:
-    // a rejected first attempt is retried once with plain `facingMode`
-    // before the dialog gives up and shows the error.
+  it('always passes a single-key camera-selection object as the 1st start() arg, with the near-focus constraint in the 2nd arg\'s videoConstraints (LIBRARY_CIRCULATION-D36)', async () => {
+    // The actual regression (two prior "fixes" misdiagnosed it, see
+    // CameraScanDialog.tsx's own NEAR_FOCUS_VIDEO_CONSTRAINTS docblock):
+    // html5-qrcode's `cameraIdOrConfig` (1st arg) throws if given more than
+    // one key. Passing {facingMode, advanced} there broke the camera on
+    // EVERY call, on every platform — not a browser-specific quirk.
+    render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    await waitFor(() => expect(startMock).toHaveBeenCalled());
+    const [cameraIdOrConfig, config] = startMock.mock.calls[0];
+    expect(cameraIdOrConfig).toEqual({ facingMode: 'environment' }); // exactly 1 key, always
+    expect(config).toMatchObject({ videoConstraints: { advanced: expect.any(Array) } });
+  });
+
+  it('retries without the near-focus constraint when the browser still rejects it, instead of giving up', async () => {
+    // Defensive fallback, not the primary fix: even a spec-valid
+    // videoConstraints object could in principle be rejected by some
+    // device/engine. A rejected first attempt is retried once with no
+    // extra constraints before the dialog gives up and shows the error.
     startMock.mockImplementationOnce(() => Promise.reject('OverconstrainedError: focusDistance'));
     startMock.mockImplementationOnce(() => Promise.resolve(undefined));
 
     const { queryByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
 
     await waitFor(() => expect(startMock).toHaveBeenCalledTimes(2));
-    const [firstCallConstraints] = startMock.mock.calls[0];
-    const [secondCallConstraints] = startMock.mock.calls[1];
-    expect(firstCallConstraints).toMatchObject({ advanced: expect.any(Array) });
-    expect(secondCallConstraints).toEqual({ facingMode: 'environment' });
+    const [, firstConfig] = startMock.mock.calls[0];
+    const [, secondConfig] = startMock.mock.calls[1];
+    expect(firstConfig).toMatchObject({ videoConstraints: { advanced: expect.any(Array) } });
+    expect(secondConfig).not.toHaveProperty('videoConstraints');
     expect(queryByText(circulationEn['library_circulation.scan.camera_error'])).toBeNull();
   });
 
