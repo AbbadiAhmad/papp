@@ -236,23 +236,39 @@ export class AuthService {
   }
 
   /**
-   * D41/D91: self-registration. 403s when `users.allow_self_registration` is
-   * off (the admin-editable Users setting — see settings.controller.ts's
-   * `/settings/registration`); otherwise validates the password against the
-   * live `auth.password_policy` (same rule as any other password, D23),
-   * creates the user, and assigns EXACTLY the role configured in
-   * `users.self_registration_role_code` — never a choice the registrant
-   * makes, and never a hardcoded role, since papp is a general back-office
-   * platform (CLAUDE.md), not Library-specific (D91 removed the old
-   * hardcoded "reader" — a Library-module role that had no business being
-   * a core auth assumption). 403s with a distinct message when that
-   * setting is unset or points at a role that no longer exists, so an admin
-   * sees a clear "not configured" error rather than a generic 500.
-   * Deliberately does NOT auto-login (no session/tokens issued here, per
-   * BUILD_PLAN.md Phase 5: "does not auto-login (201, no tokens)") — the new
-   * user logs in separately afterward like anyone else.
+   * D41/D91/D92: self-registration. Checks the registrant's OWN input
+   * (duplicate email) BEFORE any server-config gate (disabled? role
+   * configured?) — D92 fix: the original order checked config first, so a
+   * registrant retrying an already-taken email while the admin hadn't
+   * configured a role yet got a misleading "no role configured" 403
+   * instead of "this email is taken," masking the real problem. 403s when
+   * `users.allow_self_registration` is off (the admin-editable Users
+   * setting — see settings.controller.ts's `/settings/registration`);
+   * otherwise validates the password against the live `auth.password_policy`
+   * (same rule as any other password, D23), creates the user, and assigns
+   * EXACTLY the role configured in `users.self_registration_role_code` —
+   * never a choice the registrant makes, and never a hardcoded role, since
+   * papp is a general back-office platform (CLAUDE.md), not Library-specific
+   * (D91 removed the old hardcoded "reader"). 403s with a distinct message
+   * when that setting is unset or points at a role that no longer exists,
+   * so an admin sees a clear "not configured" error rather than a generic
+   * 500. Deliberately does NOT auto-login (no session/tokens issued here,
+   * per BUILD_PLAN.md Phase 5: "does not auto-login (201, no tokens)") —
+   * the new user logs in separately afterward like anyone else.
    */
   async register(dto: RegisterDto): Promise<RegisteredUser> {
+    // D92: checked FIRST and independently of every config gate below — an
+    // existing account is true regardless of whether self-registration is
+    // even on right now. Still re-checked at the actual INSERT (the
+    // catch-block below) for the TOCTOU window between this read and the
+    // transaction's write; this upfront check only makes the COMMON case
+    // (an existing user, not a race) fail with the right message instead
+    // of masking it behind a config error.
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existing) {
+      throw new ConflictException('A user with this email already exists');
+    }
+
     const allowSelfRegistration = await this.settings.get<boolean>(ALLOW_SELF_REGISTRATION_KEY);
     if (!allowSelfRegistration) {
       throw new ForbiddenException('Self-registration is currently disabled');

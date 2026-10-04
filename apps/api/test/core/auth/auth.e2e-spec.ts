@@ -244,6 +244,30 @@ describe('Auth (e2e)', () => {
       await setSelfRegistration(false);
     });
 
+    // D92: reproduces a real user report — registering with an email that
+    // already exists (via the ADMIN "create user" screen, nothing to do
+    // with self-registration) returned "no role configured" (403) instead
+    // of "this email is taken" (409), because the original check order put
+    // server config ahead of the registrant's own input. The duplicate
+    // check must win regardless of whether a role has ever been configured.
+    it('409s (not 403) for an email that already exists, even when self-registration has no role configured', async () => {
+      const existing = await createUserWithRole(app!, 'reader', { label: 'd92-duplicate' });
+
+      const admin = await fixtureForRole(app!, 'admin');
+      const toggleRes = await request(server())
+        .put('/settings/registration')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ allowSelfRegistration: true });
+      expect(toggleRes.status).toBe(200);
+
+      const res = await request(server())
+        .post('/auth/register')
+        .send({ email: existing.email, name: 'Duplicate Attempt', password: 'RegisterPass123' });
+      expect(res.status).toBe(409);
+
+      await setSelfRegistration(false);
+    });
+
     it('once enabled with a configured role, creates the account and assigns EXACTLY that role (never auto-login)', async () => {
       await setSelfRegistration(true, 'reader');
       const email = `e2e-reg-on-${Date.now()}@papp.test`;

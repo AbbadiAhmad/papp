@@ -39,6 +39,7 @@ interface MockTx {
  * `toHaveBeenCalledTimes(0)` on a mock that happens to exist.
  */
 interface MockPrisma {
+  user: { findUnique: jest.Mock };
   role: { findUnique: jest.Mock };
   $transaction: jest.Mock;
 }
@@ -53,6 +54,9 @@ interface MockSettings {
 
 function createMockPrisma(tx: MockTx): MockPrisma {
   return {
+    // D92: defaults to "no existing user" so every test not specifically
+    // about the duplicate-email case doesn't have to care about it.
+    user: { findUnique: jest.fn().mockResolvedValue(null) },
     role: { findUnique: jest.fn() },
     $transaction: jest.fn(async (cb: (tx: MockTx) => Promise<unknown>) => cb(tx)),
   };
@@ -104,12 +108,38 @@ describe('AuthService.register (D41 self-registration)', () => {
     return new AuthService(prisma as never, jwtService as never, settings as never);
   }
 
+  // D92: found via a real user report — self-registering with an email
+  // that already existed (created separately via the admin "create user"
+  // screen, nothing to do with self-registration at all) returned "no role
+  // configured" instead of "this email is taken", because the original
+  // code checked server config before ever looking at the registrant's own
+  // input. The duplicate-email check must win regardless of config state.
+  it('rejects a duplicate email with ConflictException BEFORE checking whether self-registration is even enabled', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'existing-user', email: VALID_DTO.email });
+    service = buildService(createMockSettings({ allowSelfRegistration: false }));
+
+    await expect(service.register(VALID_DTO)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { email: VALID_DTO.email } });
+    expect(prisma.role.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate email with ConflictException even when no role is configured either', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'existing-user', email: VALID_DTO.email });
+    service = buildService(createMockSettings({ allowSelfRegistration: true, selfRegistrationRoleCode: null }));
+
+    await expect(service.register(VALID_DTO)).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it('rejects before any DB write when self-registration is disabled', async () => {
     prisma.role.findUnique.mockResolvedValue(CONFIGURED_ROLE);
     service = buildService(createMockSettings({ allowSelfRegistration: false }));
 
     await expect(service.register(VALID_DTO)).rejects.toBeInstanceOf(ForbiddenException);
 
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { email: VALID_DTO.email } });
     expect(prisma.role.findUnique).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(tx.user.create).not.toHaveBeenCalled();
