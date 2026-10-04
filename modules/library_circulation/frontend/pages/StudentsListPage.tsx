@@ -106,6 +106,7 @@ export function StudentsListPage() {
             <TableHead>
               <TableRow>
                 <TableCell>{t('library_circulation.students.code')}</TableCell>
+                <TableCell>{t('library_circulation.students.name')}</TableCell>
                 <TableCell>{t('library_circulation.students.class_name')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
               </TableRow>
@@ -116,6 +117,7 @@ export function StudentsListPage() {
                   <TableCell>
                     <RouterLink to={`/library-circulation/students/${student.id}`}>{student.code}</RouterLink>
                   </TableCell>
+                  <TableCell>{student.name ?? '—'}</TableCell>
                   <TableCell>{student.className ?? '—'}</TableCell>
                   <TableCell align="right">
                     <Can permission="library_circulation.students.update">

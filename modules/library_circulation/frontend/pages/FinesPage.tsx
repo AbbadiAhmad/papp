@@ -6,20 +6,25 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
   Grid,
   IconButton,
+  InputLabel,
   Link,
   List,
   ListItem,
   ListItemText,
   MenuItem,
+  OutlinedInput,
   Paper,
+  Select,
   Snackbar,
   Stack,
   Table,
@@ -34,6 +39,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
@@ -66,7 +72,7 @@ const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'defaul
 
 const EMPTY_FINE_FILTER: FineFilterInput = {
   studentId: undefined,
-  status: '',
+  status: [],
   fineTypeId: '',
   dateFrom: '',
   dateTo: '',
@@ -75,18 +81,49 @@ const EMPTY_FINE_FILTER: FineFilterInput = {
   amountMax: undefined,
 };
 
+/**
+ * Reads the initial filter off the URL's own query string — lets the
+ * dashboard (and anywhere else) deep-link straight into a pre-filtered
+ * view, e.g. `?status=unpaid,partially_paid` for the "Unpaid fines" card,
+ * same "?filter=... in the URL" pattern reading_club's own
+ * ReadersListPage/DashboardPage already use for groupId/stageId.
+ */
+function filterFromSearchParams(searchParams: URLSearchParams): FineFilterInput {
+  const statusParam = searchParams.get('status');
+  const status = statusParam ? (statusParam.split(',').filter(Boolean) as FineStatus[]) : [];
+  return {
+    ...EMPTY_FINE_FILTER,
+    status,
+    studentId: searchParams.get('studentId') ?? undefined,
+  };
+}
+
 /** §11-13: fines list + filters + waive + record-payment — the finance side lives here since library_finance is combined into this module (D44). */
 export function FinesPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  const initialFilter = filterFromSearchParams(searchParams);
   const [filterStudent, setFilterStudent] = useState<StudentSearchResult | null>(null);
-  const [filter, setFilter] = useState<FineFilterInput>(EMPTY_FINE_FILTER);
-  const [appliedFilter, setAppliedFilter] = useState<FineFilterInput>(EMPTY_FINE_FILTER);
+  const [filter, setFilter] = useState<FineFilterInput>(initialFilter);
+  const [appliedFilter, setAppliedFilter] = useState<FineFilterInput>(initialFilter);
   const [fineTypes, setFineTypes] = useState<LibraryFineType[]>([]);
 
   useEffect(() => {
     libraryCirculationApi.listFineTypes().then(setFineTypes);
+  }, []);
+
+  // A `studentId` arriving via the URL (e.g. a future deep-link from a
+  // reader's own detail page) has no display name/code yet — resolve it
+  // once so the ReaderAutocomplete shows more than a blank field.
+  useEffect(() => {
+    if (!initialFilter.studentId) return;
+    libraryCirculationApi
+      .getStudent(initialFilter.studentId)
+      .then((student) => setFilterStudent({ id: student.id, userId: student.userId, code: student.code, className: student.className, name: student.name }))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only resolution of the URL's initial studentId.
   }, []);
 
   const { status, data, errorMessage, reload } = useGuardedQuery(() => libraryCirculationApi.listFines(appliedFilter));
@@ -109,21 +146,35 @@ export function FinesPage() {
     }
   };
 
-  const handleFieldChange = (field: keyof FineFilterInput, value: string) => {
+  const handleFieldChange = (field: Exclude<keyof FineFilterInput, 'status'>, value: string) => {
     setFilter((prev) => ({ ...prev, [field]: value }));
+  };
+  const handleStatusChange = (value: FineStatus[]) => {
+    setFilter((prev) => ({ ...prev, status: value }));
+  };
+
+  /** Keeps the URL's own query string in sync with what's actually applied, so the page's current view is always a shareable/bookmarkable/back-button-safe link. */
+  const syncSearchParams = (applied: FineFilterInput) => {
+    const next = new URLSearchParams();
+    if (applied.status && applied.status.length > 0) next.set('status', applied.status.join(','));
+    if (applied.studentId) next.set('studentId', applied.studentId);
+    setSearchParams(next, { replace: true });
   };
 
   // useGuardedQuery only re-fetches on an explicit reload() (reads its
   // fetcher through a ref, not a dependency array) — a filter change needs
   // its own reload() call, not just a state update.
   const applyFilters = () => {
-    setAppliedFilter({ ...filter, studentId: filterStudent?.id });
+    const applied = { ...filter, studentId: filterStudent?.id };
+    setAppliedFilter(applied);
+    syncSearchParams(applied);
     reload();
   };
   const clearFilters = () => {
     setFilterStudent(null);
     setFilter(EMPTY_FINE_FILTER);
     setAppliedFilter(EMPTY_FINE_FILTER);
+    syncSearchParams(EMPTY_FINE_FILTER);
     reload();
   };
 
@@ -147,20 +198,32 @@ export function FinesPage() {
               <ReaderAutocomplete value={filterStudent} onChange={setFilterStudent} label={t('library_circulation.fines.filter_reader')} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <TextField
-                select
-                label={t('library_circulation.fines.status')}
-                value={filter.status}
-                onChange={(e) => handleFieldChange('status', e.target.value)}
-                fullWidth
-              >
-                <MenuItem value="">{t('library_circulation.fines.filter_any_status')}</MenuItem>
-                {FINE_STATUSES.map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {t(`library_circulation.fine_status.${s}`)}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <FormControl fullWidth>
+                <InputLabel id="fines-status-filter-label">{t('library_circulation.fines.status')}</InputLabel>
+                <Select
+                  multiple
+                  labelId="fines-status-filter-label"
+                  input={<OutlinedInput label={t('library_circulation.fines.status')} />}
+                  value={filter.status ?? []}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    handleStatusChange(typeof value === 'string' ? (value.split(',') as FineStatus[]) : value);
+                  }}
+                  renderValue={(selected) =>
+                    selected.length === 0
+                      ? t('library_circulation.fines.filter_any_status')
+                      : selected.map((s) => t(`library_circulation.fine_status.${s}`)).join(', ')
+                  }
+                  displayEmpty
+                >
+                  {FINE_STATUSES.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      <Checkbox size="small" checked={(filter.status ?? []).includes(s)} />
+                      <ListItemText primary={t(`library_circulation.fine_status.${s}`)} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <TextField

@@ -258,6 +258,45 @@ describe('StudentsService', () => {
     });
   });
 
+  describe('list', () => {
+    it('bug fix: joins in each reader\'s name from the linked User (D41), not just code/class', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([
+        studentRow({ id: 'student-1', userId: 'user-1', code: 'STU-001' }),
+        studentRow({ id: 'student-2', userId: 'user-2', code: 'STU-002' }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-1', name: 'Aisha' },
+        { id: 'user-2', name: 'Omar' },
+      ]);
+
+      const result = await service.list();
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({ where: { id: { in: ['user-1', 'user-2'] } }, select: { id: true, name: true } });
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'student-1', name: 'Aisha' }),
+        expect.objectContaining({ id: 'student-2', name: 'Omar' }),
+      ]);
+    });
+
+    it('returns name: null for a student whose linked user is somehow missing, without throwing', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([studentRow({ id: 'student-1', userId: 'user-1' })]);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      const result = await service.list();
+
+      expect(result).toEqual([expect.objectContaining({ id: 'student-1', name: null })]);
+    });
+
+    it('skips the User lookup entirely when there are no students', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+
+      const result = await service.list();
+
+      expect(result).toEqual([]);
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('search', () => {
     it('returns [] for a blank query without touching the database', async () => {
       const result = await service.search('   ');

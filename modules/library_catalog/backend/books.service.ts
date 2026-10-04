@@ -136,7 +136,15 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const { copy, ...bookData } = dto;
     return this.prisma.$transaction(async (tx) => {
       const book = await tx.libraryCatalogBook.create({ data: bookData });
-      const qrCode = copy.qrCode?.trim() || (await this.nextCopyCode(tx));
+      // Every copy created — whether auto-assigned or typed in by hand —
+      // advances `library_catalog_copy_code_seq` (see `nextCopyCode()` and
+      // `reconcileCopyCodeSequence()` below for why a manually-typed code
+      // still needs to bump the sequence).
+      const manualCode = copy.qrCode?.trim();
+      const qrCode = manualCode || (await this.nextCopyCode(tx));
+      if (manualCode) {
+        await this.reconcileCopyCodeSequence(tx, manualCode);
+      }
       await tx.libraryCatalogBookCopy.create({
         data: {
           bookId: book.id,
@@ -190,6 +198,12 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       }
     }
     const qrCode = requestedCode || (await this.nextCopyCode(this.prisma));
+    // See the matching comment in `create()` above — a manually-typed code
+    // (e.g. the librarian overrides the suggested one) still needs to bump
+    // the sequence so the NEXT suggestion is reevaluated and doesn't collide.
+    if (requestedCode) {
+      await this.reconcileCopyCodeSequence(this.prisma, requestedCode);
+    }
     return this.prisma.libraryCatalogBookCopy.create({
       data: {
         bookId,
@@ -508,6 +522,43 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
   private formatCopyCode(value: bigint): string {
     return `${COPY_CODE_PREFIX}${value.toString().padStart(COPY_CODE_DIGITS, '0')}`;
+  }
+
+  /**
+   * Bug fix (user-reported, post-D22): the suggested next code shown by
+   * `peekNextCopyCode()` is pre-filled into the Add Book / Add Copy forms as
+   * an editable, already-populated text field rather than a blank one — so
+   * when the librarian accepts it as-is, it reaches `create()`/`createCopy()`
+   * as an explicit, non-blank `qrCode`, which took the "manually typed"
+   * branch and never called `nextCopyCode()` / consumed the sequence. Net
+   * effect: the suggestion never advanced on a normal add (bug 1), and typing
+   * in a genuinely different/concurrent code left the sequence just as stale
+   * (bug 2) — the next peek could re-suggest a value that was just taken.
+   *
+   * Fix: whenever a copy is created with an EXPLICIT code (accepted
+   * suggestion or a real manual/concurrent entry) that happens to match this
+   * module's own `Bxxxxxx` format, fast-forward the sequence with `setval()`
+   * so it's never behind the highest `Bxxxxxx` number actually in use — the
+   * next `peekNextCopyCode()` is always reevaluated off the up-to-date
+   * high-water mark. A manually-typed code OUTSIDE the `Bxxxxxx` format
+   * (free text, pre-D22 legacy codes) has no numeric value to reconcile and
+   * is left alone, same as before.
+   */
+  private async reconcileCopyCodeSequence(client: Pick<PrismaClient, '$queryRawUnsafe'>, enteredCode: string): Promise<void> {
+    const match = new RegExp(`^${COPY_CODE_PREFIX}(\\d{${COPY_CODE_DIGITS}})$`).exec(enteredCode);
+    if (!match) return;
+    const enteredValue = BigInt(match[1]);
+    // `setval(seq, n, true)` makes `n` the sequence's `last_value` with
+    // `is_called = true`, i.e. the NEXT `nextval()` returns `n + 1` — exactly
+    // matching "a copy numbered `enteredValue` now exists, so don't suggest
+    // it (or anything at/under it) again". `GREATEST` against the sequence's
+    // own current value keeps this a no-op when the entered code is BEHIND
+    // the high-water mark already (e.g. an older/reused low number), so it
+    // can never move the sequence backwards.
+    await client.$queryRawUnsafe(
+      "SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)",
+      enteredValue,
+    );
   }
 
   private async ensureBookExists(id: string): Promise<void> {

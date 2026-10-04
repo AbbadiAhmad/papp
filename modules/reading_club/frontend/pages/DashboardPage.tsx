@@ -24,11 +24,36 @@ export function DashboardPage() {
     setSearchParams(next);
   };
 
+  // `episodeId` carried through on every link below (bug fix — it was
+  // previously dropped even on the existing per-group/per-stage cards),
+  // so following a link while viewing a past episode lands on that SAME
+  // episode's data instead of silently resetting to the current one
+  // (ReadersListPage/GroupsListPage's own `episodeId` default).
+  const episodeQuery = episodeId ? `episodeId=${episodeId}` : '';
+  const withEpisodeQuery = (path: string, params: string) => {
+    const query = [params, episodeQuery].filter(Boolean).join('&');
+    return query ? `${path}?${query}` : path;
+  };
+
   const topCards = data
     ? [
-        { label: t('reading_club.dashboard.total_groups'), value: data.totalGroups, color: 'text.primary' },
-        { label: t('reading_club.dashboard.total_active_readers'), value: data.totalActiveReaders, color: 'text.primary' },
-        { label: t('reading_club.dashboard.pending_rewards'), value: data.pendingRewardsCount, color: 'warning.main' },
+        {
+          label: t('reading_club.dashboard.total_groups'),
+          value: data.totalGroups,
+          color: 'text.primary',
+          to: withEpisodeQuery('/reading-club/groups', ''),
+        },
+        {
+          label: t('reading_club.dashboard.total_active_readers'),
+          value: data.totalActiveReaders,
+          color: 'text.primary',
+          to: withEpisodeQuery('/reading-club/readers', ''),
+        },
+        // No separate "pending rewards" list page exists — the table right
+        // below this row already shows every pending reward in full, so
+        // there's nothing further to link to (CLAUDE.md: flag the gap
+        // rather than guess; see this change's DECISIONS.md entry).
+        { label: t('reading_club.dashboard.pending_rewards'), value: data.pendingRewardsCount, color: 'warning.main', to: null },
       ]
     : [];
 
@@ -46,14 +71,27 @@ export function DashboardPage() {
           {topCards.map((card) => (
             <Grid key={card.label} size={{ xs: 12, sm: 4 }}>
               <Card>
-                <CardContent>
-                  <Typography variant="body2" color="text.secondary">
-                    {card.label}
-                  </Typography>
-                  <Typography variant="h4" sx={{ color: card.color, mt: 1 }}>
-                    {card.value}
-                  </Typography>
-                </CardContent>
+                {card.to ? (
+                  <CardActionArea onClick={() => navigate(card.to as string)}>
+                    <CardContent>
+                      <Typography variant="body2" color="text.secondary">
+                        {card.label}
+                      </Typography>
+                      <Typography variant="h4" sx={{ color: card.color, mt: 1 }}>
+                        {card.value}
+                      </Typography>
+                    </CardContent>
+                  </CardActionArea>
+                ) : (
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary">
+                      {card.label}
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: card.color, mt: 1 }}>
+                      {card.value}
+                    </Typography>
+                  </CardContent>
+                )}
               </Card>
             </Grid>
           ))}
@@ -66,7 +104,7 @@ export function DashboardPage() {
           {(data?.groups ?? []).map((group) => (
             <Grid key={group.id} size={{ xs: 12, md: 6 }}>
               <Card>
-                <CardActionArea onClick={() => navigate(`/reading-club/readers?groupId=${group.id}`)}>
+                <CardActionArea onClick={() => navigate(withEpisodeQuery('/reading-club/readers', `groupId=${group.id}`))}>
                   <CardContent>
                     <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="h6">{group.name}</Typography>
@@ -89,7 +127,7 @@ export function DashboardPage() {
                             sx={{ justifyContent: 'space-between' }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/reading-club/readers?groupId=${group.id}&stageId=${stage.id}`);
+                              navigate(withEpisodeQuery('/reading-club/readers', `groupId=${group.id}&stageId=${stage.id}`));
                             }}
                           >
                             <Typography variant="body2">
