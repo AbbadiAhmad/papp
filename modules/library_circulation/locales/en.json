@@ -35,6 +35,7 @@
   "library_circulation.scan.camera_button": "Scan with camera",
   "library_circulation.scan.camera_title": "Point the camera at the code",
   "library_circulation.scan.camera_error": "Could not access the camera — check permissions, or use the text field instead.",
+  "library_circulation.scan.camera_insecure_context_error": "The camera can't be used because this page isn't loaded over a secure connection (HTTPS) — this is a browser restriction, not a camera permission issue. Use the text field instead, or ask an administrator to enable HTTPS.",
   "library_circulation.scan.student_label": "Reader",
   "library_circulation.scan.book_label": "Book",
   "library_circulation.scan.active_borrowings_count": "{{count}} book(s) currently borrowed",

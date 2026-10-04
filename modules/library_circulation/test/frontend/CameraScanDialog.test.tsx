@@ -34,6 +34,19 @@ beforeAll(async () => {
   await i18n.changeLanguage('en');
 });
 
+// jsdom does not implement the media capture APIs at all — `navigator
+// .mediaDevices` is `undefined` there by default, unlike every real browser
+// serving the app over `https:`/`localhost`. Stubbed present (as an object
+// with a `getUserMedia` function) for most tests below, since they're
+// exercising what happens AFTER that check passes — one dedicated test
+// below removes it again to reproduce the real insecure-context bug.
+beforeEach(() => {
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn() },
+    configurable: true,
+  });
+});
+
 // Re-applied every test (not just once in the `vi.mock` factory) because
 // this project's vitest.config.ts sets `restoreMocks: true`, which resets a
 // `vi.fn()` back to having no implementation between tests — a factory-set
@@ -124,5 +137,24 @@ describe('CameraScanDialog', () => {
 
     resolveStart!();
     await waitFor(() => expect(stopMock).toHaveBeenCalledTimes(1)); // called exactly once, after start() actually resolved
+  });
+
+  it('shows the insecure-context error (not the generic permissions one) and never constructs Html5Qrcode when getUserMedia is unavailable', async () => {
+    // Third user-reported bug: on iPhone AND Windows, the generic
+    // "check permissions" error appeared with no browser permission prompt
+    // at all and nothing logged to the console. Root cause (see
+    // CameraScanDialog.tsx's own docblock): the app was reached over plain
+    // HTTP (docker-compose's `web` service has no TLS) via a LAN IP, not
+    // `localhost` — an insecure context, where `navigator.mediaDevices`
+    // doesn't exist in ANY browser, so `html5-qrcode`'s own `.start()`
+    // rejects before ever requesting camera permission. This reproduces
+    // that exact environment and asserts the dialog now tells the user the
+    // real reason instead of the misleading "check permissions" message.
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true });
+
+    const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    expect(await findByText(circulationEn['library_circulation.scan.camera_insecure_context_error'])).toBeTruthy();
+    expect(html5QrcodeMock).not.toHaveBeenCalled();
   });
 });

@@ -132,10 +132,40 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       stoppedRef.current = false;
       startedRef.current = false;
       stopRequestedRef.current = false;
+
+      // Third user-reported bug on this dialog: on both iPhone (Safari) and
+      // Windows (desktop Chrome/Edge) the error Alert appeared IMMEDIATELY,
+      // with no browser permission prompt at all and nothing in the console.
+      // Root cause (confirmed by reading html5-qrcode's own source,
+      // `src/camera/factories.ts`'s `CameraFactory.failIfNotSupported()`):
+      // `.start()` throws a bare string, `"navigator.mediaDevices not
+      // supported"`, SYNCHRONOUSLY-under-the-covers (an `async` function's
+      // `throw` becomes a rejected promise) the instant `getUserMedia` isn't
+      // exposed at all — which is exactly what happens in an insecure
+      // context (any origin that's neither `https:` nor `localhost`).
+      // `docker-compose.yml`'s `web` service serves plain HTTP, so opening
+      // the app via a LAN IP (the normal way to reach it from a phone or a
+      // second machine) hits this on every platform identically — no
+      // permission dialog is ever reached, matching the report exactly. The
+      // existing generic `.catch()` below also never logged the rejection
+      // reason anywhere, which is why "no error on console" held even
+      // though the library itself threw a precise one. Checked up front so
+      // the message told to the user is accurate instead of the generic
+      // "check permissions" one, which is actively misleading here — no
+      // permission was ever asked.
+      if (!navigator.mediaDevices?.getUserMedia) {
+        console.error(
+          '[CameraScanDialog] navigator.mediaDevices.getUserMedia is unavailable — the page is not running in a secure context (https:, or localhost). Camera access is impossible here regardless of OS-level permission state.',
+        );
+        setError(t('library_circulation.scan.camera_insecure_context_error'));
+        return;
+      }
+
       let scanner: Html5Qrcode;
       try {
         scanner = new Html5Qrcode(node.id);
-      } catch {
+      } catch (err) {
+        console.error('[CameraScanDialog] Html5Qrcode construction failed', err);
         setError(t('library_circulation.scan.camera_error'));
         return;
       }
@@ -157,7 +187,10 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
             safeStop(scanner);
           }
         })
-        .catch(() => setError(t('library_circulation.scan.camera_error')));
+        .catch((err) => {
+          console.error('[CameraScanDialog] scanner.start() failed', err);
+          setError(t('library_circulation.scan.camera_error'));
+        });
     },
     [safeStop, stopScanner, t],
   );
