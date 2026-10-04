@@ -3,6 +3,7 @@
   "library_catalog.menu.books": "الكتب",
   "library_catalog.menu.moderate_reviews": "مراجعة التعليقات",
   "library_catalog.menu.print_codes": "طباعة الرموز",
+  "library_catalog.menu.inventory": "جرد المخزون",
 
   "library_catalog.perm.books.view": "عرض الكتب",
   "library_catalog.perm.books.create": "إضافة كتب",
@@ -12,6 +13,7 @@
   "library_catalog.perm.books.rate": "تقييم الكتب",
   "library_catalog.perm.books.moderate_ratings": "الموافقة على تعليقات الكتب أو رفضها",
   "library_catalog.perm.copies.print_codes": "طباعة/تصدير رموز الاستجابة السريعة للنسخ",
+  "library_catalog.perm.copies.inventory": "عرض/تصدير قائمة جرد النسخ",
   "library_catalog.perm.settings.update": "تعديل إعدادات مكتبة الكتب",
 
   "library_catalog.fields.title": "العنوان",
@@ -95,5 +97,8 @@
   "library_catalog.print_codes.print_button": "طباعة الملصقات",
   "library_catalog.print_codes.preview_hint": "يظهر العنوان هنا للتحقق فقط — لا يُطبع على الملصق.",
   "library_catalog.print_codes.no_copies": "لا توجد نسخ ضمن نطاق التاريخ المحدد.",
-  "library_catalog.print_codes.settings_saved": "تم حفظ نص رأس الملصق."
+  "library_catalog.print_codes.settings_saved": "تم حفظ نص رأس الملصق.",
+
+  "library_catalog.inventory.filter_any_status": "أي حالة",
+  "library_catalog.inventory.clear_filters": "مسح"
 }

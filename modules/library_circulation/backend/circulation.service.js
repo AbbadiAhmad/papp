@@ -283,6 +283,100 @@ let CirculationService = CirculationService_1 = class CirculationService {
             };
         });
     }
+    /**
+     * Borrowings status page (user request: "a page to track borrowed book
+     * status... book name, borrowing reader, date of borrow, estimated date
+     * of return, overdue by days") — the circulation module's own missing
+     * "list every borrowing, filterable" page; previously only a per-student
+     * (`getActiveBorrowingsForStudent`) or per-copy/per-book
+     * (`getCirculationHistory`/`getBookCirculationHistory`) slice existed.
+     * Enriches each row with the book title/copy code and the reader's own
+     * code/name (same two-pass "resolve referenced rows, then join in
+     * memory" style as `FinesService.list()` — this dedicated Prisma client
+     * has no declared cross-table relation to `include` through directly).
+     * `daysOverdue` is computed here, never stored — same "overdue is a
+     * COMPUTED state, never a persisted status value" rule `getCopyStats`'s
+     * own `overdueBorrowings` count already follows (LIBRARY_CIRCULATION-D4,
+     * no scheduler exists on this platform).
+     */
+    async listBorrowings(filter) {
+        let bookCopyIds;
+        if (filter.bookSearch) {
+            const matchingBooks = await this.prisma.libraryCatalogBook.findMany({
+                where: { title: { contains: filter.bookSearch, mode: 'insensitive' } },
+                select: { id: true },
+            });
+            const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+                where: {
+                    OR: [
+                        { qrCode: { contains: filter.bookSearch, mode: 'insensitive' } },
+                        ...(matchingBooks.length ? [{ bookId: { in: matchingBooks.map((b) => b.id) } }] : []),
+                    ],
+                },
+                select: { id: true },
+            });
+            bookCopyIds = copies.map((c) => c.id);
+            if (bookCopyIds.length === 0)
+                return [];
+        }
+        const borrowedAt = {};
+        if (filter.borrowedFrom)
+            borrowedAt.gte = new Date(filter.borrowedFrom);
+        if (filter.borrowedTo) {
+            const end = new Date(filter.borrowedTo);
+            end.setHours(23, 59, 59, 999);
+            borrowedAt.lte = end;
+        }
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where: {
+                studentId: filter.studentId,
+                bookCopyId: bookCopyIds ? { in: bookCopyIds } : undefined,
+                // overdueOnly narrows to still-active loans past their due date —
+                // NEVER a `status: 'overdue'` match, since nothing ever persists
+                // that value (see this method's own docblock). An explicit
+                // `status` filter (e.g. 'returned') still works independently.
+                status: filter.overdueOnly ? { in: [...ACTIVE_BORROWING_STATUSES] } : filter.status,
+                dueAt: filter.overdueOnly ? { lt: new Date() } : undefined,
+                ...(Object.keys(borrowedAt).length ? { borrowedAt } : {}),
+            },
+            orderBy: { borrowedAt: 'desc' },
+        });
+        if (borrowings.length === 0)
+            return [];
+        const copyIds = [...new Set(borrowings.map((b) => b.bookCopyId))];
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { id: { in: copyIds } } });
+        const copyById = new Map(copies.map((c) => [c.id, c]));
+        const bookIds = [...new Set(copies.map((c) => c.bookId))];
+        const books = bookIds.length ? await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: bookIds } } }) : [];
+        const bookById = new Map(books.map((b) => [b.id, b]));
+        const studentIds = [...new Set(borrowings.map((b) => b.studentId))];
+        const students = await this.prisma.libraryStudent.findMany({ where: { id: { in: studentIds } } });
+        const studentById = new Map(students.map((s) => [s.id, s]));
+        const userIds = students.map((s) => s.userId);
+        const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+        const nameByUserId = new Map(users.map((u) => [u.id, u.name]));
+        const now = Date.now();
+        return borrowings.map((b) => {
+            const copy = copyById.get(b.bookCopyId);
+            const book = copy ? bookById.get(copy.bookId) : undefined;
+            const student = studentById.get(b.studentId);
+            const isActive = ACTIVE_BORROWING_STATUSES.includes(b.status);
+            const daysOverdue = isActive && b.dueAt.getTime() < now ? Math.floor((now - b.dueAt.getTime()) / (24 * 60 * 60 * 1000)) : 0;
+            return {
+                id: b.id,
+                bookTitle: book?.title ?? null,
+                qrCode: copy?.qrCode ?? null,
+                studentId: b.studentId,
+                studentCode: student?.code ?? null,
+                studentName: student ? (nameByUserId.get(student.userId) ?? null) : null,
+                borrowedAt: b.borrowedAt,
+                dueAt: b.dueAt,
+                returnedAt: b.returnedAt,
+                status: b.status,
+                daysOverdue,
+            };
+        });
+    }
     /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
     async getCirculationHistory(bookCopyId, borrowingId, limit = 10) {
         const where = {};

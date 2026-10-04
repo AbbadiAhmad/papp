@@ -16,6 +16,7 @@ exports.CirculationController = void 0;
 const common_1 = require("@nestjs/common");
 const borrow_dto_1 = require("./dto/borrow.dto");
 const extend_loan_dto_1 = require("./dto/extend-loan.dto");
+const list_borrowings_dto_1 = require("./dto/list-borrowings.dto");
 const return_dto_1 = require("./dto/return.dto");
 const scan_dto_1 = require("./dto/scan.dto");
 const circulation_service_1 = require("./circulation.service");
@@ -40,6 +41,17 @@ let CirculationController = class CirculationController {
     }
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
+    }
+    /** Borrowings status page's filter bar — see CirculationService.listBorrowings's own docblock. */
+    async listBorrowings(filter) {
+        return this.circulation.listBorrowings({
+            studentId: filter.studentId,
+            bookSearch: filter.bookSearch,
+            status: filter.status,
+            overdueOnly: filter.overdueOnly === 'true',
+            borrowedFrom: filter.borrowedFrom,
+            borrowedTo: filter.borrowedTo,
+        });
     }
     /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */
     async activeBorrowingsForStudent(studentId) {
@@ -104,6 +116,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "activeBorrowingForCopy", null);
+__decorate([
+    (0, common_1.Get)('borrowings'),
+    (0, platform_1.RequirePermission)('library_circulation.borrowings.view'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_borrowings_dto_1.ListBorrowingsDto]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "listBorrowings", null);
 __decorate([
     (0, common_1.Get)('students/:studentId/active-borrowings'),
     (0, platform_1.RequirePermission)('library_circulation.borrow'),

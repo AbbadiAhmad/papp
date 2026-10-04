@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { CirculationService } from '../../backend/circulation.service';
 
 interface MockPrisma {
-  libraryStudent: { findUnique: jest.Mock };
+  libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryCatalogBookCopy: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
   libraryCatalogBook: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
@@ -13,7 +13,7 @@ interface MockPrisma {
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
-    libraryStudent: { findUnique: jest.fn() },
+    libraryStudent: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryCatalogBookCopy: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
     libraryCatalogBook: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -390,6 +390,112 @@ describe('CirculationService', () => {
       prisma.libraryBorrowing.findMany.mockResolvedValue([]);
 
       const result = await service.getActiveBorrowingsForStudent('student-1');
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listBorrowings (Borrowings status page, user request)', () => {
+    const borrowedAt = new Date('2026-01-01T00:00:00Z');
+    const pastDueAt = new Date('2026-01-05T00:00:00Z'); // definitely in the past relative to "now" in this test run
+    const futureDueAt = new Date('2099-01-01T00:00:00Z');
+
+    it('enriches each row with book title/copy code and reader code/name', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b-1', bookCopyId: 'copy-1', studentId: 'student-1', status: 'active', borrowedAt, dueAt: futureDueAt, returnedAt: null },
+      ]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([copyRow({ id: 'copy-1', qrCode: 'BOOK-001' })]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([studentRow({ id: 'student-1', userId: 'user-1', code: 'STU-001' })]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Omar' }]);
+
+      const result = await service.listBorrowings({});
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: 'b-1',
+          bookTitle: 'Kalila wa Dimna',
+          qrCode: 'BOOK-001',
+          studentCode: 'STU-001',
+          studentName: 'Omar',
+          status: 'active',
+          daysOverdue: 0,
+        }),
+      ]);
+    });
+
+    it('computes daysOverdue only for a still-active borrowing past its dueAt — never for an already-returned one', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b-overdue', bookCopyId: 'copy-1', studentId: 'student-1', status: 'active', borrowedAt, dueAt: pastDueAt, returnedAt: null },
+        { id: 'b-returned-late', bookCopyId: 'copy-1', studentId: 'student-1', status: 'returned', borrowedAt, dueAt: pastDueAt, returnedAt: new Date('2026-01-10') },
+      ]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([copyRow({ id: 'copy-1' })]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', title: 'Kalila wa Dimna' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([studentRow({ id: 'student-1', userId: 'user-1' })]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Omar' }]);
+
+      const result = await service.listBorrowings({});
+
+      const overdueRow = result.find((r) => r.id === 'b-overdue');
+      const returnedRow = result.find((r) => r.id === 'b-returned-late');
+      expect(overdueRow?.daysOverdue).toBeGreaterThan(0);
+      expect(returnedRow?.daysOverdue).toBe(0);
+    });
+
+    it('overdueOnly filters to active+overdue statuses with dueAt < now, never a literal "overdue" status match', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      await service.listBorrowings({ overdueOnly: true });
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { in: ['active', 'overdue'] },
+            dueAt: { lt: expect.any(Date) },
+          }),
+        }),
+      );
+    });
+
+    it('an explicit status filter is passed through untouched when overdueOnly is not set', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      await service.listBorrowings({ status: 'returned' });
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'returned', dueAt: undefined }) }),
+      );
+    });
+
+    it('bookSearch resolves to a set of bookCopyIds (by book title OR copy qrCode) before querying borrowings', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1' }]);
+      prisma.libraryCatalogBookCopy.findMany
+        .mockResolvedValueOnce([{ id: 'copy-1' }, { id: 'copy-2' }]) // bookSearch resolution pass
+        .mockResolvedValueOnce([]); // enrichment pass (unreached since findMany below returns [])
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      await service.listBorrowings({ bookSearch: 'Kalila' });
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ bookCopyId: { in: ['copy-1', 'copy-2'] } }) }),
+      );
+    });
+
+    it('returns [] without querying borrowings when bookSearch matches no book/copy', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+
+      const result = await service.listBorrowings({ bookSearch: 'Nonexistent' });
+
+      expect(result).toEqual([]);
+      expect(prisma.libraryBorrowing.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns [] without querying copies/books/students when nothing matches', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      const result = await service.listBorrowings({});
 
       expect(result).toEqual([]);
       expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();

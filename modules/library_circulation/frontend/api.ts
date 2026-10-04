@@ -39,6 +39,32 @@ export interface ActiveBorrowingForStudent {
   isOverdue: boolean;
 }
 
+/** CirculationService.listBorrowings()'s enriched row — Borrowings status page. */
+export interface BorrowingListRow {
+  id: string;
+  bookTitle: string | null;
+  qrCode: string | null;
+  studentId: string;
+  studentCode: string | null;
+  studentName: string | null;
+  borrowedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: BorrowingStatus;
+  /** 0 unless still active (not yet returned) AND past dueAt — never a persisted status value (LIBRARY_CIRCULATION-D4). */
+  daysOverdue: number;
+}
+
+/** Borrowings status page's filter bar — all optional, combined with AND. */
+export interface BorrowingFilterInput {
+  studentId?: string;
+  bookSearch?: string;
+  status?: BorrowingStatus | '';
+  overdueOnly?: boolean;
+  borrowedFrom?: string;
+  borrowedTo?: string;
+}
+
 export interface LibraryStudentDetail extends LibraryStudent {
   email: string | null;
   isActive: boolean;
@@ -300,6 +326,15 @@ export const libraryCirculationApi = {
       .then((r) => r.data),
   extendLoan: (borrowingId: string, newDueDate: string) =>
     apiClient.post<LibraryBorrowing>(`${BASE}/extend`, { borrowingId, newDueDate }).then((r) => r.data),
+
+  // Borrowings status page (user request: track borrowed-book status, overdue-by-days)
+  listBorrowings: (filter: BorrowingFilterInput = {}) => {
+    const params = {
+      ...Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== '')),
+      overdueOnly: filter.overdueOnly ? 'true' : undefined,
+    };
+    return apiClient.get<BorrowingListRow[]>(`${BASE}/borrowings`, { params }).then((r) => r.data);
+  },
 
   // History (§2.1/§2.2, docs/LIBRARY_IMPROVEMENTS.md)
   getCopyCirculationHistory: (copyId: string, limit = 10) =>

@@ -162,6 +162,23 @@ export interface StickerSettings {
   headerText: string;
 }
 
+/** Copies inventory page's filter bar (user request: "help the librarian on the Annual inventory"). */
+export interface ListCopiesForInventoryParams {
+  bookSearch?: string;
+  status?: BookCopyStatus | '';
+  location?: string;
+}
+
+/** One row from `GET /books/copies/inventory`. */
+export interface CopyForInventory {
+  id: string;
+  qrCode: string;
+  bookTitle: string;
+  location: string | null;
+  status: BookCopyStatus;
+  condition: string | null;
+}
+
 export const libraryCatalogApi = {
   listBooks: (params?: { search?: string; category?: string }) =>
     apiClient.get<LibraryBook[]>('/api/library/books', { params }).then((r) => r.data),
@@ -210,6 +227,16 @@ export const libraryCatalogApi = {
   getStickerSettings: () => apiClient.get<StickerSettings>('/api/library/settings/sticker').then((r) => r.data),
   updateStickerSettings: (dto: StickerSettings) =>
     apiClient.put<StickerSettings>('/api/library/settings/sticker', dto).then((r) => r.data),
+
+  // Copies inventory (user request: annual inventory walkthrough).
+  listCopiesForInventory: (params?: ListCopiesForInventoryParams) => {
+    const cleaned = params ? Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')) : undefined;
+    return apiClient.get<CopyForInventory[]>('/api/library/books/copies/inventory', { params: cleaned }).then((r) => r.data);
+  },
+  exportCopiesForInventory: (params?: ListCopiesForInventoryParams) => {
+    const cleaned = params ? Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')) : undefined;
+    return apiClient.get<Blob>('/api/library/books/copies/inventory/export', { params: cleaned, responseType: 'blob' }).then((r) => r.data);
+  },
 };
 
 /** Mirrors apps/web/src/shared/api/users.ts's own download helper. */

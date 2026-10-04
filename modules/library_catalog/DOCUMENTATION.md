@@ -50,9 +50,10 @@ library_catalog_book_ratings(
 | `library_catalog.books.rate` | Create/update/delete the CALLER'S OWN rating+review for a book (never someone else's) | `BooksController.rateBook/removeRating` |
 | `library_catalog.books.moderate_ratings` | List the pending-review queue, approve or reject a review | `BooksController.listPendingReviews/approveReview/rejectReview` |
 | `library_catalog.copies.print_codes` | View/filter copies for printing, print the sticker sheet, export the Excel sheet, READ the sticker header-text setting | `BooksController.listCopiesForPrint/exportCopiesForPrint`, `SettingsController.getStickerSettings` |
+| `library_catalog.copies.inventory` | View/filter the copies inventory list, export its Excel sheet (LIBRARY_CATALOG-D25) | `BooksController.listCopiesForInventory/exportCopiesForInventory` |
 | `library_catalog.settings.update` | WRITE the sticker header-text setting | `SettingsController.updateStickerSettings` |
 
-`defaultRolePermissions`: `admin` gets all 9; `library_assistant` gets view/create/update/rate/moderate_ratings/print_codes (no delete/export/settings.update); `finance` gets none; `reader` gets view+rate (never moderation — moderating is a librarian/admin action). The public availability route (below) needs no permission at all — there is no user to check one against. `books.rate`/`books.moderate_ratings` are intentionally NOT hardcoded to any one role — see DECISIONS.md D20/D21: whoever holds the code can do the action, matching every other permission-gated action on this platform. Same reasoning extends to `copies.print_codes`/`settings.update` (LIBRARY_CATALOG-D22).
+`defaultRolePermissions`: `admin` gets all 10; `library_assistant` gets view/create/update/rate/moderate_ratings/print_codes/inventory (no delete/export/settings.update); `finance` gets none; `reader` gets view+rate (never moderation — moderating is a librarian/admin action). The public availability route (below) needs no permission at all — there is no user to check one against. `books.rate`/`books.moderate_ratings` are intentionally NOT hardcoded to any one role — see DECISIONS.md D20/D21: whoever holds the code can do the action, matching every other permission-gated action on this platform. Same reasoning extends to `copies.print_codes`/`settings.update` (LIBRARY_CATALOG-D22) and `copies.inventory` (LIBRARY_CATALOG-D25).
 
 ## Settings
 
@@ -67,6 +68,7 @@ Backend (`apiPrefix: /api/library`):
 - `PUT/DELETE /books/:bookId/rating` — `BooksController`, `books.rate`-gated, always the CALLER's own rating (`@CurrentUser()`, never a `:userId` param). `GET /books/:id` (`findById`) already returns the full ratings list + live average + the caller's own `myRating` — there is no separate `GET .../ratings` list route.
 - `GET /books/ratings/pending`, `POST /books/ratings/:ratingId/approve`, `POST /books/ratings/:ratingId/reject` — `BooksController`, `books.moderate_ratings`-gated. See "Review moderation" below for the full workflow these implement.
 - `GET /books/copies/stickers`, `GET /books/copies/stickers/export`, `GET/PUT /settings/sticker` — `BooksController`/`SettingsController`. See "Print Codes / sticker printing" below for the full workflow.
+- `GET /books/copies/inventory`, `GET /books/copies/inventory/export` — `BooksController`, `copies.inventory`-gated (LIBRARY_CATALOG-D25). Filters by `status`/`location`/book-title substring (never acquisition date — that's the sticker workflow's own filter above); returns `{ id, qrCode, bookTitle, location, status, condition }[]`, sorted by book title then copy code.
 
 ### Review moderation — how a librarian approves (or rejects) a comment (LIBRARY_CATALOG-D21)
 
@@ -92,6 +94,7 @@ Frontend (`basePath: /library`):
 - `/library/books/:bookId` (authenticated, `books.view`) → `BookDetailPage.tsx`
 - `/library/reviews/moderate` (authenticated, `books.moderate_ratings`) → `ModerateReviewsPage.tsx` — the approval queue described above.
 - `/library/copies/print-codes` (authenticated, `copies.print_codes`) → `PrintCodesPage.tsx` — the filter/preview/print/export page described above.
+- `/library/copies/inventory` (authenticated, `copies.inventory`) → `CopiesInventoryPage.tsx` — the Annual-inventory filter/table/export page (LIBRARY_CATALOG-D25).
 - `/library/public/books/:bookId/availability` (**public**) → `PublicBookAvailabilityPage.tsx` — mounted in every `AppRoutes` branch (anonymous/must-change-password/authenticated), never behind a login redirect.
 
 ## Key files
@@ -104,6 +107,7 @@ Frontend (`basePath: /library`):
 - `frontend/pages/ModerateReviewsPage.tsx` — the librarian's review-approval queue (LIBRARY_CATALOG-D21), reading `GET /books/ratings/pending` and calling approve/reject.
 - `backend/settings.service.ts`/`backend/settings.controller.ts` — this module's first `system_settings`-backed value (`library_catalog.sticker_header_text`, LIBRARY_CATALOG-D22), same minimal per-module Settings pattern as `library_circulation`'s/`template`'s own `settings.service.ts` (root D70/D71).
 - `frontend/pages/PrintCodesPage.tsx` — the filter/preview/print/export page (LIBRARY_CATALOG-D22).
+- `frontend/pages/CopiesInventoryPage.tsx` — the Annual-inventory filter/table/export page (LIBRARY_CATALOG-D25), filtering by status/location/book-title rather than acquisition date.
 - `frontend/pages/QrCodeImage.tsx` — client-side QR rendering, deliberately duplicated from `library_circulation`'s own component of the same name (see its own docblock for why — same A14/YAGNI reasoning, not a shared package yet).
 
 ## Known gotchas

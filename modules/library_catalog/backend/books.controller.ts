@@ -5,6 +5,7 @@ import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { ListCopiesForInventoryDto } from './dto/list-copies-for-inventory.dto';
 import { ListCopiesForPrintDto } from './dto/list-copies-for-print.dto';
 import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
@@ -132,6 +133,33 @@ export class BooksController {
     res.set({
       'Content-Type': XLSX_CONTENT_TYPE,
       'Content-Disposition': 'attachment; filename="library-catalog-copy-stickers-export.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  // --- Inventory (user request: "help the librarian on the Annual
+  // inventory") --------------------------------------------------------------
+  // Read-only, cross-book — filtered by status/location/book title, not
+  // acquisitionDate (that's the sticker workflow's own filter above). Gated
+  // by a dedicated permission, not `books.view`/`copies.print_codes` —
+  // walking the shelves for inventory is a distinct, separately-grantable
+  // action from viewing the catalog or printing stickers. Registered before
+  // `:bookId/copies` for the same Express route-ordering reason as every
+  // other `copies/*` literal route above.
+
+  @Get('copies/inventory')
+  @RequirePermission('library_catalog.copies.inventory')
+  async listCopiesForInventory(@Query() query: ListCopiesForInventoryDto) {
+    return this.books.listCopiesForInventory(query);
+  }
+
+  @Get('copies/inventory/export')
+  @RequirePermission('library_catalog.copies.inventory')
+  async exportCopiesForInventory(@Query() query: ListCopiesForInventoryDto, @Res() res: Response): Promise<void> {
+    const buffer = await this.books.exportCopiesForInventoryWorkbook(query);
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': 'attachment; filename="library-catalog-copies-inventory-export.xlsx"',
     });
     res.send(buffer);
   }

@@ -780,6 +780,52 @@ describe('BooksService', () => {
     });
   });
 
+  describe('listCopiesForInventory / exportCopiesForInventoryWorkbook (user request: annual inventory)', () => {
+    it('filters by status/location/bookSearch and joins the book title', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { ...copyRow({ qrCode: 'B000001', location: 'Shelf A', condition: 'Good' }), book: { title: 'Kalila wa Dimna' } },
+      ]);
+
+      const result = await service.listCopiesForInventory({
+        bookSearch: 'Kalila',
+        status: LibraryCatalogBookCopyStatus.available,
+        location: 'Shelf',
+      });
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith({
+        where: {
+          status: LibraryCatalogBookCopyStatus.available,
+          location: { contains: 'Shelf', mode: 'insensitive' },
+          book: { title: { contains: 'Kalila', mode: 'insensitive' } },
+        },
+        orderBy: [{ book: { title: 'asc' } }, { qrCode: 'asc' }],
+        include: { book: { select: { title: true } } },
+      });
+      expect(result).toEqual([
+        { id: 'copy-1', qrCode: 'B000001', bookTitle: 'Kalila wa Dimna', location: 'Shelf A', status: 'available', condition: 'Good' },
+      ]);
+    });
+
+    it('returns every copy (no filter at all) when bookSearch/status/location are all omitted', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+
+      await service.listCopiesForInventory({});
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    });
+
+    it('exportCopiesForInventoryWorkbook produces an xlsx buffer covering the same filtered rows', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { ...copyRow({ qrCode: 'B000004', location: 'Shelf C' }), book: { title: 'Inventory Export Title' } },
+      ]);
+
+      const buffer = await service.exportCopiesForInventoryWorkbook({});
+
+      expect(Buffer.isBuffer(buffer) || buffer instanceof Uint8Array).toBe(true);
+      expect(buffer.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('getAvailability (backing the public route)', () => {
     it('returns {bookId, title, totalCopies, availableCopies}, counting only available-status copies', async () => {
       prisma.libraryCatalogBook.findUnique.mockResolvedValue({
