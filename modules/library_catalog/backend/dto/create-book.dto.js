@@ -22,6 +22,10 @@ const client_1 = require("@prisma/client");
  * Phase A enhancement (LIBRARY_CATALOG-D11): Every book creation includes a
  * mandatory initial copy. If librarian wants more copies, use the existing
  * POST /books/:bookId/copies endpoint.
+ *
+ * `qrCode` is optional (LIBRARY_CATALOG-D22) — `BooksService.create()`
+ * auto-assigns a sequence-backed `Bxxxxxx` code when left blank, same as
+ * the standalone `CreateBookCopyDto`.
  */
 class CreateBookCopyInlineDto {
     qrCode;
@@ -32,6 +36,7 @@ class CreateBookCopyInlineDto {
 }
 exports.CreateBookCopyInlineDto = CreateBookCopyInlineDto;
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)

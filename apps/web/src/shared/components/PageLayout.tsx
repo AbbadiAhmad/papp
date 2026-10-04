@@ -275,7 +275,7 @@ export function TopBar() {
   };
 
   return (
-    <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+    <AppBar position="fixed" data-app-shell="topbar" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar sx={{ gap: 2 }}>
         {/* Hamburger only once authenticated (that's the only time PageLayout's
             drawer exists) and only on mobile — desktop keeps the always-visible
@@ -389,6 +389,12 @@ export function PageLayout({ children }: { children: ReactNode }) {
         open={mobileNavOpen}
         onClose={closeMobileNav}
         ModalProps={{ keepMounted: true }}
+        // `data-app-shell` goes on `slotProps.paper` (the actual visible
+        // drawer panel), not the Drawer/Modal root — the root is a
+        // non-visual positioning wrapper, so tagging it wouldn't reliably
+        // select the printed-looking element a plain CSS attribute selector
+        // needs (see the global print rule in App.tsx's GlobalStyles).
+        slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
         sx={{
           display: { xs: 'block', sm: 'none' },
           [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' },
@@ -402,6 +408,7 @@ export function PageLayout({ children }: { children: ReactNode }) {
       <Drawer
         variant="permanent"
         anchor="left"
+        slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
         sx={{
           width: DRAWER_WIDTH,
           flexShrink: 0,
@@ -413,8 +420,11 @@ export function PageLayout({ children }: { children: ReactNode }) {
         <NavList />
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
-        <Toolbar />
+      <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
+        {/* AppBar-offset spacer, not shell chrome itself — tagged separately
+            so the global print rule (App.tsx) can collapse it too, instead
+            of leaving blank space where it used to sit. */}
+        <Toolbar data-app-shell="main-spacer" />
         {children}
       </Box>
     </Box>

@@ -1,4 +1,4 @@
-import { CssBaseline, ThemeProvider } from '@mui/material';
+import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material';
 import { CacheProvider } from '@emotion/react';
 import { Box, CircularProgress } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -313,6 +313,30 @@ function ThemedShell() {
     <CacheProvider value={cache}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        {/*
+         * First platform-wide print rule (library_catalog's Print Codes
+         * page, LIBRARY_CATALOG-D22, is the first page that ever needed to
+         * print) — reported bug: a page's own `@media print` CSS can only
+         * hide/show content INSIDE that page's own subtree, never the app
+         * shell (TopBar's AppBar + PageLayout's two Drawers) that wraps
+         * every routed page from here at the App root. Without this, the
+         * sidebar/top bar print alongside any page's own print content.
+         * `data-app-shell` is set directly on AppBar / each Drawer's real
+         * visible Paper (via `slotProps.paper`, not the Drawer/Modal root —
+         * see PageLayout.tsx's own comment) / the `<main>` wrapper, so this
+         * one global rule covers every current and future page without
+         * each page needing to know about the shell. A page that wants a
+         * print layout still owns everything INSIDE its own content (see
+         * PrintCodesPage.tsx's own `@media print` block for that layer).
+         */}
+        <GlobalStyles
+          styles={{
+            '@media print': {
+              '[data-app-shell="topbar"], [data-app-shell="drawer"], [data-app-shell="main-spacer"]': { display: 'none !important' },
+              '[data-app-shell="main"]': { padding: '0 !important', margin: '0 !important', width: '100% !important' },
+            },
+          }}
+        />
         <BrowserRouter>
           <AuthProvider>
             <MobileNavProvider>

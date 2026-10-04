@@ -18,6 +18,7 @@ const books_service_1 = require("./books.service");
 const create_book_copy_dto_1 = require("./dto/create-book-copy.dto");
 const create_book_dto_1 = require("./dto/create-book.dto");
 const list_books_dto_1 = require("./dto/list-books.dto");
+const list_copies_for_print_dto_1 = require("./dto/list-copies-for-print.dto");
 const rate_book_dto_1 = require("./dto/rate-book.dto");
 const update_book_copy_dto_1 = require("./dto/update-book-copy.dto");
 const update_book_dto_1 = require("./dto/update-book.dto");
@@ -37,9 +38,10 @@ const fetchCopyState = (prisma, req) => prisma.libraryCatalogBookCopy.findUnique
  * import of core's).
  *
  * Route registration order matters within one controller: `export`, the
- * `ratings/*` moderation routes, and the nested `:bookId/copies...` routes
- * are all declared BEFORE `:id` so Express never mistakes a literal
- * single-segment path (or a copies sub-path) for a book id (the same lesson
+ * `ratings/*` moderation routes, the `copies/stickers*` print-codes routes,
+ * and the nested `:bookId/copies...` routes are all declared BEFORE `:id` so
+ * Express never mistakes a literal single-segment path (or a copies
+ * sub-path) for a book id (the same lesson
  * apps/api/src/core/users/users.module.ts's docblock explains).
  */
 let BooksController = class BooksController {
@@ -83,11 +85,38 @@ let BooksController = class BooksController {
     async remove(id) {
         await this.books.remove(id);
     }
+    // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------
+    // Read-only, cross-book — filtered by acquisitionDate range, feeding the
+    // frontend's printable sticker sheet (real QR images, client-side) and
+    // this Excel export (QR as text). Gated by a dedicated permission, not
+    // `books.view`/`books.export` — printing physical stickers is a distinct,
+    // separately-grantable action from viewing or exporting the catalog list.
+    async listCopiesForPrint(query) {
+        return this.books.listCopiesForPrint(query);
+    }
+    async exportCopiesForPrint(query, res) {
+        const buffer = await this.books.exportCopiesForPrintWorkbook(query);
+        res.set({
+            'Content-Type': XLSX_CONTENT_TYPE,
+            'Content-Disposition': 'attachment; filename="library-catalog-copy-stickers-export.xlsx"',
+        });
+        res.send(buffer);
+    }
     // --- Copies --------------------------------------------------------------
     // Gated by the SAME books.* permissions (docs/MODULE_SPEC.md's own worked
     // example declares no separate copies.* codes — copies are a sub-entity of
     // Books, not an independently-permissioned domain, per
     // docs/LIBRARY_MODULE_REQUIREMENTS.md §5).
+    // Registered before `:bookId/copies` for the same Express route-ordering
+    // reason as `export`/`ratings/*`/`copies/stickers*` above — `next-code`
+    // would otherwise be swallowed by `:bookId`. Gated by `books.create` (the
+    // same permission that actually creates a copy) rather than a new code —
+    // this is pure create-flow UX (LIBRARY_CATALOG-D22 follow-up: "suggest the
+    // next code" in the Add Book / Add Copy forms), not a separately
+    // grantable action.
+    async peekNextCopyCode() {
+        return { qrCode: await this.books.peekNextCopyCode() };
+    }
     async listCopies(bookId) {
         return this.books.listCopies(bookId);
     }
@@ -199,6 +228,30 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "remove", null);
+__decorate([
+    (0, common_1.Get)('copies/stickers'),
+    (0, platform_1.RequirePermission)('library_catalog.copies.print_codes'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_copies_for_print_dto_1.ListCopiesForPrintDto]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "listCopiesForPrint", null);
+__decorate([
+    (0, common_1.Get)('copies/stickers/export'),
+    (0, platform_1.RequirePermission)('library_catalog.copies.print_codes'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_copies_for_print_dto_1.ListCopiesForPrintDto, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "exportCopiesForPrint", null);
+__decorate([
+    (0, common_1.Get)('copies/next-code'),
+    (0, platform_1.RequirePermission)('library_catalog.books.create'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "peekNextCopyCode", null);
 __decorate([
     (0, common_1.Get)(':bookId/copies'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),

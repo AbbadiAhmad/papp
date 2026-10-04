@@ -11,11 +11,16 @@ import { LibraryCatalogBookCopyStatus } from '@prisma/client';
  * Phase A enhancement (LIBRARY_CATALOG-D11): Every book creation includes a
  * mandatory initial copy. If librarian wants more copies, use the existing
  * POST /books/:bookId/copies endpoint.
+ *
+ * `qrCode` is optional (LIBRARY_CATALOG-D22) — `BooksService.create()`
+ * auto-assigns a sequence-backed `Bxxxxxx` code when left blank, same as
+ * the standalone `CreateBookCopyDto`.
  */
 export class CreateBookCopyInlineDto {
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  qrCode!: string;
+  qrCode?: string;
 
   @IsOptional()
   @IsEnum(LibraryCatalogBookCopyStatus)

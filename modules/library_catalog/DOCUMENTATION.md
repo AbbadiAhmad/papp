@@ -19,6 +19,7 @@ library_catalog_book_copies(
   condition, location, acquisition_date, created_at, updated_at,
   history JSONB[] DEFAULT '[]'
 )
+library_catalog_copy_code_seq  -- Postgres SEQUENCE (not a table), migration 006 (LIBRARY_CATALOG-D22)
 library_catalog_book_ratings(
   id, book_id -> books(id) ON DELETE CASCADE, user_id -> users(id),
   rating SMALLINT CHECK(1-5), review TEXT NULL,
@@ -34,6 +35,7 @@ library_catalog_book_ratings(
 - `history` (Feature 2.1 — D18) is a JSONB array tracking up to 100 most recent changes to `status`, `condition`, and `location`. Each entry records `{ timestamp, changes: { field: { before, after } } }`. The `getCopyHistory` endpoint retrieves these entries. See DECISIONS.md D18 for the migration application process.
 - `library_catalog_book_ratings` (LIBRARY_CATALOG-D20) is one row per (book, user) — `UNIQUE(book_id, user_id)`, `rating` a plain `SMALLINT` + `CHECK` (not a Prisma `enum` — no need for one, unlike copy `status`), `review` optional free text. `user_id` is a plain scalar column with no Prisma relation to the core `User` model; the rater's display name is joined in `BooksService` via a separate `prisma.user.findMany` call, not a Prisma `include`. Re-rating UPSERTs the same row — there is never a second rating row for the same reader/book pair. Deleting a book cascades to its ratings (`ON DELETE CASCADE`, same as copies).
 - `review_status`/`moderated_by`/`moderated_at` (LIBRARY_CATALOG-D21 — "the librarian has to approve the comments to publish it") gate only the WRITTEN review text; the numeric `rating` always counts toward the average the moment it's submitted, moderated or not. Defaults to `'approved'` so a bare star rating (no review) never needs moderation. See "Review moderation" under Routes below for the full workflow.
+- `library_catalog_copy_code_seq` (LIBRARY_CATALOG-D22) — a Postgres `SEQUENCE`, not a table/column. `BooksService.nextCopyCode()` consults it (`SELECT nextval(...)`) to auto-assign a `Bxxxxxx` (6-digit zero-padded) `qr_code` whenever a copy is created with that field blank — `qr_code` itself stays a plain `TEXT UNIQUE` column with no DB-level `DEFAULT`, since the "B" + zero-pad formatting happens in application code. The librarian can still type in their own value instead; the sequence is only consulted when the field is omitted/blank.
 
 ## Permissions
 
@@ -46,8 +48,14 @@ library_catalog_book_ratings(
 | `library_catalog.books.export` | Download the books list as `.xlsx` | `BooksController.export` |
 | `library_catalog.books.rate` | Create/update/delete the CALLER'S OWN rating+review for a book (never someone else's) | `BooksController.rateBook/removeRating` |
 | `library_catalog.books.moderate_ratings` | List the pending-review queue, approve or reject a review | `BooksController.listPendingReviews/approveReview/rejectReview` |
+| `library_catalog.copies.print_codes` | View/filter copies for printing, print the sticker sheet, export the Excel sheet, READ the sticker header-text setting | `BooksController.listCopiesForPrint/exportCopiesForPrint`, `SettingsController.getStickerSettings` |
+| `library_catalog.settings.update` | WRITE the sticker header-text setting | `SettingsController.updateStickerSettings` |
 
-`defaultRolePermissions`: `admin` gets all 7; `library_assistant` gets view/create/update/rate/moderate_ratings (no delete/export); `finance` gets none; `reader` gets view+rate (never moderation — moderating is a librarian/admin action). The public availability route (below) needs no permission at all — there is no user to check one against. `books.rate`/`books.moderate_ratings` are intentionally NOT hardcoded to any one role — see DECISIONS.md D20/D21: whoever holds the code can do the action, matching every other permission-gated action on this platform.
+`defaultRolePermissions`: `admin` gets all 9; `library_assistant` gets view/create/update/rate/moderate_ratings/print_codes (no delete/export/settings.update); `finance` gets none; `reader` gets view+rate (never moderation — moderating is a librarian/admin action). The public availability route (below) needs no permission at all — there is no user to check one against. `books.rate`/`books.moderate_ratings` are intentionally NOT hardcoded to any one role — see DECISIONS.md D20/D21: whoever holds the code can do the action, matching every other permission-gated action on this platform. Same reasoning extends to `copies.print_codes`/`settings.update` (LIBRARY_CATALOG-D22).
+
+## Settings
+
+`library_catalog.sticker_header_text` (`{ headerText }`) — the fixed header line printed on every copy sticker (e.g. the school/library name, blank by default). Read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet, same pattern as `library_circulation`'s `loan_policy`). This is this module's FIRST `system_settings`-backed value (LIBRARY_CATALOG-D22).
 
 ## Routes
 
@@ -57,6 +65,7 @@ Backend (`apiPrefix: /api/library`):
 - `GET /public/books/:id/availability` — `PublicBooksController`, `@Public()` + `PublicThrottlerGuard` (D34 — even though it's a read, applied "for consistency" per the module's own build notes) + `@Audit(...)` (deliberately, to exercise the `actor_type='anonymous'` audit path — see that controller's own docblock).
 - `PUT/DELETE /books/:bookId/rating` — `BooksController`, `books.rate`-gated, always the CALLER's own rating (`@CurrentUser()`, never a `:userId` param). `GET /books/:id` (`findById`) already returns the full ratings list + live average + the caller's own `myRating` — there is no separate `GET .../ratings` list route.
 - `GET /books/ratings/pending`, `POST /books/ratings/:ratingId/approve`, `POST /books/ratings/:ratingId/reject` — `BooksController`, `books.moderate_ratings`-gated. See "Review moderation" below for the full workflow these implement.
+- `GET /books/copies/stickers`, `GET /books/copies/stickers/export`, `GET/PUT /settings/sticker` — `BooksController`/`SettingsController`. See "Print Codes / sticker printing" below for the full workflow.
 
 ### Review moderation — how a librarian approves (or rejects) a comment (LIBRARY_CATALOG-D21)
 
@@ -68,10 +77,20 @@ Backend (`apiPrefix: /api/library`):
 4. If the reader later EDITS their review text, it resets to `'pending'` again (and clears the old `moderatedBy`/`moderatedAt`) — a previously-approved comment can never silently stay published after being changed. Editing only the star value (leaving the same review text) does **not** reset an already-moderated review. Clearing the review text entirely returns `reviewStatus` to `'approved'` — there's nothing left to moderate.
 5. Both actions are `@Audit`-logged (`category: 'library_catalog.ratings'`, `action: 'approve_review'`/`'reject_review'`) — the audit log itself is the permanent record of who approved/rejected which comment and when, in addition to the `moderated_by`/`moderated_at` columns on the row.
 
+### Print Codes / sticker printing (LIBRARY_CATALOG-D22)
+
+"filter the books entered last period ... export the book names, copy-number and the QR for the copies ... the aim is to print the book stickers."
+
+1. `GET /books/copies/stickers?from=&to=` (`copies.print_codes`) — both bounds optional/inclusive, filtering on `acquisitionDate`; returns `{ id, qrCode, location, acquisitionDate, bookTitle }[]` sorted oldest-acquired-first. `bookTitle` exists ONLY so the librarian can visually verify the filtered set before printing/exporting — it is never rendered on the sticker itself (confirmed with the user explicitly: "the book title is for validation when exporting, not part of the sticker").
+2. `GET /books/copies/stickers/export` (same permission, same filter params) — an `.xlsx` download with columns `book_title | copy_code | location | acquisition_date` (QR as plain text, not an embedded image — same ExcelJS-cell limitation already accepted by `exportBooksWorkbook`).
+3. `PrintCodesPage.tsx` (`frontend/pages/PrintCodesPage.tsx`) renders the same filtered set as an actual printable sticker SHEET using `window.print()` + a `@media print` stylesheet — a fixed 4-per-row label grid (45mm × 30mm per sticker, an explicit `@page { size: A4; margin: 10mm }` so the printable width is deterministic, not admin-configurable in this first version, confirmed with the user). Each sticker shows: the configured header text (below), a real client-side QR image (`QrCodeImage.tsx`, duplicated from `library_circulation`'s own component — see that file's docblock for why), the copy's code as plain text, and its `location` — never the book title. **Sizing history**: the original size was 63.5mm × 38.1mm at 3-per-row — found, via user report, to already not actually fit (3 × 63.5mm barely fits a page's usable width with margins, and `grid-template-columns: repeat(3, 1fr)`'s elastic columns were silently narrower than the sticker's own fixed width on anything but the very first row, wrapping the code text). Shrunk to the current 45mm × 30mm / 4-per-row size specifically so the arithmetic genuinely fits, with FIXED (not `1fr`) grid columns and `white-space: nowrap` + ellipsis truncation on the free-text header/location fields so neither can wrap again regardless of content length.
+4. `GET/PUT /settings/sticker` (`library_catalog.sticker_header_text`) — the fixed header line printed on every sticker (e.g. the school/library name). GET is gated by `copies.print_codes` (anyone who can print needs to be able to see the configured header, even if they can't change it); PUT is gated by the separate `settings.update` (an admin-level config change). Lives in THIS module, not `library_circulation` — confirmed with the user: it's copy/sticker content, and this module already owns the copy data it prints alongside, even though `library_circulation` was where QR rendering/printing was originally built (A14).
+
 Frontend (`basePath: /library`):
 - `/library/books` (authenticated, `books.view`) → `BooksListPage.tsx`
 - `/library/books/:bookId` (authenticated, `books.view`) → `BookDetailPage.tsx`
 - `/library/reviews/moderate` (authenticated, `books.moderate_ratings`) → `ModerateReviewsPage.tsx` — the approval queue described above.
+- `/library/copies/print-codes` (authenticated, `copies.print_codes`) → `PrintCodesPage.tsx` — the filter/preview/print/export page described above.
 - `/library/public/books/:bookId/availability` (**public**) → `PublicBookAvailabilityPage.tsx` — mounted in every `AppRoutes` branch (anonymous/must-change-password/authenticated), never behind a login redirect.
 
 ## Key files
@@ -82,6 +101,9 @@ Frontend (`basePath: /library`):
 - `backend/platform.ts` — the local `@Public()`/`@RequirePermission()`/`@Audit()`/`@CurrentUser()`/`MustChangePasswordGuard` shims every module needs (D57) plus the one real cross-module import (`PublicThrottlerGuard` from `apps/api/dist/...`).
 - `frontend/api.ts` — typed API client + `downloadBlob` helper (reused verbatim by `survey`'s own `api.ts`).
 - `frontend/pages/ModerateReviewsPage.tsx` — the librarian's review-approval queue (LIBRARY_CATALOG-D21), reading `GET /books/ratings/pending` and calling approve/reject.
+- `backend/settings.service.ts`/`backend/settings.controller.ts` — this module's first `system_settings`-backed value (`library_catalog.sticker_header_text`, LIBRARY_CATALOG-D22), same minimal per-module Settings pattern as `library_circulation`'s/`template`'s own `settings.service.ts` (root D70/D71).
+- `frontend/pages/PrintCodesPage.tsx` — the filter/preview/print/export page (LIBRARY_CATALOG-D22).
+- `frontend/pages/QrCodeImage.tsx` — client-side QR rendering, deliberately duplicated from `library_circulation`'s own component of the same name (see its own docblock for why — same A14/YAGNI reasoning, not a shared package yet).
 
 ## Known gotchas
 
@@ -153,8 +175,27 @@ VALUES ('library_catalog', '005_add_review_moderation.sql', '7a77e8cd8f3c9505184
 
 `apps/api/prisma/schema.prisma`'s `LibraryCatalogBookRating` model already has the three new fields — re-run `npx prisma generate` after pulling this change.
 
+### Migration D22 — copy-code sequence
+
+`modules/library_catalog/migrations/006_add_copy_code_sequence.sql` adds the Postgres `SEQUENCE` `library_catalog_copy_code_seq` (no table/column change — nothing to add to `schema.prisma`, `BooksService.nextCopyCode()` calls it via a raw `$queryRawUnsafe('SELECT nextval(...)')`, same pattern as `library_circulation`'s `FinesService.nextNumber()`). Apply the same way:
+
+```bash
+psql $DATABASE_URL -f modules/library_catalog/migrations/006_add_copy_code_sequence.sql
+```
+
+Then register it:
+
+```sql
+INSERT INTO module_migrations (module_key, filename, checksum)
+VALUES ('library_catalog', '006_add_copy_code_sequence.sql', 'f91477d73e18596db90ed92045fe66d3b11837cfd42fd19c9f3c274ed3d4c600');
+```
+
+No `prisma generate` needed — a bare `SEQUENCE` has no Prisma model.
+
 ### Down migrations (root D48 / D86)
 
 `migrations/down/001_create_books_table.sql`, `down/002_create_book_copies_table.sql`, `down/003_add_copy_history.sql` now exist — the structural inverse of each up-migration of the same number, applied in descending filename order (`003` → `002` → `001`) by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. `003`'s down drops the `history` column/GIN index it added; `002`'s down drops `library_catalog_book_copies` and its ENUM type; `001`'s down drops `library_catalog_books`. Before this, `--drop-data` on this module silently left every table in place (no `migrations/down/` existed at all) — see root D86 for the platform-level fix (a dependency guard was added alongside this so uninstalling this module while `library_circulation` still depends on it is now rejected, not just a docs warning).
 
 **Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003` and will fail partway (or leave the ratings table behind) until those two down-migrations are added. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003.
+
+`down/006_add_copy_code_sequence.sql` (LIBRARY_CATALOG-D22) DOES exist (`DROP SEQUENCE IF EXISTS`) — but since the numbering gap at 004/005 above already breaks the descending-order `runDownMigrationsIfPresent` sweep before it would ever reach 006, this is latent until 004/005's down-migrations are written.

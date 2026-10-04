@@ -34,6 +34,7 @@ interface MockPrisma {
     findMany: jest.Mock;
   };
   $transaction: jest.Mock;
+  $queryRawUnsafe: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
@@ -64,6 +65,11 @@ function createMockPrisma(): MockPrisma {
       findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn((fn) => fn({ libraryCatalogBook: {}, libraryCatalogBookCopy: {} })),
+    // LIBRARY_CATALOG-D22 — auto-generated `Bxxxxxx` copy codes, same
+    // $queryRawUnsafe('SELECT nextval(...)') shape as library_circulation's
+    // own FinesService.nextNumber(). Defaults to sequence value 1 so a test
+    // not explicitly exercising this path still gets a deterministic code.
+    $queryRawUnsafe: jest.fn().mockResolvedValue([{ nextval: BigInt(1) }]),
   };
 }
 
@@ -276,6 +282,29 @@ describe('BooksService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
+
+    it('LIBRARY_CATALOG-D22: auto-generates a Bxxxxxx code for the initial copy when copy.qrCode is omitted', async () => {
+      const dto = { title: 'Blank Code Book', copy: {} } as unknown as CreateBookDto;
+      const bookCreated = bookRow({ id: 'book-3', title: 'Blank Code Book' });
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
+          libraryCatalogBookCopy: {
+            create: jest.fn((arg: { data: Record<string, unknown> }) => {
+              expect(arg.data.qrCode).toBe('B000099');
+              return copyRow({ qrCode: 'B000099', bookId: 'book-3' });
+            }),
+          },
+          $queryRawUnsafe: jest.fn().mockResolvedValue([{ nextval: BigInt(99) }]),
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -367,6 +396,33 @@ describe('BooksService', () => {
         expect(prisma.libraryCatalogBookCopy.create).not.toHaveBeenCalled();
       });
 
+      it('LIBRARY_CATALOG-D22: auto-generates a sequence-backed Bxxxxxx code when qrCode is omitted, never checking for a duplicate of an empty string', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.$queryRawUnsafe.mockResolvedValue([{ nextval: BigInt(42) }]);
+        prisma.libraryCatalogBookCopy.create.mockResolvedValue(copyRow({ qrCode: 'B000042' }));
+
+        await service.createCopy('book-1', {} as CreateBookCopyDto);
+
+        expect(prisma.libraryCatalogBookCopy.findUnique).not.toHaveBeenCalled();
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith("SELECT nextval('library_catalog_copy_code_seq') AS nextval");
+        expect(prisma.libraryCatalogBookCopy.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ qrCode: 'B000042' }) }),
+        );
+      });
+
+      it('LIBRARY_CATALOG-D22: a blank/whitespace-only qrCode is treated the same as omitted', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.$queryRawUnsafe.mockResolvedValue([{ nextval: BigInt(7) }]);
+        prisma.libraryCatalogBookCopy.create.mockResolvedValue(copyRow({ qrCode: 'B000007' }));
+
+        await service.createCopy('book-1', { qrCode: '   ' } as CreateBookCopyDto);
+
+        expect(prisma.libraryCatalogBookCopy.findUnique).not.toHaveBeenCalled();
+        expect(prisma.libraryCatalogBookCopy.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ qrCode: 'B000007' }) }),
+        );
+      });
+
       it('throws NotFoundException for an unknown book before touching copies at all', async () => {
         prisma.libraryCatalogBook.findUnique.mockResolvedValue(null);
 
@@ -375,6 +431,34 @@ describe('BooksService', () => {
         );
         expect(prisma.libraryCatalogBookCopy.findUnique).not.toHaveBeenCalled();
         expect(prisma.libraryCatalogBookCopy.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('peekNextCopyCode (LIBRARY_CATALOG-D22 follow-up — "suggest the next code")', () => {
+      it('formats last_value + 1 as Bxxxxxx when the sequence has already been consumed (is_called = true)', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(6), is_called: true }]);
+
+        const result = await service.peekNextCopyCode();
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith('SELECT last_value, is_called FROM library_catalog_copy_code_seq');
+        expect(result).toBe('B000007');
+      });
+
+      it('formats last_value itself (not +1) when the sequence has never been consumed (is_called = false)', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(1), is_called: false }]);
+
+        const result = await service.peekNextCopyCode();
+
+        expect(result).toBe('B000001');
+      });
+
+      it('never calls nextval() — a peek must not consume the sequence', async () => {
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(3), is_called: true }]);
+
+        await service.peekNextCopyCode();
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalledWith(expect.stringContaining('nextval'));
       });
     });
 
@@ -542,6 +626,58 @@ describe('BooksService', () => {
 
         await expect(service.removeCopy('book-1', 'copy-1')).rejects.toBe(unexpected);
       });
+    });
+  });
+
+  describe('listCopiesForPrint / exportCopiesForPrintWorkbook (LIBRARY_CATALOG-D22)', () => {
+    it('filters by acquisitionDate within [from, to] inclusive and joins the book title', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { ...copyRow({ qrCode: 'B000001', location: 'Shelf A' }), book: { title: 'Kalila wa Dimna' } },
+      ]);
+
+      const result = await service.listCopiesForPrint({ from: '2026-09-01', to: '2026-09-30' });
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith({
+        where: { acquisitionDate: { gte: new Date('2026-09-01'), lte: new Date('2026-09-30') } },
+        orderBy: { acquisitionDate: 'asc' },
+        include: { book: { select: { title: true } } },
+      });
+      expect(result).toEqual([
+        { id: 'copy-1', qrCode: 'B000001', location: 'Shelf A', acquisitionDate: null, bookTitle: 'Kalila wa Dimna' },
+      ]);
+    });
+
+    it('returns every copy (no acquisitionDate filter at all) when both from/to are omitted', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+
+      await service.listCopiesForPrint({});
+
+      expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: {} }),
+      );
+    });
+
+    it('never exposes the book title as part of a sticker-printable field — only bookTitle, kept separate from qrCode/location', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { ...copyRow({ qrCode: 'B000002' }), book: { title: 'Another Title' } },
+      ]);
+
+      const [row] = await service.listCopiesForPrint({});
+
+      expect(row.qrCode).toBe('B000002');
+      expect(row.bookTitle).toBe('Another Title');
+      expect(row.qrCode).not.toContain('Another Title');
+    });
+
+    it('exportCopiesForPrintWorkbook produces an xlsx buffer covering the same filtered rows', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        { ...copyRow({ qrCode: 'B000003', location: 'Shelf B' }), book: { title: 'Exported Title' } },
+      ]);
+
+      const buffer = await service.exportCopiesForPrintWorkbook({});
+
+      expect(Buffer.isBuffer(buffer) || buffer instanceof Uint8Array).toBe(true);
+      expect(buffer.length).toBeGreaterThan(0);
     });
   });
 

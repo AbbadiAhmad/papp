@@ -86,7 +86,8 @@ export interface LibraryBookCopy {
 }
 
 export interface CreateBookCopyInlineInput {
-  qrCode: string;
+  /** Optional (LIBRARY_CATALOG-D22) — omitted/blank auto-assigns the next Bxxxxxx code server-side. */
+  qrCode?: string;
   status?: BookCopyStatus;
   condition?: string;
   location?: string;
@@ -117,7 +118,8 @@ export interface UpdateBookCopyDto {
 }
 
 export interface CreateBookCopyInput {
-  qrCode: string;
+  /** Optional (LIBRARY_CATALOG-D22) — omitted/blank auto-assigns the next Bxxxxxx code server-side. */
+  qrCode?: string;
   status?: BookCopyStatus;
   condition?: string;
   location?: string;
@@ -137,6 +139,25 @@ export interface CopyHistoryEntry {
   changes: Record<string, { before: unknown; after: unknown }>;
 }
 
+/** `GET /books/copies/stickers` filter — both bounds optional/inclusive (LIBRARY_CATALOG-D22). */
+export interface ListCopiesForPrintParams {
+  from?: string;
+  to?: string;
+}
+
+/** One row from `GET /books/copies/stickers` — `bookTitle` is for on-screen validation only, never printed on the sticker itself. */
+export interface CopyForPrint {
+  id: string;
+  qrCode: string;
+  location: string | null;
+  acquisitionDate: string | null;
+  bookTitle: string;
+}
+
+export interface StickerSettings {
+  headerText: string;
+}
+
 export const libraryCatalogApi = {
   listBooks: (params?: { search?: string; category?: string }) =>
     apiClient.get<LibraryBook[]>('/api/library/books', { params }).then((r) => r.data),
@@ -147,6 +168,8 @@ export const libraryCatalogApi = {
   removeBook: (id: string) => apiClient.delete<void>(`/api/library/books/${id}`).then((r) => r.data),
   exportBooks: () => apiClient.get<Blob>('/api/library/books/export', { responseType: 'blob' }).then((r) => r.data),
 
+  /** Read-only suggested next `Bxxxxxx` code (LIBRARY_CATALOG-D22 follow-up) — does NOT consume the sequence, so cancelling the form burns nothing. */
+  peekNextCopyCode: () => apiClient.get<{ qrCode: string }>('/api/library/books/copies/next-code').then((r) => r.data.qrCode),
   listCopies: (bookId: string) =>
     apiClient.get<LibraryBookCopy[]>(`/api/library/books/${bookId}/copies`).then((r) => r.data),
   createCopy: (bookId: string, dto: CreateBookCopyInput) =>
@@ -174,6 +197,15 @@ export const libraryCatalogApi = {
   // admin previewing the shareable link), but never requires it.
   getPublicAvailability: (bookId: string) =>
     apiClient.get<BookAvailability>(`/api/library/public/books/${bookId}/availability`).then((r) => r.data),
+
+  // Print Codes / stickers (LIBRARY_CATALOG-D22).
+  listCopiesForPrint: (params?: ListCopiesForPrintParams) =>
+    apiClient.get<CopyForPrint[]>('/api/library/books/copies/stickers', { params }).then((r) => r.data),
+  exportCopiesForPrint: (params?: ListCopiesForPrintParams) =>
+    apiClient.get<Blob>('/api/library/books/copies/stickers/export', { params, responseType: 'blob' }).then((r) => r.data),
+  getStickerSettings: () => apiClient.get<StickerSettings>('/api/library/settings/sticker').then((r) => r.data),
+  updateStickerSettings: (dto: StickerSettings) =>
+    apiClient.put<StickerSettings>('/api/library/settings/sticker', dto).then((r) => r.data),
 };
 
 /** Mirrors apps/web/src/shared/api/users.ts's own download helper. */
