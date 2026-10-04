@@ -1,5 +1,6 @@
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { BookHistoryPage } from './pages/BookHistoryPage';
+import { BorrowingsPage } from './pages/BorrowingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
@@ -20,6 +21,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/scan', element: <ScanPage /> },
   { path: '/library-circulation/students', element: <StudentsListPage /> },
   { path: '/library-circulation/students/:studentId', element: <StudentDetailPage /> },
+  { path: '/library-circulation/borrowings', element: <BorrowingsPage /> },
   { path: '/library-circulation/fines', element: <FinesPage /> },
   { path: '/library-circulation/finance', element: <FinancePage /> },
   { path: '/library-circulation/books/:bookId/history', element: <BookHistoryPage /> },

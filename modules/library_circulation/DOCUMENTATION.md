@@ -39,12 +39,13 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 |---|---|
 | `library_circulation.students.view/create/update/delete` | Students CRUD |
 | `library_circulation.borrow` / `.return` / `.extend` | The three circulation actions, and `/scan` (gated on `.borrow`) |
+| `library_circulation.borrowings.view` | `GET /borrowings` (Borrowings status page, LIBRARY_CIRCULATION-D34) — distinct from `.borrow`, which gates the ACTION, not viewing the list |
 | `library_circulation.fines.view/record/waive` | Fines list/detail, manual fine creation, waiving |
 | `library_circulation.finance.view/record_payment` | Transactions/payments read, recording a payment |
 | `library_circulation.settings.update` | The `loan_policy` setting |
 | `library_circulation.dashboard.view` | `GET /dashboard` (§18's stat cards) |
 
-`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return/extend + `fines.view` + `dashboard.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*` + `dashboard.view`; `reader` none.
+`defaultRolePermissions`: `admin` all; `library_assistant` gets students CRUD + borrow/return/extend + `borrowings.view` + `fines.view` + `dashboard.view` (NOT `fines.record`/`fines.waive` — §1: "optionally grantable", admin grants per-instance); `finance` gets `fines.view` + both `finance.*` + `dashboard.view`; `reader` none.
 
 ## Settings
 
@@ -62,11 +63,12 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - `frontend/readingClubIntegration.ts` — a small, deliberately import-free (raw `apiClient` calls, never a static TS import of `modules/reading_club/**`) helper this page uses to show "reader finished a reading-club stage, reward pending" and let staff confirm it was handed over, right when the reader is next physically present. Entirely optional: hidden whenever the `reading_club` module isn't installed or the caller lacks its permission — see `DECISIONS.md`.
 - `frontend/pages/StudentDetailPage.tsx` — the reader's active-books/fines tabs (§25/§10); the "Currently borrowed" tab's Actions column also opens `ExtendLoanDialog.tsx` per row.
 - `frontend/pages/QrCodeImage.tsx` — client-side QR image rendering (`qrcode` npm package) for a student's own code.
-- `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`.
+- `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`; `borrowedCopies`/`overdueBorrowings` cards link into `BorrowingsPage.tsx` pre-filtered (LIBRARY_CIRCULATION-D34).
+- `frontend/pages/BorrowingsPage.tsx` — Borrowings status page (LIBRARY_CIRCULATION-D34): book/reader/borrowed-date/due-date/days-overdue table, filterable by status/date-range/overdue-only, reading its initial filter off the URL (`useSearchParams`) so dashboard links land pre-filtered.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)
 
-- **`overdue` is a valid `library_borrowings.status` value but nothing proactively sets it** — no scheduler/cron infrastructure exists anywhere in this platform yet. Lateness is instead computed on demand at return time (`returnedAt - dueAt`) for the fine calculation; a "currently overdue" list would need to derive it live (`status = 'active' AND due_at < now()`), not query `status = 'overdue'`. Don't add a cron job to "fix" this without raising it with the user first — it's a platform-wide gap, not this module's alone.
+- **`overdue` is a valid `library_borrowings.status` value but nothing proactively sets it** — no scheduler/cron infrastructure exists anywhere in this platform yet. Lateness is instead computed on demand at return time (`returnedAt - dueAt`) for the fine calculation, and now also live for the Borrowings status page's `overdueOnly` filter/`daysOverdue` column (LIBRARY_CIRCULATION-D34 — `status IN ('active','overdue') AND due_at < now()`, never a literal `status = 'overdue'` match). Don't add a cron job to "fix" this without raising it with the user first — it's a platform-wide gap, not this module's alone.
 - **STAFF/FINE scan prefixes are not implemented** — only STU (student) and BOOK (copy) are recognized, because those are the only two the borrow/return flow actually needs (§7/§9) and no code scheme for staff or fines exists anywhere. Don't invent one silently if a future requirement needs it; raise it with the user.
 - **`library_academic_years` has a Prisma model and a nullable FK on `library_students`, but no CRUD endpoint** — §34 flags academic years as a genuinely new concept not required for the core borrow/return/fine/payment flow; the column exists so it isn't a breaking schema change later, but populating it today requires a direct DB insert. Build the CRUD surface when multi-year support is actually prioritized.
 - **No `library_classes`/grades lookup entity** — `className` stays free text; add it together with Excel import (see `LIBRARY_CIRCULATION-D9`), not before.

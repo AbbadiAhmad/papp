@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { BorrowDto } from './dto/borrow.dto';
 import { ExtendLoanDto } from './dto/extend-loan.dto';
+import { ListBorrowingsDto } from './dto/list-borrowings.dto';
 import { ReturnDto } from './dto/return.dto';
 import { ScanDto } from './dto/scan.dto';
 import { CirculationService } from './circulation.service';
@@ -36,6 +37,20 @@ export class CirculationController {
   @RequirePermission('library_circulation.return')
   async activeBorrowingForCopy(@Param('copyId') copyId: string) {
     return this.circulation.findActiveBorrowingForCopy(copyId);
+  }
+
+  /** Borrowings status page's filter bar — see CirculationService.listBorrowings's own docblock. */
+  @Get('borrowings')
+  @RequirePermission('library_circulation.borrowings.view')
+  async listBorrowings(@Query() filter: ListBorrowingsDto) {
+    return this.circulation.listBorrowings({
+      studentId: filter.studentId,
+      bookSearch: filter.bookSearch,
+      status: filter.status,
+      overdueOnly: filter.overdueOnly === 'true',
+      borrowedFrom: filter.borrowedFrom,
+      borrowedTo: filter.borrowedTo,
+    });
   }
 
   /** Scan page's reader-centric view — this reader's active borrowings, enriched with book title/due date. */

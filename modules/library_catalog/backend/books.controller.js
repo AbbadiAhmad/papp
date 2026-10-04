@@ -18,6 +18,7 @@ const books_service_1 = require("./books.service");
 const create_book_copy_dto_1 = require("./dto/create-book-copy.dto");
 const create_book_dto_1 = require("./dto/create-book.dto");
 const list_books_dto_1 = require("./dto/list-books.dto");
+const list_copies_for_inventory_dto_1 = require("./dto/list-copies-for-inventory.dto");
 const list_copies_for_print_dto_1 = require("./dto/list-copies-for-print.dto");
 const rate_book_dto_1 = require("./dto/rate-book.dto");
 const update_book_copy_dto_1 = require("./dto/update-book-copy.dto");
@@ -99,6 +100,26 @@ let BooksController = class BooksController {
         res.set({
             'Content-Type': XLSX_CONTENT_TYPE,
             'Content-Disposition': 'attachment; filename="library-catalog-copy-stickers-export.xlsx"',
+        });
+        res.send(buffer);
+    }
+    // --- Inventory (user request: "help the librarian on the Annual
+    // inventory") --------------------------------------------------------------
+    // Read-only, cross-book — filtered by status/location/book title, not
+    // acquisitionDate (that's the sticker workflow's own filter above). Gated
+    // by a dedicated permission, not `books.view`/`copies.print_codes` —
+    // walking the shelves for inventory is a distinct, separately-grantable
+    // action from viewing the catalog or printing stickers. Registered before
+    // `:bookId/copies` for the same Express route-ordering reason as every
+    // other `copies/*` literal route above.
+    async listCopiesForInventory(query) {
+        return this.books.listCopiesForInventory(query);
+    }
+    async exportCopiesForInventory(query, res) {
+        const buffer = await this.books.exportCopiesForInventoryWorkbook(query);
+        res.set({
+            'Content-Type': XLSX_CONTENT_TYPE,
+            'Content-Disposition': 'attachment; filename="library-catalog-copies-inventory-export.xlsx"',
         });
         res.send(buffer);
     }
@@ -245,6 +266,23 @@ __decorate([
     __metadata("design:paramtypes", [list_copies_for_print_dto_1.ListCopiesForPrintDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "exportCopiesForPrint", null);
+__decorate([
+    (0, common_1.Get)('copies/inventory'),
+    (0, platform_1.RequirePermission)('library_catalog.copies.inventory'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_copies_for_inventory_dto_1.ListCopiesForInventoryDto]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "listCopiesForInventory", null);
+__decorate([
+    (0, common_1.Get)('copies/inventory/export'),
+    (0, platform_1.RequirePermission)('library_catalog.copies.inventory'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_copies_for_inventory_dto_1.ListCopiesForInventoryDto, Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "exportCopiesForInventory", null);
 __decorate([
     (0, common_1.Get)('copies/next-code'),
     (0, platform_1.RequirePermission)('library_catalog.books.create'),

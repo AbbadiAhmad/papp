@@ -1,7 +1,7 @@
 {
   "key": "library_catalog",
   "name": "Library Catalog",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Book catalog: titles, physical copies, categories, and a public shareable availability check. D44: stands alone — borrowing/returning/fines are a separate, future library_circulation+library_finance module that will dependsOn this one.",
@@ -24,6 +24,7 @@
     { "code": "library_catalog.books.rate", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.rate" },
     { "code": "library_catalog.books.moderate_ratings", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.moderate_ratings" },
     { "code": "library_catalog.copies.print_codes", "category": "library_catalog", "descriptionKey": "library_catalog.perm.copies.print_codes" },
+    { "code": "library_catalog.copies.inventory", "category": "library_catalog", "descriptionKey": "library_catalog.perm.copies.inventory" },
     { "code": "library_catalog.settings.update", "category": "library_catalog", "descriptionKey": "library_catalog.perm.settings.update" }
   ],
 
@@ -37,6 +38,7 @@
       "library_catalog.books.rate",
       "library_catalog.books.moderate_ratings",
       "library_catalog.copies.print_codes",
+      "library_catalog.copies.inventory",
       "library_catalog.settings.update"
     ],
     "library_assistant": [
@@ -45,7 +47,8 @@
       "library_catalog.books.update",
       "library_catalog.books.rate",
       "library_catalog.books.moderate_ratings",
-      "library_catalog.copies.print_codes"
+      "library_catalog.copies.print_codes",
+      "library_catalog.copies.inventory"
     ],
     "finance": [],
     "reader": ["library_catalog.books.view", "library_catalog.books.rate"]
@@ -98,6 +101,15 @@
       "order": 3,
       "route": "/library/copies/print-codes",
       "requiredPermission": "library_catalog.copies.print_codes"
+    },
+    {
+      "id": "library_catalog.copies.inventory",
+      "labelKey": "library_catalog.menu.inventory",
+      "icon": "Inventory",
+      "parentId": "library_catalog.root",
+      "order": 4,
+      "route": "/library/copies/inventory",
+      "requiredPermission": "library_catalog.copies.inventory"
     }
   ],
 
@@ -130,6 +142,12 @@
       "access": "authenticated",
       "requiredPermission": "library_catalog.copies.print_codes",
       "component": "frontend/pages/PrintCodesPage.tsx"
+    },
+    {
+      "pattern": "/library/copies/inventory",
+      "access": "authenticated",
+      "requiredPermission": "library_catalog.copies.inventory",
+      "component": "frontend/pages/CopiesInventoryPage.tsx"
     }
   ],
 

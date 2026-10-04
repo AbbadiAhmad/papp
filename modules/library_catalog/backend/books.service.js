@@ -435,6 +435,63 @@ let BooksService = BooksService_1 = class BooksService {
         }
         return workbook.xlsx.writeBuffer();
     }
+    /**
+     * Copies inventory page (user request: "a page to show the available
+     * copies, (book name, copy code, location, status) ... to help the
+     * librarian on the Annual inventory"). Filters by `status`/`location`/
+     * book title — the dimensions an inventory walkthrough actually needs
+     * (what's SUPPOSED to be where, and what state it's recorded in),
+     * distinct from `listCopiesForPrint`'s own acquisition-date filter built
+     * for the sticker/export workflow. Same `include: { book: {...} } }`
+     * pattern as that method — both tables are in this module's own schema,
+     * so a real Prisma `include` works here (unlike the cross-module
+     * two-pass joins `library_circulation`'s own services use for tables
+     * outside their own module).
+     */
+    async listCopiesForInventory(filter) {
+        const where = {};
+        if (filter.status)
+            where.status = filter.status;
+        if (filter.location)
+            where.location = { contains: filter.location, mode: 'insensitive' };
+        if (filter.bookSearch)
+            where.book = { title: { contains: filter.bookSearch, mode: 'insensitive' } };
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+            where,
+            orderBy: [{ book: { title: 'asc' } }, { qrCode: 'asc' }],
+            include: { book: { select: { title: true } } },
+        });
+        return copies.map((copy) => ({
+            id: copy.id,
+            qrCode: copy.qrCode,
+            bookTitle: copy.book.title,
+            location: copy.location,
+            status: copy.status,
+            condition: copy.condition,
+        }));
+    }
+    async exportCopiesForInventoryWorkbook(filter) {
+        const copies = await this.listCopiesForInventory(filter);
+        const workbook = new exceljs_1.default.Workbook();
+        const worksheet = workbook.addWorksheet('Inventory');
+        worksheet.columns = [
+            { header: 'book_title', key: 'bookTitle', width: 32 },
+            { header: 'copy_code', key: 'qrCode', width: 16 },
+            { header: 'location', key: 'location', width: 20 },
+            { header: 'status', key: 'status', width: 14 },
+            { header: 'condition', key: 'condition', width: 20 },
+        ];
+        for (const copy of copies) {
+            worksheet.addRow({
+                bookTitle: copy.bookTitle,
+                qrCode: copy.qrCode,
+                location: copy.location ?? '',
+                status: copy.status,
+                condition: copy.condition ?? '',
+            });
+        }
+        return workbook.xlsx.writeBuffer();
+    }
     // --- Helpers -----------------------------------------------------------
     /**
      * `Bxxxxxx` — zero-padded to 6 digits, backed by the real Postgres

@@ -1,6 +1,7 @@
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { BookDetailPage } from './pages/BookDetailPage';
 import { BooksListPage } from './pages/BooksListPage';
+import { CopiesInventoryPage } from './pages/CopiesInventoryPage';
 import { ModerateReviewsPage } from './pages/ModerateReviewsPage';
 import { PrintCodesPage } from './pages/PrintCodesPage';
 import { PublicBookAvailabilityPage } from './pages/PublicBookAvailabilityPage';
@@ -17,6 +18,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library/books/:bookId', element: <BookDetailPage /> },
   { path: '/library/reviews/moderate', element: <ModerateReviewsPage /> },
   { path: '/library/copies/print-codes', element: <PrintCodesPage /> },
+  { path: '/library/copies/inventory', element: <CopiesInventoryPage /> },
 ];
 
 export const publicRoutes: ModuleRouteEntry[] = [

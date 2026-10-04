@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { ListCopiesForInventoryDto } from './dto/list-copies-for-inventory.dto';
 import { ListCopiesForPrintDto } from './dto/list-copies-for-print.dto';
 import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
@@ -476,6 +477,64 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         qrCode: copy.qrCode,
         location: copy.location ?? '',
         acquisitionDate: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+      });
+    }
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+  }
+
+  /**
+   * Copies inventory page (user request: "a page to show the available
+   * copies, (book name, copy code, location, status) ... to help the
+   * librarian on the Annual inventory"). Filters by `status`/`location`/
+   * book title — the dimensions an inventory walkthrough actually needs
+   * (what's SUPPOSED to be where, and what state it's recorded in),
+   * distinct from `listCopiesForPrint`'s own acquisition-date filter built
+   * for the sticker/export workflow. Same `include: { book: {...} } }`
+   * pattern as that method — both tables are in this module's own schema,
+   * so a real Prisma `include` works here (unlike the cross-module
+   * two-pass joins `library_circulation`'s own services use for tables
+   * outside their own module).
+   */
+  async listCopiesForInventory(filter: ListCopiesForInventoryDto) {
+    const where: Prisma.LibraryCatalogBookCopyWhereInput = {};
+    if (filter.status) where.status = filter.status;
+    if (filter.location) where.location = { contains: filter.location, mode: 'insensitive' };
+    if (filter.bookSearch) where.book = { title: { contains: filter.bookSearch, mode: 'insensitive' } };
+
+    const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+      where,
+      orderBy: [{ book: { title: 'asc' } }, { qrCode: 'asc' }],
+      include: { book: { select: { title: true } } },
+    });
+    return copies.map((copy) => ({
+      id: copy.id,
+      qrCode: copy.qrCode,
+      bookTitle: copy.book.title,
+      location: copy.location,
+      status: copy.status,
+      condition: copy.condition,
+    }));
+  }
+
+  async exportCopiesForInventoryWorkbook(filter: ListCopiesForInventoryDto): Promise<Buffer> {
+    const copies = await this.listCopiesForInventory(filter);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Inventory');
+    worksheet.columns = [
+      { header: 'book_title', key: 'bookTitle', width: 32 },
+      { header: 'copy_code', key: 'qrCode', width: 16 },
+      { header: 'location', key: 'location', width: 20 },
+      { header: 'status', key: 'status', width: 14 },
+      { header: 'condition', key: 'condition', width: 20 },
+    ];
+    for (const copy of copies) {
+      worksheet.addRow({
+        bookTitle: copy.bookTitle,
+        qrCode: copy.qrCode,
+        location: copy.location ?? '',
+        status: copy.status,
+        condition: copy.condition ?? '',
       });
     }
     return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;

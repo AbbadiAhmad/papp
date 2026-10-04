@@ -12,19 +12,13 @@ import { libraryCirculationApi } from '../api';
  * own number was computed (same "click a stat, land on it filtered" pattern
  * reading_club's own DashboardPage already uses for its group/stage cards).
  *
- * Two cards (`students`, `unpaid_fines`/`paid_fines`) link to a real page
- * with a matching filter. FOUR do not, because no such page exists yet —
- * `library_circulation` has no copy-status list or borrowings list page at
- * all (borrowing/returning happens through the Scan page's dialogs, not a
- * browsable list):
- *  - `totalCopies`/`availableCopies` — copy-level data lives in the
- *    `library_catalog` module's Books list, which filters by BOOK, not by
- *    copy status, so it isn't a real match either.
- *  - `borrowedCopies`/`overdueBorrowings` — no borrowings list page exists
- *    in this module to link to.
- * Building either is a real new page/permission (MODULE_SPEC.md manifest
- * entry, guard, audit, i18n) — flagged here rather than guessed at silently
- * (CLAUDE.md's own working rule); see this change's DECISIONS.md entry.
+ * `borrowedCopies`/`overdueBorrowings` now link to the new Borrowings
+ * status page (LIBRARY_CIRCULATION-D34 — closes the gap LIBRARY_CIRCULATION-
+ * D32 originally flagged, "no borrowings list page exists in this module to
+ * link to"). `totalCopies`/`availableCopies` still link nowhere — copy-level
+ * data lives in the `library_catalog` module's Books list, which filters by
+ * BOOK, not by copy status, so it still isn't a real match; left flagged,
+ * not guessed at.
  */
 export function DashboardPage() {
   const { t } = useTranslation();
@@ -38,8 +32,18 @@ export function DashboardPage() {
         { label: t('library_circulation.dashboard.students'), value: data.students, color: 'text.primary', to: '/library-circulation/students' },
         { label: t('library_circulation.dashboard.total_copies'), value: data.totalCopies, color: 'text.primary', to: null },
         { label: t('library_circulation.dashboard.available_copies'), value: data.availableCopies, color: 'success.main', to: null },
-        { label: t('library_circulation.dashboard.borrowed_copies'), value: data.borrowedCopies, color: 'text.primary', to: null },
-        { label: t('library_circulation.dashboard.overdue_borrowings'), value: data.overdueBorrowings, color: 'error.main', to: null },
+        {
+          label: t('library_circulation.dashboard.borrowed_copies'),
+          value: data.borrowedCopies,
+          color: 'text.primary',
+          to: '/library-circulation/borrowings?status=active',
+        },
+        {
+          label: t('library_circulation.dashboard.overdue_borrowings'),
+          value: data.overdueBorrowings,
+          color: 'error.main',
+          to: '/library-circulation/borrowings?overdueOnly=true',
+        },
         {
           label: t('library_circulation.dashboard.unpaid_fines'),
           value: data.unpaidFinesTotal.toFixed(2),
