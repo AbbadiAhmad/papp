@@ -34,23 +34,61 @@ const SCANNER_ELEMENT_ID = 'library-circulation-camera-scanner';
  * `Html5Qrcode` constructor call is also now wrapped in try/catch, so even
  * a genuine future failure degrades to the existing error `Alert` instead
  * of crashing the page again.
+ *
+ * Second bug fix (also user-reported): `.stop()` throws SYNCHRONOUSLY —
+ * `"Cannot stop, scanner is not running or paused."` — if called while the
+ * scanner is still in its `NOT_STARTED`/`LOADING` state, i.e. before
+ * `.start()`'s own promise has resolved. `.start()` is genuinely slow (it
+ * waits on the real camera permission prompt + stream setup), so closing
+ * the dialog quickly (including the dialog auto-closing itself right after
+ * a successful decode) could call `stopScanner()` well before `.start()`
+ * finished — and since this throw is synchronous, `scanner.stop().catch()`
+ * can never catch it (there's no promise yet to attach a catch to). Fixed
+ * by tracking readiness explicitly (`startedRef`) and never calling
+ * `.stop()` until `.start()` has actually resolved; if a stop is requested
+ * before that, it's deferred — `setScannerHost`'s own `.then()` checks
+ * `stopRequestedRef` right after `.start()` resolves and stops immediately
+ * if a close happened in the meantime. `.stop()` is also wrapped in its own
+ * try/catch as a last-resort safety net, matching the constructor's.
  */
 export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; onClose: () => void; onDecoded: (text: string) => void }) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const stoppedRef = useRef(false);
+  // True only once scanner.start()'s own promise has resolved — `.stop()`
+  // must never be called before this, see this file's own docblock.
+  const startedRef = useRef(false);
+  // Set when a stop is requested (dialog closed) while `.start()` is still
+  // pending — checked right after `.start()` resolves so the stop isn't
+  // silently dropped just because it arrived "too early".
+  const stopRequestedRef = useRef(false);
   const onDecodedRef = useRef(onDecoded);
   onDecodedRef.current = onDecoded;
+
+  const safeStop = useCallback((scanner: Html5Qrcode) => {
+    try {
+      scanner.stop().catch(() => undefined);
+    } catch {
+      // `.stop()` can also throw SYNCHRONOUSLY (not just reject) when the
+      // scanner isn't in a running/paused state — see docblock. Swallowed:
+      // the dialog is closing either way, there is nothing further to do.
+    }
+  }, []);
 
   const stopScanner = useCallback(() => {
     stoppedRef.current = true;
     const scanner = scannerRef.current;
     scannerRef.current = null;
-    if (scanner) {
-      scanner.stop().catch(() => undefined);
+    if (!scanner) return;
+    if (startedRef.current) {
+      safeStop(scanner);
+    } else {
+      // `.start()` hasn't resolved yet — defer; setScannerHost's `.then()`
+      // checks this flag the moment it resolves and stops immediately.
+      stopRequestedRef.current = true;
     }
-  }, []);
+  }, [safeStop]);
 
   // Ref callback: fires with the real <div> once it's attached (dialog
   // opening) and again with `null` once it's detached (dialog closing) —
@@ -63,6 +101,8 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       }
       setError(null);
       stoppedRef.current = false;
+      startedRef.current = false;
+      stopRequestedRef.current = false;
       let scanner: Html5Qrcode;
       try {
         scanner = new Html5Qrcode(node.id);
@@ -82,9 +122,15 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
           },
           () => undefined, // per-frame "no code found yet" — not an error, ignored
         )
+        .then(() => {
+          startedRef.current = true;
+          if (stopRequestedRef.current) {
+            safeStop(scanner);
+          }
+        })
         .catch(() => setError(t('library_circulation.scan.camera_error')));
     },
-    [stopScanner, t],
+    [safeStop, stopScanner, t],
   );
 
   // Belt-and-suspenders teardown on unmount (e.g. navigating away while

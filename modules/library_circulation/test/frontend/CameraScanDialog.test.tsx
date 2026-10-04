@@ -97,4 +97,32 @@ describe('CameraScanDialog', () => {
 
     await waitFor(() => expect(stopMock).toHaveBeenCalled());
   });
+
+  it('defers stop() until start() resolves, and never calls the real .stop() early (user-reported "Cannot stop, scanner is not running or paused")', async () => {
+    // html5-qrcode's real .stop() throws SYNCHRONOUSLY (not a rejection) if
+    // called before .start()'s own promise has resolved — this mock models
+    // that exact contract so the test actually proves the race is closed,
+    // not just that *a* stop eventually happens.
+    let resolveStart: () => void;
+    const startPromise = new Promise<void>((resolve) => {
+      resolveStart = resolve;
+    });
+    let scannerStarted = false;
+    startMock.mockImplementation(() => startPromise.then(() => { scannerStarted = true; }));
+    stopMock.mockImplementation(() => {
+      if (!scannerStarted) throw 'Cannot stop, scanner is not running or paused.';
+      return Promise.resolve();
+    });
+
+    const { rerender } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+    await waitFor(() => expect(lastConstructedId).toBe('library-circulation-camera-scanner'));
+
+    // Close the dialog WHILE start() is still pending — the exact race
+    // that used to throw uncaught out of stopScanner().
+    expect(() => rerender(<CameraScanDialog open={false} onClose={vi.fn()} onDecoded={vi.fn()} />)).not.toThrow();
+    expect(stopMock).not.toHaveBeenCalled(); // deferred, not called early
+
+    resolveStart!();
+    await waitFor(() => expect(stopMock).toHaveBeenCalledTimes(1)); // called exactly once, after start() actually resolved
+  });
 });

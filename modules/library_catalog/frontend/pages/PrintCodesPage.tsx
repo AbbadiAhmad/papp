@@ -231,7 +231,11 @@ export function PrintCodesPage() {
         {copies.map((copy) => (
           <Box key={copy.id} className="print-codes-sticker">
             {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
-            <QrCodeImage value={copy.qrCode} size={96} />
+            {/* Shrunk alongside the sticker itself (63.5mm -> 45mm, see the
+                print stylesheet's own comment) — 60px leaves real room for
+                the header/code/location text stacked below it in a 30mm-
+                tall sticker without forcing any of them to wrap. */}
+            <QrCodeImage value={copy.qrCode} size={60} />
             <Typography className="print-codes-sticker-code">{copy.qrCode}</Typography>
             {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
           </Box>
@@ -241,18 +245,43 @@ export function PrintCodesPage() {
       <style>{`
         .print-codes-sheet { display: none; }
         @media print {
+          /*
+           * Bug fix (user-reported): the old grid used
+           * \`grid-template-columns: repeat(3, 1fr)\` — \`1fr\` columns
+           * stretch/shrink to fill whatever width the grid CONTAINER ends
+           * up with, which is NOT the same as the page's real printable
+           * width unless \`@page\` pins it explicitly (the first row could
+           * still look fine purely because the browser's print-preview
+           * layout pass hadn't yet reconciled the container against the
+           * actual page box). Each \`.print-codes-sticker\` also had its own
+           * FIXED \`width: 63.5mm\` — 3 of those (190.5mm) already barely fit
+           * a page's usable width with margins, so asking for 4 made the
+           * mismatch between the elastic \`1fr\` columns and the sticker's
+           * own fixed width worse, squeezing the code text into a narrower
+           * box than it needed and wrapping it.
+           *
+           * Fix: an explicit \`@page\` size/margin (so the printable area is
+           * deterministic, not browser-default-dependent) + FIXED-width
+           * grid columns sized to actually fit 4 across that printable
+           * width with margins (A4's ~190mm usable width / 4 columns ≈
+           * 46mm each, same arithmetic for Letter) — the sticker itself
+           * shrunk to 45mm × 30mm to fit cleanly, confirmed with the user
+           * as an acceptable trade-off over keeping the old 63.5mm size at
+           * only 3 per row.
+           */
+          @page { size: A4; margin: 10mm; }
           .print-codes-controls { display: none; }
           .print-codes-sheet {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            grid-template-columns: repeat(4, 45mm);
+            gap: 2mm;
           }
           .print-codes-sticker {
             box-sizing: border-box;
             border: 1px solid #000;
-            padding: 6px;
-            width: 63.5mm;
-            height: 38.1mm;
+            padding: 3mm;
+            width: 45mm;
+            height: 30mm;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -261,9 +290,9 @@ export function PrintCodesPage() {
             overflow: hidden;
             break-inside: avoid;
           }
-          .print-codes-sticker-header { font-size: 8pt; font-weight: bold; margin: 0; }
-          .print-codes-sticker-code { font-size: 9pt; margin: 2px 0 0; }
-          .print-codes-sticker-location { font-size: 7pt; color: #333; margin: 0; }
+          .print-codes-sticker-header { font-size: 7pt; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+          .print-codes-sticker-code { font-size: 8pt; margin: 1mm 0 0; white-space: nowrap; }
+          .print-codes-sticker-location { font-size: 6pt; color: #333; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
         }
       `}</style>
     </Box>
