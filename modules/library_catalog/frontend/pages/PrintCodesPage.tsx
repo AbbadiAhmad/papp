@@ -220,7 +220,13 @@ export function PrintCodesPage() {
           print-preview also works, not just the Print button), hidden on
           screen and shown only inside @media print via the stylesheet
           below. Fixed label-grid layout, not admin-configurable (confirmed
-          with the user) — 3 stickers per row, a plain CSS grid wrap. */}
+          with the user) — 3 stickers per row, a plain CSS grid wrap.
+          This page's own print rule only reaches content INSIDE this page
+          — the app shell (sidebar/top bar) that used to print alongside it
+          is hidden by a separate, platform-level rule in App.tsx's
+          GlobalStyles (reported bug: "when printing the stickers the menu
+          is shown to the side of the page"). See that file's own comment
+          for why a per-page rule alone can never reach the shell. */}
       <Box className="print-codes-sheet">
         {copies.map((copy) => (
           <Box key={copy.id} className="print-codes-sticker">
