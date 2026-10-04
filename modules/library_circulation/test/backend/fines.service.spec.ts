@@ -304,6 +304,36 @@ describe('FinesService', () => {
       expect(result).toEqual({ fines: [], totalAmount: 0 });
       expect(prisma.libraryFine.findMany).not.toHaveBeenCalled();
     });
+
+    it('bug fix (LIBRARY_CIRCULATION-D33): a single status still filters to exactly that status', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([]);
+
+      await service.list({ status: ['paid'] });
+
+      expect(prisma.libraryFine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: { in: ['paid'] } }) }),
+      );
+    });
+
+    it("bug fix (LIBRARY_CIRCULATION-D33): multiple statuses match with 'in' — the dashboard's \"unpaid fines\" link (unpaid + partially_paid)", async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([]);
+
+      await service.list({ status: ['unpaid', 'partially_paid'] });
+
+      expect(prisma.libraryFine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: { in: ['unpaid', 'partially_paid'] } }) }),
+      );
+    });
+
+    it('an empty/omitted status array applies no status filter at all', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([]);
+
+      await service.list({ status: [] });
+
+      expect(prisma.libraryFine.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: undefined }) }),
+      );
+    });
   });
 
   describe('listPayments (Finance page filters)', () => {

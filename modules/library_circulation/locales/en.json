@@ -103,6 +103,7 @@
   "library_circulation.books.status": "Status",
 
   "library_circulation.students.code": "Reader code",
+  "library_circulation.students.name": "Name",
   "library_circulation.students.class": "Class",
   "library_circulation.students.code_help": "The code printed on the reader's card (also usable as a QR/barcode scan target).",
   "library_circulation.students.class_name": "Class",

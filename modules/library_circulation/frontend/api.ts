@@ -14,6 +14,8 @@ export interface LibraryStudent {
   academicYearId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Joined in from the linked platform User (D41: name lives on User, not libraryStudent) — StudentsService.list(). */
+  name: string | null;
 }
 
 /** StudentsService.search() result row — lightweight, for the searchable reader picker. */
@@ -38,7 +40,6 @@ export interface ActiveBorrowingForStudent {
 }
 
 export interface LibraryStudentDetail extends LibraryStudent {
-  name: string | null;
   email: string | null;
   isActive: boolean;
   activeBorrowingsCount: number;
@@ -172,7 +173,8 @@ export interface FineBorrowingContext {
 /** Fines page's filter bar — all optional, combined with AND. */
 export interface FineFilterInput {
   studentId?: string;
-  status?: string;
+  /** Multi-select — sent to the backend as a comma-separated string (ListFinesDto). */
+  status?: FineStatus[];
   fineTypeId?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -322,7 +324,13 @@ export const libraryCirculationApi = {
   // Fines / finance
   listFineTypes: () => apiClient.get<LibraryFineType[]>(`${BASE}/fine-types`).then((r) => r.data),
   listFines: (filter: FineFilterInput = {}) => {
-    const params = Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined && v !== ''));
+    // `status` is sent as ONE comma-joined query value (`?status=unpaid,partially_paid`),
+    // not a repeated-key array — matches ListFinesDto's own `@Transform` (splits on ','),
+    // and keeps the dashboard's deep-link URLs (e.g. `?status=unpaid,partially_paid`)
+    // working identically whether built here or typed by hand.
+    const { status, ...rest } = filter;
+    const params: Record<string, unknown> = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && v !== ''));
+    if (status && status.length > 0) params.status = status.join(',');
     return apiClient.get<{ fines: EnrichedFine[]; totalAmount: number }>(`${BASE}/fines`, { params }).then((r) => r.data);
   },
   getFine: (id: string) => apiClient.get<LibraryFineDetail>(`${BASE}/fines/${id}`).then((r) => r.data),

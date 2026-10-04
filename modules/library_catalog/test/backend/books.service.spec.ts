@@ -305,6 +305,67 @@ describe('BooksService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
+
+    it('bug fix: an explicitly-submitted Bxxxxxx code (the accepted suggestion) still bumps the sequence so the NEXT peek is reevaluated', async () => {
+      // Reproduces bug (1): the Add Book form pre-fills `copy.qrCode` with
+      // `peekNextCopyCode()`'s suggestion, so an unedited accept submits it
+      // as an explicit, non-blank string — the manually-typed branch must
+      // still reconcile the sequence forward, not skip it.
+      const dto = { title: 'Accepted Suggestion Book', copy: { qrCode: 'B000005' } } as unknown as CreateBookDto;
+      const queryRawUnsafe = jest.fn().mockResolvedValue([{ last_value: BigInt(4) }]);
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-9' })) },
+          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000005', bookId: 'book-9' })) },
+          $queryRawUnsafe: queryRawUnsafe,
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("setval('library_catalog_copy_code_seq'"),
+        BigInt(5),
+      );
+    });
+
+    it("bug fix: a manually-typed Bxxxxxx code AHEAD of the sequence (bug 2's \"concurrent code\") fast-forwards it so it won't be re-suggested", async () => {
+      const dto = { title: 'Concurrent Code Book', copy: { qrCode: 'B000050' } } as unknown as CreateBookDto;
+      const queryRawUnsafe = jest.fn().mockResolvedValue([{ last_value: BigInt(4) }]);
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-10' })) },
+          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000050', bookId: 'book-10' })) },
+          $queryRawUnsafe: queryRawUnsafe,
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("setval('library_catalog_copy_code_seq'"),
+        BigInt(50),
+      );
+    });
+
+    it('does not touch the sequence for a manually-typed code outside the Bxxxxxx format', async () => {
+      const dto = { title: 'Legacy Code Book', copy: { qrCode: 'LEGACY-1' } } as unknown as CreateBookDto;
+      const queryRawUnsafe = jest.fn();
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-11' })) },
+          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'LEGACY-1', bookId: 'book-11' })) },
+          $queryRawUnsafe: queryRawUnsafe,
+        };
+        return fn(tx as never);
+      });
+
+      await service.create(dto);
+
+      expect(queryRawUnsafe).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -421,6 +482,44 @@ describe('BooksService', () => {
         expect(prisma.libraryCatalogBookCopy.create).toHaveBeenCalledWith(
           expect.objectContaining({ data: expect.objectContaining({ qrCode: 'B000007' }) }),
         );
+      });
+
+      it('bug fix: an explicitly-submitted Bxxxxxx code (the accepted suggestion) still bumps the sequence', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(4) }]);
+        prisma.libraryCatalogBookCopy.create.mockResolvedValue(copyRow({ qrCode: 'B000005' }));
+
+        await service.createCopy('book-1', { qrCode: 'B000005' } as CreateBookCopyDto);
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+          expect.stringContaining("setval('library_catalog_copy_code_seq'"),
+          BigInt(5),
+        );
+      });
+
+      it("bug fix: a manually-typed Bxxxxxx code AHEAD of the sequence (bug 2's \"concurrent code\") fast-forwards it", async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
+        prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(4) }]);
+        prisma.libraryCatalogBookCopy.create.mockResolvedValue(copyRow({ qrCode: 'B000050' }));
+
+        await service.createCopy('book-1', { qrCode: 'B000050' } as CreateBookCopyDto);
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+          expect.stringContaining("setval('library_catalog_copy_code_seq'"),
+          BigInt(50),
+        );
+      });
+
+      it('does not touch the sequence for a manually-typed code outside the Bxxxxxx format', async () => {
+        prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1' });
+        prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
+        prisma.libraryCatalogBookCopy.create.mockResolvedValue(copyRow({ qrCode: 'LEGACY-1' }));
+
+        await service.createCopy('book-1', { qrCode: 'LEGACY-1' } as CreateBookCopyDto);
+
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
       });
 
       it('throws NotFoundException for an unknown book before touching copies at all', async () => {

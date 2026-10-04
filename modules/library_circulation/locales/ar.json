@@ -103,6 +103,7 @@
   "library_circulation.books.status": "الحالة",
 
   "library_circulation.students.code": "رمز القارئ",
+  "library_circulation.students.name": "الاسم",
   "library_circulation.students.class": "الصف",
   "library_circulation.students.code_help": "الرمز المطبوع على بطاقة القارئ (يُستخدم أيضاً كهدف للمسح الضوئي).",
   "library_circulation.students.class_name": "الصف",
