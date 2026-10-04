@@ -35,7 +35,7 @@ export class NotificationEmailService {
 
   constructor() {
     const host = process.env.SMTP_HOST;
-    this.from = process.env.SMTP_FROM ?? 'papp <no-reply@papp.local>';
+    this.from = process.env.SMTP_FROM ?? 'Annur Apps <no-reply@app.ext>';
     this.devCapture = !host;
 
     if (host) {

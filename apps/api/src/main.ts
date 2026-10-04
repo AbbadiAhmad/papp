@@ -132,7 +132,7 @@ async function bootstrap(): Promise<void> {
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);
-  logger.log(`papp API listening on port ${port}`);
+  logger.log(`Annur Apps API listening on port ${port}`);
 }
 
 bootstrap().catch((error) => {

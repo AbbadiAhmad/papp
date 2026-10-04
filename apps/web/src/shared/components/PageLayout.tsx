@@ -291,7 +291,7 @@ export function TopBar() {
           </IconButton>
         ) : null}
         <Typography variant="h6" component="h1" sx={{ flexGrow: 1, fontWeight: 700 }}>
-          papp
+          Annur Apps
         </Typography>
 
         {status === 'authenticated' ? <NotificationsBellMenu /> : null}
