@@ -10,6 +10,7 @@ import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageL
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
 import * as authApi from './shared/api/auth';
 import { LoginPage } from './core/auth/LoginPage';
+import { RegisterPage } from './core/auth/RegisterPage';
 import { SetupPage } from './core/auth/SetupPage';
 import { ForcePasswordChangePage } from './core/auth/ForcePasswordChangePage';
 import { DashboardPage } from './core/DashboardPage';
@@ -153,6 +154,12 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* D41 follow-up: reachable regardless of the admin toggle — same
+            "frontend never trusts its own status check" posture as
+            /setup-status above; POST /auth/register re-checks the real
+            setting itself and 403s if it's off, surfaced via RegisterPage's
+            own error state. */}
+        <Route path="/register" element={<RegisterPage />} />
         {/* MODULE_SPEC.md §7.1: a public route "never redirects to the login
             page" — mounted here too so a shared link works for a visitor
             with no session at all, not just an authenticated one. */}
@@ -182,6 +189,7 @@ function AppRoutes() {
         <Route path="/" element={<LandingPageRedirect />} />
         <Route path="/my-preferences" element={<MyPreferencesPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/register" element={<Navigate to="/" replace />} />
         <Route path="/force-password-change" element={<Navigate to="/" replace />} />
         <Route
           path="/users"
