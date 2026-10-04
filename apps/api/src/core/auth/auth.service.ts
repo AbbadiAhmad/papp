@@ -301,6 +301,21 @@ export class AuthService {
   }
 
   /**
+   * D41 follow-up: whether self-registration is currently open, for an
+   * ANONYMOUS caller to decide whether LoginPage should show a "create an
+   * account" link at all. Mirrors `isSetupNeeded()`'s role exactly — a pure
+   * frontend-routing/UX convenience, never the actual gate. The real
+   * enforcement stays server-side in `register()` above (reading the same
+   * `users.allow_self_registration` setting independently), so this is safe
+   * to call directly and never needs to be trusted. Deliberately a separate
+   * `@Public()` read instead of reusing `GET /settings/registration`, which
+   * is gated by `users.settings.view` and unreachable with no session.
+   */
+  async isSelfRegistrationOpen(): Promise<boolean> {
+    return (await this.settings.get<boolean>(ALLOW_SELF_REGISTRATION_KEY)) ?? false;
+  }
+
+  /**
    * Root D60/A27 (UI-wizard option, confirmed over the env-seed/CLI/init-
    * container alternatives): creates the very first user on a fresh install
    * and assigns EXACTLY the `admin` role — never a choice the caller makes,

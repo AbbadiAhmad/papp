@@ -149,3 +149,30 @@ describe('AuthService.register (D41 self-registration)', () => {
     expect(tx.userRole.create).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthService.isSelfRegistrationOpen (D41 follow-up: public status read for LoginPage)', () => {
+  let tx: MockTx;
+  let prisma: MockPrisma;
+  let jwtService: MockJwtService;
+  let service: AuthService;
+
+  beforeEach(() => {
+    tx = { user: { create: jest.fn() }, userRole: { create: jest.fn() } };
+    prisma = createMockPrisma(tx);
+    jwtService = { signAsync: jest.fn() };
+  });
+
+  function buildService(settings: MockSettings): AuthService {
+    return new AuthService(prisma as never, jwtService as never, settings as never);
+  }
+
+  it('reports true when the setting is on', async () => {
+    service = buildService(createMockSettings({ allowSelfRegistration: true }));
+    await expect(service.isSelfRegistrationOpen()).resolves.toBe(true);
+  });
+
+  it('reports false when the setting is off', async () => {
+    service = buildService(createMockSettings({ allowSelfRegistration: false }));
+    await expect(service.isSelfRegistrationOpen()).resolves.toBe(false);
+  });
+});

@@ -150,6 +150,21 @@ export class AuthController {
   }
 
   /**
+   * D41 follow-up: read-only, `@Public()` (no session exists for an
+   * anonymous visitor deciding whether to show a "create an account" link),
+   * no `PublicThrottlerGuard` — a GET with no side effect, same reasoning as
+   * `getSetupStatus()` above. The frontend's LoginPage calls this once to
+   * decide whether to render the register link/route at all; `register()`
+   * itself re-checks the same setting independently, so this is never the
+   * real enforcement point.
+   */
+  @Get('registration-status')
+  @Public()
+  async getRegistrationStatus(): Promise<{ allowSelfRegistration: boolean }> {
+    return { allowSelfRegistration: await this.authService.isSelfRegistrationOpen() };
+  }
+
+  /**
    * Root D60/A27: creates the first admin account on a fresh install.
    * `@Public()` + `PublicThrottlerGuard` (a public WRITE — never optional,
    * same as `register()`). The real "only when no users exist yet" guard is
