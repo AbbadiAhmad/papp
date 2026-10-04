@@ -1,6 +1,6 @@
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
   Box,
@@ -398,7 +398,7 @@ export function ScanPage() {
               }}
               disabled={busy}
             />
-            <Button startIcon={<QrCodeScannerIcon />} variant="contained" onClick={handleScan} disabled={busy || !code.trim()}>
+            <Button startIcon={<SearchIcon />} variant="contained" onClick={handleScan} disabled={busy || !code.trim()}>
               {t('library_circulation.scan.scan_button')}
             </Button>
             <Button startIcon={<CameraAltIcon />} variant="outlined" onClick={() => setCameraOpen(true)} disabled={busy}>

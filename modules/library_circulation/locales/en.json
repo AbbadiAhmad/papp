@@ -31,7 +31,7 @@
   "library_circulation.settings.fine_per_day": "Fine per day late",
 
   "library_circulation.scan.input_label": "Scan or type a code",
-  "library_circulation.scan.scan_button": "Scan",
+  "library_circulation.scan.scan_button": "Search",
   "library_circulation.scan.camera_button": "Scan with camera",
   "library_circulation.scan.camera_title": "Point the camera at the code",
   "library_circulation.scan.camera_error": "Could not access the camera — check permissions, or use the text field instead.",

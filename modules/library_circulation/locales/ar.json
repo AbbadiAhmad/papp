@@ -31,7 +31,7 @@
   "library_circulation.settings.fine_per_day": "الغرامة لكل يوم تأخير",
 
   "library_circulation.scan.input_label": "امسح الرمز أو اكتبه",
-  "library_circulation.scan.scan_button": "مسح",
+  "library_circulation.scan.scan_button": "بحث",
   "library_circulation.scan.camera_button": "مسح بالكاميرا",
   "library_circulation.scan.camera_title": "وجّه الكاميرا نحو الكود",
   "library_circulation.scan.camera_error": "تعذر الوصول إلى الكاميرا — تحقق من الصلاحيات، أو استخدم حقل الإدخال النصي بدلاً من ذلك.",
