@@ -279,20 +279,24 @@ export function PrintCodesPage() {
           .print-codes-sticker {
             box-sizing: border-box;
             border: 1px solid #000;
-            padding: 3mm;
+            padding: 1.5mm 2mm;
             width: 45mm;
             height: 30mm;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            /* flex-start (not center): stickers without a location must
+               still put header/QR/code at the same height as the others. */
+            justify-content: flex-start;
+            gap: 0.5mm;
             text-align: center;
             overflow: hidden;
             break-inside: avoid;
           }
-          .print-codes-sticker-header { font-size: 7pt; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-          .print-codes-sticker-code { font-size: 8pt; margin: 1mm 0 0; white-space: nowrap; }
-          .print-codes-sticker-location { font-size: 6pt; color: #333; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+          .print-codes-sticker img { width: 15mm !important; height: 15mm !important; flex: none; }
+          .print-codes-sticker-header { font-size: 7pt; line-height: 3mm; height: 3mm; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex: none; }
+          .print-codes-sticker-code { font-size: 8pt; line-height: 3.5mm; height: 3.5mm; margin: 0; white-space: nowrap; flex: none; }
+          .print-codes-sticker-location { font-size: 6pt; line-height: 2.5mm; height: 2.5mm; color: #333; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex: none; }
         }
       `}</style>
     </Box>

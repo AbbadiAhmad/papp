@@ -408,6 +408,10 @@ export function PageLayout({ children }: { children: ReactNode }) {
       <Drawer
         variant="permanent"
         anchor="left"
+        // The Drawer ROOT reserves DRAWER_WIDTH of flex space even when its
+        // Paper is hidden for print — tag it too so the global print rule
+        // collapses it (otherwise printed content is shifted/clipped by it).
+        data-app-shell="drawer-root"
         slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
         sx={{
           width: DRAWER_WIDTH,

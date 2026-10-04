@@ -332,7 +332,7 @@ function ThemedShell() {
         <GlobalStyles
           styles={{
             '@media print': {
-              '[data-app-shell="topbar"], [data-app-shell="drawer"], [data-app-shell="main-spacer"]': { display: 'none !important' },
+              '[data-app-shell="topbar"], [data-app-shell="drawer"], [data-app-shell="drawer-root"], [data-app-shell="main-spacer"]': { display: 'none !important' },
               '[data-app-shell="main"]': { padding: '0 !important', margin: '0 !important', width: '100% !important' },
             },
           }}
