@@ -34,6 +34,19 @@ beforeAll(async () => {
   await i18n.changeLanguage('en');
 });
 
+// jsdom does not implement the media capture APIs at all — `navigator
+// .mediaDevices` is `undefined` there by default, unlike every real browser
+// serving the app over `https:`/`localhost`. Stubbed present (as an object
+// with a `getUserMedia` function) for most tests below, since they're
+// exercising what happens AFTER that check passes — one dedicated test
+// below removes it again to reproduce the real insecure-context bug.
+beforeEach(() => {
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn() },
+    configurable: true,
+  });
+});
+
 // Re-applied every test (not just once in the `vi.mock` factory) because
 // this project's vitest.config.ts sets `restoreMocks: true`, which resets a
 // `vi.fn()` back to having no implementation between tests — a factory-set
@@ -124,5 +137,41 @@ describe('CameraScanDialog', () => {
 
     resolveStart!();
     await waitFor(() => expect(stopMock).toHaveBeenCalledTimes(1)); // called exactly once, after start() actually resolved
+  });
+
+  it('shows a distinct, accurate message (not the generic permissions one) when getUserMedia is unavailable — a real but dormant secure-context edge case, not the cause of any bug reported so far', async () => {
+    // navigator.mediaDevices genuinely doesn't exist outside a secure
+    // context (https:/localhost) in any browser — a real W3C restriction,
+    // not specific to this app. Reproduces that environment so the dialog
+    // shows an accurate message instead of the misleading "check
+    // permissions" one (no permission is ever asked in this case).
+    Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true });
+
+    const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    expect(await findByText(circulationEn['library_circulation.scan.camera_insecure_context_error'])).toBeTruthy();
+    expect(html5QrcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('always passes a single-key camera-selection object as the 1st start() arg, with the near-focus constraint in the 2nd arg\'s videoConstraints (LIBRARY_CIRCULATION-D37)', async () => {
+    // The actual regression (two prior "fixes" misdiagnosed it, see
+    // CameraScanDialog.tsx's own NEAR_FOCUS_VIDEO_CONSTRAINTS docblock):
+    // html5-qrcode's `cameraIdOrConfig` (1st arg) throws if given more than
+    // one key. Passing {facingMode, advanced} there broke the camera on
+    // EVERY call, on every platform — not a browser-specific quirk.
+    render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    await waitFor(() => expect(startMock).toHaveBeenCalled());
+    const [cameraIdOrConfig, config] = startMock.mock.calls[0];
+    expect(cameraIdOrConfig).toEqual({ facingMode: 'environment' }); // exactly 1 key, always
+    expect(config).toMatchObject({ videoConstraints: { advanced: expect.any(Array) } });
+  });
+
+  it('shows the error Alert (not a crash) when scanner.start() fails for a real reason', async () => {
+    startMock.mockImplementation(() => Promise.reject('getUserMedia permission denied'));
+
+    const { findByText } = render(<CameraScanDialog open onClose={vi.fn()} onDecoded={vi.fn()} />);
+
+    expect(await findByText(circulationEn['library_circulation.scan.camera_error'])).toBeTruthy();
   });
 });

@@ -37,6 +37,7 @@
   "library_circulation.scan.camera_button": "مسح بالكاميرا",
   "library_circulation.scan.camera_title": "وجّه الكاميرا نحو الكود",
   "library_circulation.scan.camera_error": "تعذر الوصول إلى الكاميرا — تحقق من الصلاحيات، أو استخدم حقل الإدخال النصي بدلاً من ذلك.",
+  "library_circulation.scan.camera_insecure_context_error": "لا يمكن استخدام الكاميرا لأن الصفحة لا تُفتح عبر اتصال آمن (HTTPS)، وهذا قيد من المتصفح وليس له علاقة بإذن الكاميرا. استخدم حقل الإدخال النصي بدلاً من ذلك، أو اطلب من المسؤول تفعيل HTTPS.",
   "library_circulation.scan.student_label": "القارئ",
   "library_circulation.scan.book_label": "الكتاب",
   "library_circulation.scan.active_borrowings_count": "{{count}} كتاب مستعار حالياً",

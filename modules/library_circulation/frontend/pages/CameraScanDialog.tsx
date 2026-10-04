@@ -9,25 +9,18 @@ const SCANNER_ELEMENT_ID = 'library-circulation-camera-scanner';
  * User-reported: the camera opens but doesn't refocus for a small, close-up
  * QR code (book spine stickers are scanned from a few cm away). Default
  * `getUserMedia()` autofocus on many devices settles on a middle/far
- * distance and is slow to re-hunt for near objects.
+ * distance and is slow to re-hunt for near objects. `focusMode`/
+ * `focusDistance` are W3C Image Capture `MediaTrackConstraints` that ask
+ * for near-focus; support is uneven across devices, which is fine by
+ * design — an unsupported *advanced* constraint set is spec-required to be
+ * skipped, never to fail the whole call.
  *
- * `focusMode`/`focusDistance` are W3C Image Capture MediaTrackConstraints,
- * forwarded by html5-qrcode straight into `getUserMedia`'s `video`
- * constraints. Support is real but uneven, so this is a *request*, not a
- * guarantee:
- *  - Android Chrome: supports `focusMode: 'manual'` + `focusDistance` on
- *    most devices — this is the actual fix for the reported behavior.
- *  - Desktop Chrome/Edge (Windows) webcams: `focusMode` support varies by
- *    UVC driver; `focusDistance` range support is less common.
- *  - iOS/macOS Safari (incl. any iOS WebView, so also iPhone Chrome/Firefox
- *    which are Safari-engine on iOS): WebKit does not implement these
- *    constraints at all — they're silently ignored and the OS's own
- *    autofocus heuristic keeps running, unchanged from today's behavior.
- * An unsupported constraint is dropped by the browser rather than
- * rejecting `.start()`, so no feature-detection/fallback branch is needed
- * here — every platform keeps working, iOS just doesn't get the fix.
- * `focusDistance` is in meters; 0.1 (10cm) comfortably covers "a sticker
- * held close to the phone" without clipping typical near-focus minimums.
+ * Must go in `Html5Qrcode.start()`'s SECOND argument, as `videoConstraints`
+ * (see the `.start()` call below) — NOT in the first argument
+ * (`cameraIdOrConfig`), which only ever accepts a single-key camera-selection hint
+ * (`{facingMode: '…'}` or `{deviceId: '…'}`) and throws if given more keys.
+ * Full story (a real bug that took two wrong diagnoses to find):
+ * `modules/library_circulation/DECISIONS.md` LIBRARY_CIRCULATION-D35–D37.
  */
 const NEAR_FOCUS_VIDEO_CONSTRAINTS = {
   focusMode: 'manual',
@@ -132,18 +125,44 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
       stoppedRef.current = false;
       startedRef.current = false;
       stopRequestedRef.current = false;
+
+      // `getUserMedia`/`navigator.mediaDevices` is genuinely absent (not
+      // merely unauthorized) on any origin that's neither `https:` nor
+      // `localhost` — a real W3C secure-context restriction, not specific
+      // to this app. Dormant today: this dev setup is reached via
+      // `localhost` (Docker port-forwarding), which the spec exempts, so
+      // this branch doesn't fire here. It only matters if this app is ever
+      // reached over plain HTTP via a non-`localhost` address (e.g. a LAN
+      // IP) — worth keeping so that scenario gets an accurate message
+      // instead of the generic "check permissions" one, which would be
+      // actively misleading (no permission is ever asked in that case).
+      // NOT the cause of any camera bug reported so far — see
+      // LIBRARY_CIRCULATION-D35/D37 in this module's DECISIONS.md.
+      if (!navigator.mediaDevices?.getUserMedia) {
+        console.error(
+          '[CameraScanDialog] navigator.mediaDevices.getUserMedia is unavailable — the page is not running in a secure context (https:, or localhost). Camera access is impossible here regardless of OS-level permission state.',
+        );
+        setError(t('library_circulation.scan.camera_insecure_context_error'));
+        return;
+      }
+
       let scanner: Html5Qrcode;
       try {
         scanner = new Html5Qrcode(node.id);
-      } catch {
+      } catch (err) {
+        console.error('[CameraScanDialog] Html5Qrcode construction failed', err);
         setError(t('library_circulation.scan.camera_error'));
         return;
       }
       scannerRef.current = scanner;
+      // `cameraIdOrConfig` (1st arg) MUST be a single-key camera-selection
+      // hint — see this file's own `NEAR_FOCUS_VIDEO_CONSTRAINTS` docblock
+      // (LIBRARY_CIRCULATION-D37) for why. Arbitrary constraints like the
+      // near-focus request go in `videoConstraints` on the 2nd arg instead.
       scanner
         .start(
-          { facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] },
-          { fps: 10, qrbox: 250 },
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: 250, videoConstraints: { facingMode: 'environment', advanced: [NEAR_FOCUS_VIDEO_CONSTRAINTS] } },
           (decodedText) => {
             if (stoppedRef.current) return;
             stoppedRef.current = true;
@@ -157,7 +176,10 @@ export function CameraScanDialog({ open, onClose, onDecoded }: { open: boolean; 
             safeStop(scanner);
           }
         })
-        .catch(() => setError(t('library_circulation.scan.camera_error')));
+        .catch((err) => {
+          console.error('[CameraScanDialog] scanner.start() failed', err);
+          setError(t('library_circulation.scan.camera_error'));
+        });
     },
     [safeStop, stopScanner, t],
   );
