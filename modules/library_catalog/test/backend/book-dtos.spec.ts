@@ -71,7 +71,7 @@ describe('CreateBookDto (class-validator)', () => {
 });
 
 describe('CreateBookCopyDto (class-validator)', () => {
-  it('accepts a payload with only the required qrCode (status defaults server-side)', async () => {
+  it('accepts a payload with just qrCode (status defaults server-side)', async () => {
     await expect(validateCreateBookCopy({ qrCode: 'QR-0001' })).resolves.toEqual([]);
   });
 
@@ -81,12 +81,19 @@ describe('CreateBookCopyDto (class-validator)', () => {
     }
   });
 
-  it('rejects a missing qrCode', async () => {
-    const errors = await validateCreateBookCopy({});
+  // LIBRARY_CATALOG-D22: qrCode is now OPTIONAL — BooksService.createCopy()
+  // auto-assigns a sequence-backed Bxxxxxx code when it's left blank. A
+  // missing qrCode is therefore valid at the DTO layer (the old test here
+  // asserted the opposite, pre-D22, behavior).
+  it('accepts a missing qrCode (auto-generated server-side, LIBRARY_CATALOG-D22)', async () => {
+    await expect(validateCreateBookCopy({})).resolves.toEqual([]);
+  });
+
+  it('still rejects an explicitly empty-string qrCode (MinLength(1) — use omission, not "", to request auto-generation)', async () => {
+    const errors = await validateCreateBookCopy({ qrCode: '' });
 
     expect(errors.map((e) => e.property)).toContain('qrCode');
     const qrCodeError = errors.find((e) => e.property === 'qrCode');
-    expect(qrCodeError?.constraints).toHaveProperty('isString');
     expect(qrCodeError?.constraints).toHaveProperty('minLength');
   });
 

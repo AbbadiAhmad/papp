@@ -1,0 +1,22 @@
+-- 006_add_copy_code_sequence.sql
+--
+-- library_catalog module — auto-generated book-copy codes.
+--
+-- Until now, `library_catalog_book_copies.qr_code` was always typed in by
+-- hand by the librarian (a free-text UNIQUE string) — a real, avoidable
+-- typo/collision risk now that a copy's code is about to be printed onto a
+-- physical sticker and scanned back (see modules/library_catalog/DECISIONS.md
+-- LIBRARY_CATALOG-D22). This migration adds a Postgres SEQUENCE so
+-- `BooksService` can auto-assign a short, sequential code (`B000001`,
+-- `B000002`, ...) whenever the librarian leaves `qrCode` blank on create —
+-- same pattern as library_circulation's own `library_fine_number_seq` etc.
+-- (root D75, that module's migration 002). The librarian can still type in
+-- their own value instead; this sequence is only consulted when the field
+-- is omitted.
+--
+-- The sequence is deliberately NOT tied to the table via a column DEFAULT
+-- (`qr_code` stays a plain TEXT UNIQUE column) — the code is formatted
+-- ("B" + zero-padded digits) in application code
+-- (`BooksService.nextCopyCode()`), which a bare integer DEFAULT can't do.
+
+CREATE SEQUENCE IF NOT EXISTS library_catalog_copy_code_seq AS BIGINT START WITH 1;

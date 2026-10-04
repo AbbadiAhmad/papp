@@ -2,6 +2,7 @@
   "library_catalog.menu.root": "المكتبة",
   "library_catalog.menu.books": "الكتب",
   "library_catalog.menu.moderate_reviews": "مراجعة التعليقات",
+  "library_catalog.menu.print_codes": "طباعة الرموز",
 
   "library_catalog.perm.books.view": "عرض الكتب",
   "library_catalog.perm.books.create": "إضافة كتب",
@@ -10,6 +11,8 @@
   "library_catalog.perm.books.export": "تصدير الكتب",
   "library_catalog.perm.books.rate": "تقييم الكتب",
   "library_catalog.perm.books.moderate_ratings": "الموافقة على تعليقات الكتب أو رفضها",
+  "library_catalog.perm.copies.print_codes": "طباعة/تصدير رموز الاستجابة السريعة للنسخ",
+  "library_catalog.perm.settings.update": "تعديل إعدادات مكتبة الكتب",
 
   "library_catalog.fields.title": "العنوان",
   "library_catalog.fields.author": "المؤلف",
@@ -79,5 +82,15 @@
   "library_catalog.public.not_found": "تعذر العثور على هذا الكتاب.",
   "library_catalog.public.availability_summary": "{{available}} من {{total}} نسخة متاحة",
   "library_catalog.public.available": "هذا الكتاب متاح حالياً.",
-  "library_catalog.public.unavailable": "هذا الكتاب غير متاح حالياً."
+  "library_catalog.public.unavailable": "هذا الكتاب غير متاح حالياً.",
+
+  "library_catalog.settings.sticker_header_text_label": "نص رأس الملصق (مثل اسم المكتبة أو المدرسة)",
+
+  "library_catalog.print_codes.from_date": "تاريخ الإدخال من",
+  "library_catalog.print_codes.to_date": "تاريخ الإدخال إلى",
+  "library_catalog.print_codes.filter_button": "تصفية",
+  "library_catalog.print_codes.print_button": "طباعة الملصقات",
+  "library_catalog.print_codes.preview_hint": "يظهر العنوان هنا للتحقق فقط — لا يُطبع على الملصق.",
+  "library_catalog.print_codes.no_copies": "لا توجد نسخ ضمن نطاق التاريخ المحدد.",
+  "library_catalog.print_codes.settings_saved": "تم حفظ نص رأس الملصق."
 }

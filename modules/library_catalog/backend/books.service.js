@@ -14,6 +14,9 @@ exports.BooksService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const exceljs_1 = __importDefault(require("exceljs"));
+/** `Bxxxxxx` — zero-padded to 6 digits (LIBRARY_CATALOG-D22). */
+const COPY_CODE_PREFIX = 'B';
+const COPY_CODE_DIGITS = 6;
 /**
  * A dedicated `PrismaClient` instance rather than importing core's
  * `PrismaService` (apps/api/src/prisma/prisma.service.ts): the latter lives
@@ -121,10 +124,11 @@ let BooksService = BooksService_1 = class BooksService {
         const { copy, ...bookData } = dto;
         return this.prisma.$transaction(async (tx) => {
             const book = await tx.libraryCatalogBook.create({ data: bookData });
+            const qrCode = copy.qrCode?.trim() || (await this.nextCopyCode(tx));
             await tx.libraryCatalogBookCopy.create({
                 data: {
                     bookId: book.id,
-                    qrCode: copy.qrCode,
+                    qrCode,
                     status: copy.status ?? 'available',
                     condition: copy.condition,
                     location: copy.location,
@@ -159,14 +163,18 @@ let BooksService = BooksService_1 = class BooksService {
     }
     async createCopy(bookId, dto) {
         await this.ensureBookExists(bookId);
-        const existing = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: dto.qrCode } });
-        if (existing) {
-            throw new common_1.ConflictException(`A copy with QR code "${dto.qrCode}" already exists`);
+        const requestedCode = dto.qrCode?.trim();
+        if (requestedCode) {
+            const existing = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: requestedCode } });
+            if (existing) {
+                throw new common_1.ConflictException(`A copy with QR code "${requestedCode}" already exists`);
+            }
         }
+        const qrCode = requestedCode || (await this.nextCopyCode(this.prisma));
         return this.prisma.libraryCatalogBookCopy.create({
             data: {
                 bookId,
-                qrCode: dto.qrCode,
+                qrCode,
                 status: dto.status ?? client_1.LibraryCatalogBookCopyStatus.available,
                 condition: dto.condition,
                 location: dto.location,
@@ -362,7 +370,70 @@ let BooksService = BooksService_1 = class BooksService {
         }
         return workbook.xlsx.writeBuffer();
     }
+    // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------
+    // "filter the books entered last period ... export the book names,
+    // copy-number and the QR for the copies" — a filter-by-acquisition-date
+    // preview feeding either a printable sticker sheet (frontend-only, real
+    // QR images rendered client-side like QrCodeImage.tsx) or this Excel
+    // export (QR as text, same ExcelJS-cell limitation already accepted by
+    // `exportBooksWorkbook` above).
+    /** Copies whose `acquisitionDate` falls within [from, to] (inclusive, both optional), with their book's title joined in for display/validation only — never printed on the sticker itself. */
+    async listCopiesForPrint(filter) {
+        const where = {};
+        if (filter.from || filter.to) {
+            where.acquisitionDate = {
+                ...(filter.from ? { gte: new Date(filter.from) } : {}),
+                ...(filter.to ? { lte: new Date(filter.to) } : {}),
+            };
+        }
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+            where,
+            orderBy: { acquisitionDate: 'asc' },
+            include: { book: { select: { title: true } } },
+        });
+        return copies.map((copy) => ({
+            id: copy.id,
+            qrCode: copy.qrCode,
+            location: copy.location,
+            acquisitionDate: copy.acquisitionDate,
+            bookTitle: copy.book.title,
+        }));
+    }
+    async exportCopiesForPrintWorkbook(filter) {
+        const copies = await this.listCopiesForPrint(filter);
+        const workbook = new exceljs_1.default.Workbook();
+        const worksheet = workbook.addWorksheet('Copies');
+        worksheet.columns = [
+            { header: 'book_title', key: 'bookTitle', width: 32 },
+            { header: 'copy_code', key: 'qrCode', width: 16 },
+            { header: 'location', key: 'location', width: 20 },
+            { header: 'acquisition_date', key: 'acquisitionDate', width: 16 },
+        ];
+        for (const copy of copies) {
+            worksheet.addRow({
+                bookTitle: copy.bookTitle,
+                qrCode: copy.qrCode,
+                location: copy.location ?? '',
+                acquisitionDate: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+            });
+        }
+        return workbook.xlsx.writeBuffer();
+    }
     // --- Helpers -----------------------------------------------------------
+    /**
+     * `Bxxxxxx` — zero-padded to 6 digits, backed by the real Postgres
+     * sequence `library_catalog_copy_code_seq` (migration 006,
+     * LIBRARY_CATALOG-D22) — only consulted when the librarian leaves
+     * `qrCode` blank, same "sequence-backed reference number" pattern as
+     * library_circulation's own `fine_number`/`transaction_number`
+     * (`FinesService.nextNumber()`, root D75). `sequenceName` is always the
+     * same hardcoded literal below, never user input, so `$queryRawUnsafe` is
+     * safe here (identical justification to `FinesService.nextNumber()`).
+     */
+    async nextCopyCode(client) {
+        const rows = await client.$queryRawUnsafe("SELECT nextval('library_catalog_copy_code_seq') AS nextval");
+        return `${COPY_CODE_PREFIX}${rows[0].nextval.toString().padStart(COPY_CODE_DIGITS, '0')}`;
+    }
     async ensureBookExists(id) {
         const exists = await this.prisma.libraryCatalogBook.findUnique({ where: { id }, select: { id: true } });
         if (!exists) {

@@ -2,6 +2,7 @@
   "library_catalog.menu.root": "Library",
   "library_catalog.menu.books": "Books",
   "library_catalog.menu.moderate_reviews": "Moderate reviews",
+  "library_catalog.menu.print_codes": "Print codes",
 
   "library_catalog.perm.books.view": "View books",
   "library_catalog.perm.books.create": "Create books",
@@ -10,6 +11,8 @@
   "library_catalog.perm.books.export": "Export books",
   "library_catalog.perm.books.rate": "Rate books",
   "library_catalog.perm.books.moderate_ratings": "Approve/reject book reviews",
+  "library_catalog.perm.copies.print_codes": "Print/export copy QR codes",
+  "library_catalog.perm.settings.update": "Update library catalog settings",
 
   "library_catalog.fields.title": "Title",
   "library_catalog.fields.author": "Author",
@@ -79,5 +82,15 @@
   "library_catalog.public.not_found": "This book could not be found.",
   "library_catalog.public.availability_summary": "{{available}} of {{total}} copies available",
   "library_catalog.public.available": "This book is currently available.",
-  "library_catalog.public.unavailable": "This book is not currently available."
+  "library_catalog.public.unavailable": "This book is not currently available.",
+
+  "library_catalog.settings.sticker_header_text_label": "Sticker header text (e.g. library/school name)",
+
+  "library_catalog.print_codes.from_date": "Entered from",
+  "library_catalog.print_codes.to_date": "Entered to",
+  "library_catalog.print_codes.filter_button": "Filter",
+  "library_catalog.print_codes.print_button": "Print stickers",
+  "library_catalog.print_codes.preview_hint": "Title is shown here for verification only — it is not printed on the sticker.",
+  "library_catalog.print_codes.no_copies": "No copies found for the selected date range.",
+  "library_catalog.print_codes.settings_saved": "Sticker header text saved."
 }

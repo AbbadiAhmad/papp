@@ -1,7 +1,7 @@
 {
   "key": "library_catalog",
   "name": "Library Catalog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Book catalog: titles, physical copies, categories, and a public shareable availability check. D44: stands alone — borrowing/returning/fines are a separate, future library_circulation+library_finance module that will dependsOn this one.",
@@ -22,7 +22,9 @@
     { "code": "library_catalog.books.delete", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.delete" },
     { "code": "library_catalog.books.export", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.export" },
     { "code": "library_catalog.books.rate", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.rate" },
-    { "code": "library_catalog.books.moderate_ratings", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.moderate_ratings" }
+    { "code": "library_catalog.books.moderate_ratings", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.moderate_ratings" },
+    { "code": "library_catalog.copies.print_codes", "category": "library_catalog", "descriptionKey": "library_catalog.perm.copies.print_codes" },
+    { "code": "library_catalog.settings.update", "category": "library_catalog", "descriptionKey": "library_catalog.perm.settings.update" }
   ],
 
   "defaultRolePermissions": {
@@ -33,14 +35,17 @@
       "library_catalog.books.delete",
       "library_catalog.books.export",
       "library_catalog.books.rate",
-      "library_catalog.books.moderate_ratings"
+      "library_catalog.books.moderate_ratings",
+      "library_catalog.copies.print_codes",
+      "library_catalog.settings.update"
     ],
     "library_assistant": [
       "library_catalog.books.view",
       "library_catalog.books.create",
       "library_catalog.books.update",
       "library_catalog.books.rate",
-      "library_catalog.books.moderate_ratings"
+      "library_catalog.books.moderate_ratings",
+      "library_catalog.copies.print_codes"
     ],
     "finance": [],
     "reader": ["library_catalog.books.view", "library_catalog.books.rate"]
@@ -49,7 +54,15 @@
   "roleAccessPolicy": "grantable",
   "roleAccessLocked": {},
 
-  "settings": [],
+  "settings": [
+    {
+      "key": "library_catalog.sticker_header_text",
+      "type": "json",
+      "default": { "headerText": "" },
+      "labelKey": "library_catalog.settings.sticker_header_text_label",
+      "requiredPermission": "library_catalog.settings.update"
+    }
+  ],
 
   "menu": [
     {
@@ -76,6 +89,15 @@
       "order": 2,
       "route": "/library/reviews/moderate",
       "requiredPermission": "library_catalog.books.moderate_ratings"
+    },
+    {
+      "id": "library_catalog.copies.print_codes",
+      "labelKey": "library_catalog.menu.print_codes",
+      "icon": "QrCode2",
+      "parentId": "library_catalog.root",
+      "order": 3,
+      "route": "/library/copies/print-codes",
+      "requiredPermission": "library_catalog.copies.print_codes"
     }
   ],
 
@@ -102,6 +124,12 @@
       "access": "authenticated",
       "requiredPermission": "library_catalog.books.moderate_ratings",
       "component": "frontend/pages/ModerateReviewsPage.tsx"
+    },
+    {
+      "pattern": "/library/copies/print-codes",
+      "access": "authenticated",
+      "requiredPermission": "library_catalog.copies.print_codes",
+      "component": "frontend/pages/PrintCodesPage.tsx"
     }
   ],
 

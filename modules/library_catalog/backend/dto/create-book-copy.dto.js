@@ -12,7 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateBookCopyDto = void 0;
 const client_1 = require("@prisma/client");
 const class_validator_1 = require("class-validator");
-/** docs/LIBRARY_MODULE_REQUIREMENTS.md §5. `status` defaults to 'available' server-side when omitted. */
+/**
+ * docs/LIBRARY_MODULE_REQUIREMENTS.md §5. `status` defaults to 'available'
+ * server-side when omitted. `qrCode` is also optional as of
+ * LIBRARY_CATALOG-D22 — when left blank, `BooksService.createCopy()`
+ * auto-assigns the next sequence-backed `Bxxxxxx` code instead of requiring
+ * the librarian to type one in by hand.
+ */
 class CreateBookCopyDto {
     qrCode;
     status;
@@ -22,6 +28,7 @@ class CreateBookCopyDto {
 }
 exports.CreateBookCopyDto = CreateBookCopyDto;
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)

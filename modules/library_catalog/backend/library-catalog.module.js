@@ -11,6 +11,8 @@ const common_1 = require("@nestjs/common");
 const books_controller_1 = require("./books.controller");
 const books_service_1 = require("./books.service");
 const public_controller_1 = require("./public.controller");
+const settings_controller_1 = require("./settings.controller");
+const settings_service_1 = require("./settings.service");
 /**
  * The module's `backend.entry` target (manifest.json). Compiled to plain
  * CommonJS (`library-catalog.module.js`, via this module's own
@@ -31,7 +33,7 @@ let LibraryCatalogModule = class LibraryCatalogModule {
 exports.LibraryCatalogModule = LibraryCatalogModule;
 exports.LibraryCatalogModule = LibraryCatalogModule = __decorate([
     (0, common_1.Module)({
-        controllers: [public_controller_1.PublicBooksController, books_controller_1.BooksController],
-        providers: [books_service_1.BooksService],
+        controllers: [public_controller_1.PublicBooksController, books_controller_1.BooksController, settings_controller_1.SettingsController],
+        providers: [books_service_1.BooksService, settings_service_1.SettingsService],
     })
 ], LibraryCatalogModule);

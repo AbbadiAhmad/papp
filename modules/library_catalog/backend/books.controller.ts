@@ -5,6 +5,7 @@ import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
+import { ListCopiesForPrintDto } from './dto/list-copies-for-print.dto';
 import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
@@ -30,9 +31,10 @@ const fetchCopyState = (prisma: PrismaClient, req: Request) =>
  * import of core's).
  *
  * Route registration order matters within one controller: `export`, the
- * `ratings/*` moderation routes, and the nested `:bookId/copies...` routes
- * are all declared BEFORE `:id` so Express never mistakes a literal
- * single-segment path (or a copies sub-path) for a book id (the same lesson
+ * `ratings/*` moderation routes, the `copies/stickers*` print-codes routes,
+ * and the nested `:bookId/copies...` routes are all declared BEFORE `:id` so
+ * Express never mistakes a literal single-segment path (or a copies
+ * sub-path) for a book id (the same lesson
  * apps/api/src/core/users/users.module.ts's docblock explains).
  */
 @Controller('api/library/books')
@@ -108,6 +110,30 @@ export class BooksController {
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'delete', fetchState: fetchBookState })
   async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.books.remove(id);
+  }
+
+  // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------
+  // Read-only, cross-book — filtered by acquisitionDate range, feeding the
+  // frontend's printable sticker sheet (real QR images, client-side) and
+  // this Excel export (QR as text). Gated by a dedicated permission, not
+  // `books.view`/`books.export` — printing physical stickers is a distinct,
+  // separately-grantable action from viewing or exporting the catalog list.
+
+  @Get('copies/stickers')
+  @RequirePermission('library_catalog.copies.print_codes')
+  async listCopiesForPrint(@Query() query: ListCopiesForPrintDto) {
+    return this.books.listCopiesForPrint(query);
+  }
+
+  @Get('copies/stickers/export')
+  @RequirePermission('library_catalog.copies.print_codes')
+  async exportCopiesForPrint(@Query() query: ListCopiesForPrintDto, @Res() res: Response): Promise<void> {
+    const buffer = await this.books.exportCopiesForPrintWorkbook(query);
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': 'attachment; filename="library-catalog-copy-stickers-export.xlsx"',
+    });
+    res.send(buffer);
   }
 
   // --- Copies --------------------------------------------------------------

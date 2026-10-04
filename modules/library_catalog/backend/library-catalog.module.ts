@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { PublicBooksController } from './public.controller';
+import { SettingsController } from './settings.controller';
+import { SettingsService } from './settings.service';
 
 /**
  * The module's `backend.entry` target (manifest.json). Compiled to plain
@@ -19,7 +21,7 @@ import { PublicBooksController } from './public.controller';
  * matters WITHIN `BooksController` (see its own docblock).
  */
 @Module({
-  controllers: [PublicBooksController, BooksController],
-  providers: [BooksService],
+  controllers: [PublicBooksController, BooksController, SettingsController],
+  providers: [BooksService, SettingsService],
 })
 export class LibraryCatalogModule {}
