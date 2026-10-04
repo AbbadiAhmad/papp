@@ -15,7 +15,16 @@ export const settingsApi = {
       .put<Record<string, NotificationTemplate>>('/settings/notification-templates', { templates })
       .then((r) => r.data),
 
-  getRegistration: () => apiClient.get<{ allowSelfRegistration: boolean }>('/settings/registration').then((r) => r.data),
-  updateRegistration: (allowSelfRegistration: boolean) =>
-    apiClient.put<{ allowSelfRegistration: boolean }>('/settings/registration', { allowSelfRegistration }).then((r) => r.data),
+  getRegistration: () =>
+    apiClient
+      .get<{ allowSelfRegistration: boolean; selfRegistrationRoleCode: string | null }>('/settings/registration')
+      .then((r) => r.data),
+  /** `selfRegistrationRoleCode` omitted (vs. passed as `null`) leaves the current value unchanged server-side. */
+  updateRegistration: (allowSelfRegistration: boolean, selfRegistrationRoleCode?: string) =>
+    apiClient
+      .put<{ allowSelfRegistration: boolean; selfRegistrationRoleCode: string | null }>('/settings/registration', {
+        allowSelfRegistration,
+        selfRegistrationRoleCode,
+      })
+      .then((r) => r.data),
 };

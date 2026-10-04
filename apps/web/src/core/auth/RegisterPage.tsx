@@ -14,8 +14,10 @@ import { extractErrorMessage } from '../../shared/api/httpClient';
  *
  * Deliberately does NOT auto-login after creating the account — same as
  * `SetupPage` (D80) and `register()`'s own contract (BUILD_PLAN.md Phase 5:
- * "does not auto-login (201, no tokens)"). Always assigns exactly the
- * `reader` role server-side; there is no role picker here, by design.
+ * "does not auto-login (201, no tokens)"). The role assigned to the new
+ * account is whatever the admin configured in Settings → Self-Registration
+ * (D91 — never a hardcoded role, since papp is a general back-office
+ * platform, not Library-specific); there is no role picker here, by design.
  */
 export function RegisterPage() {
   const { t } = useTranslation();

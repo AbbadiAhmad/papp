@@ -58,6 +58,21 @@ describe('RolesService', () => {
     service = new RolesService(prisma as never);
   });
 
+  describe('findByCode', () => {
+    it('returns the role when the code exists', async () => {
+      prisma.role.findUnique.mockResolvedValue(roleRow({ code: 'member' }));
+
+      await expect(service.findByCode('member')).resolves.toEqual(expect.objectContaining({ code: 'member' }));
+      expect(prisma.role.findUnique).toHaveBeenCalledWith({ where: { code: 'member' } });
+    });
+
+    it('returns null (not a throw) when the code does not exist', async () => {
+      prisma.role.findUnique.mockResolvedValue(null);
+
+      await expect(service.findByCode('no_such_role')).resolves.toBeNull();
+    });
+  });
+
   describe('remove', () => {
     it('rejects deleting a system role with ForbiddenException and never touches delete', async () => {
       prisma.role.findUnique.mockResolvedValue(roleRow({ code: 'admin', isSystem: true }));

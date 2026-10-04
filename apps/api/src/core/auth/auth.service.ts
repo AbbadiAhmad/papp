@@ -9,6 +9,7 @@ import {
   ALLOW_SELF_REGISTRATION_KEY,
   PASSWORD_POLICY_KEY,
   PasswordPolicy,
+  SELF_REGISTRATION_ROLE_CODE_KEY,
   TOKEN_LIFETIMES_KEY,
   TokenLifetimes,
 } from '../settings/settings.types';
@@ -17,8 +18,6 @@ import { SetupCreateAdminDto } from './dto/setup.dto';
 import { getJwtSecret } from './jwt.constants';
 import { assertPasswordMeetsPolicy } from './password-policy.util';
 
-/** D9/D41: the role every self-registered account is auto-assigned. */
-const SELF_REGISTRATION_ROLE_CODE = 'reader';
 /** Root D60/A27: the role the very first account on a fresh install gets. */
 const FIRST_ADMIN_ROLE_CODE = 'admin';
 /**
@@ -237,14 +236,21 @@ export class AuthService {
   }
 
   /**
-   * D41: self-registration. 403s when `users.allow_self_registration` is
+   * D41/D91: self-registration. 403s when `users.allow_self_registration` is
    * off (the admin-editable Users setting — see settings.controller.ts's
    * `/settings/registration`); otherwise validates the password against the
    * live `auth.password_policy` (same rule as any other password, D23),
-   * creates the user, and assigns EXACTLY the `reader` role — never a choice
-   * the registrant makes. Deliberately does NOT auto-login (no session/
-   * tokens issued here, per BUILD_PLAN.md Phase 5: "does not auto-login (201,
-   * no tokens)") — the new user logs in separately afterward like anyone else.
+   * creates the user, and assigns EXACTLY the role configured in
+   * `users.self_registration_role_code` — never a choice the registrant
+   * makes, and never a hardcoded role, since papp is a general back-office
+   * platform (CLAUDE.md), not Library-specific (D91 removed the old
+   * hardcoded "reader" — a Library-module role that had no business being
+   * a core auth assumption). 403s with a distinct message when that
+   * setting is unset or points at a role that no longer exists, so an admin
+   * sees a clear "not configured" error rather than a generic 500.
+   * Deliberately does NOT auto-login (no session/tokens issued here, per
+   * BUILD_PLAN.md Phase 5: "does not auto-login (201, no tokens)") — the new
+   * user logs in separately afterward like anyone else.
    */
   async register(dto: RegisterDto): Promise<RegisteredUser> {
     const allowSelfRegistration = await this.settings.get<boolean>(ALLOW_SELF_REGISTRATION_KEY);
@@ -252,14 +258,20 @@ export class AuthService {
       throw new ForbiddenException('Self-registration is currently disabled');
     }
 
+    const roleCode = await this.settings.get<string | null>(SELF_REGISTRATION_ROLE_CODE_KEY);
+    if (!roleCode) {
+      throw new ForbiddenException('Self-registration has no role configured — ask an admin to set one in Settings');
+    }
+
     const policy = await this.getPasswordPolicy();
     assertPasswordMeetsPolicy(dto.password, policy);
 
-    const readerRole = await this.prisma.role.findUnique({ where: { code: SELF_REGISTRATION_ROLE_CODE } });
-    if (!readerRole) {
-      // Seeded by 0004_create_roles_permissions.sql — its absence means the
-      // core migrations never ran, a deployment bug, not a user error.
-      throw new InternalServerErrorException(`Base role "${SELF_REGISTRATION_ROLE_CODE}" is missing`);
+    const role = await this.prisma.role.findUnique({ where: { code: roleCode } });
+    if (!role) {
+      // The configured role code no longer exists (deleted after being set)
+      // — an admin misconfiguration, not a user error, but still never a
+      // 500: the registrant sees the same clear "ask an admin" message.
+      throw new ForbiddenException('Self-registration has no role configured — ask an admin to set one in Settings');
     }
 
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
@@ -276,7 +288,7 @@ export class AuthService {
             mustChangePassword: false,
           },
         });
-        await tx.userRole.create({ data: { userId: created.id, roleId: readerRole.id } });
+        await tx.userRole.create({ data: { userId: created.id, roleId: role.id } });
         return created;
       });
       return { id: user.id, email: user.email, name: user.name };

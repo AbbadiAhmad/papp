@@ -8,9 +8,12 @@ import {
   UpdateNotificationTemplatesDto,
 } from '../../../src/core/settings/dto/update-notification-templates.dto';
 import { UpdatePasswordPolicyDto } from '../../../src/core/settings/dto/update-password-policy.dto';
+import { UpdateRegistrationDto } from '../../../src/core/settings/dto/update-registration.dto';
 import {
+  ALLOW_SELF_REGISTRATION_KEY,
   NOTIFICATION_TEMPLATE_KEY_PREFIX,
   PASSWORD_POLICY_KEY,
+  SELF_REGISTRATION_ROLE_CODE_KEY,
 } from '../../../src/core/settings/settings.types';
 
 const VALID_POLICY = {
@@ -109,13 +112,15 @@ describe('UpdateNotificationTemplatesDto + assertValidTemplates', () => {
 
 describe('SettingsController', () => {
   let settingsService: { get: jest.Mock; set: jest.Mock; getManyByPrefix: jest.Mock };
+  let rolesService: { findByCode: jest.Mock };
   let controller: SettingsController;
   const admin = { userId: 'admin-1' };
 
   beforeEach(() => {
     settingsService = { get: jest.fn(), set: jest.fn(), getManyByPrefix: jest.fn() };
     settingsService.set.mockResolvedValue(undefined);
-    controller = new SettingsController(settingsService as never);
+    rolesService = { findByCode: jest.fn() };
+    controller = new SettingsController(settingsService as never, rolesService as never);
   });
 
   it('PUT password-policy calls set() with the right key, the full payload, and the caller as updatedBy', async () => {
@@ -165,5 +170,51 @@ describe('SettingsController', () => {
       BadRequestException,
     );
     expect(settingsService.set).not.toHaveBeenCalled();
+  });
+
+  // --- Tab 4: Self-Registration (D91 — admin-configurable role, never hardcoded) ---
+
+  it('PUT registration with a valid role code writes both settings and returns the re-read values', async () => {
+    rolesService.findByCode.mockResolvedValue({ id: 'role-1', code: 'member' });
+    settingsService.get.mockImplementation((key: string) => {
+      if (key === ALLOW_SELF_REGISTRATION_KEY) return Promise.resolve(true);
+      if (key === SELF_REGISTRATION_ROLE_CODE_KEY) return Promise.resolve('member');
+      throw new Error(`unexpected key ${key}`);
+    });
+    const dto = plainToInstance(UpdateRegistrationDto, { allowSelfRegistration: true, selfRegistrationRoleCode: 'member' });
+
+    const result = await controller.updateRegistration(dto, admin as never);
+
+    expect(rolesService.findByCode).toHaveBeenCalledWith('member');
+    expect(settingsService.set).toHaveBeenCalledWith(SELF_REGISTRATION_ROLE_CODE_KEY, 'member', 'admin-1');
+    expect(settingsService.set).toHaveBeenCalledWith(ALLOW_SELF_REGISTRATION_KEY, true, 'admin-1');
+    expect(result).toEqual({ allowSelfRegistration: true, selfRegistrationRoleCode: 'member' });
+  });
+
+  it('PUT registration rejects a role code that does not exist, before writing anything', async () => {
+    rolesService.findByCode.mockResolvedValue(null);
+    const dto = plainToInstance(UpdateRegistrationDto, {
+      allowSelfRegistration: true,
+      selfRegistrationRoleCode: 'no_such_role',
+    });
+
+    await expect(controller.updateRegistration(dto, admin as never)).rejects.toBeInstanceOf(BadRequestException);
+    expect(settingsService.set).not.toHaveBeenCalled();
+  });
+
+  it('PUT registration omitting selfRegistrationRoleCode leaves the stored role code unchanged', async () => {
+    settingsService.get.mockImplementation((key: string) => {
+      if (key === ALLOW_SELF_REGISTRATION_KEY) return Promise.resolve(false);
+      if (key === SELF_REGISTRATION_ROLE_CODE_KEY) return Promise.resolve('member');
+      throw new Error(`unexpected key ${key}`);
+    });
+    const dto = plainToInstance(UpdateRegistrationDto, { allowSelfRegistration: false });
+
+    const result = await controller.updateRegistration(dto, admin as never);
+
+    expect(rolesService.findByCode).not.toHaveBeenCalled();
+    expect(settingsService.set).toHaveBeenCalledTimes(1);
+    expect(settingsService.set).toHaveBeenCalledWith(ALLOW_SELF_REGISTRATION_KEY, false, 'admin-1');
+    expect(result).toEqual({ allowSelfRegistration: false, selfRegistrationRoleCode: 'member' });
   });
 });

@@ -200,13 +200,20 @@ describe('Auth (e2e)', () => {
     });
   });
 
-  describe('POST /auth/register (D41 self-registration)', () => {
-    async function setSelfRegistration(enabled: boolean) {
+  describe('POST /auth/register (D41/D91 self-registration)', () => {
+    /**
+     * D91: `selfRegistrationRoleCode` is now admin-configurable, never a
+     * hardcoded role — these tests explicitly configure "reader" (any
+     * seeded base role would do) rather than relying on app code to assume
+     * it. `roleCode` defaults to it but a test can pass another seeded
+     * role to prove the setting is actually read, not just a ignored.
+     */
+    async function setSelfRegistration(enabled: boolean, roleCode = 'reader') {
       const admin = await fixtureForRole(app!, 'admin');
       const res = await request(server())
         .put('/settings/registration')
         .set('Authorization', `Bearer ${admin.token}`)
-        .send({ allowSelfRegistration: enabled });
+        .send(enabled ? { allowSelfRegistration: enabled, selfRegistrationRoleCode: roleCode } : { allowSelfRegistration: enabled });
       expect(res.status).toBe(200);
     }
 
@@ -218,8 +225,27 @@ describe('Auth (e2e)', () => {
       expect(res.status).toBe(403);
     });
 
-    it('once enabled, creates the account and auto-assigns exactly the reader role (never auto-login)', async () => {
-      await setSelfRegistration(true);
+    it('403s when enabled but no role has ever been configured', async () => {
+      // A truly fresh install: allowSelfRegistration flips on, but the
+      // admin never touched the role dropdown (users.self_registration_role_code
+      // stays at migration 0013's seeded `null`).
+      const admin = await fixtureForRole(app!, 'admin');
+      const toggleRes = await request(server())
+        .put('/settings/registration')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ allowSelfRegistration: true });
+      expect(toggleRes.status).toBe(200);
+
+      const res = await request(server())
+        .post('/auth/register')
+        .send({ email: `e2e-reg-no-role-${Date.now()}@papp.test`, name: 'No Role', password: 'RegisterPass123' });
+      expect(res.status).toBe(403);
+
+      await setSelfRegistration(false);
+    });
+
+    it('once enabled with a configured role, creates the account and assigns EXACTLY that role (never auto-login)', async () => {
+      await setSelfRegistration(true, 'reader');
       const email = `e2e-reg-on-${Date.now()}@papp.test`;
       const res = await request(server())
         .post('/auth/register')
