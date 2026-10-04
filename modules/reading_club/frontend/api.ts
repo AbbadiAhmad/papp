@@ -140,6 +140,8 @@ export interface ReadingClubStageBookEntry {
   bookCopyId: string | null;
   bookTitle: string;
   bookCode: string | null;
+  /** Snapshotted (READING_CLUB-D18) — summed across a stage's active entries to compute `pages`-type progress. */
+  pageCount: number | null;
   source: BookEntrySource;
   comments: string | null;
   addedBy: string;
@@ -155,6 +157,8 @@ export interface AddBookEntryInput {
   bookCode?: string;
   comments?: string;
   bookCopyId?: string;
+  /** Optional (READING_CLUB-D18) — summed into a `pages`-type stage's progress. */
+  pageCount?: number;
 }
 
 export interface ReaderDetail {

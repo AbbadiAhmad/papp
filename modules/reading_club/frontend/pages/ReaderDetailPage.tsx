@@ -305,6 +305,7 @@ export function ReaderDetailPage() {
             label={t('reading_club.fields.target_amount')}
             value={progressValue}
             onChange={(e) => setProgressValue(Number(e.target.value))}
+            helperText={t('reading_club.readers.update_progress_hint')}
             sx={{ mt: 1 }}
           />
         </DialogContent>

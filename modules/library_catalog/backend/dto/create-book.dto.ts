@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MinLength, ValidateNested } from 'class-validator';
 import { LibraryCatalogBookCopyStatus } from '@prisma/client';
 
 /**
@@ -71,6 +71,13 @@ export class CreateBookDto {
   @IsOptional()
   @IsString()
   coverImage?: string;
+
+  /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across a reader's stage book entries to auto-compute a `pages`-type stage's progress. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  pageCount?: number;
 
   @IsNotEmpty()
   @Type(() => CreateBookCopyInlineDto)

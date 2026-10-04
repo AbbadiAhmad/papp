@@ -70,11 +70,49 @@ describe('MembershipsService', () => {
       expect(progress).toEqual({ targetType: 'books', targetAmount: 5, progressAmount: 3, isComplete: false });
     });
 
-    it('uses manualProgressAmount for a "pages" stage — never queries borrowings', async () => {
-      const progress = await service.computeStageProgress('student-1', new Date(), 420, { targetType: 'pages', targetAmount: 500 });
+    it('bug fix (READING_CLUB-D18): a "pages" stage sums active book entries\' pageCount PLUS manualProgressAmount — never queries borrowings', async () => {
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([{ pageCount: 120 }, { pageCount: 80 }]);
+
+      const progress = await service.computeStageProgress('student-1', new Date(), 20, {
+        id: 'stage-1',
+        groupId: 'group-1',
+        targetType: 'pages',
+        targetAmount: 500,
+      });
 
       expect(prisma.libraryBorrowing.count).not.toHaveBeenCalled();
-      expect(progress).toEqual({ targetType: 'pages', targetAmount: 500, progressAmount: 420, isComplete: false });
+      expect(prisma.readingClubStageBookEntry.findMany).toHaveBeenCalledWith({
+        where: { studentId: 'student-1', groupId: 'group-1', stageId: 'stage-1', status: 'active' },
+        select: { pageCount: true },
+      });
+      // 120 + 80 (from entries) + 20 (manual adjustment) = 220
+      expect(progress).toEqual({ targetType: 'pages', targetAmount: 500, progressAmount: 220, isComplete: false });
+    });
+
+    it('a "pages" stage treats a NULL pageCount entry as 0, never throwing', async () => {
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([{ pageCount: 100 }, { pageCount: null }]);
+
+      const progress = await service.computeStageProgress('student-1', new Date(), 0, {
+        id: 'stage-1',
+        groupId: 'group-1',
+        targetType: 'pages',
+        targetAmount: 500,
+      });
+
+      expect(progress.progressAmount).toBe(100);
+    });
+
+    it('a "pages" stage with zero book entries falls back to manualProgressAmount alone', async () => {
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([]);
+
+      const progress = await service.computeStageProgress('student-1', new Date(), 300, {
+        id: 'stage-1',
+        groupId: 'group-1',
+        targetType: 'pages',
+        targetAmount: 500,
+      });
+
+      expect(progress.progressAmount).toBe(300);
     });
 
     it('marks isComplete true once progress reaches the target', async () => {
@@ -249,6 +287,34 @@ describe('MembershipsService', () => {
           source: 'auto',
           addedBy: 'librarian-1',
         }),
+      });
+    });
+
+    it('bug fix (READING_CLUB-D18): snapshots the catalog book\'s pageCount onto the new auto entry', async () => {
+      const borrowing = { id: 'b1', bookCopyId: 'copy-1', studentId: 'student-1', status: 'returned', returnedAt: new Date('2026-01-05') };
+      prisma.libraryBorrowing.findMany.mockResolvedValue([borrowing]);
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([]);
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue({ id: 'copy-1', bookId: 'book-1', qrCode: 'QR1' });
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1', title: 'Some Book', pageCount: 240 });
+
+      await service.getReaderDetail('student-1', 'librarian-1');
+
+      expect(prisma.readingClubStageBookEntry.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ pageCount: 240 }),
+      });
+    });
+
+    it('snapshots pageCount as null when the catalog book has none set, never throwing', async () => {
+      const borrowing = { id: 'b1', bookCopyId: 'copy-1', studentId: 'student-1', status: 'returned', returnedAt: new Date('2026-01-05') };
+      prisma.libraryBorrowing.findMany.mockResolvedValue([borrowing]);
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([]);
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue({ id: 'copy-1', bookId: 'book-1', qrCode: 'QR1' });
+      prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'book-1', title: 'Some Book', pageCount: null });
+
+      await service.getReaderDetail('student-1', 'librarian-1');
+
+      expect(prisma.readingClubStageBookEntry.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ pageCount: null }),
       });
     });
 

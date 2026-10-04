@@ -39,9 +39,35 @@ describe('CreateBookDto (class-validator)', () => {
         language: 'ar',
         description: 'A classic collection of fables.',
         coverImage: 'https://example.com/cover.jpg',
+        pageCount: 240,
         copy: validCopy,
       }),
     ).resolves.toEqual([]);
+  });
+
+  // LIBRARY_CATALOG-D24: pageCount is optional (used by reading_club to
+  // auto-compute pages-type stage progress) but, when given, must be a
+  // positive integer — same "> 0" rule as the migration's own CHECK
+  // constraint, enforced at the DTO layer too so a bad value never reaches
+  // the database in the first place.
+  it('accepts a missing pageCount', async () => {
+    await expect(validateCreateBook({ title: 'Kalila wa Dimna', copy: validCopy })).resolves.toEqual([]);
+  });
+
+  it('rejects a zero or negative pageCount', async () => {
+    for (const pageCount of [0, -5]) {
+      const errors = await validateCreateBook({ title: 'Kalila wa Dimna', copy: validCopy, pageCount });
+      expect(errors.map((e) => e.property)).toContain('pageCount');
+      const pageCountError = errors.find((e) => e.property === 'pageCount');
+      expect(pageCountError?.constraints).toHaveProperty('isPositive');
+    }
+  });
+
+  it('rejects a non-integer pageCount', async () => {
+    const errors = await validateCreateBook({ title: 'Kalila wa Dimna', copy: validCopy, pageCount: 12.5 });
+    expect(errors.map((e) => e.property)).toContain('pageCount');
+    const pageCountError = errors.find((e) => e.property === 'pageCount');
+    expect(pageCountError?.constraints).toHaveProperty('isInt');
   });
 
   it('rejects a missing title', async () => {
