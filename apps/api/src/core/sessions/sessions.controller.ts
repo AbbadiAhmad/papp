@@ -1,12 +1,14 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { extractRequestMeta } from '../auth/request-meta.util';
+import { PurgeSessionsDto } from './dto/purge-sessions.dto';
 import { PublicSession } from './session.presenter';
-import { SessionsService } from './sessions.service';
+import { SessionPurgeResult, SessionsService } from './sessions.service';
 
 // Phase 3 @Audit fetchState: the raw session row (refreshTokenHash is
 // `/// @Sensitive`, so it lands as "[redacted]"); old/new captures
@@ -43,6 +45,28 @@ export class SessionsController {
   @RequirePermission('sessions.view')
   async getForUser(@Param('userId') userId: string): Promise<PublicSession[]> {
     return this.sessionsService.listForUser(userId);
+  }
+
+  /**
+   * Gated by `sessions.view` (no separate purge code — anyone who can view
+   * sessions can clear old ones). No @Audit: the service writes its own row
+   * with the real deleted count.
+   */
+  @Post('purge')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('sessions.view')
+  async purge(
+    @Body() dto: PurgeSessionsDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<SessionPurgeResult> {
+    const meta = extractRequestMeta(req);
+    return this.sessionsService.purge(dto.cutoffDate, {
+      userId: user.userId,
+      sessionId: user.sessionId,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
   }
 
   @Delete(':id')

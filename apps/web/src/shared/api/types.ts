@@ -51,6 +51,7 @@ export interface PublicPermission {
 export interface PublicSession {
   id: string;
   userId: string;
+  userName: string | null;
   issuedAt: string;
   lastActiveAt: string;
   expiresAt: string;
@@ -66,6 +67,7 @@ export interface AuditLogItem {
   id: string;
   occurredAt: string;
   actorUserId: string | null;
+  actorUserName: string | null;
   actorSessionId: string | null;
   actorType: AuditActorType;
   category: string;

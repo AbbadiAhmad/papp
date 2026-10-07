@@ -4,6 +4,7 @@ import { UserSession } from '@prisma/client';
 export interface PublicSession {
   id: string;
   userId: string;
+  userName: string | null;
   issuedAt: Date;
   lastActiveAt: Date;
   expiresAt: Date;
@@ -13,10 +14,11 @@ export interface PublicSession {
   revokedAt: Date | null;
 }
 
-export function toPublicSession(session: UserSession): PublicSession {
+export function toPublicSession(session: UserSession & { user?: { name: string } | null }): PublicSession {
   return {
     id: session.id,
     userId: session.userId,
+    userName: session.user?.name ?? null,
     issuedAt: session.issuedAt,
     lastActiveAt: session.lastActiveAt,
     expiresAt: session.expiresAt,
