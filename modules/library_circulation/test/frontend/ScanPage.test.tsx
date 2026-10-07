@@ -51,6 +51,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.clearAllMocks();
   api.getLoanPolicy.mockResolvedValue({ maxBooksPerStudent: 3, loanPeriodDays: 14, finePerDay: 0 });
   api.getActiveBorrowingsForStudent.mockResolvedValue([]);
@@ -184,5 +185,33 @@ describe('ScanPage (two-panel desk)', () => {
     const link = await screen.findByRole('link', { name: 'Layla' });
     expect(link).toHaveAttribute('href', '/library-circulation/readers/r1');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('folds and unfolds the reader\'s sections, remembering the choice', async () => {
+    api.scan.mockResolvedValue(READER);
+    const { unmount } = render(<MemoryRouter><ScanPage /></MemoryRouter>);
+    typeAndEnter('Scan or type reader code', 'R000001');
+
+    // History starts folded (nothing urgent); the counts stay visible in its header.
+    const history = await screen.findByRole('button', { name: /Damage & loss history/ });
+    expect(history).toHaveAttribute('aria-expanded', 'false');
+    expect(history).toHaveTextContent('Damaged: 2');
+
+    fireEvent.click(history);
+    expect(history).toHaveAttribute('aria-expanded', 'true');
+    unmount();
+
+    // Next visit: the librarian's own choice wins over the default.
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
+    typeAndEnter('Scan or type reader code', 'R000001');
+    expect(await screen.findByRole('button', { name: /Damage & loss history/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('opens the fines section by default only when the reader owes something', async () => {
+    api.scan.mockResolvedValue(READER);
+    api.listFines.mockResolvedValue({ fines: [{ id: 'f1', fineNumber: 'FINE-1', amount: '5.00', status: 'unpaid', createdAt: '2026-01-01', fineTypeName: 'Late' }] });
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
+    typeAndEnter('Scan or type reader code', 'R000001');
+    expect(await screen.findByRole('button', { name: /Open fines/ })).toHaveAttribute('aria-expanded', 'true');
   });
 });

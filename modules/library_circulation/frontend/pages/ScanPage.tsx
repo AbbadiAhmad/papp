@@ -53,6 +53,7 @@ import { readingClubIntegration, type ReadingClubPendingReward } from '../readin
 import { BookCopyAutocomplete } from './BookCopyAutocomplete';
 import { BorrowDialog, type BorrowDialogBook } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
+import { CollapsibleSection } from './CollapsibleSection';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
 import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
@@ -548,10 +549,12 @@ export function ScanPage() {
 
                   <Divider />
 
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {t('library_circulation.students.open_fines')}
-                    </Typography>
+                  <CollapsibleSection
+                    id="scan-fines"
+                    title={t('library_circulation.students.open_fines')}
+                    summary={readerSectionsLoading ? undefined : <Chip size="small" color={readerFines.length > 0 ? 'error' : 'default'} label={readerFines.length} />}
+                    defaultExpanded={readerFines.length > 0}
+                  >
                     {readerSectionsLoading ? (
                       <Typography variant="body2" color="text.secondary">
                         {t('core.common.loading')}
@@ -572,19 +575,28 @@ export function ScanPage() {
                         ))}
                       </List>
                     )}
-                  </Box>
+                  </CollapsibleSection>
 
                   <Divider />
 
                   {/* Past damage / loss: how often, when, and what became of the fine. */}
-                  <Box>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
-                      <Typography variant="subtitle2">{t('library_circulation.scan.incidents_title')}</Typography>
-                      <ToggleButtonGroup size="small" exclusive value={historyView} onChange={(_e, v) => v && setHistoryView(v)}>
-                        <ToggleButton value="incidents">{t('library_circulation.scan.incidents_filter_damaged_lost')}</ToggleButton>
-                        <ToggleButton value="all">{t('library_circulation.scan.incidents_filter_all')}</ToggleButton>
-                      </ToggleButtonGroup>
-                    </Stack>
+                  <CollapsibleSection
+                    id="scan-incidents"
+                    title={t('library_circulation.scan.incidents_title')}
+                    summary={
+                      incidents && incidents.items.length > 0 ? (
+                        <>
+                          <Chip size="small" color="warning" label={t('library_circulation.scan.incidents_damaged_count', { count: incidents.damagedCount })} />
+                          <Chip size="small" color="error" label={t('library_circulation.scan.incidents_lost_count', { count: incidents.lostCount })} />
+                        </>
+                      ) : undefined
+                    }
+                    defaultExpanded={false}
+                  >
+                    <ToggleButtonGroup size="small" exclusive value={historyView} onChange={(_e, v) => v && setHistoryView(v)} sx={{ mb: 1 }}>
+                      <ToggleButton value="incidents">{t('library_circulation.scan.incidents_filter_damaged_lost')}</ToggleButton>
+                      <ToggleButton value="all">{t('library_circulation.scan.incidents_filter_all')}</ToggleButton>
+                    </ToggleButtonGroup>
                     {historyView === 'incidents' ? (
                       !incidents || incidents.items.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">
@@ -593,8 +605,6 @@ export function ScanPage() {
                       ) : (
                         <>
                           <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
-                            <Chip size="small" color="warning" label={t('library_circulation.scan.incidents_damaged_count', { count: incidents.damagedCount })} />
-                            <Chip size="small" color="error" label={t('library_circulation.scan.incidents_lost_count', { count: incidents.lostCount })} />
                             {incidents.lastIncidentAt ? (
                               <Chip size="small" variant="outlined" label={t('library_circulation.scan.incidents_last', { date: formatDateOnly(incidents.lastIncidentAt, language) })} />
                             ) : null}
@@ -633,7 +643,7 @@ export function ScanPage() {
                         ))}
                       </List>
                     )}
-                  </Box>
+                  </CollapsibleSection>
 
                   {pendingRewards.length > 0 ? (
                     <>
@@ -680,10 +690,12 @@ export function ScanPage() {
 
               <Stack spacing={2} sx={{ mt: 1 }}>
                 {/* New books: scan several, borrow them all at once */}
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    {t('library_circulation.scan.to_borrow_title')}
-                  </Typography>
+                <CollapsibleSection
+                  id="scan-new-books"
+                  title={t('library_circulation.scan.to_borrow_title')}
+                  summary={basket.length > 0 ? <Chip size="small" color="primary" label={basket.length} /> : undefined}
+                  defaultExpanded
+                >
                   <Stack direction="row" spacing={1}>
                     <TextField
                       fullWidth
@@ -789,7 +801,7 @@ export function ScanPage() {
                       </Button>
                     </Stack>
                   ) : null}
-                </Box>
+                </CollapsibleSection>
 
                 {otherLoan ? (
                   <Alert
@@ -810,10 +822,12 @@ export function ScanPage() {
 
                 {/* Currently borrowed by the loaded reader */}
                 {reader ? (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {t('library_circulation.scan.active_borrowings_title')}
-                    </Typography>
+                  <CollapsibleSection
+                    id="scan-current-loans"
+                    title={t('library_circulation.scan.active_borrowings_title')}
+                    summary={readerSectionsLoading ? undefined : <Chip size="small" label={activeBorrowings.length} />}
+                    defaultExpanded
+                  >
                     {readerSectionsLoading ? (
                       <Typography variant="body2" color="text.secondary">
                         {t('core.common.loading')}
@@ -854,7 +868,7 @@ export function ScanPage() {
                         ))}
                       </List>
                     )}
-                  </Box>
+                  </CollapsibleSection>
                 ) : null}
 
                 {reader || basket.length > 0 ? (
