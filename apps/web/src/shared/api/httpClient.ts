@@ -44,6 +44,11 @@ export const apiClient = axios.create({
   // (AuthController.setRefreshCookie) — this is what makes the browser send
   // it back on POST /auth/refresh without any JS ever touching it.
   withCredentials: true,
+  // nginx.conf serves index.html (instead of proxying to the api) for any
+  // request whose Accept contains text/html, and axios sets no Accept of its
+  // own — leaving it to whatever the browser's XHR defaults to. Pin it so an
+  // API call can never be mistaken for a page navigation.
+  headers: { Accept: 'application/json, */*;q=0.1' },
 });
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
