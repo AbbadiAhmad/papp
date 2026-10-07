@@ -184,16 +184,6 @@ function AppRoutes() {
     );
   }
 
-  // Installed-module routes aren't known until the manifest arrives; rendering <Routes> before then
-  // would send any module URL (e.g. a reloaded /library-circulation/readers) to the 404 page for a moment.
-  if (moduleManifests === null) {
-    return (
-      <PageLayout>
-        <FullScreenLoader />
-      </PageLayout>
-    );
-  }
-
   return (
     <PageLayout>
       <Routes>
@@ -309,7 +299,11 @@ function AppRoutes() {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
         <Route path="/forbidden" element={<ForbiddenPage />} />
-        <Route path="*" element={<NotFoundPage />} />
+        {/* Installed-module routes aren't known until the manifest arrives. Core routes (including the /login -> /
+            redirect right after sign-in) must mount immediately, so only the catch-all waits: until then an unknown
+            path shows a loader instead of flashing the 404 page for a module URL (e.g. a reloaded
+            /library-circulation/readers). */}
+        <Route path="*" element={moduleManifests === null ? <FullScreenLoader /> : <NotFoundPage />} />
       </Routes>
     </PageLayout>
   );
