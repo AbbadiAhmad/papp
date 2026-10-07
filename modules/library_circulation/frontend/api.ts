@@ -16,6 +16,8 @@ export interface LibraryStudent {
   updatedAt: string;
   /** Joined in from the linked platform User (D41: name lives on User, not libraryStudent) — StudentsService.list(). */
   name: string | null;
+  /** false = the reader role was revoked in Users; still listed only because a book is out. */
+  isReader?: boolean;
   email: string | null;
   isActive: boolean;
   externalId: string | null;

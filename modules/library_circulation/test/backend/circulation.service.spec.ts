@@ -8,6 +8,7 @@ interface MockPrisma {
   libraryCatalogBook: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   user: { findUnique: jest.Mock; findMany: jest.Mock };
+  userRole: { count: jest.Mock };
   $transaction: jest.Mock;
 }
 
@@ -18,6 +19,7 @@ function createMockPrisma(): MockPrisma {
     libraryCatalogBook: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
+    userRole: { count: jest.fn(async () => 1) },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
@@ -109,6 +111,15 @@ describe('CirculationService', () => {
       const dueAt = (borrowing as unknown as { dueAt: Date }).dueAt;
       const expectedMs = Date.now() + POLICY.loanPeriodDays * 24 * 60 * 60 * 1000;
       expect(Math.abs(dueAt.getTime() - expectedMs)).toBeLessThan(5000);
+    });
+
+    it('rejects a new borrowing for an account whose reader role was revoked', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+      prisma.userRole.count.mockResolvedValueOnce(0);
+
+      await expect(service.borrow('student-1', 'copy-1', 'staff-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.libraryBorrowing.create).not.toHaveBeenCalled();
     });
 
     it('§22: rejects borrowing an already-borrowed copy', async () => {

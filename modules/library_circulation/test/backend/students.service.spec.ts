@@ -6,7 +6,7 @@ import { StudentsService } from '../../backend/students.service';
 interface MockPrisma {
   user: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
   role: { findUnique: jest.Mock };
-  userRole: { create: jest.Mock; count: jest.Mock; deleteMany: jest.Mock };
+  userRole: { create: jest.Mock; count: jest.Mock; deleteMany: jest.Mock; findMany: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
   libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
   libraryFine: { findMany: jest.Mock };
@@ -22,7 +22,7 @@ function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
     user: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
     role: { findUnique: jest.fn() },
-    userRole: { create: jest.fn(), count: jest.fn(), deleteMany: jest.fn() },
+    userRole: { create: jest.fn(), count: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn(async () => [{ userId: 'user-1' }]) },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
     libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
     libraryFine: { findMany: jest.fn() },
@@ -131,8 +131,39 @@ describe('StudentsService', () => {
     });
   });
 
+  describe('reader list follows the platform users', () => {
+    it('lists users who currently hold the reader role, plus anyone with a book still out', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      await service.list();
+      expect(prisma.userRole.findMany).toHaveBeenCalledWith({ where: { role: { code: 'reader' } }, select: { userId: true } });
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { OR: [{ userId: { in: ['user-1', 'user-2'] } }, { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }] },
+        }),
+      );
+    });
+
+    it('flags a kept-visible reader whose role was revoked with isReader: false', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([
+        studentRow({ id: 's1', userId: 'user-1' }),
+        studentRow({ id: 's2', userId: 'user-2', code: 'R2' }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([]);
+      const result = await service.list();
+      expect(result.map((r) => r.isReader)).toEqual([true, false]);
+    });
+
+    it('count() uses the same visibility rule as the list', async () => {
+      prisma.libraryStudent.count.mockResolvedValue(3);
+      expect(await service.count()).toBe(3);
+      expect(prisma.libraryStudent.count).toHaveBeenCalledWith({ where: expect.objectContaining({ OR: expect.any(Array) }) });
+    });
+  });
+
   describe('automatic reader codes', () => {
-    it('create() without a code takes the next sequence value, formatted STU + 6 digits', async () => {
+    it('create() without a code takes the next sequence value, formatted R + 6 digits', async () => {
       prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });
       prisma.user.create.mockResolvedValue({ id: 'user-1', name: 'Aisha', email: 'a@b.test' });
       prisma.userRole.create.mockResolvedValue({});
@@ -142,18 +173,18 @@ describe('StudentsService', () => {
 
       const result = await service.create({ name: 'Aisha', email: 'a@b.test' }, 'admin-1');
 
-      expect(result.code).toBe('STU000042');
+      expect(result.code).toBe('R000042');
     });
 
-    it('create() with a typed STU-format code keeps it and fast-forwards the sequence past it', async () => {
+    it('create() with a typed R-format code keeps it and fast-forwards the sequence past it', async () => {
       prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });
       prisma.user.create.mockResolvedValue({ id: 'user-1', name: 'Aisha', email: 'a@b.test' });
       prisma.userRole.create.mockResolvedValue({});
       prisma.libraryStudent.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => studentRow(data));
 
-      const result = await service.create({ name: 'Aisha', email: 'a@b.test', code: 'STU000100' }, 'admin-1');
+      const result = await service.create({ name: 'Aisha', email: 'a@b.test', code: 'R000100' }, 'admin-1');
 
-      expect(result.code).toBe('STU000100');
+      expect(result.code).toBe('R000100');
       const [sql, value] = prisma.$queryRawUnsafe.mock.calls[0] as [string, bigint];
       expect(sql).toContain('setval');
       expect(value).toBe(BigInt(100));
@@ -162,17 +193,17 @@ describe('StudentsService', () => {
     it('skips a sequence value that a hand-typed code already occupies', async () => {
       prisma.$queryRawUnsafe.mockResolvedValueOnce([{ nextval: BigInt(5) }]).mockResolvedValueOnce([{ nextval: BigInt(6) }]);
       prisma.libraryStudent.findUnique.mockResolvedValueOnce({ id: 'taken' }).mockResolvedValueOnce(null);
-      expect(await service.allocateCode()).toBe('STU000006');
+      expect(await service.allocateCode()).toBe('R000006');
     });
 
     it('peekNextCode() reads the sequence without consuming it', async () => {
       prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(9), is_called: true }]);
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
-      expect(await service.peekNextCode()).toBe('STU000010');
+      expect(await service.peekNextCode()).toBe('R000010');
       expect(prisma.$queryRawUnsafe.mock.calls[0][0]).not.toContain('nextval');
     });
 
-    it('a typed code outside the STU<digits> format leaves the sequence alone', async () => {
+    it('a typed code outside the R<digits> format leaves the sequence alone', async () => {
       await service.reconcileCodeSequence(prisma, 'LEGACY-7');
       expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
     });

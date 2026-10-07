@@ -47,7 +47,7 @@ const argon2 = __importStar(require("argon2"));
 const node_crypto_1 = require("node:crypto");
 const READER_ROLE_CODE = 'reader';
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
-const STUDENT_CODE_PREFIX = 'STU';
+const STUDENT_CODE_PREFIX = 'R';
 const STUDENT_CODE_DIGITS = 6;
 const STUDENT_CODE_SEQUENCE = 'library_students_code_seq';
 const MAX_CODE_ALLOCATION_ATTEMPTS = 50;
@@ -86,9 +86,27 @@ let StudentsService = class StudentsService {
      * `search()` above already does, just as one batched `User.findMany` by
      * `userId` rather than a per-row lookup.
      */
+    /**
+     * The Readers list is DERIVED from the platform's users: a profile is
+     * listed while its user currently holds the `reader` role (granted or
+     * revoked in core Users — nothing here caches that), plus anyone, reader
+     * or not any more, who still has a book out (active/overdue) so an
+     * unreturned book never disappears from circulation.
+     */
+    async visibilityFilter() {
+        const readerUserIds = await this.currentReaderUserIds();
+        return {
+            OR: [{ userId: { in: [...readerUserIds] } }, { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }],
+        };
+    }
+    async currentReaderUserIds() {
+        const rows = await this.prisma.userRole.findMany({ where: { role: { code: READER_ROLE_CODE } }, select: { userId: true } });
+        return new Set(rows.map((r) => r.userId));
+    }
     async list() {
         await this.syncReaderProfiles();
-        const students = await this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
+        const [visible, readerUserIds] = await Promise.all([this.visibilityFilter(), this.currentReaderUserIds()]);
+        const students = await this.prisma.libraryStudent.findMany({ where: visible, orderBy: { createdAt: 'desc' } });
         const userIds = [...new Set(students.map((s) => s.userId))];
         const users = userIds.length
             ? await this.prisma.user.findMany({
@@ -101,6 +119,8 @@ let StudentsService = class StudentsService {
             const u = userById.get(s.userId);
             return {
                 ...s,
+                /** false = role revoked but still listed because a book is out. */
+                isReader: readerUserIds.has(s.userId),
                 name: u?.name ?? null,
                 email: u?.email ?? null,
                 isActive: u?.isActive ?? true,
@@ -157,7 +177,7 @@ let StudentsService = class StudentsService {
         }
         throw new common_1.ConflictException('Could not allocate a free reader code — please type one manually');
     }
-    /** A manually typed code in the STU<digits> format fast-forwards the sequence past it (never backwards) — same as library_catalog's copy codes. */
+    /** A manually typed code in the R<digits> format fast-forwards the sequence past it (never backwards) — same as library_catalog's copy codes. */
     async reconcileCodeSequence(client, enteredCode) {
         const match = new RegExp(`^${STUDENT_CODE_PREFIX}(\\d+)$`).exec(enteredCode);
         if (!match)
@@ -179,9 +199,10 @@ let StudentsService = class StudentsService {
         if (!q)
             return [];
         await this.syncReaderProfiles();
+        const visible = await this.visibilityFilter();
         const [byCode, matchingUsers] = await Promise.all([
             this.prisma.libraryStudent.findMany({
-                where: { code: { contains: q, mode: 'insensitive' } },
+                where: { AND: [{ code: { contains: q, mode: 'insensitive' } }, visible] },
                 take: limit,
             }),
             this.prisma.user.findMany({
@@ -193,7 +214,7 @@ let StudentsService = class StudentsService {
         const byCodeIds = new Set(byCode.map((s) => s.id));
         const byNameStudents = matchingUsers.length
             ? await this.prisma.libraryStudent.findMany({
-                where: { userId: { in: matchingUsers.map((u) => u.id) } },
+                where: { AND: [{ userId: { in: matchingUsers.map((u) => u.id) } }, visible] },
             })
             : [];
         const userNameById = new Map(matchingUsers.map((u) => [u.id, u.name]));
@@ -219,7 +240,7 @@ let StudentsService = class StudentsService {
     }
     async count() {
         await this.syncReaderProfiles();
-        return this.prisma.libraryStudent.count();
+        return this.prisma.libraryStudent.count({ where: await this.visibilityFilter() });
     }
     async findById(id) {
         const student = await this.getOrThrow(id);

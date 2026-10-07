@@ -7,6 +7,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -148,7 +149,12 @@ export function StudentsListPage() {
                   <TableCell>
                     <RouterLink to={`/library-circulation/students/${student.id}`}>{student.code}</RouterLink>
                   </TableCell>
-                  <TableCell>{student.name ?? '—'}</TableCell>
+                  <TableCell>
+                    {student.name ?? '—'}
+                    {student.isReader === false ? (
+                      <Chip size="small" color="warning" label={t('library_circulation.students.not_reader_anymore')} sx={{ marginInlineStart: 1 }} />
+                    ) : null}
+                  </TableCell>
                   <TableCell>{student.email ?? '—'}</TableCell>
                   <TableCell>{student.className ?? '—'}</TableCell>
                   <TableCell>

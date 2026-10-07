@@ -220,5 +220,6 @@
   "library_circulation.students.import_action_update": "تحديث",
   "library_circulation.students.import_invalid": "غير صالح",
   "library_circulation.students.import_error": "الخطأ",
-  "library_circulation.students.import_auto_code": "(تلقائي)"
+  "library_circulation.students.import_auto_code": "(تلقائي)",
+  "library_circulation.students.not_reader_anymore": "لم يعد قارئًا (لديه كتاب لم يُعد)"
 }

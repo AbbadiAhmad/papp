@@ -7,7 +7,7 @@ import { UpdateStudentDto } from './dto/update-student.dto';
 
 const READER_ROLE_CODE = 'reader';
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
-const STUDENT_CODE_PREFIX = 'STU';
+const STUDENT_CODE_PREFIX = 'R';
 const STUDENT_CODE_DIGITS = 6;
 const STUDENT_CODE_SEQUENCE = 'library_students_code_seq';
 const MAX_CODE_ALLOCATION_ATTEMPTS = 50;
@@ -62,9 +62,29 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
    * `search()` above already does, just as one batched `User.findMany` by
    * `userId` rather than a per-row lookup.
    */
+  /**
+   * The Readers list is DERIVED from the platform's users: a profile is
+   * listed while its user currently holds the `reader` role (granted or
+   * revoked in core Users — nothing here caches that), plus anyone, reader
+   * or not any more, who still has a book out (active/overdue) so an
+   * unreturned book never disappears from circulation.
+   */
+  private async visibilityFilter(): Promise<Prisma.LibraryStudentWhereInput> {
+    const readerUserIds = await this.currentReaderUserIds();
+    return {
+      OR: [{ userId: { in: [...readerUserIds] } }, { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }],
+    };
+  }
+
+  private async currentReaderUserIds(): Promise<Set<string>> {
+    const rows = await this.prisma.userRole.findMany({ where: { role: { code: READER_ROLE_CODE } }, select: { userId: true } });
+    return new Set(rows.map((r) => r.userId));
+  }
+
   async list() {
     await this.syncReaderProfiles();
-    const students = await this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
+    const [visible, readerUserIds] = await Promise.all([this.visibilityFilter(), this.currentReaderUserIds()]);
+    const students = await this.prisma.libraryStudent.findMany({ where: visible, orderBy: { createdAt: 'desc' } });
     const userIds = [...new Set(students.map((s) => s.userId))];
     const users = userIds.length
       ? await this.prisma.user.findMany({
@@ -77,6 +97,8 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
       const u = userById.get(s.userId);
       return {
         ...s,
+        /** false = role revoked but still listed because a book is out. */
+        isReader: readerUserIds.has(s.userId),
         name: u?.name ?? null,
         email: u?.email ?? null,
         isActive: u?.isActive ?? true,
@@ -140,7 +162,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     throw new ConflictException('Could not allocate a free reader code — please type one manually');
   }
 
-  /** A manually typed code in the STU<digits> format fast-forwards the sequence past it (never backwards) — same as library_catalog's copy codes. */
+  /** A manually typed code in the R<digits> format fast-forwards the sequence past it (never backwards) — same as library_catalog's copy codes. */
   async reconcileCodeSequence(client: Pick<PrismaClient, '$queryRawUnsafe'>, enteredCode: string): Promise<void> {
     const match = new RegExp(`^${STUDENT_CODE_PREFIX}(\\d+)$`).exec(enteredCode);
     if (!match) return;
@@ -165,10 +187,11 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     const q = query.trim();
     if (!q) return [];
     await this.syncReaderProfiles();
+    const visible = await this.visibilityFilter();
 
     const [byCode, matchingUsers] = await Promise.all([
       this.prisma.libraryStudent.findMany({
-        where: { code: { contains: q, mode: 'insensitive' } },
+        where: { AND: [{ code: { contains: q, mode: 'insensitive' } }, visible] },
         take: limit,
       }),
       this.prisma.user.findMany({
@@ -181,7 +204,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     const byCodeIds = new Set(byCode.map((s) => s.id));
     const byNameStudents = matchingUsers.length
       ? await this.prisma.libraryStudent.findMany({
-          where: { userId: { in: matchingUsers.map((u) => u.id) } },
+          where: { AND: [{ userId: { in: matchingUsers.map((u) => u.id) } }, visible] },
         })
       : [];
 
@@ -210,7 +233,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
 
   async count(): Promise<number> {
     await this.syncReaderProfiles();
-    return this.prisma.libraryStudent.count();
+    return this.prisma.libraryStudent.count({ where: await this.visibilityFilter() });
   }
 
   async findById(id: string) {

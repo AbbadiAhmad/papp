@@ -8,7 +8,7 @@ import { IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validato
  * set so they're forced to pick their own on first login, same as any
  * admin-created account (core UsersService's own pattern).
  *
- * `code` is optional: left blank, the next incremental code (STU000001, ...)
+ * `code` is optional: left blank, the next incremental code (R000001, ...)
  * is assigned server-side — same behavior as a book copy's QR code.
  */
 export class CreateStudentDto {

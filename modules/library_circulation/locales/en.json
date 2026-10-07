@@ -220,5 +220,6 @@
   "library_circulation.students.import_action_update": "Update",
   "library_circulation.students.import_invalid": "Invalid",
   "library_circulation.students.import_error": "Error",
-  "library_circulation.students.import_auto_code": "(automatic)"
+  "library_circulation.students.import_auto_code": "(automatic)",
+  "library_circulation.students.not_reader_anymore": "No longer a reader (book still out)"
 }

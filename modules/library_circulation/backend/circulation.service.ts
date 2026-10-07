@@ -38,7 +38,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Auto-detects the scanned code's type by prefix (§6: STU/BOOK), falling
+   * Auto-detects the scanned code's type by prefix (§6: R/STU/BOOK), falling
    * back to trying both lookups for a code that doesn't follow the printed
    * convention — never a hard requirement, since the prefix is a labeling
    * convention this module encourages, not a DB constraint on either table.
@@ -47,7 +47,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const code = rawCode.trim();
     const upper = code.toUpperCase();
 
-    if (upper.startsWith('STU')) return this.scanStudent(code);
+    if (upper.startsWith('STU') || /^R\d/.test(upper)) return this.scanStudent(code);
     if (upper.startsWith('BOOK')) return this.scanBookCopy(code);
 
     const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
@@ -98,6 +98,11 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     ]);
     if (!student) throw new NotFoundException('Student not found');
     if (!copy) throw new NotFoundException('Book copy not found');
+    // A reader whose role was revoked stays visible for returns, but cannot take out new books.
+    const stillReader = await this.prisma.userRole.count({ where: { userId: student.userId, role: { code: 'reader' } } });
+    if (stillReader === 0) {
+      throw new ConflictException('This account no longer has the reader role and cannot borrow new books.');
+    }
     if (copy.status !== 'available') {
       throw new ConflictException(`This copy is currently "${copy.status}" and cannot be borrowed (§22).`);
     }
