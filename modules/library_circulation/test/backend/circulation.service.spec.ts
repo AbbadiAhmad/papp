@@ -100,6 +100,35 @@ describe('CirculationService', () => {
     });
   });
 
+  describe('searchBookCopies (Scan page book picker)', () => {
+    const copy = (id: string, qrCode: string, status: string, title: string) => ({ id, bookId: `bk-${id}`, qrCode, status, book: { title, author: 'A. Writer' } });
+
+    it('returns one row per copy, available copies first, capped at the limit', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        copy('1', 'B000002', 'borrowed', 'Dune'),
+        copy('2', 'B000003', 'available', 'Dune'),
+        copy('3', 'B000001', 'available', 'Dune'),
+        copy('4', 'B000009', 'available', 'Atlas'),
+      ]);
+      const result = await service.searchBookCopies('dun', 3);
+      expect(result.map((r) => r.qrCode)).toEqual(['B000009', 'B000001', 'B000003']);
+      expect(result[0]).toMatchObject({ copyId: '4', title: 'Atlas', status: 'available' });
+    });
+
+    it('matches on copy code, title or author (case-insensitive)', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+      await service.searchBookCopies(' dune ');
+      const where = (prisma.libraryCatalogBookCopy.findMany.mock.calls[0][0] as { where: { OR: unknown[] } }).where;
+      const contains = { contains: 'dune', mode: 'insensitive' };
+      expect(where.OR).toEqual([{ qrCode: contains }, { book: { is: { OR: [{ title: contains }, { author: contains }] } } }]);
+    });
+
+    it('a blank query returns nothing without touching the database', async () => {
+      expect(await service.searchBookCopies('   ')).toEqual([]);
+      expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('borrow', () => {
     it('§7: creates a borrowing with due date = today + loanPeriodDays and marks the copy borrowed', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());

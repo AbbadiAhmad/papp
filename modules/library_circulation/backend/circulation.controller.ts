@@ -37,6 +37,13 @@ export class CirculationController {
     return this.circulation.scan(dto.code);
   }
 
+  /** Scan page's book picker (title / author / copy code). Before the `:copyId` routes for the usual Express ordering reason. */
+  @Get('book-copies/search')
+  @RequirePermission('library_circulation.borrow')
+  async searchBookCopies(@Query('q') q?: string) {
+    return this.circulation.searchBookCopies(q ?? '');
+  }
+
   @Get('book-copies/:copyId/active-borrowing')
   @RequirePermission('library_circulation.return')
   async activeBorrowingForCopy(@Param('copyId') copyId: string) {

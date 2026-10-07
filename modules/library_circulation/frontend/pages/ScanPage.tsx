@@ -22,6 +22,8 @@ import {
   MenuItem,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -39,13 +41,16 @@ import {
   type CopyCirculationHistoryEntry,
   type LibraryBorrowing,
   type LibraryFine,
+  type EnrichedFine,
   type LibraryFineType,
+  type StudentIncidents,
   type ReturnFineInput,
   type ScanBookCopyResult,
   type ScanStudentResult,
   type StudentSearchResult,
 } from '../api';
 import { readingClubIntegration, type ReadingClubPendingReward } from '../readingClubIntegration';
+import { BookCopyAutocomplete } from './BookCopyAutocomplete';
 import { BorrowDialog, type BorrowDialogBook } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
@@ -99,6 +104,9 @@ export function ScanPage() {
   const [priorByCopy, setPriorByCopy] = useState<Record<string, CopyCirculationHistoryEntry | null>>({});
   const [activeBorrowings, setActiveBorrowings] = useState<ActiveBorrowingForStudent[]>([]);
   const [readerFines, setReaderFines] = useState<LibraryFine[]>([]);
+  const [allFines, setAllFines] = useState<EnrichedFine[]>([]);
+  const [incidents, setIncidents] = useState<StudentIncidents | null>(null);
+  const [historyView, setHistoryView] = useState<'incidents' | 'all'>('incidents');
   const [readerSectionsLoading, setReaderSectionsLoading] = useState(false);
   const [pendingRewards, setPendingRewards] = useState<ReadingClubPendingReward[]>([]);
   const [maxBooks, setMaxBooks] = useState<number | null>(null);
@@ -146,24 +154,49 @@ export function ScanPage() {
     }
   };
 
+  /** Re-reads fines + damage/loss history — after a return (a damaged/lost one adds an incident) or a newly created fine. */
+  const refreshFinesAndIncidents = async (id: string) => {
+    try {
+      const [finesResult, incidentsResult] = await Promise.all([
+        libraryCirculationApi.listFines({ studentId: id }),
+        libraryCirculationApi.getStudentIncidents(id).catch(() => null),
+      ]);
+      setAllFines(finesResult.fines);
+      setReaderFines(finesResult.fines.filter((f) => f.status === 'unpaid' || f.status === 'partially_paid'));
+      setIncidents(incidentsResult);
+    } catch {
+      /* advisory panels — keep what is shown */
+    }
+  };
+
   useEffect(() => {
     if (!readerId) {
       setActiveBorrowings([]);
       setReaderFines([]);
+      setAllFines([]);
+      setIncidents(null);
       return;
     }
     let cancelled = false;
     setReaderSectionsLoading(true);
-    Promise.all([libraryCirculationApi.getActiveBorrowingsForStudent(readerId), libraryCirculationApi.listFines({ studentId: readerId })])
-      .then(([borrowings, finesResult]) => {
+    Promise.all([
+      libraryCirculationApi.getActiveBorrowingsForStudent(readerId),
+      libraryCirculationApi.listFines({ studentId: readerId }),
+      libraryCirculationApi.getStudentIncidents(readerId).catch(() => null), // advisory panel — never blocks the desk
+    ])
+      .then(([borrowings, finesResult, incidentsResult]) => {
         if (cancelled) return;
         setActiveBorrowings(borrowings);
+        setAllFines(finesResult.fines);
         setReaderFines(finesResult.fines.filter((f) => f.status === 'unpaid' || f.status === 'partially_paid'));
+        setIncidents(incidentsResult);
       })
       .catch(() => {
         if (!cancelled) {
           setActiveBorrowings([]);
           setReaderFines([]);
+          setAllFines([]);
+          setIncidents(null);
         }
       })
       .finally(() => {
@@ -405,7 +438,10 @@ export function ScanPage() {
       }
       setReturnTarget(null);
       setOtherLoan(null);
-      if (reader) await refreshActive(reader.student.id);
+      if (reader) {
+        await refreshActive(reader.student.id);
+        await refreshFinesAndIncidents(reader.student.id);
+      }
       focusBookInput();
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -533,6 +569,67 @@ export function ScanPage() {
                     )}
                   </Box>
 
+                  <Divider />
+
+                  {/* Past damage / loss: how often, when, and what became of the fine. */}
+                  <Box>
+                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+                      <Typography variant="subtitle2">{t('library_circulation.scan.incidents_title')}</Typography>
+                      <ToggleButtonGroup size="small" exclusive value={historyView} onChange={(_e, v) => v && setHistoryView(v)}>
+                        <ToggleButton value="incidents">{t('library_circulation.scan.incidents_filter_damaged_lost')}</ToggleButton>
+                        <ToggleButton value="all">{t('library_circulation.scan.incidents_filter_all')}</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Stack>
+                    {historyView === 'incidents' ? (
+                      !incidents || incidents.items.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('library_circulation.scan.incidents_none')}
+                        </Typography>
+                      ) : (
+                        <>
+                          <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
+                            <Chip size="small" color="warning" label={t('library_circulation.scan.incidents_damaged_count', { count: incidents.damagedCount })} />
+                            <Chip size="small" color="error" label={t('library_circulation.scan.incidents_lost_count', { count: incidents.lostCount })} />
+                            {incidents.lastIncidentAt ? (
+                              <Chip size="small" variant="outlined" label={t('library_circulation.scan.incidents_last', { date: formatDateOnly(incidents.lastIncidentAt, language) })} />
+                            ) : null}
+                          </Stack>
+                          <List dense disablePadding sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                            {incidents.items.map((item) => (
+                              <ListItem key={item.borrowingId} disableGutters divider>
+                                <ListItemText
+                                  primary={`${t(`library_circulation.scan.incident_${item.kind}`)} — ${item.bookTitle ?? item.qrCode ?? '—'}`}
+                                  secondary={`${formatDateOnly(item.occurredAt, language)} · ${
+                                    item.fines.length === 0
+                                      ? t('library_circulation.scan.incident_no_fine')
+                                      : item.fines
+                                          .map((f) => `${f.fineNumber}: ${f.amount} (${t(`library_circulation.fine_status.${f.status}`)})`)
+                                          .join(', ')
+                                  }`}
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </>
+                      )
+                    ) : allFines.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {t('library_circulation.scan.no_fines_at_all')}
+                      </Typography>
+                    ) : (
+                      <List dense disablePadding sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                        {allFines.map((fine) => (
+                          <ListItem key={fine.id} disableGutters divider>
+                            <ListItemText
+                              primary={`${fine.fineTypeName ?? ''} — ${fine.amount}`}
+                              secondary={`${formatDateOnly(fine.createdAt, language)} · ${fine.fineNumber} · ${t(`library_circulation.fine_status.${fine.status}`)}`}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Box>
+
                   {pendingRewards.length > 0 ? (
                     <>
                       <Divider />
@@ -605,6 +702,10 @@ export function ScanPage() {
                       </span>
                     </Tooltip>
                   </Stack>
+
+                  <Box sx={{ mt: 1.5 }}>
+                    <BookCopyAutocomplete onPick={(copy) => void handleCode(copy.qrCode)} disabled={busy} />
+                  </Box>
 
                   {basket.length === 0 ? (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -810,6 +911,7 @@ export function ScanPage() {
         onCreated={() => {
           setDamageFineContext(null);
           setMessage(t('library_circulation.scan.fine_created'));
+          if (reader) void refreshFinesAndIncidents(reader.student.id);
         }}
       />
     </Box>

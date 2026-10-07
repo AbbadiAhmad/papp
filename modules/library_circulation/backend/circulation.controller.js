@@ -44,6 +44,10 @@ let CirculationController = class CirculationController {
         await this.readers.syncReaderProfiles();
         return this.circulation.scan(dto.code);
     }
+    /** Scan page's book picker (title / author / copy code). Before the `:copyId` routes for the usual Express ordering reason. */
+    async searchBookCopies(q) {
+        return this.circulation.searchBookCopies(q ?? '');
+    }
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
     }
@@ -113,6 +117,14 @@ __decorate([
     __metadata("design:paramtypes", [scan_dto_1.ScanDto]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "scan", null);
+__decorate([
+    (0, common_1.Get)('book-copies/search'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "searchBookCopies", null);
 __decorate([
     (0, common_1.Get)('book-copies/:copyId/active-borrowing'),
     (0, platform_1.RequirePermission)('library_circulation.return'),

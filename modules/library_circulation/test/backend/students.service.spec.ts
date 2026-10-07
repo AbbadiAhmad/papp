@@ -257,6 +257,38 @@ describe('StudentsService', () => {
     });
   });
 
+  describe('getIncidents (damage / loss history)', () => {
+    beforeEach(() => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'c1', bookId: 'bk1', qrCode: 'B000001' }, { id: 'c2', bookId: 'bk1', qrCode: 'B000002' }]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'bk1', title: 'Dune', readingLevel: null, category: null }]);
+      prisma.libraryFine = { findMany: jest.fn() } as never;
+    });
+
+    it('counts damaged and lost returns, newest first, each with the fine charged (or none)', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b2', bookCopyId: 'c2', status: 'lost', returnStatus: 'lost', returnedAt: new Date('2026-09-10'), borrowedAt: new Date('2026-08-01'), returnNotes: null },
+        { id: 'b1', bookCopyId: 'c1', status: 'returned', returnStatus: 'damaged', returnedAt: new Date('2026-06-01'), borrowedAt: new Date('2026-05-01'), returnNotes: 'torn cover' },
+      ]);
+      prisma.libraryFine.findMany.mockResolvedValue([{ id: 'f1', borrowingId: 'b1', fineNumber: 'FINE-1', amount: '5.00', amountPaid: '0', status: 'unpaid' }]);
+
+      const result = await service.getIncidents('student-1');
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { studentId: 'student-1', OR: [{ returnStatus: { in: ['damaged', 'lost'] } }, { status: 'lost' }] } }),
+      );
+      expect(result).toMatchObject({ damagedCount: 1, lostCount: 1, lastIncidentAt: new Date('2026-09-10') });
+      expect(result.items.map((i) => [i.kind, i.bookTitle, i.fines.length])).toEqual([['lost', 'Dune', 0], ['damaged', 'Dune', 1]]);
+      expect(result.items[1].fines[0]).toMatchObject({ fineNumber: 'FINE-1', status: 'unpaid' });
+    });
+
+    it('a reader with a clean record gets zero counts and no queries for fines', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+      expect(await service.getIncidents('student-1')).toEqual({ damagedCount: 0, lostCount: 0, lastIncidentAt: null, items: [] });
+      expect(prisma.libraryFine.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('automatic reader codes', () => {
     it('create() without a code takes the next sequence value, formatted R + 6 digits', async () => {
       prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });

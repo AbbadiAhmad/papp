@@ -392,6 +392,55 @@ let StudentsService = class StudentsService {
         return this.enrichBorrowingsWithBookInfo(borrowings);
     }
     /**
+     * Damage / loss history for the Scan page ("how many times has this reader
+     * damaged or lost a book, and what happened with the fine?"). Built from
+     * the RETURNS, not from fines: every return the librarian marks damaged or
+     * lost is recorded on the borrowing (`return_status`), whereas the fine is
+     * only suggested at that moment and can be skipped, edited or waived — so
+     * counting fines alone would undercount. Each incident carries whatever
+     * fine(s) were charged against that borrowing (none = no fine charged).
+     */
+    async getIncidents(id) {
+        await this.getOrThrow(id);
+        const borrowings = await this.prisma.libraryBorrowing.findMany({
+            where: { studentId: id, OR: [{ returnStatus: { in: ['damaged', 'lost'] } }, { status: 'lost' }] },
+            orderBy: [{ returnedAt: { sort: 'desc', nulls: 'last' } }, { borrowedAt: 'desc' }],
+        });
+        if (borrowings.length === 0)
+            return { damagedCount: 0, lostCount: 0, lastIncidentAt: null, items: [] };
+        const [enriched, fines] = await Promise.all([
+            this.enrichBorrowingsWithBookInfo(borrowings),
+            this.prisma.libraryFine.findMany({ where: { borrowingId: { in: borrowings.map((b) => b.id) } }, orderBy: { createdAt: 'asc' } }),
+        ]);
+        const finesByBorrowing = new Map();
+        for (const fine of fines) {
+            const list = finesByBorrowing.get(fine.borrowingId) ?? [];
+            list.push(fine);
+            finesByBorrowing.set(fine.borrowingId, list);
+        }
+        const items = enriched.map((b) => ({
+            borrowingId: b.id,
+            kind: b.returnStatus === 'lost' || b.status === 'lost' ? 'lost' : 'damaged',
+            occurredAt: b.returnedAt ?? b.borrowedAt,
+            bookTitle: b.bookTitle,
+            qrCode: b.qrCode,
+            returnNotes: b.returnNotes ?? null,
+            fines: (finesByBorrowing.get(b.id) ?? []).map((f) => ({
+                id: f.id,
+                fineNumber: f.fineNumber,
+                amount: f.amount,
+                amountPaid: f.amountPaid,
+                status: f.status,
+            })),
+        }));
+        return {
+            damagedCount: items.filter((i) => i.kind === 'damaged').length,
+            lostCount: items.filter((i) => i.kind === 'lost').length,
+            lastIncidentAt: items[0].occurredAt,
+            items,
+        };
+    }
+    /**
      * §3.3 "Actions" tab — audit trail of operations on this reader's OWN
      * account row (create/update/delete of the LibraryStudent record itself,
      * not their borrowing activity — that's the Reading History tab).

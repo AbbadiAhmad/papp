@@ -113,6 +113,34 @@ export interface CreatedStudent extends LibraryStudent {
   temporaryPassword: string;
 }
 
+/** CirculationService.searchBookCopies() row — one per physical copy. */
+export interface BookCopySearchResult {
+  copyId: string;
+  bookId: string;
+  qrCode: string;
+  status: string;
+  title: string;
+  author: string | null;
+}
+
+export interface StudentIncident {
+  borrowingId: string;
+  kind: 'damaged' | 'lost';
+  occurredAt: string;
+  bookTitle: string | null;
+  qrCode: string | null;
+  returnNotes: string | null;
+  /** Fines charged against this borrowing; empty = none was charged (skipped or never created). */
+  fines: { id: string; fineNumber: string; amount: string; amountPaid: string; status: FineStatus }[];
+}
+
+export interface StudentIncidents {
+  damagedCount: number;
+  lostCount: number;
+  lastIncidentAt: string | null;
+  items: StudentIncident[];
+}
+
 export interface StudentListQuery {
   q?: string;
   className?: string;
@@ -422,6 +450,9 @@ export const libraryCirculationApi = {
     apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit } }).then((r) => r.data),
 
   // Students
+  searchBookCopies: (q: string) =>
+    apiClient.get<BookCopySearchResult[]>(`${BASE}/book-copies/search`, { params: { q } }).then((r) => r.data),
+  getStudentIncidents: (id: string) => apiClient.get<StudentIncidents>(`${BASE}/students/${id}/incidents`).then((r) => r.data),
   listStudentsPaged: (query: StudentListQuery) => {
     // Drop blank/"all" filters so the URL stays clean and the server applies no filter for them.
     const params = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== '' && v !== undefined && v !== 'all'));

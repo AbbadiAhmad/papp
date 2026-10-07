@@ -103,6 +103,13 @@ export class StudentsController {
     return this.students.getReadingHistory(id);
   }
 
+  /** Scan page: how often this reader damaged/lost a book, with the fine (if any) for each. */
+  @Get(':id/incidents')
+  @RequirePermission('library_circulation.students.view')
+  async incidents(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getIncidents(id);
+  }
+
   /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */
   @Get(':id/action-history')
   @RequirePermission('library_circulation.students.view')

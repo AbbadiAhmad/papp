@@ -65,6 +65,34 @@ let CirculationService = CirculationService_1 = class CirculationService {
             return this.scanBookCopy(code);
         return { type: 'not_found', code };
     }
+    /**
+     * Scan page's "find a book by title / author / copy code" picker — one row
+     * per physical COPY (the librarian borrows a specific copy), available
+     * ones first. Reads the catalog tables directly, same as scanBookCopy().
+     */
+    async searchBookCopies(query, limit = 8) {
+        const q = query.trim();
+        if (!q)
+            return [];
+        const contains = { contains: q, mode: 'insensitive' };
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+            where: { OR: [{ qrCode: contains }, { book: { is: { OR: [{ title: contains }, { author: contains }] } } }] },
+            include: { book: { select: { title: true, author: true } } },
+            take: 100,
+        });
+        // Available copies first (what can actually be borrowed), then by title / code.
+        copies.sort((a, b) => Number(b.status === 'available') - Number(a.status === 'available') ||
+            a.book.title.localeCompare(b.book.title) ||
+            a.qrCode.localeCompare(b.qrCode));
+        return copies.slice(0, limit).map((c) => ({
+            copyId: c.id,
+            bookId: c.bookId,
+            qrCode: c.qrCode,
+            status: c.status,
+            title: c.book.title,
+            author: c.book.author,
+        }));
+    }
     async scanStudent(code) {
         const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
         if (!student)

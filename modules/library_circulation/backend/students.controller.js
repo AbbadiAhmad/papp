@@ -83,6 +83,10 @@ let StudentsController = class StudentsController {
     async readingHistory(id) {
         return this.students.getReadingHistory(id);
     }
+    /** Scan page: how often this reader damaged/lost a book, with the fine (if any) for each. */
+    async incidents(id) {
+        return this.students.getIncidents(id);
+    }
     /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */
     async actionHistory(id) {
         return this.students.getActionHistory(id);
@@ -174,6 +178,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "readingHistory", null);
+__decorate([
+    (0, common_1.Get)(':id/incidents'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "incidents", null);
 __decorate([
     (0, common_1.Get)(':id/action-history'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),

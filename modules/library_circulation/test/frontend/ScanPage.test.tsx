@@ -14,6 +14,8 @@ const api = vi.hoisted(() => ({
   searchStudents: vi.fn(),
   returnBorrowing: vi.fn(),
   listFineTypes: vi.fn(),
+  getStudentIncidents: vi.fn(),
+  searchBookCopies: vi.fn(),
 }));
 
 vi.mock('../../frontend/api', () => ({ libraryCirculationApi: api }));
@@ -54,6 +56,8 @@ beforeEach(() => {
   api.listFines.mockResolvedValue({ fines: [] });
   api.getCopyCirculationHistory.mockResolvedValue([]);
   api.borrow.mockResolvedValue({});
+  api.getStudentIncidents.mockResolvedValue({ damagedCount: 2, lostCount: 1, lastIncidentAt: '2026-09-10', items: [{ borrowingId: 'b9', kind: 'damaged', occurredAt: '2026-09-10', bookTitle: 'Old book', qrCode: 'B9', returnNotes: null, fines: [] }] });
+  api.searchBookCopies.mockResolvedValue([]);
 });
 
 const typeAndEnter = (label: string, value: string) => {
@@ -147,5 +151,28 @@ describe('ScanPage (two-panel desk)', () => {
     // Still listed (the closing dialog may briefly repeat the title, hence getAll).
     expect(screen.getAllByText('Dune').length).toBeGreaterThan(0);
     expect(api.borrow).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the reader\'s damaged / lost counts', async () => {
+    api.scan.mockResolvedValue(READER);
+    render(<ScanPage />);
+    typeAndEnter('Scan or type reader code', 'R000001');
+    await screen.findByText('Damaged: 2');
+    expect(screen.getByText('Lost: 1')).toBeInTheDocument();
+  });
+
+  it('picking a book from the title search adds that copy like a scan would', async () => {
+    api.searchBookCopies.mockResolvedValue([{ copyId: '1', bookId: 'bk-1', qrCode: 'B1', status: 'available', title: 'Dune', author: 'Herbert' }]);
+    api.scan.mockResolvedValue(bookCopy('1', 'Dune'));
+    render(<ScanPage />);
+
+    const box = screen.getByLabelText('Or find a book by title, author or code');
+    // A real user focuses the field first; MUI only resets the text of an UNfocused autocomplete.
+    box.focus();
+    fireEvent.change(box, { target: { value: 'dun' } });
+    fireEvent.click(await screen.findByText('Herbert · B1 · Available'));
+
+    await waitFor(() => expect(api.scan).toHaveBeenCalledWith('B1'));
+    expect(await screen.findByRole('button', { name: 'Select a reader to borrow' })).toBeDisabled();
   });
 });
