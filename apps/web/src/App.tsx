@@ -2,12 +2,13 @@ import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material';
 import { CacheProvider } from '@emotion/react';
 import { Box, CircularProgress } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom';
+import { Navigate, Route, BrowserRouter, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
 import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageLayout';
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
+import { RouteErrorBoundary } from './shared/components/ErrorBoundary';
 import * as authApi from './shared/api/auth';
 import { LoginPage } from './core/auth/LoginPage';
 import { RegisterPage } from './core/auth/RegisterPage';
@@ -304,6 +305,22 @@ function AppRoutes() {
   );
 }
 
+/**
+ * `key={pathname}` remounts the boundary (clearing its caught error) on
+ * every navigation — without it, a crash on one route would leave the
+ * fallback screen stuck in place even after the user taps away to another
+ * page via `TopBar` (which stays mounted and functional, see
+ * RouteErrorBoundary's own docblock).
+ */
+function GuardedAppRoutes() {
+  const { pathname } = useLocation();
+  return (
+    <RouteErrorBoundary key={pathname}>
+      <AppRoutes />
+    </RouteErrorBoundary>
+  );
+}
+
 function ThemedShell() {
   const { direction } = useLanguage();
   const cache = useMemo(() => createEmotionCacheFor(direction), [direction]);
@@ -342,7 +359,7 @@ function ThemedShell() {
             <MobileNavProvider>
               <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
                 <TopBar />
-                <AppRoutes />
+                <GuardedAppRoutes />
               </Box>
             </MobileNavProvider>
           </AuthProvider>
