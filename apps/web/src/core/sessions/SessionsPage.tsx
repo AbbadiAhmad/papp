@@ -8,12 +8,14 @@ import {
   Paper,
   Snackbar,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -28,7 +30,13 @@ import { useGuardedQuery } from '../../shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../shared/api/httpClient';
 import { sessionsApi } from '../../shared/api/sessions';
 import { useGatedCall } from '../../shared/permissions';
-import type { PublicSession } from '../../shared/api/types';
+import type { PublicSession, PurgeResult } from '../../shared/api/types';
+
+/** 3 days before today (UTC) as YYYY-MM-DD — mirrors SessionsService.purge's cap. */
+function maxPurgeCutoffUtcIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 3)).toISOString().slice(0, 10);
+}
 
 /**
  * `GET /sessions/me` is self-scoped but still gated by `sessions.view_my`
@@ -52,6 +60,13 @@ export function SessionsPage() {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [pendingRevoke, setPendingRevoke] = useState<PublicSession | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+  const maxCutoff = maxPurgeCutoffUtcIso();
+  const [cutoffDate, setCutoffDate] = useState(maxCutoff);
+  const [purgeResult, setPurgeResult] = useState<PurgeResult | null>(null);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [tab, setTab] = useState(0);
 
   const {
     status,
@@ -84,11 +99,29 @@ export function SessionsPage() {
     }
   };
 
+  const handlePurge = async () => {
+    setConfirmPurge(false);
+    setPurgeError(null);
+    setPurgeResult(null);
+    setPurgeBusy(true);
+    try {
+      // Same code as the viewing lookup: whoever may view sessions may purge old ones.
+      setPurgeResult(await gated('sessions.view', () => sessionsApi.purge(cutoffDate)));
+      reload();
+      setOtherSessions(null);
+    } catch (error) {
+      setPurgeError(extractErrorMessage(error));
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
   const renderTable = (sessions: PublicSession[]) => (
     <TableContainer component={Paper} sx={{ mb: 3 }}>
       <Table size="small">
         <TableHead>
           <TableRow>
+            <TableCell>{t('core.sessions.user_name')}</TableCell>
             <TableCell>{t('core.sessions.issued_at')}</TableCell>
             <TableCell>{t('core.sessions.last_active')}</TableCell>
             <TableCell>{t('core.sessions.expires_at')}</TableCell>
@@ -104,6 +137,7 @@ export function SessionsPage() {
             const revoked = session.revokedAt !== null;
             return (
               <TableRow key={session.id} hover>
+                <TableCell>{session.userName ?? session.userId}</TableCell>
                 <TableCell>{formatDateTime(session.issuedAt, language)}</TableCell>
                 <TableCell>{formatDateTime(session.lastActiveAt, language)}</TableCell>
                 <TableCell>{formatDateTime(session.expiresAt, language)}</TableCell>
@@ -140,6 +174,13 @@ export function SessionsPage() {
         {t('core.menu.sessions')}
       </Typography>
 
+      <Tabs value={tab} onChange={(_, v: number) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label={t('core.sessions.list_tab')} />
+        <Tab label={t('core.sessions.purge_tab')} />
+      </Tabs>
+
+      {tab === 0 ? (
+        <>
       <Typography variant="h6" component="h3" gutterBottom>
         {t('core.sessions.mine')}
       </Typography>
@@ -168,6 +209,48 @@ export function SessionsPage() {
         </Alert>
       ) : null}
       {otherSessions ? renderTable(otherSessions) : null}
+        </>
+      ) : (
+      <Box sx={{ maxWidth: 480, mb: 3 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {t('core.sessions.purge_warning')}
+        </Alert>
+        <Stack spacing={2}>
+          <TextField
+            label={t('core.audit.cutoff_date')}
+            type="date"
+            value={cutoffDate}
+            onChange={(e) => setCutoffDate(e.target.value)}
+            slotProps={{ htmlInput: { max: maxCutoff } }}
+            helperText={t('core.sessions.purge_cutoff_help')}
+          />
+          {purgeError ? <Alert severity="error">{purgeError}</Alert> : null}
+          {purgeResult ? (
+            <Alert severity="success">
+              {t('core.sessions.purge_success', { count: purgeResult.rowsDeleted, date: purgeResult.cutoffDate })}
+            </Alert>
+          ) : null}
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => setConfirmPurge(true)}
+            disabled={purgeBusy || !cutoffDate || cutoffDate > maxCutoff}
+          >
+            {t('core.sessions.purge_action')}
+          </Button>
+        </Stack>
+      </Box>
+      )}
+
+      <ConfirmDialog
+        open={confirmPurge}
+        title={t('core.sessions.purge_title')}
+        description={t('core.sessions.purge_confirm', { date: cutoffDate })}
+        confirmColor="error"
+        confirmLabel={t('core.sessions.purge_action')}
+        onConfirm={handlePurge}
+        onCancel={() => setConfirmPurge(false)}
+      />
 
       <ConfirmDialog
         open={pendingRevoke !== null}

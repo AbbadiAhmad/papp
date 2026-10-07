@@ -106,7 +106,7 @@ function AuditLogViewer() {
                   <TableCell>{item.category}</TableCell>
                   <TableCell>{item.entityType}</TableCell>
                   <TableCell>{item.action}</TableCell>
-                  <TableCell>{item.actorType === 'user' ? (item.actorUserId ?? '—') : item.actorType}</TableCell>
+                  <TableCell>{item.actorType === 'user' ? (item.actorUserName ?? item.actorUserId ?? '—') : item.actorType}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

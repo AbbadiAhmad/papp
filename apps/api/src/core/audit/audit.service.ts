@@ -7,7 +7,7 @@ import { QueryAuditDto } from './dto/query-audit.dto';
 const DEFAULT_PAGE_SIZE = 50;
 
 export interface AuditPage {
-  items: AuditLog[];
+  items: Array<AuditLog & { actorUserName: string | null }>;
   total: number;
   page: number;
   pageSize: number;
@@ -64,7 +64,20 @@ export class AuditService {
       this.prisma.auditLog.count({ where }),
     ]);
 
-    return { items, total, page, pageSize };
+    // audit_log carries no FK to users (rows must outlive them), so names are
+    // resolved separately; a deleted user simply has no name.
+    const actorIds = [...new Set(items.map((i) => i.actorUserId).filter((id): id is string => !!id))];
+    const users = actorIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
+      : [];
+    const names = new Map(users.map((u) => [u.id, u.name]));
+
+    return {
+      items: items.map((i) => ({ ...i, actorUserName: i.actorUserId ? (names.get(i.actorUserId) ?? null) : null })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /**
