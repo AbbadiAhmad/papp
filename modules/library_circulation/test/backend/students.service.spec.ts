@@ -8,7 +8,7 @@ interface MockPrisma {
   role: { findUnique: jest.Mock };
   userRole: { create: jest.Mock; count: jest.Mock; deleteMany: jest.Mock; findMany: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
-  libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
+  libraryBorrowing: { findMany: jest.Mock; count: jest.Mock; groupBy: jest.Mock };
   libraryFine: { findMany: jest.Mock };
   libraryCatalogBookCopy: { findMany: jest.Mock };
   libraryCatalogBook: { findMany: jest.Mock };
@@ -24,7 +24,7 @@ function createMockPrisma(): MockPrisma {
     role: { findUnique: jest.fn() },
     userRole: { create: jest.fn(), count: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn(async () => [{ userId: 'user-1' }]) },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
+    libraryBorrowing: { findMany: jest.fn(), count: jest.fn(), groupBy: jest.fn(async () => []) },
     libraryFine: { findMany: jest.fn() },
     libraryCatalogBookCopy: { findMany: jest.fn() },
     libraryCatalogBook: { findMany: jest.fn() },
@@ -159,6 +159,24 @@ describe('StudentsService', () => {
       prisma.user.findMany.mockResolvedValue([]);
       const result = await service.list();
       expect(result.map((r) => r.isReader)).toEqual([true, false]);
+    });
+
+    it('adds each reader\'s current (active + overdue) borrowed-book count in one grouped query', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([
+        studentRow({ id: 's1', userId: 'user-1' }),
+        studentRow({ id: 's2', userId: 'user-2', code: 'R2' }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.libraryBorrowing.groupBy.mockResolvedValue([{ studentId: 's1', _count: { _all: 3 } }]);
+
+      const result = await service.list();
+
+      expect(prisma.libraryBorrowing.groupBy).toHaveBeenCalledTimes(1);
+      expect(prisma.libraryBorrowing.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { studentId: { in: ['s1', 's2'] }, status: { in: ['active', 'overdue'] } } }),
+      );
+      expect(result.map((r) => r.activeBorrowingsCount)).toEqual([3, 0]);
     });
 
     it('count() uses the same visibility rule as the list', async () => {

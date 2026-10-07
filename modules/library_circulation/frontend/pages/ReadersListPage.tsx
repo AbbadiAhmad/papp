@@ -139,6 +139,7 @@ export function ReadersListPage() {
                 <TableCell>{t('library_circulation.students.name')}</TableCell>
                 <TableCell>{t('core.auth.email')}</TableCell>
                 <TableCell>{t('library_circulation.students.class_name')}</TableCell>
+                <TableCell align="center">{t('library_circulation.students.active_borrowings')}</TableCell>
                 <TableCell>{t('library_circulation.students.status')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
               </TableRow>
@@ -157,6 +158,7 @@ export function ReadersListPage() {
                   </TableCell>
                   <TableCell>{student.email ?? '—'}</TableCell>
                   <TableCell>{student.className ?? '—'}</TableCell>
+                  <TableCell align="center">{student.activeBorrowingsCount ?? 0}</TableCell>
                   <TableCell>
                     {student.isActive ? t('library_circulation.students.status_active') : t('library_circulation.students.status_inactive')}
                   </TableCell>

@@ -93,12 +93,22 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
         })
       : [];
     const userById = new Map(users.map((u) => [u.id, u]));
+    // Books each listed reader currently has out (active + overdue) — one grouped query, not one per row.
+    const openLoans = students.length
+      ? await this.prisma.libraryBorrowing.groupBy({
+          by: ['studentId'],
+          where: { studentId: { in: students.map((s) => s.id) }, status: { in: ['active', 'overdue'] } },
+          _count: { _all: true },
+        })
+      : [];
+    const openLoansByStudent = new Map(openLoans.map((r) => [r.studentId, r._count._all]));
     return students.map((s) => {
       const u = userById.get(s.userId);
       return {
         ...s,
         /** false = role revoked but still listed because a book is out. */
         isReader: readerUserIds.has(s.userId),
+        activeBorrowingsCount: openLoansByStudent.get(s.id) ?? 0,
         name: u?.name ?? null,
         email: u?.email ?? null,
         isActive: u?.isActive ?? true,

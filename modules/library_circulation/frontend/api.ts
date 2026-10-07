@@ -18,6 +18,8 @@ export interface LibraryStudent {
   name: string | null;
   /** false = the reader role was revoked in Users; still listed only because a book is out. */
   isReader?: boolean;
+  /** Books currently out (active + overdue) — only on the list response. */
+  activeBorrowingsCount?: number;
   email: string | null;
   isActive: boolean;
   externalId: string | null;
