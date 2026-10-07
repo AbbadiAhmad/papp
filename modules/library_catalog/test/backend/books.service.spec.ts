@@ -183,6 +183,11 @@ describe('BooksService', () => {
           totalCopies: 3,
           availableCopies: 2,
           copyStatusCounts: { available: 2, borrowed: 1 },
+          copyCodes: [
+            { id: 'copy-1', qrCode: 'QR-1', status: 'available' },
+            { id: 'copy-1', qrCode: 'QR-1', status: 'available' },
+            { id: 'copy-1', qrCode: 'QR-1', status: 'borrowed' },
+          ],
           averageRating: null,
           ratingsCount: 0,
           _count: undefined,

@@ -91,6 +91,10 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         availableCopies,
         // Per-status tally, so the list can show "1 damaged · 2 lost" without opening the book.
         copyStatusCounts: book.copies.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.status]: (acc[c.status] ?? 0) + 1 }), {}),
+        // Every copy's code (+ status), so the table can show the book's codes and open a specific copy.
+        copyCodes: [...book.copies]
+          .sort((a, b) => a.qrCode.localeCompare(b.qrCode))
+          .map((c) => ({ id: c.id, qrCode: c.qrCode, status: c.status })),
         // Only when filtering by status: the copies that matched, so each can be opened by its code.
         matchingCopies:
           copyStatuses.length > 0

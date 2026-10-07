@@ -61,6 +61,43 @@ const COPY_STATUS_COLOR: Record<BookCopyStatus, 'default' | 'success' | 'warning
  * state from an actual backend call's outcome, exactly like every core page
  * (e.g. apps/web/src/core/users/UsersListPage.tsx) already does.
  */
+const MAX_CODES_SHOWN = 4;
+
+/** A book's copy codes as chips (max 4, then "+N"); each opens the book page at that copy. */
+function BookCodes({ book }: { book: LibraryBook }) {
+  const codes = book.copyCodes ?? [];
+  const matching = new Set((book.matchingCopies ?? []).map((c) => c.id));
+  const filtering = book.matchingCopies !== undefined;
+  // When filtering, matching copies come first so they are never hidden behind "+N".
+  const ordered = filtering ? [...codes].sort((a, b) => Number(matching.has(b.id)) - Number(matching.has(a.id))) : codes;
+  const shown = ordered.slice(0, MAX_CODES_SHOWN);
+  const { t } = useTranslation();
+  if (codes.length === 0) return <>—</>;
+  return (
+    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5, alignItems: 'center' }}>
+      {shown.map((copy) => {
+        const isMatch = matching.has(copy.id);
+        return (
+          <Chip
+            key={copy.id}
+            size="small"
+            clickable
+            component={RouterLink}
+            to={`/library/books/${book.id}?copy=${copy.id}`}
+            variant={filtering && !isMatch ? 'outlined' : 'filled'}
+            color={filtering ? (isMatch ? COPY_STATUS_COLOR[copy.status] : 'default') : 'default'}
+            title={t(`library_catalog.copy_status.${copy.status}`)}
+            label={filtering && isMatch ? `${copy.qrCode} · ${t(`library_catalog.copy_status.${copy.status}`)}` : copy.qrCode}
+          />
+        );
+      })}
+      {ordered.length > shown.length ? (
+        <RouterLink to={`/library/books/${book.id}`}>+{ordered.length - shown.length}</RouterLink>
+      ) : null}
+    </Stack>
+  );
+}
+
 export function BooksListPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -217,6 +254,7 @@ export function BooksListPage() {
                 <TableCell>{t('library_catalog.fields.author')}</TableCell>
                 <TableCell>{t('library_catalog.fields.category')}</TableCell>
                 <TableCell>{t('library_catalog.ratings.title')}</TableCell>
+                <TableCell>{t('library_catalog.copies.qr_code')}</TableCell>
                 <TableCell>{t('library_catalog.fields.total_copies')}</TableCell>
                 <TableCell>{t('library_catalog.filters.copy_status')}</TableCell>
                 <TableCell>{t('library_catalog.fields.created_at')}</TableCell>
@@ -226,7 +264,7 @@ export function BooksListPage() {
             <TableBody>
               {(books ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('library_catalog.filters.no_results')}
                   </TableCell>
                 </TableRow>
@@ -253,35 +291,26 @@ export function BooksListPage() {
                     )}
                   </TableCell>
                   <TableCell>
+                    {/* Copy codes (each opens the book at that copy). While a status filter is on, the matching copies are
+                        filled and coloured by status; the others stay outlined. */}
+                    <BookCodes book={book} />
+                  </TableCell>
+                  <TableCell>
                     {(book.availableCopies ?? 0)} / {(book.totalCopies ?? 0)}
                   </TableCell>
                   <TableCell>
-                    {/* Non-available statuses as coloured counts; with a status filter on, the matching copies by code (each opens the book at that copy). */}
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
-                      {(book.matchingCopies ?? []).map((copy) => (
-                        <Chip
-                          key={copy.id}
-                          size="small"
-                          clickable
-                          component={RouterLink}
-                          to={`/library/books/${book.id}?copy=${copy.id}`}
-                          color={COPY_STATUS_COLOR[copy.status]}
-                          label={`${copy.qrCode} · ${t(`library_catalog.copy_status.${copy.status}`)}`}
-                        />
-                      ))}
-                      {!book.matchingCopies
-                        ? (Object.entries(book.copyStatusCounts ?? {}) as [BookCopyStatus, number][])
-                            .filter(([copyStatus]) => copyStatus !== 'available')
-                            .map(([copyStatus, count]) => (
-                              <Chip
-                                key={copyStatus}
-                                size="small"
-                                variant="outlined"
-                                color={COPY_STATUS_COLOR[copyStatus]}
-                                label={`${t(`library_catalog.copy_status.${copyStatus}`)}: ${count}`}
-                              />
-                            ))
-                        : null}
+                      {(Object.entries(book.copyStatusCounts ?? {}) as [BookCopyStatus, number][])
+                        .filter(([copyStatus]) => copyStatus !== 'available')
+                        .map(([copyStatus, count]) => (
+                          <Chip
+                            key={copyStatus}
+                            size="small"
+                            variant="outlined"
+                            color={COPY_STATUS_COLOR[copyStatus]}
+                            label={`${t(`library_catalog.copy_status.${copyStatus}`)}: ${count}`}
+                          />
+                        ))}
                     </Stack>
                   </TableCell>
                   <TableCell>{formatDateOnly(book.createdAt, language)}</TableCell>

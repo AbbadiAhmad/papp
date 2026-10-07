@@ -32,6 +32,8 @@ export interface LibraryBook {
   ratingsCount?: number;
   /** List response only: how many copies are in each status. */
   copyStatusCounts?: Partial<Record<BookCopyStatus, number>>;
+  /** List response only: every copy's code and status, sorted by code. */
+  copyCodes?: { id: string; qrCode: string; status: BookCopyStatus }[];
   /** List response only, when filtering by copy status: the copies that matched. */
   matchingCopies?: { id: string; qrCode: string; status: BookCopyStatus }[];
 }
