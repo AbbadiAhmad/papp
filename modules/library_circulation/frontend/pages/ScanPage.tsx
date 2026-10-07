@@ -56,6 +56,7 @@ import { CameraScanDialog } from './CameraScanDialog';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
 import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
+import { ReaderLink } from './ReaderLink';
 import { ReaderHistoryDialog } from './ReaderHistoryDialog';
 import { ReturnDialog } from './ReturnDialog';
 
@@ -517,7 +518,11 @@ export function ScanPage() {
               ) : (
                 <Stack spacing={2} sx={{ mt: 1 }}>
                   <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Typography variant="h5">{reader.student.name ?? reader.student.code}</Typography>
+                    <Typography variant="h5">
+                      <ReaderLink readerId={reader.student.id} newTab>
+                        {reader.student.name ?? reader.student.code}
+                      </ReaderLink>
+                    </Typography>
                     <Button size="small" onClick={clearReader} disabled={busy} startIcon={<CloseIcon />}>
                       {t('library_circulation.scan.change_reader')}
                     </Button>

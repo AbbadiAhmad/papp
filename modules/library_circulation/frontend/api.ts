@@ -396,6 +396,7 @@ export interface EnrichedPayment extends LibraryPayment {
   receivedByName: string | null;
   fineNumber: string;
   fineAmount: string;
+  studentId: string;
   studentCode: string | null;
   studentName: string | null;
   createdBy: string;

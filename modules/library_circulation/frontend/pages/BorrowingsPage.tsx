@@ -26,7 +26,8 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { libraryCirculationApi, readerLabel, type BorrowingFilterInput, type BorrowingStatus } from '../api';
+import { libraryCirculationApi, type BorrowingFilterInput, type BorrowingStatus } from '../api';
+import { ReaderLink } from './ReaderLink';
 
 const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
 
@@ -187,7 +188,7 @@ export function BorrowingsPage() {
               {(data ?? []).map((row) => (
                 <TableRow key={row.id} hover>
                   <TableCell>{row.bookTitle ?? row.qrCode ?? '—'}</TableCell>
-                  <TableCell>{readerLabel(row.studentName, row.studentCode)}</TableCell>
+                  <TableCell><ReaderLink readerId={row.studentId} name={row.studentName} code={row.studentCode} /></TableCell>
                   <TableCell>{formatDateOnly(row.borrowedAt, language)}</TableCell>
                   <TableCell>{formatDateOnly(row.dueAt, language)}</TableCell>
                   <TableCell>

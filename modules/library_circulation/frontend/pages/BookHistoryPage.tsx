@@ -5,7 +5,8 @@ import { QueryStateGate } from '../../../../apps/web/src/shared/components/Query
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { libraryCirculationApi, readerLabel } from '../api';
+import { libraryCirculationApi } from '../api';
+import { ReaderLink } from './ReaderLink';
 
 /**
  * §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any
@@ -43,7 +44,11 @@ export function BookHistoryPage() {
               {(entries ?? []).map((entry) => (
                 <ListItem key={entry.id} divider>
                   <ListItemText
-                    primary={`${readerLabel(entry.studentName, entry.studentCode)} · ${entry.qrCode ?? ''}`}
+                    primary={
+                      <>
+                        <ReaderLink readerId={entry.studentId} name={entry.studentName} code={entry.studentCode} /> · {entry.qrCode ?? ''}
+                      </>
+                    }
                     secondary={
                       entry.returnedAt
                         ? t('library_circulation.book_history.borrowed_returned', {

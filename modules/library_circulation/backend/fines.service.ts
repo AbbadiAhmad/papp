@@ -456,6 +456,7 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
           receivedByName: nameById.get(payment.receivedBy) ?? null,
           fineNumber: fine.fineNumber,
           fineAmount: fine.amount,
+          studentId: fine.studentId,
           studentCode: studentById.get(fine.studentId)?.code ?? null,
           studentName: studentById.has(fine.studentId) ? (nameById.get(studentById.get(fine.studentId)!.userId) ?? null) : null,
           createdBy: fine.createdBy,

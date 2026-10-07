@@ -283,7 +283,7 @@ export function ReadersListPage() {
                     <RouterLink to={`/library-circulation/readers/${student.id}`}>{student.code}</RouterLink>
                   </TableCell>
                   <TableCell>
-                    {student.name ?? '—'}
+                    {student.name ? <RouterLink to={`/library-circulation/readers/${student.id}`}>{student.name}</RouterLink> : '—'}
                     {student.isReader === false ? (
                       <Chip size="small" color="warning" label={t('library_circulation.students.not_reader_anymore')} sx={{ marginInlineStart: 1 }} />
                     ) : null}

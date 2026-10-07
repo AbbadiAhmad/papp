@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../../../../apps/web/src/app/i18n';
 import circulationEn from '../../locales/en.json';
@@ -73,7 +74,7 @@ describe('ScanPage (two-panel desk)', () => {
       if (code === 'B1') return bookCopy('1', 'Dune');
       return bookCopy('2', 'Emma');
     });
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     typeAndEnter('Scan or type reader code', 'R000001');
     await screen.findByText('Layla');
@@ -93,7 +94,7 @@ describe('ScanPage (two-panel desk)', () => {
 
   it('books can be scanned before the reader; borrowing waits for a reader', async () => {
     api.scan.mockImplementation(async (code: string) => (code === 'B1' ? bookCopy('1', 'Dune') : READER));
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     typeAndEnter('Scan or type book code', 'B1');
     await screen.findByText('Dune');
@@ -109,7 +110,7 @@ describe('ScanPage (two-panel desk)', () => {
       .mockResolvedValueOnce(bookCopy('1', 'Dune'))
       .mockResolvedValueOnce(bookCopy('1', 'Dune'))
       .mockResolvedValueOnce({ ...bookCopy('3', 'Lost one'), copy: { id: '3', bookId: 'bk', qrCode: 'B3', status: 'lost' } });
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     typeAndEnter('Scan or type book code', 'B1');
     await screen.findByText('Dune');
@@ -124,7 +125,7 @@ describe('ScanPage (two-panel desk)', () => {
     const borrowing = { id: 'br1', bookCopyId: '9', studentId: 'r1', status: 'active', borrowedAt: '2026-01-01', dueAt: '2026-01-15', returnedAt: null, borrowedBy: 's', returnedBy: null };
     api.scan.mockImplementation(async (code: string) => (code === 'R000001' ? READER : bookCopy('9', 'Out book', { activeBorrowing: borrowing })));
     api.listFineTypes.mockResolvedValue([]);
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     typeAndEnter('Scan or type reader code', 'R000001');
     await screen.findByText('Layla');
@@ -137,7 +138,7 @@ describe('ScanPage (two-panel desk)', () => {
   it('keeps a book that failed to borrow in the list, with the reason', async () => {
     api.scan.mockImplementation(async (code: string) => (code === 'R000001' ? READER : bookCopy('1', 'Dune')));
     api.borrow.mockRejectedValue(Object.assign(new Error('Limit reached'), { isAxiosError: true, response: { data: { message: 'Limit reached' } } }));
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     typeAndEnter('Scan or type reader code', 'R000001');
     await screen.findByText('Layla');
@@ -155,7 +156,7 @@ describe('ScanPage (two-panel desk)', () => {
 
   it('shows the reader\'s damaged / lost counts', async () => {
     api.scan.mockResolvedValue(READER);
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
     typeAndEnter('Scan or type reader code', 'R000001');
     await screen.findByText('Damaged: 2');
     expect(screen.getByText('Lost: 1')).toBeInTheDocument();
@@ -164,7 +165,7 @@ describe('ScanPage (two-panel desk)', () => {
   it('picking a book from the title search adds that copy like a scan would', async () => {
     api.searchBookCopies.mockResolvedValue([{ copyId: '1', bookId: 'bk-1', qrCode: 'B1', status: 'available', title: 'Dune', author: 'Herbert' }]);
     api.scan.mockResolvedValue(bookCopy('1', 'Dune'));
-    render(<ScanPage />);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
 
     const box = screen.getByLabelText('Or find a book by title, author or code');
     // A real user focuses the field first; MUI only resets the text of an UNfocused autocomplete.
@@ -174,5 +175,14 @@ describe('ScanPage (two-panel desk)', () => {
 
     await waitFor(() => expect(api.scan).toHaveBeenCalledWith('B1'));
     expect(await screen.findByRole('button', { name: 'Select a reader to borrow' })).toBeDisabled();
+  });
+
+  it('links the reader\'s name to their page (new tab, so the desk state is kept)', async () => {
+    api.scan.mockResolvedValue(READER);
+    render(<MemoryRouter><ScanPage /></MemoryRouter>);
+    typeAndEnter('Scan or type reader code', 'R000001');
+    const link = await screen.findByRole('link', { name: 'Layla' });
+    expect(link).toHaveAttribute('href', '/library-circulation/readers/r1');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 });
