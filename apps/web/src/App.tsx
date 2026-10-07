@@ -184,6 +184,16 @@ function AppRoutes() {
     );
   }
 
+  // Installed-module routes aren't known until the manifest arrives; rendering <Routes> before then
+  // would send any module URL (e.g. a reloaded /library-circulation/readers) to the 404 page for a moment.
+  if (moduleManifests === null) {
+    return (
+      <PageLayout>
+        <FullScreenLoader />
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout>
       <Routes>
