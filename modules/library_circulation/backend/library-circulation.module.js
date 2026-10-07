@@ -26,6 +26,7 @@ const fines_service_1 = require("./fines.service");
 const notifications_sender_1 = require("./notifications-sender");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
+const students_excel_service_1 = require("./students-excel.service");
 const students_controller_1 = require("./students.controller");
 const students_service_1 = require("./students.service");
 /**
@@ -43,6 +44,7 @@ exports.LibraryCirculationModule = LibraryCirculationModule = __decorate([
         controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController, dashboard_controller_1.DashboardController],
         providers: [
             students_service_1.StudentsService,
+            students_excel_service_1.StudentsExcelService,
             circulation_service_1.CirculationService,
             fines_service_1.FinesService,
             settings_service_1.SettingsService,

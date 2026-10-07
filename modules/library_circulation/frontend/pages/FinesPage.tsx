@@ -49,6 +49,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can, useGatedCall, usePermission } from '../../../../apps/web/src/shared/permissions';
 import {
   libraryCirculationApi,
+  readerLabel,
   type FineFilterInput,
   type FineStatus,
   type LibraryFine,
@@ -322,7 +323,7 @@ export function FinesPage() {
                       {fine.fineNumber}
                     </Link>
                   </TableCell>
-                  <TableCell>{fine.studentName ?? fine.studentCode ?? '—'}</TableCell>
+                  <TableCell>{readerLabel(fine.studentName, fine.studentCode)}</TableCell>
                   <TableCell>{fine.fineTypeName ?? '—'}</TableCell>
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>

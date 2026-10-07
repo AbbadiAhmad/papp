@@ -7,7 +7,6 @@
   "library_circulation.menu.fines": "Fines",
   "library_circulation.menu.finance": "Finance",
   "library_circulation.menu.settings": "Settings",
-
   "library_circulation.perm.students.view": "View readers",
   "library_circulation.perm.students.create": "Create readers",
   "library_circulation.perm.students.update": "Update readers",
@@ -24,14 +23,12 @@
   "library_circulation.perm.finance.record_payment": "Record payments",
   "library_circulation.perm.settings.update": "Update circulation settings",
   "library_circulation.perm.dashboard.view": "View the circulation dashboard",
-
   "library_circulation.settings.loan_policy_label": "Borrowing policy",
   "library_circulation.settings.loan_policy_help": "Applies to every new borrow going forward — changing this does not retroactively change the due date of books already borrowed.",
   "library_circulation.settings.max_books_per_student": "Max books per reader",
   "library_circulation.settings.loan_period_days": "Loan period (days)",
   "library_circulation.settings.loan_period_days_help": "The expected return date shown when borrowing a book is today + this many days.",
   "library_circulation.settings.fine_per_day": "Fine per day late",
-
   "library_circulation.scan.input_label": "Scan or type a code",
   "library_circulation.scan.scan_button": "Search",
   "library_circulation.scan.camera_button": "Scan with camera",
@@ -69,19 +66,16 @@
   "library_circulation.scan.active_borrowings_title": "Currently borrowed",
   "library_circulation.scan.no_active_borrowings": "No books currently borrowed.",
   "library_circulation.scan.no_open_fines": "No open fines.",
-
   "library_circulation.book_history.title": "Borrowing history",
   "library_circulation.book_history.no_history": "This book has never been borrowed.",
   "library_circulation.book_history.borrowed_returned": "Borrowed {{borrowed}}, returned {{returned}} ({{status}})",
   "library_circulation.book_history.borrowed_active": "Borrowed {{borrowed}} ({{status}})",
-
   "library_circulation.borrow.dialog_title": "Borrow book",
   "library_circulation.borrow.borrow_date": "Borrow date",
   "library_circulation.borrow.expected_return_date": "Expected return date",
   "library_circulation.borrow.comments": "Comments",
   "library_circulation.borrow.comments_placeholder": "Optional notes (e.g., extension reason)",
   "library_circulation.borrow.current_books_count": "Current books",
-
   "library_circulation.return.dialog_title": "Return book",
   "library_circulation.return.borrowed_date": "Borrowed date",
   "library_circulation.return.expected_return_date": "Expected return date",
@@ -97,14 +91,11 @@
   "library_circulation.return.complete_return": "Complete return",
   "library_circulation.return.suggest_fine": "A fine may be needed for {{reason}} books",
   "library_circulation.return.add_fine": "Add a fine for this return",
-
   "library_circulation.extend.dialog_title": "Extend loan",
   "library_circulation.extend.current_due_date": "Current due date",
   "library_circulation.extend.new_due_date": "New due date",
   "library_circulation.extend.confirm": "Confirm extension",
-
   "library_circulation.books.status": "Status",
-
   "library_circulation.students.code": "Reader code",
   "library_circulation.students.name": "Name",
   "library_circulation.students.class": "Class",
@@ -139,7 +130,6 @@
   "library_circulation.students.action_create": "Account created",
   "library_circulation.students.action_update": "Account updated",
   "library_circulation.students.action_delete": "Account deleted",
-
   "library_circulation.borrowings.borrowed_at": "Borrowed on",
   "library_circulation.borrowings.due_at": "Due on",
   "library_circulation.borrowings.returned_at": "Returned on",
@@ -154,11 +144,9 @@
   "library_circulation.borrowing_status.overdue": "Overdue",
   "library_circulation.borrowing_status.lost": "Lost",
   "library_circulation.borrowing_status.cancelled": "Cancelled",
-
   "library_circulation.reader_picker.label": "Reader",
   "library_circulation.reader_picker.no_matches": "No matching readers",
   "library_circulation.reader_picker.type_to_search": "Type a reader's name or code",
-
   "library_circulation.fines.create_button": "Add fine",
   "library_circulation.fines.create_title": "Create a fine",
   "library_circulation.fines.filter_reader": "Reader",
@@ -182,7 +170,6 @@
   "library_circulation.fine_status.paid": "Paid",
   "library_circulation.fine_status.waived": "Waived",
   "library_circulation.fine_status.cancelled": "Cancelled",
-
   "library_circulation.finance.transactions_tab": "Transactions",
   "library_circulation.finance.payments_tab": "Payments",
   "library_circulation.finance.transaction_number": "Transaction #",
@@ -201,12 +188,37 @@
   "library_circulation.finance.clear_filters": "Clear filters",
   "library_circulation.finance.export_excel": "Export to Excel",
   "library_circulation.finance.filtered_total": "Total for filtered records: {{amount}}",
-
   "library_circulation.dashboard.students": "Readers",
   "library_circulation.dashboard.total_copies": "Books",
   "library_circulation.dashboard.available_copies": "Available copies",
   "library_circulation.dashboard.borrowed_copies": "Borrowed copies",
   "library_circulation.dashboard.overdue_borrowings": "Overdue",
   "library_circulation.dashboard.unpaid_fines": "Unpaid fines",
-  "library_circulation.dashboard.paid_fines": "Paid fines"
+  "library_circulation.dashboard.paid_fines": "Paid fines",
+  "library_circulation.perm.students.import": "Import readers from Excel",
+  "library_circulation.perm.students.export": "Export readers to Excel",
+  "library_circulation.students.reader": "Reader",
+  "library_circulation.students.email": "Email",
+  "library_circulation.students.external_id": "External ID",
+  "library_circulation.students.department": "Department",
+  "library_circulation.students.is_active": "Active",
+  "library_circulation.students.must_change_password": "Must change password",
+  "library_circulation.students.status": "Status",
+  "library_circulation.students.reset_password": "Reset password (a new temporary password is shown once)",
+  "library_circulation.students.code_suggested_hint": "Suggested next code — edit it, or leave it to use it as is.",
+  "library_circulation.students.export": "Export",
+  "library_circulation.students.import": "Import",
+  "library_circulation.students.import_title": "Import readers from Excel",
+  "library_circulation.students.import_help": "Columns: Code, Name, Email, Class, External ID, Department, Active. Existing readers are matched by Code, else Email, and updated (blank cells are left unchanged); a blank Code on a new reader gets the next automatic code. Use Export to get a ready template.",
+  "library_circulation.students.import_choose_file": "Choose .xlsx file",
+  "library_circulation.students.import_all_valid": "{{count}} row(s) are valid. Nothing has been saved yet.",
+  "library_circulation.students.import_has_errors": "{{invalid}} row(s) have errors and {{valid}} are valid. Fix the file and upload it again — nothing is imported unless every row is valid.",
+  "library_circulation.students.import_committed": "Imported {{count}} row(s).",
+  "library_circulation.students.import_passwords_note": "New readers got a random temporary password that is not shown. Open a reader's Edit and choose Reset password to issue one.",
+  "library_circulation.students.import_action": "Action",
+  "library_circulation.students.import_action_create": "Create",
+  "library_circulation.students.import_action_update": "Update",
+  "library_circulation.students.import_invalid": "Invalid",
+  "library_circulation.students.import_error": "Error",
+  "library_circulation.students.import_auto_code": "(automatic)"
 }

@@ -7,7 +7,6 @@
   "library_circulation.menu.fines": "الغرامات",
   "library_circulation.menu.finance": "المالية",
   "library_circulation.menu.settings": "الإعدادات",
-
   "library_circulation.perm.students.view": "عرض القراء",
   "library_circulation.perm.students.create": "إضافة قراء",
   "library_circulation.perm.students.update": "تعديل بيانات القراء",
@@ -24,14 +23,12 @@
   "library_circulation.perm.finance.record_payment": "تسجيل المدفوعات",
   "library_circulation.perm.settings.update": "تعديل إعدادات الإعارة",
   "library_circulation.perm.dashboard.view": "عرض لوحة تحكم الإعارة",
-
   "library_circulation.settings.loan_policy_label": "سياسة الإعارة",
   "library_circulation.settings.loan_policy_help": "تُطبَّق على كل إعارة جديدة من الآن فصاعداً — تغيير هذه الإعدادات لا يُغيّر تاريخ استحقاق الكتب المُعارة سابقاً بأثر رجعي.",
   "library_circulation.settings.max_books_per_student": "الحد الأقصى للكتب لكل قارئ",
   "library_circulation.settings.loan_period_days": "مدة الإعارة (أيام)",
   "library_circulation.settings.loan_period_days_help": "تاريخ الإرجاع المتوقع عند الإعارة هو تاريخ اليوم + هذا العدد من الأيام.",
   "library_circulation.settings.fine_per_day": "الغرامة لكل يوم تأخير",
-
   "library_circulation.scan.input_label": "امسح الرمز أو اكتبه",
   "library_circulation.scan.scan_button": "بحث",
   "library_circulation.scan.camera_button": "مسح بالكاميرا",
@@ -69,19 +66,16 @@
   "library_circulation.scan.active_borrowings_title": "الكتب المستعارة حالياً",
   "library_circulation.scan.no_active_borrowings": "لا توجد كتب مستعارة حالياً.",
   "library_circulation.scan.no_open_fines": "لا توجد غرامات مستحقة.",
-
   "library_circulation.book_history.title": "سجل الإعارة",
   "library_circulation.book_history.no_history": "لم يُعَر هذا الكتاب من قبل.",
   "library_circulation.book_history.borrowed_returned": "أُعير {{borrowed}}، وأُعيد {{returned}} ({{status}})",
   "library_circulation.book_history.borrowed_active": "أُعير {{borrowed}} ({{status}})",
-
   "library_circulation.borrow.dialog_title": "إعارة كتاب",
   "library_circulation.borrow.borrow_date": "تاريخ الإعارة",
   "library_circulation.borrow.expected_return_date": "تاريخ الإرجاع المتوقع",
   "library_circulation.borrow.comments": "الملاحظات",
   "library_circulation.borrow.comments_placeholder": "ملاحظات اختيارية (مثل: سبب التمديد)",
   "library_circulation.borrow.current_books_count": "الكتب الحالية",
-
   "library_circulation.return.dialog_title": "إرجاع كتاب",
   "library_circulation.return.borrowed_date": "تاريخ الإعارة",
   "library_circulation.return.expected_return_date": "تاريخ الإرجاع المتوقع",
@@ -97,14 +91,11 @@
   "library_circulation.return.complete_return": "إكمال الإرجاع",
   "library_circulation.return.suggest_fine": "قد تكون هناك حاجة لتسجيل غرامة للكتب {{reason}}",
   "library_circulation.return.add_fine": "إضافة غرامة لهذه الإعادة",
-
   "library_circulation.extend.dialog_title": "تمديد الإعارة",
   "library_circulation.extend.current_due_date": "تاريخ الاستحقاق الحالي",
   "library_circulation.extend.new_due_date": "تاريخ الاستحقاق الجديد",
   "library_circulation.extend.confirm": "تأكيد التمديد",
-
   "library_circulation.books.status": "الحالة",
-
   "library_circulation.students.code": "رمز القارئ",
   "library_circulation.students.name": "الاسم",
   "library_circulation.students.class": "الصف",
@@ -139,7 +130,6 @@
   "library_circulation.students.action_create": "تم إنشاء الحساب",
   "library_circulation.students.action_update": "تم تعديل الحساب",
   "library_circulation.students.action_delete": "تم حذف الحساب",
-
   "library_circulation.borrowings.borrowed_at": "تاريخ الإعارة",
   "library_circulation.borrowings.due_at": "تاريخ الاستحقاق",
   "library_circulation.borrowings.returned_at": "تاريخ الإرجاع",
@@ -154,11 +144,9 @@
   "library_circulation.borrowing_status.overdue": "متأخرة",
   "library_circulation.borrowing_status.lost": "مفقودة",
   "library_circulation.borrowing_status.cancelled": "ملغاة",
-
   "library_circulation.reader_picker.label": "القارئ",
   "library_circulation.reader_picker.no_matches": "لا يوجد قراء مطابقون",
   "library_circulation.reader_picker.type_to_search": "اكتب اسم القارئ أو رمزه",
-
   "library_circulation.fines.create_button": "إضافة غرامة",
   "library_circulation.fines.create_title": "إنشاء غرامة",
   "library_circulation.fines.filter_reader": "القارئ",
@@ -182,7 +170,6 @@
   "library_circulation.fine_status.paid": "مدفوعة",
   "library_circulation.fine_status.waived": "معفاة",
   "library_circulation.fine_status.cancelled": "ملغاة",
-
   "library_circulation.finance.transactions_tab": "المعاملات",
   "library_circulation.finance.payments_tab": "المدفوعات",
   "library_circulation.finance.transaction_number": "رقم المعاملة",
@@ -201,12 +188,37 @@
   "library_circulation.finance.clear_filters": "مسح الفلاتر",
   "library_circulation.finance.export_excel": "تصدير إلى Excel",
   "library_circulation.finance.filtered_total": "إجمالي السجلات المُصفّاة: {{amount}}",
-
   "library_circulation.dashboard.students": "القراء",
   "library_circulation.dashboard.total_copies": "القصص",
   "library_circulation.dashboard.available_copies": "النسخ المتاحة",
   "library_circulation.dashboard.borrowed_copies": "النسخ المستعارة",
   "library_circulation.dashboard.overdue_borrowings": "المتأخرة",
   "library_circulation.dashboard.unpaid_fines": "الغرامات غير المدفوعة",
-  "library_circulation.dashboard.paid_fines": "الغرامات المدفوعة"
+  "library_circulation.dashboard.paid_fines": "الغرامات المدفوعة",
+  "library_circulation.perm.students.import": "استيراد القراء من Excel",
+  "library_circulation.perm.students.export": "تصدير القراء إلى Excel",
+  "library_circulation.students.reader": "القارئ",
+  "library_circulation.students.email": "البريد الإلكتروني",
+  "library_circulation.students.external_id": "المعرّف الخارجي",
+  "library_circulation.students.department": "القسم",
+  "library_circulation.students.is_active": "نشط",
+  "library_circulation.students.must_change_password": "يجب تغيير كلمة المرور",
+  "library_circulation.students.status": "الحالة",
+  "library_circulation.students.reset_password": "إعادة تعيين كلمة المرور (تظهر كلمة مرور مؤقتة جديدة مرة واحدة)",
+  "library_circulation.students.code_suggested_hint": "الرمز التالي المقترح — يمكنك تعديله أو تركه كما هو.",
+  "library_circulation.students.export": "تصدير",
+  "library_circulation.students.import": "استيراد",
+  "library_circulation.students.import_title": "استيراد القراء من Excel",
+  "library_circulation.students.import_help": "الأعمدة: Code, Name, Email, Class, External ID, Department, Active. يُطابَق القراء الحاليون بالرمز ثم بالبريد ويُحدَّثون (الخلايا الفارغة تبقى دون تغيير)؛ والقارئ الجديد بلا رمز يحصل على الرمز التلقائي التالي. استخدم التصدير للحصول على قالب جاهز.",
+  "library_circulation.students.import_choose_file": "اختر ملف ‎.xlsx",
+  "library_circulation.students.import_all_valid": "{{count}} صف صالح. لم يتم حفظ أي شيء بعد.",
+  "library_circulation.students.import_has_errors": "{{invalid}} صف فيه أخطاء و{{valid}} صالح. صحّح الملف وارفعه مجددًا — لا يُستورد شيء ما لم تكن كل الصفوف صالحة.",
+  "library_circulation.students.import_committed": "تم استيراد {{count}} صف.",
+  "library_circulation.students.import_passwords_note": "حصل القراء الجدد على كلمة مرور مؤقتة عشوائية غير معروضة. افتح تعديل القارئ واختر إعادة تعيين كلمة المرور لإصدار واحدة.",
+  "library_circulation.students.import_action": "الإجراء",
+  "library_circulation.students.import_action_create": "إنشاء",
+  "library_circulation.students.import_action_update": "تحديث",
+  "library_circulation.students.import_invalid": "غير صالح",
+  "library_circulation.students.import_error": "الخطأ",
+  "library_circulation.students.import_auto_code": "(تلقائي)"
 }

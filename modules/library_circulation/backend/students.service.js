@@ -47,6 +47,10 @@ const argon2 = __importStar(require("argon2"));
 const node_crypto_1 = require("node:crypto");
 const READER_ROLE_CODE = 'reader';
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+const STUDENT_CODE_PREFIX = 'STU';
+const STUDENT_CODE_DIGITS = 6;
+const STUDENT_CODE_SEQUENCE = 'library_students_code_seq';
+const MAX_CODE_ALLOCATION_ATTEMPTS = 50;
 /**
  * A "student" (§2) is a real, login-capable platform User with the `reader`
  * role (root D41) — this service creates BOTH the user account and the
@@ -83,13 +87,85 @@ let StudentsService = class StudentsService {
      * `userId` rather than a per-row lookup.
      */
     async list() {
+        await this.syncReaderProfiles();
         const students = await this.prisma.libraryStudent.findMany({ orderBy: { createdAt: 'desc' } });
         const userIds = [...new Set(students.map((s) => s.userId))];
         const users = userIds.length
-            ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+            ? await this.prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true },
+            })
             : [];
-        const nameById = new Map(users.map((u) => [u.id, u.name]));
-        return students.map((s) => ({ ...s, name: nameById.get(s.userId) ?? null }));
+        const userById = new Map(users.map((u) => [u.id, u]));
+        return students.map((s) => {
+            const u = userById.get(s.userId);
+            return {
+                ...s,
+                name: u?.name ?? null,
+                email: u?.email ?? null,
+                isActive: u?.isActive ?? true,
+                externalId: u?.externalId ?? null,
+                department: u?.department ?? null,
+            };
+        });
+    }
+    /**
+     * Bug fix (user-reported): a reader who self-registers (core
+     * `AuthService.register()`) gets a platform User with the `reader` role
+     * but no `library_students` row — core knows nothing about this module —
+     * so they never appeared in the Readers list, the search picker or a code
+     * scan. This module can't hook the register call (modules never patch
+     * core), so every read path that must see ALL readers first creates the
+     * missing profile, with the next auto-generated code. One set-based
+     * INSERT; `ON CONFLICT DO NOTHING` makes concurrent callers safe (a code
+     * that collides with a hand-typed one is simply retried on the next call —
+     * the sequence has already moved on).
+     */
+    async syncReaderProfiles() {
+        await this.prisma.$executeRawUnsafe(`INSERT INTO library_students (id, user_id, code, created_at, updated_at)
+       SELECT gen_random_uuid(), u.id,
+              '${STUDENT_CODE_PREFIX}' || lpad(nextval('${STUDENT_CODE_SEQUENCE}')::text, ${STUDENT_CODE_DIGITS}, '0'),
+              now(), now()
+         FROM users u
+        WHERE EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                       WHERE ur.user_id = u.id AND r.code = $1)
+          AND NOT EXISTS (SELECT 1 FROM library_students s WHERE s.user_id = u.id)
+        ORDER BY u.created_at
+       ON CONFLICT DO NOTHING`, READER_ROLE_CODE);
+    }
+    /** Read-only preview of the code the next create WOULD get (does not consume the sequence) — mirrors library_catalog's `peekNextCopyCode()`. */
+    async peekNextCode() {
+        const rows = await this.prisma.$queryRawUnsafe(`SELECT last_value, is_called FROM ${STUDENT_CODE_SEQUENCE}`);
+        const { last_value, is_called } = rows[0];
+        let next = is_called ? last_value + BigInt(1) : last_value;
+        // Skip values a hand-typed code already occupies, so the suggestion is never a guaranteed conflict.
+        for (let i = 0; i < MAX_CODE_ALLOCATION_ATTEMPTS; i++) {
+            const candidate = this.formatCode(next);
+            if (!(await this.prisma.libraryStudent.findUnique({ where: { code: candidate }, select: { id: true } })))
+                return candidate;
+            next += BigInt(1);
+        }
+        return this.formatCode(next);
+    }
+    /** Consumes the sequence; skips any value already taken by a manually-typed code. */
+    async allocateCode(client = this.prisma) {
+        for (let i = 0; i < MAX_CODE_ALLOCATION_ATTEMPTS; i++) {
+            const rows = await client.$queryRawUnsafe(`SELECT nextval('${STUDENT_CODE_SEQUENCE}') AS nextval`);
+            const candidate = this.formatCode(rows[0].nextval);
+            if (!(await client.libraryStudent.findUnique({ where: { code: candidate }, select: { id: true } })))
+                return candidate;
+        }
+        throw new common_1.ConflictException('Could not allocate a free reader code — please type one manually');
+    }
+    /** A manually typed code in the STU<digits> format fast-forwards the sequence past it (never backwards) — same as library_catalog's copy codes. */
+    async reconcileCodeSequence(client, enteredCode) {
+        const match = new RegExp(`^${STUDENT_CODE_PREFIX}(\\d+)$`).exec(enteredCode);
+        if (!match)
+            return;
+        await client.$queryRawUnsafe(`SELECT setval('${STUDENT_CODE_SEQUENCE}', GREATEST($1::bigint, (SELECT last_value FROM ${STUDENT_CODE_SEQUENCE})), true)`, BigInt(match[1]));
+    }
+    formatCode(value) {
+        return `${STUDENT_CODE_PREFIX}${value.toString().padStart(STUDENT_CODE_DIGITS, '0')}`;
     }
     /**
      * Fines page's reader picker (searchable, max 5 shown) and the Scan page's
@@ -102,6 +178,7 @@ let StudentsService = class StudentsService {
         const q = query.trim();
         if (!q)
             return [];
+        await this.syncReaderProfiles();
         const [byCode, matchingUsers] = await Promise.all([
             this.prisma.libraryStudent.findMany({
                 where: { code: { contains: q, mode: 'insensitive' } },
@@ -141,12 +218,13 @@ let StudentsService = class StudentsService {
         return merged.slice(0, limit);
     }
     async count() {
+        await this.syncReaderProfiles();
         return this.prisma.libraryStudent.count();
     }
     async findById(id) {
         const student = await this.getOrThrow(id);
         const [user, activeBorrowingsRaw, openFines, allFines] = await Promise.all([
-            this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true } }),
+            this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true, externalId: true, department: true, mustChangePassword: true } }),
             this.prisma.libraryBorrowing.findMany({
                 where: { studentId: id, status: { in: ['active', 'overdue'] } },
                 orderBy: { borrowedAt: 'desc' },
@@ -169,6 +247,9 @@ let StudentsService = class StudentsService {
             name: user?.name ?? null,
             email: user?.email ?? null,
             isActive: user?.isActive ?? true,
+            externalId: user?.externalId ?? null,
+            department: user?.department ?? null,
+            mustChangePassword: user?.mustChangePassword ?? false,
             activeBorrowingsCount: activeBorrowings.length,
             unpaidFinesTotal,
             paidFinesTotal,
@@ -252,6 +333,12 @@ let StudentsService = class StudentsService {
         code: 'library_circulation.students.code',
         className: 'library_circulation.students.class_name',
         academicYearId: 'library_circulation.students.academic_year',
+        name: 'library_circulation.students.name',
+        email: 'library_circulation.students.email',
+        externalId: 'library_circulation.students.external_id',
+        department: 'library_circulation.students.department',
+        isActive: 'library_circulation.students.is_active',
+        mustChangePassword: 'library_circulation.students.must_change_password',
     };
     describeStudentRowChange(oldValue, newValue) {
         const relevantFields = Object.keys(StudentsService_1.STUDENT_FIELD_LABELS);
@@ -275,12 +362,19 @@ let StudentsService = class StudentsService {
         if (!readerRole) {
             throw new common_1.BadRequestException(`The "${READER_ROLE_CODE}" role does not exist — cannot create a student account`);
         }
+        const requestedCode = dto.code?.trim();
         try {
             const student = await this.prisma.$transaction(async (tx) => {
+                // Blank code -> next incremental one; a typed one is kept and bumps the sequence past itself.
+                const code = requestedCode || (await this.allocateCode(tx));
+                if (requestedCode)
+                    await this.reconcileCodeSequence(tx, requestedCode);
                 const user = await tx.user.create({
                     data: {
                         email: dto.email,
                         name: dto.name,
+                        externalId: dto.externalId || undefined,
+                        department: dto.department || undefined,
                         passwordHash,
                         mustChangePassword: true,
                         createdBy,
@@ -290,7 +384,7 @@ let StudentsService = class StudentsService {
                 const created = await tx.libraryStudent.create({
                     data: {
                         userId: user.id,
-                        code: dto.code,
+                        code,
                         className: dto.className,
                         academicYearId: dto.academicYearId,
                     },
@@ -303,28 +397,87 @@ let StudentsService = class StudentsService {
             throw this.translateUniqueConstraintError(error);
         }
     }
+    /**
+     * Edits the library profile AND the linked platform account (name, email,
+     * external ID, department, active flag, forced-password-change, password
+     * reset) in one transaction — everything core's Edit User offers except
+     * roles. Deactivation is refused for an account that also holds a
+     * non-reader role: that account can be an admin/staff member, and the
+     * last-admin protection lives in core Users, which is where it must be
+     * deactivated.
+     */
     async update(id, dto) {
-        await this.getOrThrow(id);
+        const student = await this.getOrThrow(id);
+        const requestedCode = dto.code?.trim();
+        if (dto.isActive === false) {
+            const otherRoles = await this.prisma.userRole.count({ where: { userId: student.userId, role: { code: { not: READER_ROLE_CODE } } } });
+            if (otherRoles > 0) {
+                throw new common_1.ConflictException('This account also holds other roles — deactivate it from Users instead.');
+            }
+        }
+        let temporaryPassword;
+        const userData = {
+            name: dto.name,
+            email: dto.email,
+            externalId: dto.externalId,
+            department: dto.department,
+            isActive: dto.isActive,
+            mustChangePassword: dto.mustChangePassword,
+        };
+        if (dto.resetPassword) {
+            temporaryPassword = (0, node_crypto_1.randomBytes)(9).toString('base64url');
+            userData.passwordHash = await argon2.hash(temporaryPassword, { type: argon2.argon2id });
+            userData.mustChangePassword = true;
+        }
         try {
-            return await this.prisma.libraryStudent.update({
-                where: { id },
-                data: { code: dto.code, className: dto.className, academicYearId: dto.academicYearId },
+            await this.prisma.$transaction(async (tx) => {
+                if (Object.values(userData).some((v) => v !== undefined)) {
+                    await tx.user.update({ where: { id: student.userId }, data: userData });
+                }
+                if (requestedCode)
+                    await this.reconcileCodeSequence(tx, requestedCode);
+                await tx.libraryStudent.update({
+                    where: { id },
+                    data: {
+                        code: requestedCode,
+                        // Empty string clears the field; undefined leaves it alone.
+                        className: dto.className === undefined ? undefined : dto.className.trim() || null,
+                        academicYearId: dto.academicYearId,
+                    },
+                });
             });
         }
         catch (error) {
             throw this.translateUniqueConstraintError(error);
         }
+        const updated = await this.findProfileWithUser(id);
+        return temporaryPassword ? { ...updated, temporaryPassword } : updated;
+    }
+    /** Profile row joined with the user fields the edit form shows — also what the audit trail records (never the hash). */
+    async findProfileWithUser(id) {
+        const student = await this.getOrThrow(id);
+        const user = await this.prisma.user.findUnique({
+            where: { id: student.userId },
+            select: { name: true, email: true, externalId: true, department: true, isActive: true, mustChangePassword: true },
+        });
+        return { ...student, ...user };
     }
     /** §22: a student with borrowing history can never be deleted. */
     async remove(id) {
-        await this.getOrThrow(id);
+        const student = await this.getOrThrow(id);
         const historyCount = await this.prisma.libraryBorrowing.count({ where: { studentId: id } });
         if (historyCount > 0) {
             throw new common_1.ConflictException('This student has borrowing history and cannot be deleted (§22 — history is permanent).');
         }
-        await this.prisma.libraryStudent.delete({ where: { id } });
+        // The account itself stays (it may own other data) but stops being a reader — otherwise
+        // syncReaderProfiles() would just recreate the profile on the next list.
+        await this.prisma.$transaction(async (tx) => {
+            await tx.libraryStudent.delete({ where: { id } });
+            await tx.userRole.deleteMany({ where: { userId: student.userId, role: { code: READER_ROLE_CODE } } });
+        });
     }
     async findByCode(code) {
+        await this.syncReaderProfiles();
         const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
         if (!student) {
             throw new common_1.NotFoundException(`No student found for code "${code}"`);

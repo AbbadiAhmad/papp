@@ -436,7 +436,13 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     }
     const fineById = new Map(fines.map((f) => [f.id, f]));
 
-    const userIds = [...new Set([...payments.map((p) => p.receivedBy), ...fines.map((f) => f.createdBy)])];
+    // Reader (name + code) each payment's fine belongs to — the payer, which a cashier needs to recognise the row.
+    const students = fines.length
+      ? await this.prisma.libraryStudent.findMany({ where: { id: { in: [...new Set(fines.map((f) => f.studentId))] } } })
+      : [];
+    const studentById = new Map(students.map((st) => [st.id, st]));
+
+    const userIds = [...new Set([...payments.map((p) => p.receivedBy), ...fines.map((f) => f.createdBy), ...students.map((st) => st.userId)])];
     const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
     const nameById = new Map(users.map((u) => [u.id, u.name]));
 
@@ -450,6 +456,8 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
           receivedByName: nameById.get(payment.receivedBy) ?? null,
           fineNumber: fine.fineNumber,
           fineAmount: fine.amount,
+          studentCode: studentById.get(fine.studentId)?.code ?? null,
+          studentName: studentById.has(fine.studentId) ? (nameById.get(studentById.get(fine.studentId)!.userId) ?? null) : null,
           createdBy: fine.createdBy,
           createdByName: nameById.get(fine.createdBy) ?? null,
         };
@@ -469,6 +477,7 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     worksheet.columns = [
       { header: 'payment_number', key: 'paymentNumber', width: 16 },
       { header: 'fine_number', key: 'fineNumber', width: 16 },
+      { header: 'reader', key: 'reader', width: 28 },
       { header: 'amount', key: 'amount', width: 12 },
       { header: 'payment_method', key: 'paymentMethod', width: 14 },
       { header: 'paid_at', key: 'paidAt', width: 18 },
@@ -479,6 +488,7 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
       worksheet.addRow({
         paymentNumber: payment.paymentNumber,
         fineNumber: payment.fineNumber,
+        reader: [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
         amount: payment.amount,
         paymentMethod: payment.paymentMethod,
         paidAt: payment.paidAt.toISOString(),

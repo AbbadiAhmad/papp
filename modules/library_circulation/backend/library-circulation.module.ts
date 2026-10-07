@@ -17,6 +17,7 @@ import { FinesService } from './fines.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { StudentsExcelService } from './students-excel.service';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 
@@ -31,6 +32,7 @@ import { StudentsService } from './students.service';
   controllers: [StudentsController, CirculationController, FinesController, SettingsController, DashboardController],
   providers: [
     StudentsService,
+    StudentsExcelService,
     CirculationService,
     FinesService,
     SettingsService,

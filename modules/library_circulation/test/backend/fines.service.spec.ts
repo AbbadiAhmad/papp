@@ -340,16 +340,24 @@ describe('FinesService', () => {
     it('enriches each payment with receiver/fine-creator names and the fine it belongs to, plus a filtered total', async () => {
       prisma.libraryPayment.findMany.mockResolvedValue([{ id: 'pay-1', transactionId: 'txn-1', receivedBy: 'staff-2', amount: 10, paymentMethod: 'cash', paidAt: new Date() }]);
       prisma.libraryFinancialTransaction.findMany.mockResolvedValue([{ id: 'txn-1', fineId: 'fine-1' }]);
-      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1' })]);
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1', studentId: 'student-1' })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', userId: 'user-reader', code: 'STU000007' }]);
       prisma.user.findMany.mockResolvedValue([
         { id: 'staff-1', name: 'Aisha' },
         { id: 'staff-2', name: 'Omar' },
+        { id: 'user-reader', name: 'Layla' },
       ]);
 
       const result = await service.listPayments({});
 
       expect(result.totalAmount).toBe(10);
-      expect(result.payments[0]).toMatchObject({ receivedByName: 'Omar', createdByName: 'Aisha', fineNumber: fineRow().fineNumber });
+      expect(result.payments[0]).toMatchObject({
+        receivedByName: 'Omar',
+        createdByName: 'Aisha',
+        fineNumber: fineRow().fineNumber,
+        studentName: 'Layla',
+        studentCode: 'STU000007',
+      });
     });
 
     it('returns an empty result without querying payments when receivedByName matches nobody', async () => {

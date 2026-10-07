@@ -16,6 +16,16 @@ export interface LibraryStudent {
   updatedAt: string;
   /** Joined in from the linked platform User (D41: name lives on User, not libraryStudent) — StudentsService.list(). */
   name: string | null;
+  email: string | null;
+  isActive: boolean;
+  externalId: string | null;
+  department: string | null;
+}
+
+/** "Name (CODE)" — the one way every circulation screen identifies a reader. */
+export function readerLabel(name: string | null | undefined, code: string | null | undefined): string {
+  if (name && code) return `${name} (${code})`;
+  return name || code || '—';
 }
 
 /** StudentsService.search() result row — lightweight, for the searchable reader picker. */
@@ -102,12 +112,50 @@ export interface CreatedStudent extends LibraryStudent {
 export interface CreateStudentInput {
   name: string;
   email: string;
-  code: string;
+  /** Blank/omitted -> the server assigns the next incremental code. */
+  code?: string;
   className?: string;
   academicYearId?: string;
+  externalId?: string;
+  department?: string;
 }
 
-export type UpdateStudentInput = Partial<Pick<CreateStudentInput, 'code' | 'className' | 'academicYearId'>>;
+export interface UpdateStudentInput {
+  code?: string;
+  className?: string;
+  academicYearId?: string;
+  name?: string;
+  email?: string;
+  externalId?: string;
+  department?: string;
+  isActive?: boolean;
+  mustChangePassword?: boolean;
+  /** Generates a new temporary password, returned once as `temporaryPassword`. */
+  resetPassword?: boolean;
+}
+
+export type UpdatedStudent = LibraryStudent & { temporaryPassword?: string };
+
+export interface StudentImportRow {
+  row: number;
+  code: string | null;
+  name: string | null;
+  email: string | null;
+  className: string | null;
+  externalId: string | null;
+  department: string | null;
+  isActive: boolean | null;
+  valid: boolean;
+  error: string | null;
+  action: 'create' | 'update' | null;
+}
+
+export interface StudentImportReport {
+  rows: StudentImportRow[];
+  validCount: number;
+  invalidCount: number;
+  allValid: boolean;
+}
 
 export interface LibraryBorrowing {
   id: string;
@@ -127,6 +175,7 @@ export interface CopyCirculationHistoryEntry {
   id: string;
   studentId: string;
   studentCode: string;
+  studentName: string | null;
   borrowedAt: string;
   dueAt: string;
   returnedAt: string | null;
@@ -291,6 +340,8 @@ export interface EnrichedPayment extends LibraryPayment {
   receivedByName: string | null;
   fineNumber: string;
   fineAmount: string;
+  studentCode: string | null;
+  studentName: string | null;
   createdBy: string;
   createdByName: string | null;
 }
@@ -353,7 +404,19 @@ export const libraryCirculationApi = {
   getStudentActionHistory: (id: string) => apiClient.get<StudentActionHistoryEntry[]>(`${BASE}/students/${id}/action-history`).then((r) => r.data),
   createStudent: (dto: CreateStudentInput) => apiClient.post<CreatedStudent>(`${BASE}/students`, dto).then((r) => r.data),
   updateStudent: (id: string, dto: UpdateStudentInput) =>
-    apiClient.patch<LibraryStudent>(`${BASE}/students/${id}`, dto).then((r) => r.data),
+    apiClient.patch<UpdatedStudent>(`${BASE}/students/${id}`, dto).then((r) => r.data),
+  peekNextStudentCode: () => apiClient.get<{ code: string }>(`${BASE}/students/next-code`).then((r) => r.data.code),
+  exportStudents: () => apiClient.get<Blob>(`${BASE}/students/export`, { responseType: 'blob' }).then((r) => r.data),
+  importStudentsPreview: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<StudentImportReport>(`${BASE}/students/import/preview`, form).then((r) => r.data);
+  },
+  importStudentsCommit: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<StudentImportReport>(`${BASE}/students/import`, form).then((r) => r.data);
+  },
   removeStudent: (id: string) => apiClient.delete<void>(`${BASE}/students/${id}`).then((r) => r.data),
 
   // Fines / finance

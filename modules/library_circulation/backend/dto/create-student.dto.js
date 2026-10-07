@@ -18,6 +18,9 @@ const class_validator_1 = require("class-validator");
  * the response so it can be handed to the student; `mustChangePassword` is
  * set so they're forced to pick their own on first login, same as any
  * admin-created account (core UsersService's own pattern).
+ *
+ * `code` is optional: left blank, the next incremental code (STU000001, ...)
+ * is assigned server-side — same behavior as a book copy's QR code.
  */
 class CreateStudentDto {
     name;
@@ -25,6 +28,8 @@ class CreateStudentDto {
     code;
     className;
     academicYearId;
+    externalId;
+    department;
 }
 exports.CreateStudentDto = CreateStudentDto;
 __decorate([
@@ -37,8 +42,8 @@ __decorate([
     __metadata("design:type", String)
 ], CreateStudentDto.prototype, "email", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(1),
     __metadata("design:type", String)
 ], CreateStudentDto.prototype, "code", void 0);
 __decorate([
@@ -51,3 +56,13 @@ __decorate([
     (0, class_validator_1.IsUUID)(),
     __metadata("design:type", String)
 ], CreateStudentDto.prototype, "academicYearId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateStudentDto.prototype, "externalId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateStudentDto.prototype, "department", void 0);

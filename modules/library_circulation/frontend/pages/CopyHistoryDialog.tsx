@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { libraryCirculationApi, type CopyCirculationHistoryEntry } from '../api';
+import { libraryCirculationApi, readerLabel, type CopyCirculationHistoryEntry } from '../api';
 
 /**
  * §4.3 (docs/LIBRARY_IMPROVEMENTS.md) — "last 10 actions" popup for a book
@@ -50,7 +50,7 @@ export function CopyHistoryDialog({ open, copyId, qrCode, onClose }: { open: boo
             {entries.map((entry) => (
               <ListItem key={entry.id} divider>
                 <ListItemText
-                  primary={`${t('library_circulation.students.code')}: ${entry.studentCode}`}
+                  primary={`${t('library_circulation.students.name')}: ${readerLabel(entry.studentName, entry.studentCode)}`}
                   secondary={
                     entry.returnedAt
                       ? t('library_circulation.scan.history_borrowed_returned', {

@@ -434,10 +434,16 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       include: { student: true },
     });
 
+    const readerUsers = borrowings.length
+      ? await this.prisma.user.findMany({ where: { id: { in: [...new Set(borrowings.map((b) => b.student.userId))] } }, select: { id: true, name: true } })
+      : [];
+    const readerNameById = new Map(readerUsers.map((u) => [u.id, u.name]));
+
     return borrowings.map((b) => ({
       id: b.id,
       studentId: b.studentId,
       studentCode: b.student.code,
+      studentName: readerNameById.get(b.student.userId) ?? null,
       borrowedAt: b.borrowedAt,
       dueAt: b.dueAt,
       returnedAt: b.returnedAt,

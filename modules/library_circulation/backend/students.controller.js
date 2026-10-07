@@ -14,15 +14,30 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StudentsController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const create_student_dto_1 = require("./dto/create-student.dto");
 const update_student_dto_1 = require("./dto/update-student.dto");
 const platform_1 = require("./platform");
+const students_excel_service_1 = require("./students-excel.service");
 const students_service_1 = require("./students.service");
-const fetchStudentState = (prisma, req) => prisma.libraryStudent.findUnique({ where: { id: req.params.id } });
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** Profile + the linked account's editable fields (never the password hash) — what the audit trail records for a reader. */
+const fetchStudentState = async (prisma, req) => {
+    const student = await prisma.libraryStudent.findUnique({ where: { id: req.params.id } });
+    if (!student)
+        return null;
+    const user = await prisma.user.findUnique({
+        where: { id: student.userId },
+        select: { name: true, email: true, externalId: true, department: true, isActive: true, mustChangePassword: true },
+    });
+    return { ...student, ...user };
+};
 let StudentsController = class StudentsController {
     students;
-    constructor(students) {
+    excel;
+    constructor(students, excel) {
         this.students = students;
+        this.excel = excel;
     }
     async list() {
         return this.students.list();
@@ -35,6 +50,26 @@ let StudentsController = class StudentsController {
      */
     async search(q) {
         return this.students.search(q ?? '');
+    }
+    /** Suggested next reader code for the Add form (read-only peek; same pattern as library_catalog's `copies/next-code`). Before `:id` for the usual Express ordering reason. */
+    async peekNextCode() {
+        return { code: await this.students.peekNextCode() };
+    }
+    async export(res) {
+        const buffer = await this.excel.exportWorkbook();
+        res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="library-readers-export.xlsx"' });
+        res.send(buffer);
+    }
+    /** Validates only — writes nothing (same preview/commit split as core's users import, D42). */
+    async importPreview(file) {
+        if (!file)
+            throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
+        return this.excel.validateRows(await this.excel.parseWorkbook(file.buffer));
+    }
+    async importCommit(file, user) {
+        if (!file)
+            throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
+        return this.excel.commit(file.buffer, user.userId);
     }
     async findById(id) {
         return this.students.findById(id);
@@ -73,6 +108,43 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "search", null);
+__decorate([
+    (0, common_1.Get)('next-code'),
+    (0, platform_1.RequirePermission)('library_circulation.students.create'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "peekNextCode", null);
+__decorate([
+    (0, common_1.Get)('export'),
+    (0, platform_1.RequirePermission)('library_circulation.students.export'),
+    __param(0, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "export", null);
+__decorate([
+    (0, common_1.Post)('import/preview'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, platform_1.RequirePermission)('library_circulation.students.import'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "importPreview", null);
+__decorate([
+    (0, common_1.Post)('import'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, platform_1.RequirePermission)('library_circulation.students.import'),
+    (0, platform_1.Audit)({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'import' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "importCommit", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),
@@ -130,5 +202,6 @@ __decorate([
 exports.StudentsController = StudentsController = __decorate([
     (0, common_1.Controller)('api/library-circulation/students'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
-    __metadata("design:paramtypes", [students_service_1.StudentsService])
+    __metadata("design:paramtypes", [students_service_1.StudentsService,
+        students_excel_service_1.StudentsExcelService])
 ], StudentsController);

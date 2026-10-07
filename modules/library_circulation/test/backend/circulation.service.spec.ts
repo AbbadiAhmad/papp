@@ -257,7 +257,7 @@ describe('CirculationService', () => {
         {
           id: 'b-1',
           studentId: 'student-1',
-          student: { code: 'STU-001' },
+          student: { code: 'STU-001', userId: 'user-1' },
           bookCopyId: 'copy-1',
           borrowedAt: new Date('2026-09-01'),
           dueAt: new Date('2026-09-15'),
@@ -270,7 +270,7 @@ describe('CirculationService', () => {
         {
           id: 'b-2',
           studentId: 'student-2',
-          student: { code: 'STU-002' },
+          student: { code: 'STU-002', userId: 'user-2' },
           bookCopyId: 'copy-1',
           borrowedAt: new Date('2026-09-10'),
           dueAt: new Date('2026-09-24'),
@@ -282,6 +282,7 @@ describe('CirculationService', () => {
         },
       ];
       prisma.libraryBorrowing.findMany.mockResolvedValue(borrowings);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Aisha' }]);
 
       const result = await service.getCirculationHistory('copy-1');
 
@@ -293,6 +294,8 @@ describe('CirculationService', () => {
       });
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveProperty('studentCode', 'STU-001');
+      expect(result[0]).toHaveProperty('studentName', 'Aisha');
+      expect(result[1]).toHaveProperty('studentName', null);
     });
 
     it('respects the limit parameter when fetching history', async () => {
