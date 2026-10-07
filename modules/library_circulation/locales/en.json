@@ -273,5 +273,10 @@
   "library_circulation.book_picker.status_lost": "Lost",
   "library_circulation.book_picker.status_damaged": "Damaged",
   "library_circulation.book_picker.status_maintenance": "In maintenance",
-  "library_circulation.book_picker.status_reserved": "Reserved"
+  "library_circulation.book_picker.status_reserved": "Reserved",
+  "library_circulation.return.fine_paid_now": "Paid now",
+  "library_circulation.return.fine_left_unpaid": "The fine is recorded as unpaid — it can be paid later from Fines.",
+  "library_circulation.scan.fine_paid_receipt": "Fine {{amount}} paid (receipt {{receipt}}).",
+  "library_circulation.scan.fine_recorded_unpaid": "Fine {{amount}} recorded as unpaid.",
+  "library_circulation.scan.fine_payment_failed": "The return and the fine were saved, but the payment was not recorded: {{reason}}. Record it from Fines."
 }

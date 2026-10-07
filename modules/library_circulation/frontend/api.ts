@@ -330,6 +330,9 @@ export interface ReturnFineInput {
   fineTypeId: string;
   amount: number;
   notes?: string;
+  /** Record the fine AND its full payment in the same request (needs `finance.record_payment`). */
+  paid?: boolean;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface ScanStudentResult {
@@ -429,6 +432,10 @@ export const libraryCirculationApi = {
         daysLate: number;
         lateFine: LibraryFine | null;
         recordedFine: LibraryFine | null;
+        /** Set when the fine was paid in the same request. */
+        finePayment?: { paymentNumber: string; receiptNumber: string; amount: string } | null;
+        /** Set when the fine was created but its payment could not be recorded. */
+        finePaymentError?: string | null;
         damageFine?: { suggested: boolean; reason: string };
       }>(`${BASE}/return`, { borrowingId, returnStatus, returnNotes, returnedAt, fine })
       .then((r) => r.data),

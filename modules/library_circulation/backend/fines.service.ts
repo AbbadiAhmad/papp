@@ -309,6 +309,23 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.libraryFine.update({ where: { id }, data: { status: 'waived' } });
   }
 
+  /**
+   * Creates a fine and, when `payment` is given, immediately records the full amount as paid — the "paid at
+   * the desk" case, one step instead of create-then-pay. If the payment step fails, the fine stays (unpaid) and
+   * the failure is reported in `paymentError` instead of being thrown: the return it belongs to has already
+   * happened, and a thrown error would make the UI think nothing was recorded.
+   */
+  async createWithOptionalPayment(dto: CreateFineDto, createdBy: string, payment: { method: PaymentMethod } | null) {
+    const fine = await this.create(dto, createdBy);
+    if (!payment) return { fine, payment: null, paymentError: null as string | null };
+    try {
+      const paid = await this.recordPayment(fine.id, Number(fine.amount), createdBy, payment.method);
+      return { fine: paid.fine, payment: { ...paid.payment, receiptNumber: paid.receipt.receiptNumber }, paymentError: null as string | null };
+    } catch (error) {
+      return { fine, payment: null, paymentError: error instanceof Error ? error.message : 'Payment could not be recorded' };
+    }
+  }
+
   /** §12-13: creates a payment against the fine's transaction, then a matching receipt. Guards overpayment (§22). */
   async recordPayment(fineId: string, amount: number, receivedBy: string, paymentMethod: PaymentMethod) {
     const fine = await this.getOrThrow(fineId);

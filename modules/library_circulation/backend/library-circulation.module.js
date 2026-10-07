@@ -18,12 +18,15 @@ const common_1 = require("@nestjs/common");
 const notifications_module_1 = require("../../../apps/api/dist/core/notifications/notifications.module");
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
+// eslint-disable-next-line import/no-unresolved
+const permissions_service_1 = require("../../../apps/api/dist/core/permissions/permissions.service");
 const circulation_controller_1 = require("./circulation.controller");
 const circulation_service_1 = require("./circulation.service");
 const dashboard_controller_1 = require("./dashboard.controller");
 const fines_controller_1 = require("./fines.controller");
 const fines_service_1 = require("./fines.service");
 const notifications_sender_1 = require("./notifications-sender");
+const permission_checker_1 = require("./permission-checker");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
 const students_excel_service_1 = require("./students-excel.service");
@@ -49,6 +52,8 @@ exports.LibraryCirculationModule = LibraryCirculationModule = __decorate([
             fines_service_1.FinesService,
             settings_service_1.SettingsService,
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
+            // PermissionsModule is @Global, so the real service is injectable here without importing its module.
+            { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },
         ],
     })
 ], LibraryCirculationModule);

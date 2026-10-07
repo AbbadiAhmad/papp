@@ -273,5 +273,10 @@
   "library_circulation.book_picker.status_lost": "مفقود",
   "library_circulation.book_picker.status_damaged": "تالف",
   "library_circulation.book_picker.status_maintenance": "في الصيانة",
-  "library_circulation.book_picker.status_reserved": "محجوز"
+  "library_circulation.book_picker.status_reserved": "محجوز",
+  "library_circulation.return.fine_paid_now": "تم الدفع الآن",
+  "library_circulation.return.fine_left_unpaid": "ستُسجَّل الغرامة غير مدفوعة — يمكن دفعها لاحقًا من صفحة الغرامات.",
+  "library_circulation.scan.fine_paid_receipt": "غرامة {{amount}} مدفوعة (إيصال {{receipt}}).",
+  "library_circulation.scan.fine_recorded_unpaid": "سُجّلت غرامة {{amount}} غير مدفوعة.",
+  "library_circulation.scan.fine_payment_failed": "تم الإرجاع وحفظ الغرامة، لكن لم يُسجَّل الدفع: {{reason}}. سجّله من صفحة الغرامات."
 }

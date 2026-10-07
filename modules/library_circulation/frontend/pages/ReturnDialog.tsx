@@ -14,14 +14,17 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { formatDate } from '../../../../apps/web/src/shared/format';
-import { libraryCirculationApi, type LibraryBorrowing, type LibraryFineType, type ReturnFineInput, type ReturnStatus } from '../api';
+import { libraryCirculationApi, type LibraryBorrowing, type LibraryFineType, type PaymentMethod, type ReturnFineInput, type ReturnStatus } from '../api';
 
 interface ReturnDialogProps {
   open: boolean;
   borrowing: LibraryBorrowing | null;
   /** The book's title (or qrCode fallback) — ReturnDialog itself never fetches this, the two call sites in ScanPage.tsx already have it either from the scanned bookCopy or the active-borrowings list. */
   bookLabel?: string | null;
+  /** Late-fee rate per day from the loan policy; when > 0 a late return pre-fills a fine for the days late. */
+  finePerDay?: number;
   onReturn: (returnStatus: string, returnNotes?: string, returnedAt?: string, fine?: ReturnFineInput) => Promise<void>;
   onClose: () => void;
   loading?: boolean;
@@ -36,8 +39,11 @@ const RETURN_STATUSES: { value: ReturnStatus; labelKey: string }[] = [
 
 const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
 
-export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, loading = false }: ReturnDialogProps) {
+export function ReturnDialog({ open, borrowing, bookLabel, finePerDay = 0, onReturn, onClose, loading = false }: ReturnDialogProps) {
   const { t, i18n } = useTranslation();
+  const { hasPermission } = useAuth();
+  // Recording a payment is its own permission; without it the fine can only be created unpaid.
+  const canTakePayment = hasPermission('library_circulation.finance.record_payment');
   const [returnStatus, setReturnStatus] = useState<ReturnStatus>('returned');
   const [notes, setNotes] = useState('');
   const [returnedAt, setReturnedAt] = useState('');
@@ -46,6 +52,9 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
   const [fineTypeId, setFineTypeId] = useState('');
   const [fineAmount, setFineAmount] = useState('');
   const [fineNotes, setFineNotes] = useState('');
+  // Most readers pay at the desk, so a fine defaults to "paid now, cash" — untick for an unpaid fine.
+  const [paidNow, setPaidNow] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
 
   const handleOpen = () => {
     if (!borrowing) return;
@@ -56,6 +65,10 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
     setFineTypeId('');
     setFineAmount('');
     setFineNotes('');
+    setPaidNow(true);
+    setPaymentMethod('cash');
+    // A late return with a daily rate starts with the late fine already added — one less thing to remember.
+    setAddFine(finePerDay > 0 && new Date() > new Date(borrowing.dueAt) && Math.ceil((Date.now() - new Date(borrowing.dueAt).getTime()) / 86_400_000) > 0);
     libraryCirculationApi.listFineTypes().then(setFineTypes);
   };
 
@@ -64,7 +77,15 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
   };
 
   const handleReturn = async () => {
-    const fine = addFine && fineTypeId && fineAmount ? { fineTypeId, amount: Number(fineAmount), notes: fineNotes || undefined } : undefined;
+    const fine: ReturnFineInput | undefined =
+      addFine && fineTypeId && fineAmount
+        ? {
+            fineTypeId,
+            amount: Number(fineAmount),
+            notes: fineNotes || undefined,
+            ...(canTakePayment && paidNow ? { paid: true, paymentMethod } : {}),
+          }
+        : undefined;
     await onReturn(returnStatus, notes || undefined, returnedAt || undefined, fine);
     handleClose();
   };
@@ -78,7 +99,7 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
   const handleFineTypeChange = (id: string) => {
     setFineTypeId(id);
     const match = fineTypes.find((ft) => ft.id === id);
-    if (match) setFineAmount(match.defaultAmount);
+    if (match) setFineAmount(defaultAmountFor(match));
   };
 
   const calculateDaysLate = (): number => {
@@ -91,6 +112,10 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
 
   const daysLate = calculateDaysLate();
 
+  /** The late fine's suggested amount is days late x the daily rate; any other type uses its configured default. */
+  const defaultAmountFor = (ft: LibraryFineType): string =>
+    ft.code === 'FINE-LATE' && daysLate > 0 && finePerDay > 0 ? String(daysLate * finePerDay) : ft.defaultAmount;
+
   // Once a return status/fine type is picked, pre-fill a reasonable default
   // amount so the librarian reviews/adjusts rather than types from scratch —
   // matches damage/lost code to the matching seeded fine type, same lookup
@@ -101,7 +126,7 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
     const match = fineTypes.find((ft) => ft.code === matchingCode) ?? fineTypes[0];
     if (match) {
       setFineTypeId(match.id);
-      setFineAmount(match.defaultAmount);
+      setFineAmount(defaultAmountFor(match));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addFine, fineTypes, returnStatus]);
@@ -214,6 +239,33 @@ export function ReturnDialog({ open, borrowing, bookLabel, onReturn, onClose, lo
                       onChange={(e) => setFineAmount(e.target.value)}
                       disabled={loading}
                     />
+                    {canTakePayment ? (
+                      <Stack spacing={1}>
+                        <FormControlLabel
+                          control={<Checkbox checked={paidNow} onChange={(e) => setPaidNow(e.target.checked)} disabled={loading} />}
+                          label={t('library_circulation.return.fine_paid_now')}
+                        />
+                        {paidNow ? (
+                          <TextField
+                            select
+                            label={t('library_circulation.finance.payment_method')}
+                            value={paymentMethod}
+                            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                            disabled={loading}
+                          >
+                            {(['cash', 'card', 'transfer'] as const).map((method) => (
+                              <MenuItem key={method} value={method}>
+                                {t(`library_circulation.finance.payment_method.${method}`)}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            {t('library_circulation.return.fine_left_unpaid')}
+                          </Typography>
+                        )}
+                      </Stack>
+                    ) : null}
                     <TextField
                       label={t('library_circulation.return.notes')}
                       value={fineNotes}

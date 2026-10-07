@@ -113,6 +113,7 @@ export function ScanPage() {
   const [pendingRewards, setPendingRewards] = useState<ReadingClubPendingReward[]>([]);
   const [maxBooks, setMaxBooks] = useState<number | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
+  const [finePerDay, setFinePerDay] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -142,6 +143,7 @@ export function ScanPage() {
       .then((policy) => {
         setMaxBooks(policy.maxBooksPerStudent);
         setLoanPeriodDays(policy.loanPeriodDays);
+        setFinePerDay(Number(policy.finePerDay) || 0);
       })
       .catch(() => undefined); // advisory only — the server enforces the limit on borrow
   }, []);
@@ -429,11 +431,21 @@ export function ScanPage() {
       const result = await gated('library_circulation.return', () =>
         libraryCirculationApi.returnBorrowing(returnTarget.borrowing.id, returnStatus, returnNotes, returnedAt, fine),
       );
-      setMessage(
-        result.daysLate > 0
+      const base =
+        result.daysLate > 0 && !result.recordedFine
           ? t('library_circulation.scan.return_success_late', { days: result.daysLate })
-          : t('library_circulation.scan.return_success'),
-      );
+          : t('library_circulation.scan.return_success');
+      if (result.finePaymentError) {
+        // The return and the fine are saved; only the payment step failed — say so, don't leave it ambiguous.
+        setError(t('library_circulation.scan.fine_payment_failed', { reason: result.finePaymentError }));
+        setMessage(base);
+      } else if (result.recordedFine && result.finePayment) {
+        setMessage(`${base} ${t('library_circulation.scan.fine_paid_receipt', { amount: result.recordedFine.amount, receipt: result.finePayment.receiptNumber })}`);
+      } else if (result.recordedFine) {
+        setMessage(`${base} ${t('library_circulation.scan.fine_recorded_unpaid', { amount: result.recordedFine.amount })}`);
+      } else {
+        setMessage(base);
+      }
       // §6.1: damage/loss suggests a fine but never auto-creates one — the librarian confirms it explicitly.
       if (result.damageFine?.suggested) {
         setDamageFineContext({ studentId: result.borrowing.studentId, borrowingId: result.borrowing.id, reason: result.damageFine.reason });
@@ -894,6 +906,7 @@ export function ScanPage() {
         open={returnTarget !== null}
         borrowing={returnTarget?.borrowing ?? null}
         bookLabel={returnTarget?.label ?? null}
+        finePerDay={finePerDay}
         onReturn={confirmReturn}
         onClose={() => setReturnTarget(null)}
         loading={busy}

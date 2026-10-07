@@ -24,6 +24,13 @@ class ReturnFineDto {
     fineTypeId;
     amount;
     notes;
+    /**
+     * "Paid now": the fine is recorded AND paid in full in this same request (most readers pay at the desk, so
+     * two steps — create, then pay — would just be friction). Requires `finance.record_payment`; the unpaid
+     * default keeps the old behaviour for anyone who doesn't send it.
+     */
+    paid;
+    paymentMethod;
 }
 exports.ReturnFineDto = ReturnFineDto;
 __decorate([
@@ -40,6 +47,16 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], ReturnFineDto.prototype, "notes", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ReturnFineDto.prototype, "paid", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['cash', 'card', 'transfer']),
+    __metadata("design:type", String)
+], ReturnFineDto.prototype, "paymentMethod", void 0);
 class ReturnDto {
     borrowingId;
     returnStatus;
