@@ -41,10 +41,10 @@ import {
   type UpdateStudentInput,
 } from '../api';
 import { QrCodeImage } from './QrCodeImage';
-import { StudentFormDialog } from './StudentFormDialog';
-import { StudentsImportDialog } from './StudentsImportDialog';
+import { ReaderFormDialog } from './ReaderFormDialog';
+import { ReadersImportDialog } from './ReadersImportDialog';
 
-export function StudentsListPage() {
+export function ReadersListPage() {
   const { t } = useTranslation();
   const gated = useGatedCall();
   const { status, data: students, errorMessage, reload } = useGuardedQuery(() =>
@@ -147,7 +147,7 @@ export function StudentsListPage() {
               {(students ?? []).map((student) => (
                 <TableRow key={student.id} hover>
                   <TableCell>
-                    <RouterLink to={`/library-circulation/students/${student.id}`}>{student.code}</RouterLink>
+                    <RouterLink to={`/library-circulation/readers/${student.id}`}>{student.code}</RouterLink>
                   </TableCell>
                   <TableCell>
                     {student.name ?? '—'}
@@ -183,7 +183,7 @@ export function StudentsListPage() {
         </TableContainer>
       </QueryStateGate>
 
-      <StudentFormDialog open={formOpen} student={editingStudent} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
+      <ReaderFormDialog open={formOpen} student={editingStudent} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -195,7 +195,7 @@ export function StudentsListPage() {
         onConfirm={handleDelete}
       />
 
-      <StudentsImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
+      <ReadersImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
 
       <Dialog open={credentials !== null} onClose={() => setCredentials(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('library_circulation.students.created_title')}</DialogTitle>

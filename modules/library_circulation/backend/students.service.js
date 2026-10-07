@@ -392,7 +392,7 @@ let StudentsService = class StudentsService {
         const passwordHash = await argon2.hash(temporaryPassword, { type: argon2.argon2id });
         const readerRole = await this.prisma.role.findUnique({ where: { code: READER_ROLE_CODE } });
         if (!readerRole) {
-            throw new common_1.BadRequestException(`The "${READER_ROLE_CODE}" role does not exist — cannot create a student account`);
+            throw new common_1.BadRequestException(`The "${READER_ROLE_CODE}" role does not exist — cannot create a reader account`);
         }
         const requestedCode = dto.code?.trim();
         try {
@@ -494,12 +494,12 @@ let StudentsService = class StudentsService {
         });
         return { ...student, ...user };
     }
-    /** §22: a student with borrowing history can never be deleted. */
+    /** §22: a reader with borrowing history can never be deleted. */
     async remove(id) {
         const student = await this.getOrThrow(id);
         const historyCount = await this.prisma.libraryBorrowing.count({ where: { studentId: id } });
         if (historyCount > 0) {
-            throw new common_1.ConflictException('This student has borrowing history and cannot be deleted (§22 — history is permanent).');
+            throw new common_1.ConflictException('This reader has borrowing history and cannot be deleted (§22 — history is permanent).');
         }
         // The account itself stays (it may own other data) but stops being a reader — otherwise
         // syncReaderProfiles() would just recreate the profile on the next list.
@@ -512,7 +512,7 @@ let StudentsService = class StudentsService {
         await this.syncReaderProfiles();
         const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
         if (!student) {
-            throw new common_1.NotFoundException(`No student found for code "${code}"`);
+            throw new common_1.NotFoundException(`No reader found for code "${code}"`);
         }
         return student;
     }
@@ -523,14 +523,14 @@ let StudentsService = class StudentsService {
     async getOrThrow(id) {
         const student = await this.prisma.libraryStudent.findUnique({ where: { id } });
         if (!student) {
-            throw new common_1.NotFoundException('Student not found');
+            throw new common_1.NotFoundException('Reader not found');
         }
         return student;
     }
     translateUniqueConstraintError(error) {
         if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
             const target = error.meta?.target?.join(', ') ?? 'field';
-            return new common_1.ConflictException(`A student or user with this ${target} already exists`);
+            return new common_1.ConflictException(`A reader or user with this ${target} already exists`);
         }
         return error;
     }

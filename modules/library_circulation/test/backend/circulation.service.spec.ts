@@ -88,10 +88,15 @@ describe('CirculationService', () => {
       expect(result.type).toBe('book_copy');
     });
 
-    it('404s when the code matches nothing at all', async () => {
+    it('returns a not_found result (not a 404) when the code matches nothing at all', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
       prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
-      await expect(service.scan('NOPE')).rejects.toBeInstanceOf(NotFoundException);
+      expect(await service.scan('NOPE')).toEqual({ type: 'not_found', code: 'NOPE' });
+    });
+
+    it('a reader-style code with no profile is also a not_found result', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      expect(await service.scan('R000999')).toEqual({ type: 'not_found', code: 'R000999' });
     });
   });
 

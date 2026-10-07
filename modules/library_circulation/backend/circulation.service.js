@@ -63,12 +63,12 @@ let CirculationService = CirculationService_1 = class CirculationService {
         const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: code } });
         if (copy)
             return this.scanBookCopy(code);
-        throw new common_1.NotFoundException(`No student or book copy found for code "${code}"`);
+        return { type: 'not_found', code };
     }
     async scanStudent(code) {
         const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
         if (!student)
-            throw new common_1.NotFoundException(`No student found for code "${code}"`);
+            return { type: 'not_found', code };
         const user = await this.prisma.user.findUnique({ where: { id: student.userId } });
         const activeBorrowingsCount = await this.prisma.libraryBorrowing.count({
             where: { studentId: student.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -82,7 +82,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
     async scanBookCopy(qrCode) {
         const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode } });
         if (!copy)
-            throw new common_1.NotFoundException(`No book copy found for code "${qrCode}"`);
+            return { type: 'not_found', code: qrCode };
         const book = await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } });
         const activeBorrowing = await this.prisma.libraryBorrowing.findFirst({
             where: { bookCopyId: copy.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -97,7 +97,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
             this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: bookCopyId } }),
         ]);
         if (!student)
-            throw new common_1.NotFoundException('Student not found');
+            throw new common_1.NotFoundException('Reader not found');
         if (!copy)
             throw new common_1.NotFoundException('Book copy not found');
         // A reader whose role was revoked stays visible for returns, but cannot take out new books.
@@ -112,7 +112,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
             where: { studentId, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
         });
         if (activeCount >= policy.maxBooksPerStudent) {
-            throw new common_1.ConflictException(`This student already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`);
+            throw new common_1.ConflictException(`This reader already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`);
         }
         const dueAt = expectedReturnDate ?? (() => {
             const date = new Date();

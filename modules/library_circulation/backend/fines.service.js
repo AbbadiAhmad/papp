@@ -186,7 +186,7 @@ let FinesService = FinesService_1 = class FinesService {
             this.prisma.libraryFineType.findUnique({ where: { id: dto.fineTypeId } }),
         ]);
         if (!student)
-            throw new common_1.NotFoundException('Student not found');
+            throw new common_1.NotFoundException('Reader not found');
         if (!fineType)
             throw new common_1.NotFoundException('Fine type not found');
         if (!dto.confirmDuplicate) {

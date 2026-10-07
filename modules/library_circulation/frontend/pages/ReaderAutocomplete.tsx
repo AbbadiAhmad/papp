@@ -29,7 +29,10 @@ export function ReaderAutocomplete({ value, onChange, label, disabled, autoFocus
   useEffect(() => {
     const query = inputValue.trim();
     if (!query) {
+      // A previous run may have been cancelled mid-request (its `finally` is skipped when cancelled),
+      // which left `loading` stuck on — clear it here.
       setOptions([]);
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -50,6 +53,7 @@ export function ReaderAutocomplete({ value, onChange, label, disabled, autoFocus
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      setLoading(false);
     };
   }, [inputValue]);
 

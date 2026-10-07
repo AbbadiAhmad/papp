@@ -29,7 +29,7 @@ interface Props {
  * a book copy's code). Edit changes every reader field — profile AND the
  * linked account — except roles, which only core Users manages.
  */
-export function StudentFormDialog({ open, student, onClose, onSubmit }: Props) {
+export function ReaderFormDialog({ open, student, onClose, onSubmit }: Props) {
   const { t } = useTranslation();
   const isEdit = student !== null;
 

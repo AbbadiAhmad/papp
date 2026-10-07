@@ -29,7 +29,7 @@ export function DashboardPage() {
 
   const cards = data
     ? [
-        { label: t('library_circulation.dashboard.students'), value: data.students, color: 'text.primary', to: '/library-circulation/students' },
+        { label: t('library_circulation.dashboard.students'), value: data.students, color: 'text.primary', to: '/library-circulation/readers' },
         { label: t('library_circulation.dashboard.total_copies'), value: data.totalCopies, color: 'text.primary', to: null },
         { label: t('library_circulation.dashboard.available_copies'), value: data.availableCopies, color: 'success.main', to: null },
         {

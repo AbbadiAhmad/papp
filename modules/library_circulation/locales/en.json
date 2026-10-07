@@ -221,5 +221,6 @@
   "library_circulation.students.import_invalid": "Invalid",
   "library_circulation.students.import_error": "Error",
   "library_circulation.students.import_auto_code": "(automatic)",
-  "library_circulation.students.not_reader_anymore": "No longer a reader (book still out)"
+  "library_circulation.students.not_reader_anymore": "No longer a reader (book still out)",
+  "library_circulation.scan.not_found": "No reader or book found for code \"{{code}}\"."
 }

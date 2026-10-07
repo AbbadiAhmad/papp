@@ -8,6 +8,7 @@ import { ReturnDto } from './dto/return.dto';
 import { ScanDto } from './dto/scan.dto';
 import { CirculationService } from './circulation.service';
 import { FinesService } from './fines.service';
+import { StudentsService } from './students.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
 const fetchBorrowingState = (prisma: PrismaClient, req: Request) =>
@@ -25,11 +26,14 @@ export class CirculationController {
   constructor(
     private readonly circulation: CirculationService,
     private readonly fines: FinesService,
+    private readonly readers: StudentsService,
   ) {}
 
   @Post('scan')
   @RequirePermission('library_circulation.borrow')
   async scan(@Body() dto: ScanDto) {
+    // A user who was just given the reader role has no profile/code yet — create it before looking the code up.
+    await this.readers.syncReaderProfiles();
     return this.circulation.scan(dto.code);
   }
 

@@ -296,7 +296,12 @@ export interface ScanBookCopyResult {
   activeBorrowing: LibraryBorrowing | null;
 }
 
-export type ScanResult = ScanStudentResult | ScanBookCopyResult;
+export interface ScanNotFoundResult {
+  type: 'not_found';
+  code: string;
+}
+
+export type ScanResult = ScanStudentResult | ScanBookCopyResult | ScanNotFoundResult;
 
 export interface LoanPolicy {
   maxBooksPerStudent: number;

@@ -205,6 +205,10 @@ export function ScanPage() {
     setBusy(true);
     try {
       const result = await libraryCirculationApi.scan(rawCode.trim());
+      if (result.type === 'not_found') {
+        setError(t('library_circulation.scan.not_found', { code: result.code }));
+        return;
+      }
       if (result.type === 'student') {
         setStudent(result);
       } else {

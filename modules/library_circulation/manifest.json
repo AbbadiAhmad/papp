@@ -126,7 +126,7 @@
       "icon": "Group",
       "parentId": "library_circulation.root",
       "order": 2,
-      "route": "/library-circulation/students",
+      "route": "/library-circulation/readers",
       "requiredPermission": "library_circulation.students.view"
     },
     {
@@ -181,16 +181,16 @@
       "component": "frontend/pages/ScanPage.tsx"
     },
     {
-      "pattern": "/library-circulation/students",
+      "pattern": "/library-circulation/readers",
       "access": "authenticated",
       "requiredPermission": "library_circulation.students.view",
-      "component": "frontend/pages/StudentsListPage.tsx"
+      "component": "frontend/pages/ReadersListPage.tsx"
     },
     {
-      "pattern": "/library-circulation/students/:studentId",
+      "pattern": "/library-circulation/readers/:readerId",
       "access": "authenticated",
       "requiredPermission": "library_circulation.students.view",
-      "component": "frontend/pages/StudentDetailPage.tsx"
+      "component": "frontend/pages/ReaderDetailPage.tsx"
     },
     {
       "pattern": "/library-circulation/borrowings",

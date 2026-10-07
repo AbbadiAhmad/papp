@@ -5,7 +5,18 @@ import { SettingsService } from './settings.service';
 
 const ACTIVE_BORROWING_STATUSES = ['active', 'overdue'] as const;
 
+/**
+ * A code that matches no reader and no book copy is an ordinary outcome of
+ * scanning (typo, unregistered card), not a server error — returned as a
+ * result the page renders, so it never shows up as a failed request.
+ */
+export interface ScanNotFoundResult {
+  type: 'not_found';
+  code: string;
+}
+
 export type ScanResult =
+  | ScanNotFoundResult
   | { type: 'student'; student: Record<string, unknown>; activeBorrowingsCount: number }
   | { type: 'book_copy'; copy: Record<string, unknown>; book: Record<string, unknown> | null; activeBorrowing: Record<string, unknown> | null };
 
@@ -55,12 +66,12 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: code } });
     if (copy) return this.scanBookCopy(code);
 
-    throw new NotFoundException(`No student or book copy found for code "${code}"`);
+    return { type: 'not_found', code };
   }
 
   private async scanStudent(code: string): Promise<ScanResult> {
     const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
-    if (!student) throw new NotFoundException(`No student found for code "${code}"`);
+    if (!student) return { type: 'not_found', code };
     const user = await this.prisma.user.findUnique({ where: { id: student.userId } });
     const activeBorrowingsCount = await this.prisma.libraryBorrowing.count({
       where: { studentId: student.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -74,7 +85,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
 
   private async scanBookCopy(qrCode: string): Promise<ScanResult> {
     const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode } });
-    if (!copy) throw new NotFoundException(`No book copy found for code "${qrCode}"`);
+    if (!copy) return { type: 'not_found', code: qrCode };
     const book = await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } });
     const activeBorrowing = await this.prisma.libraryBorrowing.findFirst({
       where: { bookCopyId: copy.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -96,7 +107,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
       this.prisma.libraryStudent.findUnique({ where: { id: studentId } }),
       this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: bookCopyId } }),
     ]);
-    if (!student) throw new NotFoundException('Student not found');
+    if (!student) throw new NotFoundException('Reader not found');
     if (!copy) throw new NotFoundException('Book copy not found');
     // A reader whose role was revoked stays visible for returns, but cannot take out new books.
     const stillReader = await this.prisma.userRole.count({ where: { userId: student.userId, role: { code: 'reader' } } });
@@ -112,7 +123,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     });
     if (activeCount >= policy.maxBooksPerStudent) {
       throw new ConflictException(
-        `This student already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`,
+        `This reader already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`,
       );
     }
 

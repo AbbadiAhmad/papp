@@ -21,6 +21,7 @@ const return_dto_1 = require("./dto/return.dto");
 const scan_dto_1 = require("./dto/scan.dto");
 const circulation_service_1 = require("./circulation.service");
 const fines_service_1 = require("./fines.service");
+const students_service_1 = require("./students.service");
 const platform_1 = require("./platform");
 const fetchBorrowingState = (prisma, req) => prisma.libraryBorrowing.findUnique({ where: { id: req.body?.borrowingId ?? '' } });
 /**
@@ -32,11 +33,15 @@ const fetchBorrowingState = (prisma, req) => prisma.libraryBorrowing.findUnique(
 let CirculationController = class CirculationController {
     circulation;
     fines;
-    constructor(circulation, fines) {
+    readers;
+    constructor(circulation, fines, readers) {
         this.circulation = circulation;
         this.fines = fines;
+        this.readers = readers;
     }
     async scan(dto) {
+        // A user who was just given the reader role has no profile/code yet — create it before looking the code up.
+        await this.readers.syncReaderProfiles();
         return this.circulation.scan(dto.code);
     }
     async activeBorrowingForCopy(copyId) {
@@ -183,5 +188,6 @@ exports.CirculationController = CirculationController = __decorate([
     (0, common_1.Controller)('api/library-circulation'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
     __metadata("design:paramtypes", [circulation_service_1.CirculationService,
-        fines_service_1.FinesService])
+        fines_service_1.FinesService,
+        students_service_1.StudentsService])
 ], CirculationController);

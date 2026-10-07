@@ -1,3 +1,4 @@
+import { Navigate, useParams } from 'react-router-dom';
 import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/types';
 import { BookHistoryPage } from './pages/BookHistoryPage';
 import { BorrowingsPage } from './pages/BorrowingsPage';
@@ -6,8 +7,13 @@ import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
 import { ScanPage } from './pages/ScanPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { StudentDetailPage } from './pages/StudentDetailPage';
-import { StudentsListPage } from './pages/StudentsListPage';
+import { ReaderDetailPage } from './pages/ReaderDetailPage';
+import { ReadersListPage } from './pages/ReadersListPage';
+
+function LegacyReaderRedirect() {
+  const { readerId } = useParams<{ readerId: string }>();
+  return <Navigate to={`/library-circulation/readers/${readerId ?? ''}`} replace />;
+}
 
 /**
  * The module's `frontend.entry` target (manifest.json). Exports the two
@@ -19,8 +25,11 @@ import { StudentsListPage } from './pages/StudentsListPage';
 export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/dashboard', element: <DashboardPage /> },
   { path: '/library-circulation/scan', element: <ScanPage /> },
-  { path: '/library-circulation/students', element: <StudentsListPage /> },
-  { path: '/library-circulation/students/:studentId', element: <StudentDetailPage /> },
+  { path: '/library-circulation/readers', element: <ReadersListPage /> },
+  { path: '/library-circulation/readers/:readerId', element: <ReaderDetailPage /> },
+  // Old "students" URLs (bookmarks, printed links) keep working.
+  { path: '/library-circulation/students', element: <Navigate to="/library-circulation/readers" replace /> },
+  { path: '/library-circulation/students/:readerId', element: <LegacyReaderRedirect /> },
   { path: '/library-circulation/borrowings', element: <BorrowingsPage /> },
   { path: '/library-circulation/fines', element: <FinesPage /> },
   { path: '/library-circulation/finance', element: <FinancePage /> },

@@ -209,7 +209,7 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
       this.prisma.libraryStudent.findUnique({ where: { id: dto.studentId } }),
       this.prisma.libraryFineType.findUnique({ where: { id: dto.fineTypeId } }),
     ]);
-    if (!student) throw new NotFoundException('Student not found');
+    if (!student) throw new NotFoundException('Reader not found');
     if (!fineType) throw new NotFoundException('Fine type not found');
 
     if (!dto.confirmDuplicate) {

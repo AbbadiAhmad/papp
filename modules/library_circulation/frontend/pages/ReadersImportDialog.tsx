@@ -22,7 +22,7 @@ import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type StudentImportReport } from '../api';
 
 /** Preview first (writes nothing), then commit — the same two-step, all-or-nothing flow as core's Users import (D42). */
-export function StudentsImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
+export function ReadersImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
   const { t } = useTranslation();
   const gated = useGatedCall();
   const inputRef = useRef<HTMLInputElement>(null);

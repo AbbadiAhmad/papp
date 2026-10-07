@@ -400,7 +400,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
 
     const readerRole = await this.prisma.role.findUnique({ where: { code: READER_ROLE_CODE } });
     if (!readerRole) {
-      throw new BadRequestException(`The "${READER_ROLE_CODE}" role does not exist — cannot create a student account`);
+      throw new BadRequestException(`The "${READER_ROLE_CODE}" role does not exist — cannot create a reader account`);
     }
 
     const requestedCode = dto.code?.trim();
@@ -507,12 +507,12 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     return { ...student, ...user };
   }
 
-  /** §22: a student with borrowing history can never be deleted. */
+  /** §22: a reader with borrowing history can never be deleted. */
   async remove(id: string): Promise<void> {
     const student = await this.getOrThrow(id);
     const historyCount = await this.prisma.libraryBorrowing.count({ where: { studentId: id } });
     if (historyCount > 0) {
-      throw new ConflictException('This student has borrowing history and cannot be deleted (§22 — history is permanent).');
+      throw new ConflictException('This reader has borrowing history and cannot be deleted (§22 — history is permanent).');
     }
     // The account itself stays (it may own other data) but stops being a reader — otherwise
     // syncReaderProfiles() would just recreate the profile on the next list.
@@ -526,7 +526,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     await this.syncReaderProfiles();
     const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
     if (!student) {
-      throw new NotFoundException(`No student found for code "${code}"`);
+      throw new NotFoundException(`No reader found for code "${code}"`);
     }
     return student;
   }
@@ -540,7 +540,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
   private async getOrThrow(id: string) {
     const student = await this.prisma.libraryStudent.findUnique({ where: { id } });
     if (!student) {
-      throw new NotFoundException('Student not found');
+      throw new NotFoundException('Reader not found');
     }
     return student;
   }
@@ -548,7 +548,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
   private translateUniqueConstraintError(error: unknown): unknown {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
       const target = (error.meta?.target as string[] | undefined)?.join(', ') ?? 'field';
-      return new ConflictException(`A student or user with this ${target} already exists`);
+      return new ConflictException(`A reader or user with this ${target} already exists`);
     }
     return error;
   }
