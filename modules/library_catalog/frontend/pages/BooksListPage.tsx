@@ -6,7 +6,11 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
+  Chip,
   IconButton,
+  ListItemText,
+  MenuItem,
   Paper,
   Rating,
   Snackbar,
@@ -17,21 +21,33 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
-import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { extractErrorMessage, isForbiddenError } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { downloadBlob, libraryCatalogApi, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
+import { downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 import { BookFormDialog } from './BookFormDialog';
+
+const COPY_STATUS_OPTIONS: BookCopyStatus[] = ['available', 'borrowed', 'damaged', 'lost', 'maintenance', 'reserved'];
+
+const COPY_STATUS_COLOR: Record<BookCopyStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
+  available: 'success',
+  borrowed: 'info',
+  lost: 'error',
+  damaged: 'warning',
+  maintenance: 'default',
+  reserved: 'default',
+};
 
 /**
  * Follows docs/FEATURE_TEMPLATE.md §2's pattern exactly for the parts that
@@ -50,9 +66,40 @@ export function BooksListPage() {
   const { language } = useLanguage();
   const gated = useGatedCall();
   const [search, setSearch] = useState('');
-  const { status, data: books, errorMessage, reload } = useGuardedQuery(() =>
-    libraryCatalogApi.listBooks(search ? { search } : undefined),
-  );
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [copyStatuses, setCopyStatuses] = useState<BookCopyStatus[]>([]);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [books, setBooks] = useState<LibraryBook[] | undefined>(undefined);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const reload = () => setReloadToken((n) => n + 1);
+
+  // Tab 1 is simply the "damaged or lost" preset of the status filter — the filter stays the one source of truth.
+  const needsAttention = copyStatuses.length === 2 && copyStatuses.includes('damaged') && copyStatuses.includes('lost');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    let cancelled = false;
+    libraryCatalogApi
+      .listBooks({ search: debouncedSearch || undefined, copyStatus: copyStatuses })
+      .then((data) => {
+        if (cancelled) return;
+        setBooks(data);
+        setStatus('ready');
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setStatus(isForbiddenError(error) ? 'forbidden' : 'error');
+        setErrorMessage(extractErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, copyStatuses, reloadToken]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<LibraryBook | null>(null);
@@ -109,6 +156,7 @@ export function BooksListPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && reload()}
+            sx={{ minWidth: 220 }}
           />
           <Can permission="library_catalog.books.export">
             <Button startIcon={<DownloadIcon />} onClick={handleExport} variant="outlined">
@@ -123,6 +171,43 @@ export function BooksListPage() {
         </Stack>
       </Stack>
 
+      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+        <Tabs
+          value={needsAttention ? 'attention' : 'all'}
+          onChange={(_e, value) => setCopyStatuses(value === 'attention' ? ['damaged', 'lost'] : [])}
+          aria-label={t('library_catalog.filters.tabs_label')}
+        >
+          <Tab value="all" label={t('library_catalog.filters.tab_all')} />
+          <Tab value="attention" label={t('library_catalog.filters.tab_damaged_lost')} />
+        </Tabs>
+        <TextField
+          select
+          size="small"
+          label={t('library_catalog.filters.copy_status')}
+          value={copyStatuses}
+          onChange={(e) => setCopyStatuses(typeof e.target.value === 'string' ? (e.target.value.split(',') as BookCopyStatus[]) : (e.target.value as BookCopyStatus[]))}
+          sx={{ minWidth: 240 }}
+          slotProps={{
+            select: {
+              multiple: true,
+              renderValue: (selected) =>
+                (selected as BookCopyStatus[]).length === 0
+                  ? t('library_catalog.filters.any_status')
+                  : (selected as BookCopyStatus[]).map((v) => t(`library_catalog.copy_status.${v}`)).join(', '),
+              displayEmpty: true,
+            },
+          }}
+        >
+          {COPY_STATUS_OPTIONS.map((option) => (
+            <MenuItem key={option} value={option}>
+              <Checkbox checked={copyStatuses.includes(option)} size="small" />
+              <ListItemText primary={t(`library_catalog.copy_status.${option}`)} />
+            </MenuItem>
+          ))}
+        </TextField>
+        {copyStatuses.length > 0 ? <Button onClick={() => setCopyStatuses([])}>{t('library_catalog.filters.clear')}</Button> : null}
+      </Stack>
+
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <TableContainer component={Paper}>
           <Table size="small">
@@ -133,11 +218,19 @@ export function BooksListPage() {
                 <TableCell>{t('library_catalog.fields.category')}</TableCell>
                 <TableCell>{t('library_catalog.ratings.title')}</TableCell>
                 <TableCell>{t('library_catalog.fields.total_copies')}</TableCell>
+                <TableCell>{t('library_catalog.filters.copy_status')}</TableCell>
                 <TableCell>{t('library_catalog.fields.created_at')}</TableCell>
                 <TableCell align="right">{t('core.common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
+              {(books ?? []).length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    {t('library_catalog.filters.no_results')}
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {(books ?? []).map((book) => (
                 <TableRow key={book.id} hover>
                   <TableCell>
@@ -161,6 +254,35 @@ export function BooksListPage() {
                   </TableCell>
                   <TableCell>
                     {(book.availableCopies ?? 0)} / {(book.totalCopies ?? 0)}
+                  </TableCell>
+                  <TableCell>
+                    {/* Non-available statuses as coloured counts; with a status filter on, the matching copies by code (each opens the book at that copy). */}
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+                      {(book.matchingCopies ?? []).map((copy) => (
+                        <Chip
+                          key={copy.id}
+                          size="small"
+                          clickable
+                          component={RouterLink}
+                          to={`/library/books/${book.id}?copy=${copy.id}`}
+                          color={COPY_STATUS_COLOR[copy.status]}
+                          label={`${copy.qrCode} · ${t(`library_catalog.copy_status.${copy.status}`)}`}
+                        />
+                      ))}
+                      {!book.matchingCopies
+                        ? (Object.entries(book.copyStatusCounts ?? {}) as [BookCopyStatus, number][])
+                            .filter(([copyStatus]) => copyStatus !== 'available')
+                            .map(([copyStatus, count]) => (
+                              <Chip
+                                key={copyStatus}
+                                size="small"
+                                variant="outlined"
+                                color={COPY_STATUS_COLOR[copyStatus]}
+                                label={`${t(`library_catalog.copy_status.${copyStatus}`)}: ${count}`}
+                              />
+                            ))
+                        : null}
+                    </Stack>
                   </TableCell>
                   <TableCell>{formatDateOnly(book.createdAt, language)}</TableCell>
                   <TableCell align="right">

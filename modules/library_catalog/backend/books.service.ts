@@ -54,10 +54,17 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   async list(query: ListBooksDto) {
     const where: Prisma.LibraryCatalogBookWhereInput = {};
     if (query.search) {
-      where.title = { contains: query.search, mode: 'insensitive' };
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { copies: { some: { qrCode: { contains: query.search, mode: 'insensitive' } } } },
+      ];
     }
     if (query.category) {
       where.category = query.category;
+    }
+    const copyStatuses = (query.copyStatus ?? []) as LibraryCatalogBookCopyStatus[];
+    if (copyStatuses.length > 0) {
+      where.copies = { some: { status: { in: copyStatuses } } };
     }
     const books = await this.prisma.libraryCatalogBook.findMany({
       where,
@@ -82,6 +89,16 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         ...book,
         totalCopies,
         availableCopies,
+        // Per-status tally, so the list can show "1 damaged · 2 lost" without opening the book.
+        copyStatusCounts: book.copies.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.status]: (acc[c.status] ?? 0) + 1 }), {}),
+        // Only when filtering by status: the copies that matched, so each can be opened by its code.
+        matchingCopies:
+          copyStatuses.length > 0
+            ? book.copies
+                .filter((c) => copyStatuses.includes(c.status))
+                .sort((a, b) => a.qrCode.localeCompare(b.qrCode))
+                .map((c) => ({ id: c.id, qrCode: c.qrCode, status: c.status }))
+            : undefined,
         averageRating: ratingAgg?._avg.rating ?? null,
         ratingsCount: ratingAgg?._count.rating ?? 0,
         copies: undefined,

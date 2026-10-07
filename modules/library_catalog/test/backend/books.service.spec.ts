@@ -182,6 +182,7 @@ describe('BooksService', () => {
           ...bookRow(),
           totalCopies: 3,
           availableCopies: 2,
+          copyStatusCounts: { available: 2, borrowed: 1 },
           averageRating: null,
           ratingsCount: 0,
           _count: undefined,
@@ -211,13 +212,49 @@ describe('BooksService', () => {
       expect(result[1]).toMatchObject({ averageRating: null, ratingsCount: 0 });
     });
 
+    it('copyStatus filter keeps only books with a copy in those statuses and returns the matching copies by code', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        {
+          ...bookRow(),
+          _count: { copies: 3 },
+          copies: [
+            copyRow({ id: 'c1', qrCode: 'B000002', status: LibraryCatalogBookCopyStatus.damaged }),
+            copyRow({ id: 'c2', qrCode: 'B000001', status: LibraryCatalogBookCopyStatus.lost }),
+            copyRow({ id: 'c3', qrCode: 'B000003', status: LibraryCatalogBookCopyStatus.available }),
+          ],
+        },
+      ]);
+
+      const result = await service.list({ copyStatus: ['damaged', 'lost'] });
+
+      expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { copies: { some: { status: { in: ['damaged', 'lost'] } } } } }),
+      );
+      expect(result[0].copyStatusCounts).toEqual({ damaged: 1, lost: 1, available: 1 });
+      expect(result[0].matchingCopies).toEqual([
+        { id: 'c2', qrCode: 'B000001', status: 'lost' },
+        { id: 'c1', qrCode: 'B000002', status: 'damaged' },
+      ]);
+    });
+
+    it('no matchingCopies when no status filter is applied', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ ...bookRow(), _count: { copies: 0 }, copies: [] }]);
+      expect((await service.list({}))[0].matchingCopies).toBeUndefined();
+    });
+
     it('filters by search (case-insensitive contains on title) and category when supplied', async () => {
       prisma.libraryCatalogBook.findMany.mockResolvedValue([]);
 
       await service.list({ search: 'kalila', category: 'fiction' });
 
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
-        where: { title: { contains: 'kalila', mode: 'insensitive' }, category: 'fiction' },
+        where: {
+          OR: [
+            { title: { contains: 'kalila', mode: 'insensitive' } },
+            { copies: { some: { qrCode: { contains: 'kalila', mode: 'insensitive' } } } },
+          ],
+          category: 'fiction',
+        },
         orderBy: { title: 'asc' },
         include: {
           _count: { select: { copies: true } },
