@@ -142,6 +142,17 @@ let StudentsService = class StudentsService {
      * the sequence has already moved on).
      */
     async syncReaderProfiles() {
+        try {
+            await this.insertMissingReaderProfiles();
+        }
+        catch (error) {
+            // Best-effort: a failure here (e.g. module migration 006/007 not applied yet, so the code
+            // sequence doesn't exist) must never take down the read that called it — list/search/count/
+            // scan still work for the profiles that already exist.
+            this.logger.error(`Could not create profiles for reader-role users: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    async insertMissingReaderProfiles() {
         await this.prisma.$executeRawUnsafe(`INSERT INTO library_students (id, user_id, code, created_at, updated_at)
        SELECT gen_random_uuid(), u.id,
               '${STUDENT_CODE_PREFIX}' || lpad(nextval('${STUDENT_CODE_SEQUENCE}')::text, ${STUDENT_CODE_DIGITS}, '0'),

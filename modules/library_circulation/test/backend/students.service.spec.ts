@@ -119,6 +119,12 @@ describe('StudentsService', () => {
       expect(roleCode).toBe('reader');
     });
 
+    it('a failing sync (e.g. sequence not migrated yet) never breaks the list', async () => {
+      prisma.$executeRawUnsafe.mockRejectedValueOnce(new Error('relation "library_students_code_seq" does not exist'));
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      await expect(service.list()).resolves.toEqual([]);
+    });
+
     it('search(), count() and findByCode() sync too, so a code scan finds a self-registered reader', async () => {
       prisma.libraryStudent.findMany.mockResolvedValue([]);
       prisma.user.findMany.mockResolvedValue([]);
