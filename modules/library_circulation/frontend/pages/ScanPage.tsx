@@ -13,7 +13,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Grid,
   IconButton,
   List,
@@ -50,6 +49,7 @@ import {
   type StudentSearchResult,
 } from '../api';
 import { readingClubIntegration, type ReadingClubPendingReward } from '../readingClubIntegration';
+import { PanelHeading } from './PanelHeading';
 import { BookCopyAutocomplete } from './BookCopyAutocomplete';
 import { BorrowDialog, type BorrowDialogBook } from './BorrowDialog';
 import { CameraScanDialog } from './CameraScanDialog';
@@ -476,9 +476,7 @@ export function ScanPage() {
         <Grid size={{ xs: 12, md: 5 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Typography variant="overline" color="text.secondary">
-                {t('library_circulation.scan.reader_panel_title')}
-              </Typography>
+              <PanelHeading tone="primary">{t('library_circulation.scan.reader_panel_title')}</PanelHeading>
 
               {!reader ? (
                 <Stack spacing={2} sx={{ mt: 1 }}>
@@ -547,10 +545,9 @@ export function ScanPage() {
                     {t('library_circulation.scan.view_borrow_history')}
                   </Button>
 
-                  <Divider />
-
                   <CollapsibleSection
                     id="scan-fines"
+                    tone={readerFines.length > 0 ? 'error' : 'neutral'}
                     title={t('library_circulation.students.open_fines')}
                     summary={readerSectionsLoading ? undefined : <Chip size="small" color={readerFines.length > 0 ? 'error' : 'default'} label={readerFines.length} />}
                     defaultExpanded={readerFines.length > 0}
@@ -577,11 +574,10 @@ export function ScanPage() {
                     )}
                   </CollapsibleSection>
 
-                  <Divider />
-
                   {/* Past damage / loss: how often, when, and what became of the fine. */}
                   <CollapsibleSection
                     id="scan-incidents"
+                    tone="warning"
                     title={t('library_circulation.scan.incidents_title')}
                     summary={
                       incidents && incidents.items.length > 0 ? (
@@ -647,8 +643,7 @@ export function ScanPage() {
 
                   {pendingRewards.length > 0 ? (
                     <>
-                      <Divider />
-                      <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'warning.main' }}>
+                      <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'warning.main', borderInlineStart: '4px solid', borderInlineStartColor: 'warning.main' }}>
                         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
                           <EmojiEventsIcon color="warning" fontSize="small" />
                           <Typography variant="subtitle2">{t('library_circulation.scan.reading_club_reward_heading')}</Typography>
@@ -684,14 +679,13 @@ export function ScanPage() {
         <Grid size={{ xs: 12, md: 7 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Typography variant="overline" color="text.secondary">
-                {t('library_circulation.scan.books_panel_title')}
-              </Typography>
+              <PanelHeading tone="secondary">{t('library_circulation.scan.books_panel_title')}</PanelHeading>
 
               <Stack spacing={2} sx={{ mt: 1 }}>
                 {/* New books: scan several, borrow them all at once */}
                 <CollapsibleSection
                   id="scan-new-books"
+                  tone="primary"
                   title={t('library_circulation.scan.to_borrow_title')}
                   summary={basket.length > 0 ? <Chip size="small" color="primary" label={basket.length} /> : undefined}
                   defaultExpanded
@@ -818,12 +812,11 @@ export function ScanPage() {
                   </Alert>
                 ) : null}
 
-                {reader ? <Divider /> : null}
-
                 {/* Currently borrowed by the loaded reader */}
                 {reader ? (
                   <CollapsibleSection
                     id="scan-current-loans"
+                    tone="info"
                     title={t('library_circulation.scan.active_borrowings_title')}
                     summary={readerSectionsLoading ? undefined : <Chip size="small" label={activeBorrowings.length} />}
                     defaultExpanded

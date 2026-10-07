@@ -1,5 +1,5 @@
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { Box, ButtonBase, Chip, Collapse, Stack, Typography } from '@mui/material';
+import { alpha, Box, ButtonBase, Chip, Collapse, Stack, Typography } from '@mui/material';
 import { useId, useState } from 'react';
 
 const STORAGE_PREFIX = 'library-circulation.section.';
@@ -30,6 +30,8 @@ interface Props {
   summary?: React.ReactNode;
   /** Used until the user has made their own choice. */
   defaultExpanded?: boolean;
+  /** Accent colour of the section's edge and header tint, so sections read as distinct blocks. */
+  tone?: 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success' | 'neutral';
   children: React.ReactNode;
 }
 
@@ -39,7 +41,7 @@ interface Props {
  * screen-reader-friendly (`aria-expanded`/`aria-controls`), and RTL-safe —
  * the chevron sits at the inline end.
  */
-export function CollapsibleSection({ id, title, summary, defaultExpanded = true, children }: Props) {
+export function CollapsibleSection({ id, title, summary, defaultExpanded = true, tone = 'neutral', children }: Props) {
   const [userChoice, setUserChoice] = useState<boolean | null>(() => readStored(id));
   const expanded = userChoice ?? defaultExpanded;
   const bodyId = useId();
@@ -51,15 +53,43 @@ export function CollapsibleSection({ id, title, summary, defaultExpanded = true,
   };
 
   return (
-    <Box>
+    // A framed block: a thick accent edge at the inline start, a tinted header strip, and a plainly
+    // padded body — so it is obvious where a section begins and where it ends (RTL-safe: inline-start).
+    <Box
+      sx={(theme) => {
+        const accent = tone === 'neutral' ? theme.palette.text.secondary : theme.palette[tone].main;
+        return {
+          border: '1px solid',
+          borderColor: alpha(accent, 0.35),
+          borderInlineStart: `4px solid ${accent}`,
+          borderRadius: 1,
+          overflow: 'hidden',
+          bgcolor: 'background.paper',
+        };
+      }}
+    >
       <ButtonBase
         onClick={toggle}
         aria-expanded={expanded}
         aria-controls={bodyId}
-        sx={{ width: '100%', justifyContent: 'space-between', textAlign: 'start', py: 0.5, borderRadius: 1 }}
+        sx={(theme) => {
+          const accent = tone === 'neutral' ? theme.palette.text.secondary : theme.palette[tone].main;
+          return {
+            width: '100%',
+            justifyContent: 'space-between',
+            textAlign: 'start',
+            px: 1.5,
+            py: 1,
+            bgcolor: alpha(accent, theme.palette.mode === 'dark' ? 0.18 : 0.08),
+            borderBottom: expanded ? '1px solid' : 'none',
+            borderBottomColor: alpha(accent, 0.25),
+            '&:hover': { bgcolor: alpha(accent, theme.palette.mode === 'dark' ? 0.26 : 0.14) },
+            '&.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -2 },
+          };
+        }}
       >
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-          <Typography variant="subtitle2" component="span">
+          <Typography variant="subtitle2" component="span" sx={{ fontWeight: 700 }}>
             {title}
           </Typography>
           {summary !== undefined && summary !== null && summary !== false ? (
@@ -72,7 +102,7 @@ export function CollapsibleSection({ id, title, summary, defaultExpanded = true,
         />
       </ButtonBase>
       <Collapse in={expanded} unmountOnExit={false}>
-        <Box id={bodyId} sx={{ pt: 1 }}>
+        <Box id={bodyId} sx={{ p: 1.5 }}>
           {children}
         </Box>
       </Collapse>
