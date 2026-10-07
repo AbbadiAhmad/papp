@@ -26,6 +26,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { downloadBlob, libraryCirculationApi, type PaymentFilterInput } from '../api';
+import { ReaderLink } from './ReaderLink';
 
 /** §12-13: the finance side's own read views over transactions/payments. Deep reporting/analytics is a documented follow-up (DECISIONS.md). */
 export function FinancePage() {
@@ -190,6 +191,7 @@ function PaymentsTab() {
               <TableRow>
                 <TableCell>{t('library_circulation.finance.payment_number')}</TableCell>
                 <TableCell>{t('library_circulation.fines.fine_number')}</TableCell>
+                <TableCell>{t('library_circulation.students.reader')}</TableCell>
                 <TableCell>{t('library_circulation.fines.amount')}</TableCell>
                 <TableCell>{t('library_circulation.finance.payment_method')}</TableCell>
                 <TableCell>{t('library_circulation.finance.paid_at')}</TableCell>
@@ -202,6 +204,7 @@ function PaymentsTab() {
                 <TableRow key={payment.id}>
                   <TableCell>{payment.paymentNumber}</TableCell>
                   <TableCell>{payment.fineNumber}</TableCell>
+                  <TableCell><ReaderLink readerId={payment.studentId} name={payment.studentName} code={payment.studentCode} /></TableCell>
                   <TableCell>{payment.amount}</TableCell>
                   <TableCell>{t(`library_circulation.finance.payment_method.${payment.paymentMethod}`)}</TableCell>
                   <TableCell>{formatDateTime(payment.paidAt, language)}</TableCell>

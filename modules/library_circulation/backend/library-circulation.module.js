@@ -18,14 +18,18 @@ const common_1 = require("@nestjs/common");
 const notifications_module_1 = require("../../../apps/api/dist/core/notifications/notifications.module");
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
+// eslint-disable-next-line import/no-unresolved
+const permissions_service_1 = require("../../../apps/api/dist/core/permissions/permissions.service");
 const circulation_controller_1 = require("./circulation.controller");
 const circulation_service_1 = require("./circulation.service");
 const dashboard_controller_1 = require("./dashboard.controller");
 const fines_controller_1 = require("./fines.controller");
 const fines_service_1 = require("./fines.service");
 const notifications_sender_1 = require("./notifications-sender");
+const permission_checker_1 = require("./permission-checker");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
+const students_excel_service_1 = require("./students-excel.service");
 const students_controller_1 = require("./students.controller");
 const students_service_1 = require("./students.service");
 /**
@@ -43,10 +47,13 @@ exports.LibraryCirculationModule = LibraryCirculationModule = __decorate([
         controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController, dashboard_controller_1.DashboardController],
         providers: [
             students_service_1.StudentsService,
+            students_excel_service_1.StudentsExcelService,
             circulation_service_1.CirculationService,
             fines_service_1.FinesService,
             settings_service_1.SettingsService,
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
+            // PermissionsModule is @Global, so the real service is injectable here without importing its module.
+            { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },
         ],
     })
 ], LibraryCirculationModule);

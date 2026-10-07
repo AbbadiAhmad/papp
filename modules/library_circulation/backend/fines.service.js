@@ -186,7 +186,7 @@ let FinesService = FinesService_1 = class FinesService {
             this.prisma.libraryFineType.findUnique({ where: { id: dto.fineTypeId } }),
         ]);
         if (!student)
-            throw new common_1.NotFoundException('Student not found');
+            throw new common_1.NotFoundException('Reader not found');
         if (!fineType)
             throw new common_1.NotFoundException('Fine type not found');
         if (!dto.confirmDuplicate) {
@@ -278,6 +278,24 @@ let FinesService = FinesService_1 = class FinesService {
             throw new common_1.ConflictException('A fully paid fine cannot be waived.');
         }
         return this.prisma.libraryFine.update({ where: { id }, data: { status: 'waived' } });
+    }
+    /**
+     * Creates a fine and, when `payment` is given, immediately records the full amount as paid — the "paid at
+     * the desk" case, one step instead of create-then-pay. If the payment step fails, the fine stays (unpaid) and
+     * the failure is reported in `paymentError` instead of being thrown: the return it belongs to has already
+     * happened, and a thrown error would make the UI think nothing was recorded.
+     */
+    async createWithOptionalPayment(dto, createdBy, payment) {
+        const fine = await this.create(dto, createdBy);
+        if (!payment)
+            return { fine, payment: null, paymentError: null };
+        try {
+            const paid = await this.recordPayment(fine.id, Number(fine.amount), createdBy, payment.method);
+            return { fine: paid.fine, payment: { ...paid.payment, receiptNumber: paid.receipt.receiptNumber }, paymentError: null };
+        }
+        catch (error) {
+            return { fine, payment: null, paymentError: error instanceof Error ? error.message : 'Payment could not be recorded' };
+        }
     }
     /** §12-13: creates a payment against the fine's transaction, then a matching receipt. Guards overpayment (§22). */
     async recordPayment(fineId, amount, receivedBy, paymentMethod) {
@@ -395,7 +413,12 @@ let FinesService = FinesService_1 = class FinesService {
             fines = fines.filter((f) => creatorIds.has(f.createdBy));
         }
         const fineById = new Map(fines.map((f) => [f.id, f]));
-        const userIds = [...new Set([...payments.map((p) => p.receivedBy), ...fines.map((f) => f.createdBy)])];
+        // Reader (name + code) each payment's fine belongs to — the payer, which a cashier needs to recognise the row.
+        const students = fines.length
+            ? await this.prisma.libraryStudent.findMany({ where: { id: { in: [...new Set(fines.map((f) => f.studentId))] } } })
+            : [];
+        const studentById = new Map(students.map((st) => [st.id, st]));
+        const userIds = [...new Set([...payments.map((p) => p.receivedBy), ...fines.map((f) => f.createdBy), ...students.map((st) => st.userId)])];
         const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
         const nameById = new Map(users.map((u) => [u.id, u.name]));
         const enriched = payments
@@ -409,6 +432,9 @@ let FinesService = FinesService_1 = class FinesService {
                 receivedByName: nameById.get(payment.receivedBy) ?? null,
                 fineNumber: fine.fineNumber,
                 fineAmount: fine.amount,
+                studentId: fine.studentId,
+                studentCode: studentById.get(fine.studentId)?.code ?? null,
+                studentName: studentById.has(fine.studentId) ? (nameById.get(studentById.get(fine.studentId).userId) ?? null) : null,
                 createdBy: fine.createdBy,
                 createdByName: nameById.get(fine.createdBy) ?? null,
             };
@@ -425,6 +451,7 @@ let FinesService = FinesService_1 = class FinesService {
         worksheet.columns = [
             { header: 'payment_number', key: 'paymentNumber', width: 16 },
             { header: 'fine_number', key: 'fineNumber', width: 16 },
+            { header: 'reader', key: 'reader', width: 28 },
             { header: 'amount', key: 'amount', width: 12 },
             { header: 'payment_method', key: 'paymentMethod', width: 14 },
             { header: 'paid_at', key: 'paidAt', width: 18 },
@@ -435,6 +462,7 @@ let FinesService = FinesService_1 = class FinesService {
             worksheet.addRow({
                 paymentNumber: payment.paymentNumber,
                 fineNumber: payment.fineNumber,
+                reader: [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
                 amount: payment.amount,
                 paymentMethod: payment.paymentMethod,
                 paidAt: payment.paidAt.toISOString(),

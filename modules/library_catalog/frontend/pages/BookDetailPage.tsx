@@ -32,7 +32,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link as RouterLink, useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
@@ -66,6 +66,9 @@ const COPY_STATUS_COLOR: Record<BookCopyStatus, 'success' | 'info' | 'error' | '
 
 export function BookDetailPage() {
   const { bookId } = useParams<{ bookId: string }>();
+  // `?copy=<id>` (from the books list's damaged/lost view) highlights that copy's row and scrolls it into view.
+  const [searchParams] = useSearchParams();
+  const highlightedCopyId = searchParams.get('copy');
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
@@ -354,7 +357,13 @@ export function BookDetailPage() {
                 </TableHead>
                 <TableBody>
                   {(book.copies ?? []).map((copy) => (
-                    <TableRow key={copy.id} hover>
+                    <TableRow
+                      key={copy.id}
+                      hover
+                      selected={copy.id === highlightedCopyId}
+                      ref={copy.id === highlightedCopyId ? (el) => el?.scrollIntoView?.({ block: 'center' }) : undefined}
+                      sx={copy.id === highlightedCopyId ? { outline: '2px solid', outlineColor: 'warning.main', outlineOffset: -2 } : undefined}
+                    >
                       <TableCell>{copy.qrCode}</TableCell>
                       <TableCell>
                         <Chip

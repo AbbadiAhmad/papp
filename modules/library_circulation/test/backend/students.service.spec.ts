@@ -4,30 +4,34 @@ import { Prisma } from '@prisma/client';
 import { StudentsService } from '../../backend/students.service';
 
 interface MockPrisma {
-  user: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
+  user: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
   role: { findUnique: jest.Mock };
-  userRole: { create: jest.Mock };
+  userRole: { create: jest.Mock; count: jest.Mock; deleteMany: jest.Mock; findMany: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock; count: jest.Mock };
-  libraryBorrowing: { findMany: jest.Mock; count: jest.Mock };
+  libraryBorrowing: { findMany: jest.Mock; count: jest.Mock; groupBy: jest.Mock };
   libraryFine: { findMany: jest.Mock };
   libraryCatalogBookCopy: { findMany: jest.Mock };
   libraryCatalogBook: { findMany: jest.Mock };
   auditLog: { findMany: jest.Mock };
   $transaction: jest.Mock;
+  $executeRawUnsafe: jest.Mock;
+  $queryRawUnsafe: jest.Mock;
 }
 
 function createMockPrisma(): MockPrisma {
   const prisma: MockPrisma = {
-    user: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+    user: { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
     role: { findUnique: jest.fn() },
-    userRole: { create: jest.fn() },
+    userRole: { create: jest.fn(), count: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn(async () => [{ userId: 'user-1' }]) },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    libraryBorrowing: { findMany: jest.fn(), count: jest.fn() },
+    libraryBorrowing: { findMany: jest.fn(), count: jest.fn(), groupBy: jest.fn(async () => []) },
     libraryFine: { findMany: jest.fn() },
     libraryCatalogBookCopy: { findMany: jest.fn() },
     libraryCatalogBook: { findMany: jest.fn() },
     auditLog: { findMany: jest.fn() },
     $transaction: jest.fn(),
+    $executeRawUnsafe: jest.fn(),
+    $queryRawUnsafe: jest.fn(),
   };
   // Every test below runs a single top-level $transaction — hand it the SAME mock prisma as `tx`.
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
@@ -104,6 +108,278 @@ describe('StudentsService', () => {
     });
   });
 
+  describe('self-registered readers (bug fix)', () => {
+    it('list() first creates a profile for every reader-role user that has none', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      await service.list();
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+      const [sql, roleCode] = prisma.$executeRawUnsafe.mock.calls[0] as [string, string];
+      expect(sql).toContain('INSERT INTO library_students');
+      expect(sql).toContain('ON CONFLICT DO NOTHING');
+      expect(roleCode).toBe('reader');
+    });
+
+    it('a failing sync (e.g. sequence not migrated yet) never breaks the list', async () => {
+      prisma.$executeRawUnsafe.mockRejectedValueOnce(new Error('relation "library_students_code_seq" does not exist'));
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      await expect(service.list()).resolves.toEqual([]);
+    });
+
+    it('search(), count() and findByCode() sync too, so a code scan finds a self-registered reader', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.libraryStudent.count.mockResolvedValue(0);
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      await service.search('ai');
+      await service.count();
+      await service.findByCode('STU-001');
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('reader list follows the platform users', () => {
+    it('lists users who currently hold the reader role, plus anyone with a book still out', async () => {
+      prisma.libraryStudent.findMany.mockResolvedValue([]);
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      await service.list();
+      expect(prisma.userRole.findMany).toHaveBeenCalledWith({ where: { role: { code: 'reader' } }, select: { userId: true } });
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { OR: [{ userId: { in: ['user-1', 'user-2'] } }, { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }] },
+        }),
+      );
+    });
+
+    it('flags a kept-visible reader whose role was revoked with isReader: false', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([
+        studentRow({ id: 's1', userId: 'user-1' }),
+        studentRow({ id: 's2', userId: 'user-2', code: 'R2' }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([]);
+      const result = await service.list();
+      expect(result.map((r) => r.isReader)).toEqual([true, false]);
+    });
+
+    it('adds each reader\'s current (active + overdue) borrowed-book count in one grouped query', async () => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      prisma.libraryStudent.findMany.mockResolvedValue([
+        studentRow({ id: 's1', userId: 'user-1' }),
+        studentRow({ id: 's2', userId: 'user-2', code: 'R2' }),
+      ]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.libraryBorrowing.groupBy.mockResolvedValue([{ studentId: 's1', _count: { _all: 3 } }]);
+
+      const result = await service.list();
+
+      expect(prisma.libraryBorrowing.groupBy).toHaveBeenCalledTimes(1);
+      expect(prisma.libraryBorrowing.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { studentId: { in: ['s1', 's2'] }, status: { in: ['active', 'overdue'] } } }),
+      );
+      expect(result.map((r) => r.activeBorrowingsCount)).toEqual([3, 0]);
+    });
+
+    it('count() uses the same visibility rule as the list', async () => {
+      prisma.libraryStudent.count.mockResolvedValue(3);
+      expect(await service.count()).toBe(3);
+      expect(prisma.libraryStudent.count).toHaveBeenCalledWith({ where: expect.objectContaining({ OR: expect.any(Array) }) });
+    });
+  });
+
+  describe('listPaged (Readers table)', () => {
+    beforeEach(() => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.libraryStudent.count.mockResolvedValue(57);
+      prisma.libraryStudent.findMany.mockResolvedValue([studentRow()]);
+      // The page query is sent as [count, findMany] in one transaction.
+      prisma.$transaction.mockImplementation((arg: unknown) => (Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => unknown)(prisma)));
+    });
+    const lastWhere = () => (prisma.libraryStudent.count.mock.calls.at(-1)![0] as { where: { AND: Record<string, unknown>[] } }).where.AND;
+
+    it('returns the filtered total with the requested page slice', async () => {
+      const result = await service.listPaged({ page: 3, pageSize: 10 });
+      expect(result).toMatchObject({ total: 57, page: 3, pageSize: 10 });
+      expect(result.items).toHaveLength(1);
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
+    });
+
+    it('defaults to page 1 of 25, newest first, with a stable id tiebreaker', async () => {
+      await service.listPaged({});
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 0, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
+      );
+    });
+
+    it('the same where clause drives count and rows (so total always matches the filter)', async () => {
+      await service.listPaged({ borrowing: 'out' });
+      const countWhere = (prisma.libraryStudent.count.mock.calls.at(-1)![0] as { where: unknown }).where;
+      const rowsWhere = (prisma.libraryStudent.findMany.mock.calls.at(-1)![0] as { where: unknown }).where;
+      expect(rowsWhere).toEqual(countWhere);
+    });
+
+    it('free text searches code/class and the linked account (name, email, ID, department)', async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-9' }]);
+      await service.listPaged({ q: ' lay ' });
+      const textClause = lastWhere()[1] as { OR: unknown[] };
+      expect(textClause.OR).toEqual([
+        { code: { contains: 'lay', mode: 'insensitive' } },
+        { className: { contains: 'lay', mode: 'insensitive' } },
+        { userId: { in: ['user-9'] } },
+      ]);
+    });
+
+    it('status filters use the account\'s isActive flag', async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-off' }]);
+      await service.listPaged({ status: 'inactive' });
+      expect(lastWhere()[1]).toEqual({ userId: { in: ['user-off'] } });
+      await service.listPaged({ status: 'active' });
+      expect(lastWhere()[1]).toEqual({ userId: { notIn: ['user-off'] } });
+    });
+
+    it.each([
+      ['out', { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }],
+      ['none', { borrowings: { none: { status: { in: ['active', 'overdue'] } } } }],
+    ])('borrowing=%s filter', async (borrowing, clause) => {
+      await service.listPaged({ borrowing: borrowing as 'out' | 'none' });
+      expect(lastWhere()[1]).toEqual(clause);
+    });
+
+    it('borrowing=overdue also counts active loans already past their due date', async () => {
+      await service.listPaged({ borrowing: 'overdue' });
+      const some = (lastWhere()[1] as { borrowings: { some: { OR: unknown[] } } }).borrowings.some;
+      expect(some.OR).toEqual([{ status: 'overdue' }, { status: 'active', dueAt: { lt: expect.any(Date) } }]);
+    });
+
+    it('sorts by the requested column and direction', async () => {
+      await service.listPaged({ sortBy: 'code', sortDir: 'desc' });
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ code: 'desc' }, { id: 'asc' }] }));
+    });
+  });
+
+  describe('getIncidents (damage / loss history)', () => {
+    beforeEach(() => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'c1', bookId: 'bk1', qrCode: 'B000001' }, { id: 'c2', bookId: 'bk1', qrCode: 'B000002' }]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'bk1', title: 'Dune', readingLevel: null, category: null }]);
+      prisma.libraryFine = { findMany: jest.fn() } as never;
+    });
+
+    it('counts damaged and lost returns, newest first, each with the fine charged (or none)', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([
+        { id: 'b2', bookCopyId: 'c2', status: 'lost', returnStatus: 'lost', returnedAt: new Date('2026-09-10'), borrowedAt: new Date('2026-08-01'), returnNotes: null },
+        { id: 'b1', bookCopyId: 'c1', status: 'returned', returnStatus: 'damaged', returnedAt: new Date('2026-06-01'), borrowedAt: new Date('2026-05-01'), returnNotes: 'torn cover' },
+      ]);
+      prisma.libraryFine.findMany.mockResolvedValue([{ id: 'f1', borrowingId: 'b1', fineNumber: 'FINE-1', amount: '5.00', amountPaid: '0', status: 'unpaid' }]);
+
+      const result = await service.getIncidents('student-1');
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { studentId: 'student-1', OR: [{ returnStatus: { in: ['damaged', 'lost'] } }, { status: 'lost' }] } }),
+      );
+      expect(result).toMatchObject({ damagedCount: 1, lostCount: 1, lastIncidentAt: new Date('2026-09-10') });
+      expect(result.items.map((i) => [i.kind, i.bookTitle, i.fines.length])).toEqual([['lost', 'Dune', 0], ['damaged', 'Dune', 1]]);
+      expect(result.items[1].fines[0]).toMatchObject({ fineNumber: 'FINE-1', status: 'unpaid' });
+    });
+
+    it('a reader with a clean record gets zero counts and no queries for fines', async () => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+      expect(await service.getIncidents('student-1')).toEqual({ damagedCount: 0, lostCount: 0, lastIncidentAt: null, items: [] });
+      expect(prisma.libraryFine.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('automatic reader codes', () => {
+    it('create() without a code takes the next sequence value, formatted R + 6 digits', async () => {
+      prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });
+      prisma.user.create.mockResolvedValue({ id: 'user-1', name: 'Aisha', email: 'a@b.test' });
+      prisma.userRole.create.mockResolvedValue({});
+      prisma.libraryStudent.findUnique.mockResolvedValue(null); // generated code is free
+      prisma.$queryRawUnsafe.mockResolvedValue([{ nextval: BigInt(42) }]);
+      prisma.libraryStudent.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => studentRow(data));
+
+      const result = await service.create({ name: 'Aisha', email: 'a@b.test' }, 'admin-1');
+
+      expect(result.code).toBe('R000042');
+    });
+
+    it('create() with a typed R-format code keeps it and fast-forwards the sequence past it', async () => {
+      prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });
+      prisma.user.create.mockResolvedValue({ id: 'user-1', name: 'Aisha', email: 'a@b.test' });
+      prisma.userRole.create.mockResolvedValue({});
+      prisma.libraryStudent.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => studentRow(data));
+
+      const result = await service.create({ name: 'Aisha', email: 'a@b.test', code: 'R000100' }, 'admin-1');
+
+      expect(result.code).toBe('R000100');
+      const [sql, value] = prisma.$queryRawUnsafe.mock.calls[0] as [string, bigint];
+      expect(sql).toContain('setval');
+      expect(value).toBe(BigInt(100));
+    });
+
+    it('skips a sequence value that a hand-typed code already occupies', async () => {
+      prisma.$queryRawUnsafe.mockResolvedValueOnce([{ nextval: BigInt(5) }]).mockResolvedValueOnce([{ nextval: BigInt(6) }]);
+      prisma.libraryStudent.findUnique.mockResolvedValueOnce({ id: 'taken' }).mockResolvedValueOnce(null);
+      expect(await service.allocateCode()).toBe('R000006');
+    });
+
+    it('peekNextCode() reads the sequence without consuming it', async () => {
+      prisma.$queryRawUnsafe.mockResolvedValue([{ last_value: BigInt(9), is_called: true }]);
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      expect(await service.peekNextCode()).toBe('R000010');
+      expect(prisma.$queryRawUnsafe.mock.calls[0][0]).not.toContain('nextval');
+    });
+
+    it('a typed code outside the R<digits> format leaves the sequence alone', async () => {
+      await service.reconcileCodeSequence(prisma, 'LEGACY-7');
+      expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update (full reader edit, no roles)', () => {
+    beforeEach(() => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.user.findUnique.mockResolvedValue({ name: 'Aisha', email: 'a@b.test' });
+      prisma.userRole.count.mockResolvedValue(0);
+    });
+
+    it('updates the linked account and the profile in one transaction', async () => {
+      await service.update('student-1', { name: 'Aisha K', email: 'new@b.test', department: 'Science', code: 'STU-009', className: '' });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: expect.objectContaining({ name: 'Aisha K', email: 'new@b.test', department: 'Science' }),
+      });
+      expect(prisma.libraryStudent.update).toHaveBeenCalledWith({
+        where: { id: 'student-1' },
+        data: { code: 'STU-009', className: null, academicYearId: undefined },
+      });
+      expect(prisma.userRole.create).not.toHaveBeenCalled(); // never touches roles
+    });
+
+    it('resetPassword issues a hashed temporary password, forces a change, and returns it once', async () => {
+      const result = (await service.update('student-1', { resetPassword: true })) as { temporaryPassword?: string };
+
+      expect(result.temporaryPassword).toBeTruthy();
+      const data = (prisma.user.update.mock.calls[0][0] as { data: { passwordHash: string; mustChangePassword: boolean } }).data;
+      expect(data.mustChangePassword).toBe(true);
+      expect(data.passwordHash).not.toBe(result.temporaryPassword);
+    });
+
+    it('refuses to deactivate an account that also holds a non-reader role', async () => {
+      prisma.userRole.count.mockResolvedValue(1);
+      await expect(service.update('student-1', { isActive: false })).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('translates a duplicate email into a ConflictException', async () => {
+      prisma.user.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '6.0.0', meta: { target: ['email'] } }),
+      );
+      await expect(service.update('student-1', { email: 'dup@b.test' })).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
   describe('remove', () => {
     it('deletes a student with no borrowing history', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
@@ -112,6 +388,8 @@ describe('StudentsService', () => {
 
       await service.remove('student-1');
       expect(prisma.libraryStudent.delete).toHaveBeenCalledWith({ where: { id: 'student-1' } });
+      // The account stops being a reader, or syncReaderProfiles() would resurrect the profile.
+      expect(prisma.userRole.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1', role: { code: 'reader' } } });
     });
 
     it('§22: refuses to delete a student who has borrowing history', async () => {
@@ -265,16 +543,19 @@ describe('StudentsService', () => {
         studentRow({ id: 'student-2', userId: 'user-2', code: 'STU-002' }),
       ]);
       prisma.user.findMany.mockResolvedValue([
-        { id: 'user-1', name: 'Aisha' },
-        { id: 'user-2', name: 'Omar' },
+        { id: 'user-1', name: 'Aisha', email: 'aisha@school.test', isActive: true, externalId: null, department: null },
+        { id: 'user-2', name: 'Omar', email: 'omar@school.test', isActive: false, externalId: null, department: null },
       ]);
 
       const result = await service.list();
 
-      expect(prisma.user.findMany).toHaveBeenCalledWith({ where: { id: { in: ['user-1', 'user-2'] } }, select: { id: true, name: true } });
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['user-1', 'user-2'] } },
+        select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true },
+      });
       expect(result).toEqual([
         expect.objectContaining({ id: 'student-1', name: 'Aisha' }),
-        expect.objectContaining({ id: 'student-2', name: 'Omar' }),
+        expect.objectContaining({ id: 'student-2', name: 'Omar', email: 'omar@school.test', isActive: false }),
       ]);
     });
 

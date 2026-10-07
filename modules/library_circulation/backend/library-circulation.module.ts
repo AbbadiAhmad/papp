@@ -9,14 +9,18 @@ import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../../../apps/api/dist/core/notifications/notifications.module';
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
+// eslint-disable-next-line import/no-unresolved
+import { PermissionsService } from '../../../apps/api/dist/core/permissions/permissions.service';
 import { CirculationController } from './circulation.controller';
 import { CirculationService } from './circulation.service';
 import { DashboardController } from './dashboard.controller';
 import { FinesController } from './fines.controller';
 import { FinesService } from './fines.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
+import { PERMISSION_CHECKER } from './permission-checker';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { StudentsExcelService } from './students-excel.service';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 
@@ -31,10 +35,13 @@ import { StudentsService } from './students.service';
   controllers: [StudentsController, CirculationController, FinesController, SettingsController, DashboardController],
   providers: [
     StudentsService,
+    StudentsExcelService,
     CirculationService,
     FinesService,
     SettingsService,
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
+    // PermissionsModule is @Global, so the real service is injectable here without importing its module.
+    { provide: PERMISSION_CHECKER, useExisting: PermissionsService },
   ],
 })
 export class LibraryCirculationModule {}

@@ -42,11 +42,14 @@ test.describe('Permission-driven UI', () => {
     await page.goto('/login');
     await page.getByLabel(TEXT.ar.email).fill(READER_USER.email);
     await page.getByLabel(TEXT.ar.password).fill(READER_USER.password);
+    // Listen BEFORE clicking: the permissions request is fired as part of signing in, and can finish before
+    // the URL has left /login — a listener registered after waitForURL() would then miss it and time out.
+    const permissionsResponsePromise = page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
     // The real, server-confirmed permission set the redirect below relies on.
-    const permissionsResponse = await page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
+    const permissionsResponse = await permissionsResponsePromise;
     expect(permissionsResponse.status()).toBe(200);
     const permissions = (await permissionsResponse.json()) as string[];
     expect(permissions).not.toContain('modules.view');
@@ -70,10 +73,13 @@ test.describe('Permission-driven UI', () => {
     await page.goto('/login');
     await page.getByLabel(TEXT.ar.email).fill(READER_USER.email);
     await page.getByLabel(TEXT.ar.password).fill(READER_USER.password);
+    // Listen BEFORE clicking: the permissions request is fired as part of signing in, and can finish before
+    // the URL has left /login — a listener registered after waitForURL() would then miss it and time out.
+    const permissionsResponsePromise = page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
-    const permissionsResponse = await page.waitForResponse((response) => isApiResponse(response, '/users/me/permissions'));
+    const permissionsResponse = await permissionsResponsePromise;
     const permissions = (await permissionsResponse.json()) as string[];
     expect(permissions).not.toContain('users.view');
 

@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum ReturnStatus {
@@ -20,6 +20,19 @@ export class ReturnFineDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /**
+   * "Paid now": the fine is recorded AND paid in full in this same request (most readers pay at the desk, so
+   * two steps — create, then pay — would just be friction). Requires `finance.record_payment`; the unpaid
+   * default keeps the old behaviour for anyone who doesn't send it.
+   */
+  @IsOptional()
+  @IsBoolean()
+  paid?: boolean;
+
+  @IsOptional()
+  @IsIn(['cash', 'card', 'transfer'])
+  paymentMethod?: 'cash' | 'card' | 'transfer';
 }
 
 export class ReturnDto {

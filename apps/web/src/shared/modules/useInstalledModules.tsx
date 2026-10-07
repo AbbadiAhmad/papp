@@ -15,15 +15,25 @@ import type { ModuleRouteEntry } from './types';
  * while disabled/loading; `[]` on a genuine fetch failure (never blocks the
  * shell from rendering — core's own routes/menu always work regardless).
  */
+// Survives the route-tree remount App.tsx's GuardedAppRoutes does on every navigation
+// (`key={pathname}`): without it each click starts from `null` -> no module routes -> the catch-all
+// 404 page flashes until the manifest request returns. Still refetched on every mount so an
+// install/uninstall is picked up; cleared when the session ends (`enabled` goes false).
+let cachedManifests: FrontendModuleManifest[] | null = null;
+
 export function useModuleFrontendManifests(enabled: boolean): FrontendModuleManifest[] | null {
-  const [manifests, setManifests] = useState<FrontendModuleManifest[] | null>(null);
+  const [manifests, setManifests] = useState<FrontendModuleManifest[] | null>(cachedManifests);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      cachedManifests = null;
+      return;
+    }
     let cancelled = false;
     modulesApi
       .getFrontendManifest()
       .then((result) => {
+        cachedManifests = result;
         if (!cancelled) setManifests(result);
       })
       .catch(() => {

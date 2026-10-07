@@ -57,6 +57,7 @@ import {
   type PaymentMethod,
   type StudentSearchResult,
 } from '../api';
+import { ReaderLink } from './ReaderLink';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
@@ -322,7 +323,7 @@ export function FinesPage() {
                       {fine.fineNumber}
                     </Link>
                   </TableCell>
-                  <TableCell>{fine.studentName ?? fine.studentCode ?? '—'}</TableCell>
+                  <TableCell><ReaderLink readerId={fine.studentId} name={fine.studentName} code={fine.studentCode} /></TableCell>
                   <TableCell>{fine.fineTypeName ?? '—'}</TableCell>
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>

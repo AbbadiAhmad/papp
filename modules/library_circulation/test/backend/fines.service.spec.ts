@@ -336,20 +336,64 @@ describe('FinesService', () => {
     });
   });
 
+  describe('createWithOptionalPayment (return dialog: fine paid at the desk)', () => {
+    const dto = { studentId: 'student-1', fineTypeId: 'ft-1', amount: 5, borrowingId: 'b-1' };
+
+    it('creates the fine and records the full amount as paid in one call', async () => {
+      const createSpy = jest.spyOn(service, 'create').mockResolvedValue(fineRow({ id: 'fine-1', amount: '5.00' }) as never);
+      const paySpy = jest
+        .spyOn(service, 'recordPayment')
+        .mockResolvedValue({ payment: { id: 'p1', paymentNumber: 'PAY-1' }, receipt: { receiptNumber: 'REC-1' }, fine: fineRow({ id: 'fine-1', status: 'paid' }) } as never);
+
+      const result = await service.createWithOptionalPayment(dto as never, 'staff-1', { method: 'cash' });
+
+      expect(createSpy).toHaveBeenCalledWith(dto, 'staff-1');
+      expect(paySpy).toHaveBeenCalledWith('fine-1', 5, 'staff-1', 'cash');
+      expect(result.payment).toMatchObject({ paymentNumber: 'PAY-1', receiptNumber: 'REC-1' });
+      expect(result.fine).toMatchObject({ status: 'paid' });
+      expect(result.paymentError).toBeNull();
+    });
+
+    it('without a payment it only creates the (unpaid) fine', async () => {
+      jest.spyOn(service, 'create').mockResolvedValue(fineRow({ id: 'fine-1' }) as never);
+      const paySpy = jest.spyOn(service, 'recordPayment');
+      const result = await service.createWithOptionalPayment(dto as never, 'staff-1', null);
+      expect(paySpy).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ payment: null, paymentError: null });
+    });
+
+    it('if the payment step fails the fine is kept and the failure is reported, not thrown', async () => {
+      jest.spyOn(service, 'create').mockResolvedValue(fineRow({ id: 'fine-1', amount: '5.00' }) as never);
+      jest.spyOn(service, 'recordPayment').mockRejectedValue(new Error('no transaction on record'));
+      const result = await service.createWithOptionalPayment(dto as never, 'staff-1', { method: 'card' });
+      expect(result.fine).toMatchObject({ id: 'fine-1' });
+      expect(result.payment).toBeNull();
+      expect(result.paymentError).toBe('no transaction on record');
+    });
+  });
+
   describe('listPayments (Finance page filters)', () => {
     it('enriches each payment with receiver/fine-creator names and the fine it belongs to, plus a filtered total', async () => {
       prisma.libraryPayment.findMany.mockResolvedValue([{ id: 'pay-1', transactionId: 'txn-1', receivedBy: 'staff-2', amount: 10, paymentMethod: 'cash', paidAt: new Date() }]);
       prisma.libraryFinancialTransaction.findMany.mockResolvedValue([{ id: 'txn-1', fineId: 'fine-1' }]);
-      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1' })]);
+      prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', createdBy: 'staff-1', studentId: 'student-1' })]);
+      prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', userId: 'user-reader', code: 'STU000007' }]);
       prisma.user.findMany.mockResolvedValue([
         { id: 'staff-1', name: 'Aisha' },
         { id: 'staff-2', name: 'Omar' },
+        { id: 'user-reader', name: 'Layla' },
       ]);
 
       const result = await service.listPayments({});
 
       expect(result.totalAmount).toBe(10);
-      expect(result.payments[0]).toMatchObject({ receivedByName: 'Omar', createdByName: 'Aisha', fineNumber: fineRow().fineNumber });
+      expect(result.payments[0]).toMatchObject({
+        receivedByName: 'Omar',
+        createdByName: 'Aisha',
+        fineNumber: fineRow().fineNumber,
+        studentName: 'Layla',
+        studentCode: 'STU000007',
+      });
     });
 
     it('returns an empty result without querying payments when receivedByName matches nobody', async () => {

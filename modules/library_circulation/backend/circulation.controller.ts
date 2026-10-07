@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { BorrowDto } from './dto/borrow.dto';
@@ -8,6 +8,8 @@ import { ReturnDto } from './dto/return.dto';
 import { ScanDto } from './dto/scan.dto';
 import { CirculationService } from './circulation.service';
 import { FinesService } from './fines.service';
+import { PERMISSION_CHECKER, PermissionChecker } from './permission-checker';
+import { StudentsService } from './students.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
 const fetchBorrowingState = (prisma: PrismaClient, req: Request) =>
@@ -25,12 +27,23 @@ export class CirculationController {
   constructor(
     private readonly circulation: CirculationService,
     private readonly fines: FinesService,
+    private readonly readers: StudentsService,
+    @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionChecker,
   ) {}
 
   @Post('scan')
   @RequirePermission('library_circulation.borrow')
   async scan(@Body() dto: ScanDto) {
+    // A user who was just given the reader role has no profile/code yet — create it before looking the code up.
+    await this.readers.syncReaderProfiles();
     return this.circulation.scan(dto.code);
+  }
+
+  /** Scan page's book picker (title / author / copy code). Before the `:copyId` routes for the usual Express ordering reason. */
+  @Get('book-copies/search')
+  @RequirePermission('library_circulation.borrow')
+  async searchBookCopies(@Query('q') q?: string) {
+    return this.circulation.searchBookCopies(q ?? '');
   }
 
   @Get('book-copies/:copyId/active-borrowing')
@@ -87,6 +100,14 @@ export class CirculationController {
   @RequirePermission('library_circulation.return')
   @Audit({ category: 'library_circulation.borrowings', entityType: 'LibraryBorrowing', action: 'update', fetchState: fetchBorrowingState })
   async returnBorrowing(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser) {
+    // "Paid now" spans two permissions; the route guard only checked `return`. Refuse BEFORE the return is
+    // recorded, so a 403 never leaves a half-done return behind.
+    if (dto.fine?.paid) {
+      const held = await this.permissions.getEffectivePermissionCodes(user.userId);
+      if (!held.has('library_circulation.finance.record_payment')) {
+        throw new ForbiddenException('Missing required permission: library_circulation.finance.record_payment');
+      }
+    }
     const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
     const returnedAtOverride = dto.returnedAt ? new Date(dto.returnedAt) : undefined;
     const { borrowing, daysLate } = await this.circulation.returnBorrowing(
@@ -109,11 +130,17 @@ export class CirculationController {
 
     // The librarian's own explicit fine, entered inline in the return dialog (checkbox + amount/type), created in this same request.
     let recordedFine = null;
+    let finePayment = null;
+    let finePaymentError: string | null = null;
     if (dto.fine) {
-      recordedFine = await this.fines.create(
+      const result = await this.fines.createWithOptionalPayment(
         { studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes },
         user.userId,
+        dto.fine.paid ? { method: dto.fine.paymentMethod ?? 'cash' } : null,
       );
+      recordedFine = result.fine;
+      finePayment = result.payment;
+      finePaymentError = result.paymentError;
     }
 
     // Auto-suggest fine for damage/loss (caller decides whether to create it) — only still relevant if the librarian didn't already add one inline above.
@@ -122,7 +149,7 @@ export class CirculationController {
       damageFine = { suggested: true, reason: dto.returnStatus };
     }
 
-    return { borrowing, daysLate, lateFine, recordedFine, damageFine };
+    return { borrowing, daysLate, lateFine, recordedFine, finePayment, finePaymentError, damageFine };
   }
 
   @Post('extend')

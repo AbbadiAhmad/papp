@@ -8,6 +8,7 @@ interface MockPrisma {
   libraryCatalogBook: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   user: { findUnique: jest.Mock; findMany: jest.Mock };
+  userRole: { count: jest.Mock };
   $transaction: jest.Mock;
 }
 
@@ -18,6 +19,7 @@ function createMockPrisma(): MockPrisma {
     libraryCatalogBook: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
+    userRole: { count: jest.fn(async () => 1) },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: MockPrisma) => unknown) => cb(prisma));
@@ -86,10 +88,44 @@ describe('CirculationService', () => {
       expect(result.type).toBe('book_copy');
     });
 
-    it('404s when the code matches nothing at all', async () => {
+    it('returns a not_found result (not a 404) when the code matches nothing at all', async () => {
       prisma.libraryStudent.findUnique.mockResolvedValue(null);
       prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(null);
-      await expect(service.scan('NOPE')).rejects.toBeInstanceOf(NotFoundException);
+      expect(await service.scan('NOPE')).toEqual({ type: 'not_found', code: 'NOPE' });
+    });
+
+    it('a reader-style code with no profile is also a not_found result', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(null);
+      expect(await service.scan('R000999')).toEqual({ type: 'not_found', code: 'R000999' });
+    });
+  });
+
+  describe('searchBookCopies (Scan page book picker)', () => {
+    const copy = (id: string, qrCode: string, status: string, title: string) => ({ id, bookId: `bk-${id}`, qrCode, status, book: { title, author: 'A. Writer' } });
+
+    it('returns one row per copy, available copies first, capped at the limit', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
+        copy('1', 'B000002', 'borrowed', 'Dune'),
+        copy('2', 'B000003', 'available', 'Dune'),
+        copy('3', 'B000001', 'available', 'Dune'),
+        copy('4', 'B000009', 'available', 'Atlas'),
+      ]);
+      const result = await service.searchBookCopies('dun', 3);
+      expect(result.map((r) => r.qrCode)).toEqual(['B000009', 'B000001', 'B000003']);
+      expect(result[0]).toMatchObject({ copyId: '4', title: 'Atlas', status: 'available' });
+    });
+
+    it('matches on copy code, title or author (case-insensitive)', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
+      await service.searchBookCopies(' dune ');
+      const where = (prisma.libraryCatalogBookCopy.findMany.mock.calls[0][0] as { where: { OR: unknown[] } }).where;
+      const contains = { contains: 'dune', mode: 'insensitive' };
+      expect(where.OR).toEqual([{ qrCode: contains }, { book: { is: { OR: [{ title: contains }, { author: contains }] } } }]);
+    });
+
+    it('a blank query returns nothing without touching the database', async () => {
+      expect(await service.searchBookCopies('   ')).toEqual([]);
+      expect(prisma.libraryCatalogBookCopy.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -109,6 +145,15 @@ describe('CirculationService', () => {
       const dueAt = (borrowing as unknown as { dueAt: Date }).dueAt;
       const expectedMs = Date.now() + POLICY.loanPeriodDays * 24 * 60 * 60 * 1000;
       expect(Math.abs(dueAt.getTime() - expectedMs)).toBeLessThan(5000);
+    });
+
+    it('rejects a new borrowing for an account whose reader role was revoked', async () => {
+      prisma.libraryStudent.findUnique.mockResolvedValue(studentRow());
+      prisma.libraryCatalogBookCopy.findUnique.mockResolvedValue(copyRow());
+      prisma.userRole.count.mockResolvedValueOnce(0);
+
+      await expect(service.borrow('student-1', 'copy-1', 'staff-1')).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.libraryBorrowing.create).not.toHaveBeenCalled();
     });
 
     it('§22: rejects borrowing an already-borrowed copy', async () => {
@@ -257,7 +302,7 @@ describe('CirculationService', () => {
         {
           id: 'b-1',
           studentId: 'student-1',
-          student: { code: 'STU-001' },
+          student: { code: 'STU-001', userId: 'user-1' },
           bookCopyId: 'copy-1',
           borrowedAt: new Date('2026-09-01'),
           dueAt: new Date('2026-09-15'),
@@ -270,7 +315,7 @@ describe('CirculationService', () => {
         {
           id: 'b-2',
           studentId: 'student-2',
-          student: { code: 'STU-002' },
+          student: { code: 'STU-002', userId: 'user-2' },
           bookCopyId: 'copy-1',
           borrowedAt: new Date('2026-09-10'),
           dueAt: new Date('2026-09-24'),
@@ -282,6 +327,7 @@ describe('CirculationService', () => {
         },
       ];
       prisma.libraryBorrowing.findMany.mockResolvedValue(borrowings);
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-1', name: 'Aisha' }]);
 
       const result = await service.getCirculationHistory('copy-1');
 
@@ -293,6 +339,8 @@ describe('CirculationService', () => {
       });
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveProperty('studentCode', 'STU-001');
+      expect(result[0]).toHaveProperty('studentName', 'Aisha');
+      expect(result[1]).toHaveProperty('studentName', null);
     });
 
     it('respects the limit parameter when fetching history', async () => {

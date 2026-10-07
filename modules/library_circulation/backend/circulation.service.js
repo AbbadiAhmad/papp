@@ -45,7 +45,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
         await this.prisma.$disconnect();
     }
     /**
-     * Auto-detects the scanned code's type by prefix (§6: STU/BOOK), falling
+     * Auto-detects the scanned code's type by prefix (§6: R/STU/BOOK), falling
      * back to trying both lookups for a code that doesn't follow the printed
      * convention — never a hard requirement, since the prefix is a labeling
      * convention this module encourages, not a DB constraint on either table.
@@ -53,7 +53,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
     async scan(rawCode) {
         const code = rawCode.trim();
         const upper = code.toUpperCase();
-        if (upper.startsWith('STU'))
+        if (upper.startsWith('STU') || /^R\d/.test(upper))
             return this.scanStudent(code);
         if (upper.startsWith('BOOK'))
             return this.scanBookCopy(code);
@@ -63,12 +63,40 @@ let CirculationService = CirculationService_1 = class CirculationService {
         const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: code } });
         if (copy)
             return this.scanBookCopy(code);
-        throw new common_1.NotFoundException(`No student or book copy found for code "${code}"`);
+        return { type: 'not_found', code };
+    }
+    /**
+     * Scan page's "find a book by title / author / copy code" picker — one row
+     * per physical COPY (the librarian borrows a specific copy), available
+     * ones first. Reads the catalog tables directly, same as scanBookCopy().
+     */
+    async searchBookCopies(query, limit = 8) {
+        const q = query.trim();
+        if (!q)
+            return [];
+        const contains = { contains: q, mode: 'insensitive' };
+        const copies = await this.prisma.libraryCatalogBookCopy.findMany({
+            where: { OR: [{ qrCode: contains }, { book: { is: { OR: [{ title: contains }, { author: contains }] } } }] },
+            include: { book: { select: { title: true, author: true } } },
+            take: 100,
+        });
+        // Available copies first (what can actually be borrowed), then by title / code.
+        copies.sort((a, b) => Number(b.status === 'available') - Number(a.status === 'available') ||
+            a.book.title.localeCompare(b.book.title) ||
+            a.qrCode.localeCompare(b.qrCode));
+        return copies.slice(0, limit).map((c) => ({
+            copyId: c.id,
+            bookId: c.bookId,
+            qrCode: c.qrCode,
+            status: c.status,
+            title: c.book.title,
+            author: c.book.author,
+        }));
     }
     async scanStudent(code) {
         const student = await this.prisma.libraryStudent.findUnique({ where: { code } });
         if (!student)
-            throw new common_1.NotFoundException(`No student found for code "${code}"`);
+            return { type: 'not_found', code };
         const user = await this.prisma.user.findUnique({ where: { id: student.userId } });
         const activeBorrowingsCount = await this.prisma.libraryBorrowing.count({
             where: { studentId: student.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -82,7 +110,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
     async scanBookCopy(qrCode) {
         const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode } });
         if (!copy)
-            throw new common_1.NotFoundException(`No book copy found for code "${qrCode}"`);
+            return { type: 'not_found', code: qrCode };
         const book = await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } });
         const activeBorrowing = await this.prisma.libraryBorrowing.findFirst({
             where: { bookCopyId: copy.id, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
@@ -97,9 +125,14 @@ let CirculationService = CirculationService_1 = class CirculationService {
             this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: bookCopyId } }),
         ]);
         if (!student)
-            throw new common_1.NotFoundException('Student not found');
+            throw new common_1.NotFoundException('Reader not found');
         if (!copy)
             throw new common_1.NotFoundException('Book copy not found');
+        // A reader whose role was revoked stays visible for returns, but cannot take out new books.
+        const stillReader = await this.prisma.userRole.count({ where: { userId: student.userId, role: { code: 'reader' } } });
+        if (stillReader === 0) {
+            throw new common_1.ConflictException('This account no longer has the reader role and cannot borrow new books.');
+        }
         if (copy.status !== 'available') {
             throw new common_1.ConflictException(`This copy is currently "${copy.status}" and cannot be borrowed (§22).`);
         }
@@ -107,7 +140,7 @@ let CirculationService = CirculationService_1 = class CirculationService {
             where: { studentId, status: { in: [...ACTIVE_BORROWING_STATUSES] } },
         });
         if (activeCount >= policy.maxBooksPerStudent) {
-            throw new common_1.ConflictException(`This student already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`);
+            throw new common_1.ConflictException(`This reader already has ${activeCount} book(s) borrowed, at the policy limit of ${policy.maxBooksPerStudent} (§22).`);
         }
         const dueAt = expectedReturnDate ?? (() => {
             const date = new Date();
@@ -392,10 +425,15 @@ let CirculationService = CirculationService_1 = class CirculationService {
             take: limit,
             include: { student: true },
         });
+        const readerUsers = borrowings.length
+            ? await this.prisma.user.findMany({ where: { id: { in: [...new Set(borrowings.map((b) => b.student.userId))] } }, select: { id: true, name: true } })
+            : [];
+        const readerNameById = new Map(readerUsers.map((u) => [u.id, u.name]));
         return borrowings.map((b) => ({
             id: b.id,
             studentId: b.studentId,
             studentCode: b.student.code,
+            studentName: readerNameById.get(b.student.userId) ?? null,
             borrowedAt: b.borrowedAt,
             dueAt: b.dueAt,
             returnedAt: b.returnedAt,

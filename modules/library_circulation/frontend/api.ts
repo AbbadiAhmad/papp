@@ -16,6 +16,20 @@ export interface LibraryStudent {
   updatedAt: string;
   /** Joined in from the linked platform User (D41: name lives on User, not libraryStudent) — StudentsService.list(). */
   name: string | null;
+  /** false = the reader role was revoked in Users; still listed only because a book is out. */
+  isReader?: boolean;
+  /** Books currently out (active + overdue) — only on the list response. */
+  activeBorrowingsCount?: number;
+  email: string | null;
+  isActive: boolean;
+  externalId: string | null;
+  department: string | null;
+}
+
+/** "Name (CODE)" — the one way every circulation screen identifies a reader. */
+export function readerLabel(name: string | null | undefined, code: string | null | undefined): string {
+  if (name && code) return `${name} (${code})`;
+  return name || code || '—';
 }
 
 /** StudentsService.search() result row — lightweight, for the searchable reader picker. */
@@ -99,15 +113,100 @@ export interface CreatedStudent extends LibraryStudent {
   temporaryPassword: string;
 }
 
+/** CirculationService.searchBookCopies() row — one per physical copy. */
+export interface BookCopySearchResult {
+  copyId: string;
+  bookId: string;
+  qrCode: string;
+  status: string;
+  title: string;
+  author: string | null;
+}
+
+export interface StudentIncident {
+  borrowingId: string;
+  kind: 'damaged' | 'lost';
+  occurredAt: string;
+  bookTitle: string | null;
+  qrCode: string | null;
+  returnNotes: string | null;
+  /** Fines charged against this borrowing; empty = none was charged (skipped or never created). */
+  fines: { id: string; fineNumber: string; amount: string; amountPaid: string; status: FineStatus }[];
+}
+
+export interface StudentIncidents {
+  damagedCount: number;
+  lostCount: number;
+  lastIncidentAt: string | null;
+  items: StudentIncident[];
+}
+
+export interface StudentListQuery {
+  q?: string;
+  className?: string;
+  status?: 'all' | 'active' | 'inactive';
+  borrowing?: 'all' | 'out' | 'overdue' | 'none';
+  sortBy?: 'createdAt' | 'code' | 'className';
+  sortDir?: 'asc' | 'desc';
+  page: number;
+  pageSize: number;
+}
+
+export interface StudentListPage {
+  items: LibraryStudent[];
+  /** Count AFTER filters, across all pages. */
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface CreateStudentInput {
   name: string;
   email: string;
-  code: string;
+  /** Blank/omitted -> the server assigns the next incremental code. */
+  code?: string;
   className?: string;
   academicYearId?: string;
+  externalId?: string;
+  department?: string;
 }
 
-export type UpdateStudentInput = Partial<Pick<CreateStudentInput, 'code' | 'className' | 'academicYearId'>>;
+export interface UpdateStudentInput {
+  code?: string;
+  className?: string;
+  academicYearId?: string;
+  name?: string;
+  email?: string;
+  externalId?: string;
+  department?: string;
+  isActive?: boolean;
+  mustChangePassword?: boolean;
+  /** Generates a new temporary password, returned once as `temporaryPassword`. */
+  resetPassword?: boolean;
+}
+
+export type UpdatedStudent = LibraryStudent & { temporaryPassword?: string };
+
+export interface StudentImportRow {
+  row: number;
+  code: string | null;
+  name: string | null;
+  email: string | null;
+  className: string | null;
+  externalId: string | null;
+  department: string | null;
+  isActive: boolean | null;
+  valid: boolean;
+  error: string | null;
+  action: 'create' | 'update' | null;
+}
+
+export interface StudentImportReport {
+  rows: StudentImportRow[];
+  validCount: number;
+  invalidCount: number;
+  allValid: boolean;
+}
 
 export interface LibraryBorrowing {
   id: string;
@@ -127,6 +226,7 @@ export interface CopyCirculationHistoryEntry {
   id: string;
   studentId: string;
   studentCode: string;
+  studentName: string | null;
   borrowedAt: string;
   dueAt: string;
   returnedAt: string | null;
@@ -230,6 +330,9 @@ export interface ReturnFineInput {
   fineTypeId: string;
   amount: number;
   notes?: string;
+  /** Record the fine AND its full payment in the same request (needs `finance.record_payment`). */
+  paid?: boolean;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface ScanStudentResult {
@@ -245,7 +348,12 @@ export interface ScanBookCopyResult {
   activeBorrowing: LibraryBorrowing | null;
 }
 
-export type ScanResult = ScanStudentResult | ScanBookCopyResult;
+export interface ScanNotFoundResult {
+  type: 'not_found';
+  code: string;
+}
+
+export type ScanResult = ScanStudentResult | ScanBookCopyResult | ScanNotFoundResult;
 
 export interface LoanPolicy {
   maxBooksPerStudent: number;
@@ -291,6 +399,9 @@ export interface EnrichedPayment extends LibraryPayment {
   receivedByName: string | null;
   fineNumber: string;
   fineAmount: string;
+  studentId: string;
+  studentCode: string | null;
+  studentName: string | null;
   createdBy: string;
   createdByName: string | null;
 }
@@ -321,6 +432,10 @@ export const libraryCirculationApi = {
         daysLate: number;
         lateFine: LibraryFine | null;
         recordedFine: LibraryFine | null;
+        /** Set when the fine was paid in the same request. */
+        finePayment?: { paymentNumber: string; receiptNumber: string; amount: string } | null;
+        /** Set when the fine was created but its payment could not be recorded. */
+        finePaymentError?: string | null;
         damageFine?: { suggested: boolean; reason: string };
       }>(`${BASE}/return`, { borrowingId, returnStatus, returnNotes, returnedAt, fine })
       .then((r) => r.data),
@@ -343,6 +458,14 @@ export const libraryCirculationApi = {
     apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit } }).then((r) => r.data),
 
   // Students
+  searchBookCopies: (q: string) =>
+    apiClient.get<BookCopySearchResult[]>(`${BASE}/book-copies/search`, { params: { q } }).then((r) => r.data),
+  getStudentIncidents: (id: string) => apiClient.get<StudentIncidents>(`${BASE}/students/${id}/incidents`).then((r) => r.data),
+  listStudentsPaged: (query: StudentListQuery) => {
+    // Drop blank/"all" filters so the URL stays clean and the server applies no filter for them.
+    const params = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== '' && v !== undefined && v !== 'all'));
+    return apiClient.get<StudentListPage>(`${BASE}/students/paged`, { params }).then((r) => r.data);
+  },
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
   searchStudents: (q: string) => apiClient.get<StudentSearchResult[]>(`${BASE}/students/search`, { params: { q } }).then((r) => r.data),
   getActiveBorrowingsForStudent: (studentId: string) =>
@@ -353,7 +476,19 @@ export const libraryCirculationApi = {
   getStudentActionHistory: (id: string) => apiClient.get<StudentActionHistoryEntry[]>(`${BASE}/students/${id}/action-history`).then((r) => r.data),
   createStudent: (dto: CreateStudentInput) => apiClient.post<CreatedStudent>(`${BASE}/students`, dto).then((r) => r.data),
   updateStudent: (id: string, dto: UpdateStudentInput) =>
-    apiClient.patch<LibraryStudent>(`${BASE}/students/${id}`, dto).then((r) => r.data),
+    apiClient.patch<UpdatedStudent>(`${BASE}/students/${id}`, dto).then((r) => r.data),
+  peekNextStudentCode: () => apiClient.get<{ code: string }>(`${BASE}/students/next-code`).then((r) => r.data.code),
+  exportStudents: () => apiClient.get<Blob>(`${BASE}/students/export`, { responseType: 'blob' }).then((r) => r.data),
+  importStudentsPreview: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<StudentImportReport>(`${BASE}/students/import/preview`, form).then((r) => r.data);
+  },
+  importStudentsCommit: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<StudentImportReport>(`${BASE}/students/import`, form).then((r) => r.data);
+  },
   removeStudent: (id: string) => apiClient.delete<void>(`${BASE}/students/${id}`).then((r) => r.data),
 
   // Fines / finance

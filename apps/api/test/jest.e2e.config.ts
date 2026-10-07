@@ -57,6 +57,10 @@ const config: Config = {
       '<rootDir>/src/core/notifications/notifications.service.ts',
     '^.*/apps/api/dist/core/notifications/notification-email\\.service$':
       '<rootDir>/src/core/notifications/notification-email.service.ts',
+    // library_circulation binds core's PermissionsService to its PERMISSION_CHECKER token (the return form's
+    // "paid now" needs a second permission check) — same dist -> source redirect as the notifications entries above.
+    '^.*/apps/api/dist/core/permissions/permissions\\.service$':
+      '<rootDir>/src/core/permissions/permissions.service.ts',
   },
 };
 

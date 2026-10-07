@@ -44,13 +44,13 @@ const CHANGE_FIELD_LABEL_KEYS: Record<string, string> = {
 };
 
 /** §25/§10/§3.2-3.3 (docs/LIBRARY_IMPROVEMENTS.md) — the reader's "reading passport": current loans, full reading history (never deleted), open+paid fines, and an audit trail of changes to their own account. */
-export function StudentDetailPage() {
+export function ReaderDetailPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { studentId } = useParams<{ studentId: string }>();
+  const { readerId } = useParams<{ readerId: string }>();
   const [selectedTab, setSelectedTab] = useState(0);
   const { status, data: student, errorMessage, reload } = useGuardedQuery(() =>
-    libraryCirculationApi.getStudent(studentId!),
+    libraryCirculationApi.getStudent(readerId!),
   );
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [borrowingToExtend, setBorrowingToExtend] = useState<LibraryBorrowing | null>(null);
@@ -90,14 +90,14 @@ export function StudentDetailPage() {
   const [tabError, setTabError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!studentId) return;
+    if (!readerId) return;
     if (selectedTab === 1 && readingHistory === null) {
-      libraryCirculationApi.getStudentReadingHistory(studentId).then(setReadingHistory).catch((e) => setTabError(extractErrorMessage(e)));
+      libraryCirculationApi.getStudentReadingHistory(readerId).then(setReadingHistory).catch((e) => setTabError(extractErrorMessage(e)));
     }
     if (selectedTab === 3 && actionHistory === null) {
-      libraryCirculationApi.getStudentActionHistory(studentId).then(setActionHistory).catch((e) => setTabError(extractErrorMessage(e)));
+      libraryCirculationApi.getStudentActionHistory(readerId).then(setActionHistory).catch((e) => setTabError(extractErrorMessage(e)));
     }
-  }, [selectedTab, studentId, readingHistory, actionHistory]);
+  }, [selectedTab, readerId, readingHistory, actionHistory]);
 
   return (
     <Box>

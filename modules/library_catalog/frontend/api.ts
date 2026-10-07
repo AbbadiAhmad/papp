@@ -30,6 +30,12 @@ export interface LibraryBook {
   copies?: LibraryBookCopy[];
   averageRating?: number | null;
   ratingsCount?: number;
+  /** List response only: how many copies are in each status. */
+  copyStatusCounts?: Partial<Record<BookCopyStatus, number>>;
+  /** List response only: every copy's code and status, sorted by code. */
+  copyCodes?: { id: string; qrCode: string; status: BookCopyStatus }[];
+  /** List response only, when filtering by copy status: the copies that matched. */
+  matchingCopies?: { id: string; qrCode: string; status: BookCopyStatus }[];
 }
 
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
@@ -180,8 +186,10 @@ export interface CopyForInventory {
 }
 
 export const libraryCatalogApi = {
-  listBooks: (params?: { search?: string; category?: string }) =>
-    apiClient.get<LibraryBook[]>('/api/library/books', { params }).then((r) => r.data),
+  listBooks: (params?: { search?: string; category?: string; copyStatus?: BookCopyStatus[] }) =>
+    apiClient
+      .get<LibraryBook[]>('/api/library/books', { params: params && { ...params, copyStatus: params.copyStatus?.length ? params.copyStatus.join(',') : undefined } })
+      .then((r) => r.data),
   getBook: (id: string) => apiClient.get<LibraryBookDetail>(`/api/library/books/${id}`).then((r) => r.data),
   createBook: (dto: CreateBookInput) => apiClient.post<LibraryBook>('/api/library/books', dto).then((r) => r.data),
   updateBook: (id: string, dto: UpdateBookInput) =>

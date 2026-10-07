@@ -1,23 +1,46 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { ListStudentsDto } from './dto/list-students.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
+import { StudentsExcelService } from './students-excel.service';
 import { StudentsService } from './students.service';
 
-const fetchStudentState = (prisma: PrismaClient, req: Request) =>
-  prisma.libraryStudent.findUnique({ where: { id: req.params.id as string } });
+const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Profile + the linked account's editable fields (never the password hash) — what the audit trail records for a reader. */
+const fetchStudentState = async (prisma: PrismaClient, req: Request) => {
+  const student = await prisma.libraryStudent.findUnique({ where: { id: req.params.id as string } });
+  if (!student) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: student.userId },
+    select: { name: true, email: true, externalId: true, department: true, isActive: true, mustChangePassword: true },
+  });
+  return { ...student, ...user };
+};
 
 @Controller('api/library-circulation/students')
 @UseGuards(MustChangePasswordGuard)
 export class StudentsController {
-  constructor(private readonly students: StudentsService) {}
+  constructor(
+    private readonly students: StudentsService,
+    private readonly excel: StudentsExcelService,
+  ) {}
 
   @Get()
   @RequirePermission('library_circulation.students.view')
   async list() {
     return this.students.list();
+  }
+
+  /** Readers table: server-side filters, sorting and pagination -> `{ items, total, page, pageSize }`. Before `:id`. */
+  @Get('paged')
+  @RequirePermission('library_circulation.students.view')
+  async listPaged(@Query() query: ListStudentsDto) {
+    return this.students.listPaged(query);
   }
 
   /**
@@ -32,6 +55,41 @@ export class StudentsController {
     return this.students.search(q ?? '');
   }
 
+  /** Suggested next reader code for the Add form (read-only peek; same pattern as library_catalog's `copies/next-code`). Before `:id` for the usual Express ordering reason. */
+  @Get('next-code')
+  @RequirePermission('library_circulation.students.create')
+  async peekNextCode() {
+    return { code: await this.students.peekNextCode() };
+  }
+
+  @Get('export')
+  @RequirePermission('library_circulation.students.export')
+  async export(@Res() res: Response): Promise<void> {
+    const buffer = await this.excel.exportWorkbook();
+    res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="library-readers-export.xlsx"' });
+    res.send(buffer);
+  }
+
+  /** Validates only — writes nothing (same preview/commit split as core's users import, D42). */
+  @Post('import/preview')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('library_circulation.students.import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importPreview(@UploadedFile() file?: { buffer: Buffer }) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
+    return this.excel.validateRows(await this.excel.parseWorkbook(file.buffer));
+  }
+
+  @Post('import')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('library_circulation.students.import')
+  @Audit({ category: 'library_circulation.students', entityType: 'LibraryStudent', action: 'import' })
+  @UseInterceptors(FileInterceptor('file'))
+  async importCommit(@UploadedFile() file: { buffer: Buffer } | undefined, @CurrentUser() user: AuthenticatedUser) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
+    return this.excel.commit(file.buffer, user.userId);
+  }
+
   @Get(':id')
   @RequirePermission('library_circulation.students.view')
   async findById(@Param('id', new ParseUUIDPipe()) id: string) {
@@ -43,6 +101,13 @@ export class StudentsController {
   @RequirePermission('library_circulation.students.view')
   async readingHistory(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.students.getReadingHistory(id);
+  }
+
+  /** Scan page: how often this reader damaged/lost a book, with the fine (if any) for each. */
+  @Get(':id/incidents')
+  @RequirePermission('library_circulation.students.view')
+  async incidents(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.students.getIncidents(id);
   }
 
   /** §3.3 "Actions" tab — audit trail of operations on this reader's own account row. */

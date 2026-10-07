@@ -21,6 +21,8 @@ const return_dto_1 = require("./dto/return.dto");
 const scan_dto_1 = require("./dto/scan.dto");
 const circulation_service_1 = require("./circulation.service");
 const fines_service_1 = require("./fines.service");
+const permission_checker_1 = require("./permission-checker");
+const students_service_1 = require("./students.service");
 const platform_1 = require("./platform");
 const fetchBorrowingState = (prisma, req) => prisma.libraryBorrowing.findUnique({ where: { id: req.body?.borrowingId ?? '' } });
 /**
@@ -32,12 +34,22 @@ const fetchBorrowingState = (prisma, req) => prisma.libraryBorrowing.findUnique(
 let CirculationController = class CirculationController {
     circulation;
     fines;
-    constructor(circulation, fines) {
+    readers;
+    permissions;
+    constructor(circulation, fines, readers, permissions) {
         this.circulation = circulation;
         this.fines = fines;
+        this.readers = readers;
+        this.permissions = permissions;
     }
     async scan(dto) {
+        // A user who was just given the reader role has no profile/code yet — create it before looking the code up.
+        await this.readers.syncReaderProfiles();
         return this.circulation.scan(dto.code);
+    }
+    /** Scan page's book picker (title / author / copy code). Before the `:copyId` routes for the usual Express ordering reason. */
+    async searchBookCopies(q) {
+        return this.circulation.searchBookCopies(q ?? '');
     }
     async activeBorrowingForCopy(copyId) {
         return this.circulation.findActiveBorrowingForCopy(copyId);
@@ -71,6 +83,14 @@ let CirculationController = class CirculationController {
         return this.circulation.borrow(dto.studentId, dto.bookCopyId, user.userId, expectedReturnDate, dto.comments);
     }
     async returnBorrowing(dto, user) {
+        // "Paid now" spans two permissions; the route guard only checked `return`. Refuse BEFORE the return is
+        // recorded, so a 403 never leaves a half-done return behind.
+        if (dto.fine?.paid) {
+            const held = await this.permissions.getEffectivePermissionCodes(user.userId);
+            if (!held.has('library_circulation.finance.record_payment')) {
+                throw new common_1.ForbiddenException('Missing required permission: library_circulation.finance.record_payment');
+            }
+        }
         const borrowingBefore = await this.circulation.findBorrowing(dto.borrowingId);
         const returnedAtOverride = dto.returnedAt ? new Date(dto.returnedAt) : undefined;
         const { borrowing, daysLate } = await this.circulation.returnBorrowing(dto.borrowingId, user.userId, dto.returnStatus, dto.returnNotes, returnedAtOverride);
@@ -85,15 +105,20 @@ let CirculationController = class CirculationController {
         }
         // The librarian's own explicit fine, entered inline in the return dialog (checkbox + amount/type), created in this same request.
         let recordedFine = null;
+        let finePayment = null;
+        let finePaymentError = null;
         if (dto.fine) {
-            recordedFine = await this.fines.create({ studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes }, user.userId);
+            const result = await this.fines.createWithOptionalPayment({ studentId: borrowingBefore.studentId, borrowingId: dto.borrowingId, fineTypeId: dto.fine.fineTypeId, amount: dto.fine.amount, notes: dto.fine.notes }, user.userId, dto.fine.paid ? { method: dto.fine.paymentMethod ?? 'cash' } : null);
+            recordedFine = result.fine;
+            finePayment = result.payment;
+            finePaymentError = result.paymentError;
         }
         // Auto-suggest fine for damage/loss (caller decides whether to create it) — only still relevant if the librarian didn't already add one inline above.
         let damageFine = null;
         if ((dto.returnStatus === 'damaged' || dto.returnStatus === 'lost') && !dto.fine) {
             damageFine = { suggested: true, reason: dto.returnStatus };
         }
-        return { borrowing, daysLate, lateFine, recordedFine, damageFine };
+        return { borrowing, daysLate, lateFine, recordedFine, finePayment, finePaymentError, damageFine };
     }
     async extendLoan(dto) {
         return this.circulation.extendLoan(dto.borrowingId, new Date(dto.newDueDate));
@@ -108,6 +133,14 @@ __decorate([
     __metadata("design:paramtypes", [scan_dto_1.ScanDto]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "scan", null);
+__decorate([
+    (0, common_1.Get)('book-copies/search'),
+    (0, platform_1.RequirePermission)('library_circulation.borrow'),
+    __param(0, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], CirculationController.prototype, "searchBookCopies", null);
 __decorate([
     (0, common_1.Get)('book-copies/:copyId/active-borrowing'),
     (0, platform_1.RequirePermission)('library_circulation.return'),
@@ -182,6 +215,8 @@ __decorate([
 exports.CirculationController = CirculationController = __decorate([
     (0, common_1.Controller)('api/library-circulation'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
+    __param(3, (0, common_1.Inject)(permission_checker_1.PERMISSION_CHECKER)),
     __metadata("design:paramtypes", [circulation_service_1.CirculationService,
-        fines_service_1.FinesService])
+        fines_service_1.FinesService,
+        students_service_1.StudentsService, Object])
 ], CirculationController);
