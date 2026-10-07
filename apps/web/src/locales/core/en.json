@@ -61,6 +61,8 @@
   "core.permissions.degraded_reason": "This account cannot list all roles or the full permission catalog.",
   "core.permissions.degraded_notice": "Could not load the full matrix (requires both roles.view and permissions.view). You can still manage a specific role's grants by ID below — the exact same D12-protected endpoint.",
 
+  "core.sessions.list_tab": "Sessions",
+  "core.sessions.purge_tab": "Delete old sessions",
   "core.sessions.mine": "My active sessions",
   "core.sessions.lookup_title": "Look up another user's sessions",
   "core.sessions.user_id": "User ID",

@@ -61,6 +61,8 @@
   "core.permissions.degraded_reason": "هذا الحساب لا يملك صلاحية عرض قائمة الأدوار أو كتالوج الصلاحيات الكامل.",
   "core.permissions.degraded_notice": "تعذّر تحميل المصفوفة الكاملة (يتطلب صلاحيتي roles.view وpermissions.view). يمكنك إدارة صلاحيات دور محدد عبر معرّفه مباشرة أدناه — وهي نفس نقطة النهاية المحمية باستثناء D12.",
 
+  "core.sessions.list_tab": "الجلسات",
+  "core.sessions.purge_tab": "حذف الجلسات القديمة",
   "core.sessions.mine": "جلساتي النشطة",
   "core.sessions.lookup_title": "البحث عن جلسات مستخدم آخر",
   "core.sessions.user_id": "معرّف المستخدم (User ID)",

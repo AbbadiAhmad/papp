@@ -8,12 +8,14 @@ import {
   Paper,
   Snackbar,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -64,6 +66,7 @@ export function SessionsPage() {
   const [purgeError, setPurgeError] = useState<string | null>(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
   const [confirmPurge, setConfirmPurge] = useState(false);
+  const [tab, setTab] = useState(0);
 
   const {
     status,
@@ -171,6 +174,13 @@ export function SessionsPage() {
         {t('core.menu.sessions')}
       </Typography>
 
+      <Tabs value={tab} onChange={(_, v: number) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label={t('core.sessions.list_tab')} />
+        <Tab label={t('core.sessions.purge_tab')} />
+      </Tabs>
+
+      {tab === 0 ? (
+        <>
       <Typography variant="h6" component="h3" gutterBottom>
         {t('core.sessions.mine')}
       </Typography>
@@ -199,10 +209,8 @@ export function SessionsPage() {
         </Alert>
       ) : null}
       {otherSessions ? renderTable(otherSessions) : null}
-
-      <Typography variant="h6" component="h3" gutterBottom>
-        {t('core.sessions.purge_title')}
-      </Typography>
+        </>
+      ) : (
       <Box sx={{ maxWidth: 480, mb: 3 }}>
         <Alert severity="warning" sx={{ mb: 2 }}>
           {t('core.sessions.purge_warning')}
@@ -232,6 +240,7 @@ export function SessionsPage() {
           </Button>
         </Stack>
       </Box>
+      )}
 
       <ConfirmDialog
         open={confirmPurge}
