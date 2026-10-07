@@ -27,7 +27,13 @@ export const usersApi = {
   getMyLandingPageOptions: () => apiClient.get<LandingPageOption[]>('/users/me/landing-page-options').then((r) => r.data),
   setMyLandingPage: (landingPage: string | null) =>
     apiClient.patch<PublicUser>('/users/me/landing-page', { landingPage }).then((r) => r.data),
-  list: () => apiClient.get<PublicUser[]>('/users').then((r) => r.data),
+  list: () =>
+    apiClient.get<PublicUser[]>('/users').then((r) => {
+      if (!Array.isArray(r.data)) {
+        throw new Error(`GET /users returned ${typeof r.data} instead of a JSON array (content-type: ${String(r.headers['content-type'])})`);
+      }
+      return r.data;
+    }),
   getById: (id: string) => apiClient.get<PublicUser>(`/users/${id}`).then((r) => r.data),
   create: (dto: CreateUserInput) => apiClient.post<PublicUser>('/users', dto).then((r) => r.data),
   update: (id: string, dto: UpdateUserInput) => apiClient.patch<PublicUser>(`/users/${id}`, dto).then((r) => r.data),
