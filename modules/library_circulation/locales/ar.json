@@ -244,5 +244,14 @@
   "library_circulation.scan.borrow_partial": "تمت إعارة {{done}} من {{total}} كتب. الباقي ما زال في القائمة مع السبب.",
   "library_circulation.scan.on_loan_elsewhere": "\"{{book}}\" مستعار حاليًا من {{reader}}.",
   "library_circulation.scan.return_it": "إرجاعه",
-  "library_circulation.scan.done_next_reader": "تم — القارئ التالي"
+  "library_circulation.scan.done_next_reader": "تم — القارئ التالي",
+  "library_circulation.students.filter_search": "ابحث بالاسم أو البريد أو الرمز…",
+  "library_circulation.students.filter_any": "الكل",
+  "library_circulation.students.filter_has_books": "لديه كتب مستعارة",
+  "library_circulation.students.filter_overdue": "لديه كتب متأخرة",
+  "library_circulation.students.filter_no_books": "بلا كتب مستعارة",
+  "library_circulation.students.clear_filters": "مسح الفلاتر",
+  "library_circulation.students.no_results": "لا يوجد قراء مطابقون.",
+  "library_circulation.students.rows_per_page": "عدد الصفوف في الصفحة",
+  "library_circulation.students.displayed_rows": "{{from}}–{{to}} من {{count}}"
 }

@@ -186,6 +186,77 @@ describe('StudentsService', () => {
     });
   });
 
+  describe('listPaged (Readers table)', () => {
+    beforeEach(() => {
+      prisma.userRole.findMany.mockResolvedValue([{ userId: 'user-1' }]);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.libraryStudent.count.mockResolvedValue(57);
+      prisma.libraryStudent.findMany.mockResolvedValue([studentRow()]);
+      // The page query is sent as [count, findMany] in one transaction.
+      prisma.$transaction.mockImplementation((arg: unknown) => (Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => unknown)(prisma)));
+    });
+    const lastWhere = () => (prisma.libraryStudent.count.mock.calls.at(-1)![0] as { where: { AND: Record<string, unknown>[] } }).where.AND;
+
+    it('returns the filtered total with the requested page slice', async () => {
+      const result = await service.listPaged({ page: 3, pageSize: 10 });
+      expect(result).toMatchObject({ total: 57, page: 3, pageSize: 10 });
+      expect(result.items).toHaveLength(1);
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
+    });
+
+    it('defaults to page 1 of 25, newest first, with a stable id tiebreaker', async () => {
+      await service.listPaged({});
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 0, take: 25, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
+      );
+    });
+
+    it('the same where clause drives count and rows (so total always matches the filter)', async () => {
+      await service.listPaged({ borrowing: 'out' });
+      const countWhere = (prisma.libraryStudent.count.mock.calls.at(-1)![0] as { where: unknown }).where;
+      const rowsWhere = (prisma.libraryStudent.findMany.mock.calls.at(-1)![0] as { where: unknown }).where;
+      expect(rowsWhere).toEqual(countWhere);
+    });
+
+    it('free text searches code/class and the linked account (name, email, ID, department)', async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-9' }]);
+      await service.listPaged({ q: ' lay ' });
+      const textClause = lastWhere()[1] as { OR: unknown[] };
+      expect(textClause.OR).toEqual([
+        { code: { contains: 'lay', mode: 'insensitive' } },
+        { className: { contains: 'lay', mode: 'insensitive' } },
+        { userId: { in: ['user-9'] } },
+      ]);
+    });
+
+    it('status filters use the account\'s isActive flag', async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-off' }]);
+      await service.listPaged({ status: 'inactive' });
+      expect(lastWhere()[1]).toEqual({ userId: { in: ['user-off'] } });
+      await service.listPaged({ status: 'active' });
+      expect(lastWhere()[1]).toEqual({ userId: { notIn: ['user-off'] } });
+    });
+
+    it.each([
+      ['out', { borrowings: { some: { status: { in: ['active', 'overdue'] } } } }],
+      ['none', { borrowings: { none: { status: { in: ['active', 'overdue'] } } } }],
+    ])('borrowing=%s filter', async (borrowing, clause) => {
+      await service.listPaged({ borrowing: borrowing as 'out' | 'none' });
+      expect(lastWhere()[1]).toEqual(clause);
+    });
+
+    it('borrowing=overdue also counts active loans already past their due date', async () => {
+      await service.listPaged({ borrowing: 'overdue' });
+      const some = (lastWhere()[1] as { borrowings: { some: { OR: unknown[] } } }).borrowings.some;
+      expect(some.OR).toEqual([{ status: 'overdue' }, { status: 'active', dueAt: { lt: expect.any(Date) } }]);
+    });
+
+    it('sorts by the requested column and direction', async () => {
+      await service.listPaged({ sortBy: 'code', sortDir: 'desc' });
+      expect(prisma.libraryStudent.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ code: 'desc' }, { id: 'asc' }] }));
+    });
+  });
+
   describe('automatic reader codes', () => {
     it('create() without a code takes the next sequence value, formatted R + 6 digits', async () => {
       prisma.role.findUnique.mockResolvedValue({ id: 'role-reader', code: 'reader' });

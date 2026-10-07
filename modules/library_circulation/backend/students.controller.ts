@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { ListStudentsDto } from './dto/list-students.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 import { StudentsExcelService } from './students-excel.service';
@@ -33,6 +34,13 @@ export class StudentsController {
   @RequirePermission('library_circulation.students.view')
   async list() {
     return this.students.list();
+  }
+
+  /** Readers table: server-side filters, sorting and pagination -> `{ items, total, page, pageSize }`. Before `:id`. */
+  @Get('paged')
+  @RequirePermission('library_circulation.students.view')
+  async listPaged(@Query() query: ListStudentsDto) {
+    return this.students.listPaged(query);
   }
 
   /**

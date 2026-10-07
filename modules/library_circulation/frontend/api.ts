@@ -113,6 +113,25 @@ export interface CreatedStudent extends LibraryStudent {
   temporaryPassword: string;
 }
 
+export interface StudentListQuery {
+  q?: string;
+  className?: string;
+  status?: 'all' | 'active' | 'inactive';
+  borrowing?: 'all' | 'out' | 'overdue' | 'none';
+  sortBy?: 'createdAt' | 'code' | 'className';
+  sortDir?: 'asc' | 'desc';
+  page: number;
+  pageSize: number;
+}
+
+export interface StudentListPage {
+  items: LibraryStudent[];
+  /** Count AFTER filters, across all pages. */
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface CreateStudentInput {
   name: string;
   email: string;
@@ -403,6 +422,11 @@ export const libraryCirculationApi = {
     apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit } }).then((r) => r.data),
 
   // Students
+  listStudentsPaged: (query: StudentListQuery) => {
+    // Drop blank/"all" filters so the URL stays clean and the server applies no filter for them.
+    const params = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== '' && v !== undefined && v !== 'all'));
+    return apiClient.get<StudentListPage>(`${BASE}/students/paged`, { params }).then((r) => r.data);
+  },
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
   searchStudents: (q: string) => apiClient.get<StudentSearchResult[]>(`${BASE}/students/search`, { params: { q } }).then((r) => r.data),
   getActiveBorrowingsForStudent: (studentId: string) =>

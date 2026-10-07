@@ -244,5 +244,14 @@
   "library_circulation.scan.borrow_partial": "Borrowed {{done}} of {{total}} books. The rest are still in the list with the reason.",
   "library_circulation.scan.on_loan_elsewhere": "\"{{book}}\" is currently borrowed by {{reader}}.",
   "library_circulation.scan.return_it": "Return it",
-  "library_circulation.scan.done_next_reader": "Done — next reader"
+  "library_circulation.scan.done_next_reader": "Done — next reader",
+  "library_circulation.students.filter_search": "Search name, email, code…",
+  "library_circulation.students.filter_any": "Any",
+  "library_circulation.students.filter_has_books": "Has books out",
+  "library_circulation.students.filter_overdue": "Has overdue books",
+  "library_circulation.students.filter_no_books": "No books out",
+  "library_circulation.students.clear_filters": "Clear filters",
+  "library_circulation.students.no_results": "No readers match.",
+  "library_circulation.students.rows_per_page": "Rows per page",
+  "library_circulation.students.displayed_rows": "{{from}}–{{to}} of {{count}}"
 }

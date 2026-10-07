@@ -577,72 +577,6 @@ export function ScanPage() {
               </Typography>
 
               <Stack spacing={2} sx={{ mt: 1 }}>
-                {/* Currently borrowed by the loaded reader */}
-                {reader ? (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {t('library_circulation.scan.active_borrowings_title')}
-                    </Typography>
-                    {readerSectionsLoading ? (
-                      <Typography variant="body2" color="text.secondary">
-                        {t('core.common.loading')}
-                      </Typography>
-                    ) : activeBorrowings.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">
-                        {t('library_circulation.scan.no_active_borrowings')}
-                      </Typography>
-                    ) : (
-                      <List dense disablePadding>
-                        {activeBorrowings.map((b) => (
-                          <ListItem
-                            key={b.id}
-                            disableGutters
-                            divider
-                            secondaryAction={
-                              <Stack direction="row" spacing={1}>
-                                <Can permission="library_circulation.extend">
-                                  <Button size="small" onClick={() => openExtend(toBorrowingAdapter(b, reader.student.id))} disabled={busy}>
-                                    {t('library_circulation.borrowings.extend')}
-                                  </Button>
-                                </Can>
-                                <Can permission="library_circulation.return">
-                                  <Button size="small" variant="outlined" onClick={() => openReturnFromList(b)} disabled={busy}>
-                                    {t('library_circulation.scan.confirm_return')}
-                                  </Button>
-                                </Can>
-                              </Stack>
-                            }
-                          >
-                            <ListItemText
-                              primary={b.bookTitle ?? b.qrCode ?? '—'}
-                              secondary={`${b.qrCode ?? ''} · ${t('library_circulation.borrowings.due_at')}: ${formatDateOnly(b.dueAt, language)}`}
-                              slotProps={{ secondary: { color: b.isOverdue ? 'error' : 'text.secondary' } }}
-                              sx={{ pr: 22 }}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                  </Box>
-                ) : null}
-
-                {otherLoan ? (
-                  <Alert
-                    severity="warning"
-                    action={
-                      <Can permission="library_circulation.return">
-                        <Button color="inherit" size="small" onClick={() => setReturnTarget({ borrowing: otherLoan.borrowing, label: otherLoan.label })}>
-                          {t('library_circulation.scan.return_it')}
-                        </Button>
-                      </Can>
-                    }
-                  >
-                    {t('library_circulation.scan.on_loan_elsewhere', { book: otherLoan.label, reader: otherLoan.borrowerName })}
-                  </Alert>
-                ) : null}
-
-                {reader ? <Divider /> : null}
-
                 {/* New books: scan several, borrow them all at once */}
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -677,7 +611,7 @@ export function ScanPage() {
                       {t('library_circulation.scan.to_borrow_empty')}
                     </Typography>
                   ) : (
-                    <List dense disablePadding sx={{ mt: 1 }}>
+                    <List dense disablePadding sx={{ mt: 1, maxHeight: 280, overflowY: 'auto' }}>
                       {basket.map((item) => {
                         const prior = readerId ? priorByCopy[`${readerId}:${item.copyId}`] : null;
                         return (
@@ -750,6 +684,72 @@ export function ScanPage() {
                     </Stack>
                   ) : null}
                 </Box>
+
+                {otherLoan ? (
+                  <Alert
+                    severity="warning"
+                    action={
+                      <Can permission="library_circulation.return">
+                        <Button color="inherit" size="small" onClick={() => setReturnTarget({ borrowing: otherLoan.borrowing, label: otherLoan.label })}>
+                          {t('library_circulation.scan.return_it')}
+                        </Button>
+                      </Can>
+                    }
+                  >
+                    {t('library_circulation.scan.on_loan_elsewhere', { book: otherLoan.label, reader: otherLoan.borrowerName })}
+                  </Alert>
+                ) : null}
+
+                {reader ? <Divider /> : null}
+
+                {/* Currently borrowed by the loaded reader */}
+                {reader ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      {t('library_circulation.scan.active_borrowings_title')}
+                    </Typography>
+                    {readerSectionsLoading ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {t('core.common.loading')}
+                      </Typography>
+                    ) : activeBorrowings.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {t('library_circulation.scan.no_active_borrowings')}
+                      </Typography>
+                    ) : (
+                      <List dense disablePadding sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                        {activeBorrowings.map((b) => (
+                          <ListItem
+                            key={b.id}
+                            disableGutters
+                            divider
+                            secondaryAction={
+                              <Stack direction="row" spacing={1}>
+                                <Can permission="library_circulation.extend">
+                                  <Button size="small" onClick={() => openExtend(toBorrowingAdapter(b, reader.student.id))} disabled={busy}>
+                                    {t('library_circulation.borrowings.extend')}
+                                  </Button>
+                                </Can>
+                                <Can permission="library_circulation.return">
+                                  <Button size="small" variant="outlined" onClick={() => openReturnFromList(b)} disabled={busy}>
+                                    {t('library_circulation.scan.confirm_return')}
+                                  </Button>
+                                </Can>
+                              </Stack>
+                            }
+                          >
+                            <ListItemText
+                              primary={b.bookTitle ?? b.qrCode ?? '—'}
+                              secondary={`${b.qrCode ?? ''} · ${t('library_circulation.borrowings.due_at')}: ${formatDateOnly(b.dueAt, language)}`}
+                              slotProps={{ secondary: { color: b.isOverdue ? 'error' : 'text.secondary' } }}
+                              sx={{ pr: 22 }}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Box>
+                ) : null}
 
                 {reader || basket.length > 0 ? (
                   <Box>

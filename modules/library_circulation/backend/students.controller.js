@@ -16,6 +16,7 @@ exports.StudentsController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
 const create_student_dto_1 = require("./dto/create-student.dto");
+const list_students_dto_1 = require("./dto/list-students.dto");
 const update_student_dto_1 = require("./dto/update-student.dto");
 const platform_1 = require("./platform");
 const students_excel_service_1 = require("./students-excel.service");
@@ -41,6 +42,10 @@ let StudentsController = class StudentsController {
     }
     async list() {
         return this.students.list();
+    }
+    /** Readers table: server-side filters, sorting and pagination -> `{ items, total, page, pageSize }`. Before `:id`. */
+    async listPaged(query) {
+        return this.students.listPaged(query);
     }
     /**
      * Searchable reader picker (Fines page's [Create Fine] dialog, Scan page's
@@ -100,6 +105,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('paged'),
+    (0, platform_1.RequirePermission)('library_circulation.students.view'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_students_dto_1.ListStudentsDto]),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "listPaged", null);
 __decorate([
     (0, common_1.Get)('search'),
     (0, platform_1.RequirePermission)('library_circulation.students.view'),

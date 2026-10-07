@@ -103,10 +103,65 @@ let StudentsService = class StudentsService {
         const rows = await this.prisma.userRole.findMany({ where: { role: { code: READER_ROLE_CODE } }, select: { userId: true } });
         return new Set(rows.map((r) => r.userId));
     }
+    /** Every visible reader, unpaged — Excel export and other modules' pickers (reading_club) use this. */
     async list() {
         await this.syncReaderProfiles();
-        const [visible, readerUserIds] = await Promise.all([this.visibilityFilter(), this.currentReaderUserIds()]);
+        const visible = await this.visibilityFilter();
         const students = await this.prisma.libraryStudent.findMany({ where: visible, orderBy: { createdAt: 'desc' } });
+        return this.enrichForList(students);
+    }
+    /** Readers table: filtered, sorted and paginated ON THE SERVER, so `total` is the filtered count and every page is consistent. */
+    async listPaged(dto) {
+        await this.syncReaderProfiles();
+        const page = dto.page ?? 1;
+        const pageSize = dto.pageSize ?? 25;
+        const and = [await this.visibilityFilter()];
+        const q = dto.q?.trim();
+        if (q) {
+            const contains = { contains: q, mode: 'insensitive' };
+            const matchingUsers = await this.prisma.user.findMany({
+                where: { OR: [{ name: contains }, { email: contains }, { externalId: contains }, { department: contains }] },
+                select: { id: true },
+            });
+            and.push({ OR: [{ code: contains }, { className: contains }, { userId: { in: matchingUsers.map((u) => u.id) } }] });
+        }
+        if (dto.className?.trim()) {
+            and.push({ className: { contains: dto.className.trim(), mode: 'insensitive' } });
+        }
+        if (dto.status === 'active' || dto.status === 'inactive') {
+            const inactive = await this.prisma.user.findMany({ where: { isActive: false }, select: { id: true } });
+            const inactiveIds = inactive.map((u) => u.id);
+            and.push({ userId: dto.status === 'inactive' ? { in: inactiveIds } : { notIn: inactiveIds } });
+        }
+        const openStatuses = { in: ['active', 'overdue'] };
+        if (dto.borrowing === 'out') {
+            and.push({ borrowings: { some: { status: openStatuses } } });
+        }
+        else if (dto.borrowing === 'overdue') {
+            // 'overdue' is set lazily; an active loan past its due date is just as late.
+            and.push({ borrowings: { some: { OR: [{ status: 'overdue' }, { status: 'active', dueAt: { lt: new Date() } }] } } });
+        }
+        else if (dto.borrowing === 'none') {
+            and.push({ borrowings: { none: { status: openStatuses } } });
+        }
+        const where = { AND: and };
+        const sortBy = dto.sortBy ?? 'createdAt';
+        const sortDir = dto.sortDir ?? (sortBy === 'createdAt' ? 'desc' : 'asc');
+        const [total, rows] = await this.prisma.$transaction([
+            this.prisma.libraryStudent.count({ where }),
+            this.prisma.libraryStudent.findMany({
+                where,
+                // `id` as a tiebreaker keeps page boundaries stable when many rows share the sort value.
+                orderBy: [{ [sortBy]: sortDir }, { id: 'asc' }],
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            }),
+        ]);
+        return { items: await this.enrichForList(rows), total, page, pageSize };
+    }
+    /** Joins the account fields, "is still a reader" flag and current-loan count onto profile rows. */
+    async enrichForList(students) {
+        const readerUserIds = await this.currentReaderUserIds();
         const userIds = [...new Set(students.map((s) => s.userId))];
         const users = userIds.length
             ? await this.prisma.user.findMany({
