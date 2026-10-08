@@ -8,6 +8,8 @@ export interface ResolvedMenuLeaf {
   iconName: string | undefined;
   route: string;
   requiredPermission: string;
+  /** Admin rename from the appearance menu layout; wins over `labelKey` when set for the active language. */
+  labelOverride?: { ar?: string; en?: string };
 }
 
 export interface ResolvedMenuGroup {
@@ -16,6 +18,7 @@ export interface ResolvedMenuGroup {
   labelKey: string;
   iconName: string | undefined;
   children: ResolvedMenuLeaf[];
+  labelOverride?: { ar?: string; en?: string };
 }
 
 export type ResolvedMenuNode = ResolvedMenuLeaf | ResolvedMenuGroup;

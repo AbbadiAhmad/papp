@@ -23,6 +23,7 @@ COPY apps/api apps/api
 # copy it onward via --from=build, matching how prisma/node_modules/.prisma
 # already flow through this same stage.
 COPY modules modules
+COPY themes themes
 RUN npm run build --workspace=@papp/shared-types
 RUN npm run --workspace=@papp/api prisma:generate
 RUN npm run build --workspace=@papp/api
@@ -59,6 +60,8 @@ COPY --from=build /repo/node_modules/.prisma node_modules/.prisma
 # install failed with "No manifest.json found" in any real docker-compose
 # deployment, even though it worked in this sandbox's non-Docker dev setup.
 COPY --from=build /repo/modules modules
+# Theme packs (data-only JSON, themes/README.md) — read on demand by ThemesService.
+COPY --from=build /repo/themes themes
 
 WORKDIR /repo/apps/api
 EXPOSE 3000

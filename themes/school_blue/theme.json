@@ -1,0 +1,24 @@
+{
+  "key": "school_blue",
+  "version": "1.0.0",
+  "name": { "ar": "أزرق المدرسة", "en": "School Blue" },
+  "description": { "ar": "تصميم ودّي بتبويب علوي وبطاقات مستديرة.", "en": "Friendly look with top tabs and rounded cards." },
+  "shell": "tabs",
+  "radius": 16,
+  "fonts": {
+    "ar": "\"Cairo\", \"Segoe UI\", Tahoma, Arial, sans-serif",
+    "en": "\"Nunito\", \"Segoe UI\", Roboto, Arial, sans-serif"
+  },
+  "light": {
+    "primary": "#3b78d8", "primaryContrast": "#ffffff", "secondary": "#c2701f",
+    "background": "#eef4fc", "surface": "#ffffff", "text": "#16284a", "textMuted": "#5d6f8f",
+    "border": "#dbe5f3", "hero": "#dcebfb", "headerBg": "#27559f", "headerText": "#ffffff",
+    "success": "#1f7a3f", "warning": "#8a5a00", "error": "#a3262a", "info": "#2459a8"
+  },
+  "dark": {
+    "primary": "#5b94ee", "primaryContrast": "#0c1730", "secondary": "#e0a35a",
+    "background": "#0f1829", "surface": "#18243a", "text": "#e8eefb", "textMuted": "#9db0d1",
+    "border": "#2b3b5a", "hero": "#1b2e52", "headerBg": "#16284a", "headerText": "#ffffff",
+    "success": "#7fdc9d", "warning": "#f3cd72", "error": "#ff9a9d", "info": "#9cc1fa"
+  }
+}

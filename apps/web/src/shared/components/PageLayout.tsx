@@ -2,6 +2,7 @@ import {
   AppBar,
   Avatar,
   Box,
+  Chip,
   Collapse,
   Divider,
   Drawer,
@@ -12,6 +13,8 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  Tab,
+  Tabs,
   Toolbar,
   Tooltip,
   Typography,
@@ -28,17 +31,20 @@ import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PaletteIcon from '@mui/icons-material/Palette';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
+import { useMenuLayout, useThemePack } from '../../app/AppearanceContext';
+import { applyMenuLayout, labelOf } from '../modules/applyMenuLayout';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
 import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
@@ -94,6 +100,7 @@ const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
   { type: 'leaf', id: 'backup', labelKey: 'core.menu.backup', iconName: undefined, route: '/backup', requiredPermission: 'backup.export' },
   { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: 'notifications.view' },
   { type: 'leaf', id: 'settings', labelKey: 'core.menu.settings', iconName: undefined, route: '/settings', requiredPermission: 'users.settings.view' },
+  { type: 'leaf', id: 'appearance', labelKey: 'core.menu.appearance', iconName: undefined, route: '/appearance', requiredPermission: 'appearance.view' },
   { type: 'leaf', id: 'modules', labelKey: 'core.menu.modules', iconName: undefined, route: '/modules', requiredPermission: 'modules.view' },
 ];
 
@@ -109,6 +116,7 @@ const CORE_ICONS: Record<string, ReactNode> = {
   backup: <CloudDownloadIcon />,
   notifications: <NotificationsIcon />,
   settings: <SettingsIcon />,
+  appearance: <PaletteIcon />,
   modules: <ExtensionIcon />,
 };
 
@@ -116,18 +124,19 @@ function iconFor(node: ResolvedMenuLeaf | { id: string; iconName: string | undef
   return CORE_ICONS[node.id] ?? resolveMenuIcon(node.iconName);
 }
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
-  const { t } = useTranslation();
-  const location = useLocation();
-  // NavList only ever renders inside PageLayout, which App.tsx only mounts
-  // once fully authenticated (never anonymous, never must-change-password) —
-  // always enabled here is correct (root D79: the endpoint requires a session).
+/**
+ * The sidebar/tab nodes: platform group + every installed module's menu,
+ * then the admin's menu layout (appearance, D96) applied on top. Shared by
+ * the sidebar (`NavList`) and the tabs shell (`TabsNav`).
+ */
+function useNavNodes(): ResolvedMenuNode[] {
+  // Only ever rendered inside PageLayout, which App.tsx mounts once fully
+  // authenticated — always enabled here is correct (root D79).
   const moduleManifests = useModuleFrontendManifests(true);
+  const { layout } = useMenuLayout();
 
   // Root DECISIONS.md D78: every installed module's own menu entries,
-  // resolved generically from its manifest into group/leaf nodes —
-  // App.tsx/PageLayout.tsx never import or name a module directly. See
-  // buildModuleMenuEntries.ts's own docblock for the exact grouping rule.
+  // resolved generically from its manifest — see buildModuleMenuEntries.ts.
   const moduleNodes = useMemo<ResolvedMenuNode[]>(() => buildModuleMenuEntries(moduleManifests ?? []), [moduleManifests]);
 
   const platformGroup: ResolvedMenuNode = useMemo(
@@ -135,7 +144,22 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
     [],
   );
 
-  const nodes = useMemo<ResolvedMenuNode[]>(() => [platformGroup, ...moduleNodes], [platformGroup, moduleNodes]);
+  return useMemo<ResolvedMenuNode[]>(() => applyMenuLayout([platformGroup, ...moduleNodes], layout), [platformGroup, moduleNodes, layout]);
+}
+
+/** Every default (un-customised) node — what the Appearance page's menu editor starts from. */
+export function useDefaultNavNodes(): ResolvedMenuNode[] {
+  const moduleManifests = useModuleFrontendManifests(true);
+  return useMemo<ResolvedMenuNode[]>(
+    () => [{ type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }, ...buildModuleMenuEntries(moduleManifests ?? [])],
+    [moduleManifests],
+  );
+}
+
+function NavList({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const nodes = useNavNodes();
 
   return (
     <List>
@@ -181,6 +205,7 @@ function NavGroup({
   // itself in a loop would (that hook wraps this same function but is only
   // meant to be called at a fixed, top-level position per component).
   const { hasPermission } = useAuth();
+  const { language } = useLanguage();
   const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
 
   const containsActiveRoute = group.children.some((child) => child.route === activePath);
@@ -203,7 +228,7 @@ function NavGroup({
     <>
       <ListItemButton onClick={() => setForcedState(!open)}>
         <ListItemIcon>{iconFor(group)}</ListItemIcon>
-        <ListItemText primary={t(group.labelKey)} />
+        <ListItemText primary={labelOf(group, language, t)} />
         {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
       </ListItemButton>
       <Collapse in={open} timeout="auto" unmountOnExit>
@@ -239,14 +264,74 @@ function NavLeafItem({
   // hook) before deciding to render this component at all — this is a
   // defensive second check, keeping `NavLeafItem` correct and self-hiding
   // even if ever rendered standalone, same as before this file's rework.
+  const { language } = useLanguage();
   const allowed = usePermission(leaf.requiredPermission);
   const visible = leaf.requiredPermission === ALWAYS_ALLOWED || allowed;
   if (!visible) return null;
   return (
     <ListItemButton component={RouterLink} to={leaf.route} selected={active} onClick={onNavigate} sx={indent ? { pl: 4 } : undefined}>
       <ListItemIcon>{iconFor(leaf)}</ListItemIcon>
-      <ListItemText primary={t(leaf.labelKey)} />
+      <ListItemText primary={labelOf(leaf, language, t)} />
     </ListItemButton>
+  );
+}
+
+/**
+ * The `tabs` shell (theme packs, D95): the menu groups as top tabs, with the
+ * active group's pages as a second row. Same nodes, same permission checks
+ * and same labels as the sidebar — only the presentation differs. A group's
+ * tab opens its first visible page.
+ */
+function TabsNav() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+
+  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
+  const tabs = nodes
+    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
+    .filter((tab) => tab.leaves.length > 0);
+  const active = tabs.find((tab) => tab.leaves.some((leaf) => leaf.route === pathname));
+
+  return (
+    <Box data-app-shell="tabs" sx={{ mb: 2 }}>
+      <Tabs
+        value={active?.node.id ?? false}
+        variant="scrollable"
+        scrollButtons="auto"
+        aria-label={t('core.common.menu')}
+        sx={{ '& .MuiTab-root': { gap: 1, minHeight: 48 } }}
+      >
+        {tabs.map((tab) => (
+          <Tab
+            key={tab.node.id}
+            value={tab.node.id}
+            icon={iconFor(tab.node) as ReactElement}
+            iconPosition="start"
+            label={labelOf(tab.node, language, t)}
+            onClick={() => navigate(tab.leaves[0].route)}
+          />
+        ))}
+      </Tabs>
+      {active && active.leaves.length > 1 ? (
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', pt: 1.5 }}>
+          {active.leaves.map((leaf) => (
+            <Chip
+              key={leaf.id}
+              component={RouterLink}
+              to={leaf.route}
+              clickable
+              color={leaf.route === pathname ? 'primary' : 'default'}
+              variant={leaf.route === pathname ? 'filled' : 'outlined'}
+              label={labelOf(leaf, language, t)}
+            />
+          ))}
+        </Box>
+      ) : null}
+    </Box>
   );
 }
 
@@ -265,6 +350,7 @@ export function TopBar() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
+  const tabsShell = useThemePack().pack?.shell === 'tabs';
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [langMenuAnchor, setLangMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -280,7 +366,7 @@ export function TopBar() {
         {/* Hamburger only once authenticated (that's the only time PageLayout's
             drawer exists) and only on mobile — desktop keeps the always-visible
             permanent sidebar, no toggle needed. */}
-        {status === 'authenticated' && isMobile ? (
+        {status === 'authenticated' && isMobile && !tabsShell ? (
           <IconButton
             color="inherit"
             edge="start"
@@ -377,6 +463,17 @@ export function TopBar() {
 export function PageLayout({ children }: { children: ReactNode }) {
   const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
   const closeMobileNav = () => setMobileNavOpen(false);
+  const tabsShell = useThemePack().pack?.shell === 'tabs';
+
+  if (tabsShell) {
+    return (
+      <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
+        <Toolbar data-app-shell="main-spacer" />
+        <TabsNav />
+        {children}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', flexGrow: 1 }}>

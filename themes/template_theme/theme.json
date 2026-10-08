@@ -1,0 +1,18 @@
+{
+  "key": "template_theme",
+  "version": "1.0.0",
+  "name": { "ar": "قالب تصميم (انسخني)", "en": "Template theme (copy me)" },
+  "description": { "ar": "انسخ هذا المجلد، غيّر key واسم المجلد والألوان.", "en": "Copy this folder, then change the key, the folder name and the colors." },
+  "shell": "sidebar",
+  "radius": 8,
+  "fonts": {
+    "ar": "\"Segoe UI\", \"Noto Kufi Arabic\", Tahoma, Arial, sans-serif",
+    "en": "\"Segoe UI\", Roboto, Arial, sans-serif"
+  },
+  "light": {
+    "primary": "#1c4b82", "primaryContrast": "#ffffff", "secondary": "#8a5a1c",
+    "background": "#f5f7fa", "surface": "#ffffff", "text": "#1d2733", "textMuted": "#5b6877",
+    "border": "#dde3ea", "hero": "#e3edf8", "headerBg": "#1c4b82", "headerText": "#ffffff",
+    "success": "#2e7d32", "warning": "#8a5a00", "error": "#c62828", "info": "#1565c0"
+  }
+}

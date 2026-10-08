@@ -17,3 +17,14 @@ export {
   type ModuleManifestSetting,
   type ModuleStatus,
 } from './module-manifest';
+
+/** Appearance: theme packs + admin menu layout. */
+export {
+  EMPTY_MENU_LAYOUT,
+  MENU_ALWAYS_VISIBLE_IDS,
+  menuLayoutSchema,
+  themePackSchema,
+  type MenuLayout,
+  type ThemePack,
+  type ThemePalette,
+} from './appearance';
