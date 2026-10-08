@@ -1,4 +1,4 @@
-import { alpha, Alert, Box, Button, Card, CardContent, Link, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Link, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -54,7 +54,7 @@ export function LoginPage() {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)', px: 2, py: 4 }}>
       <Card sx={{ width: '100%', maxWidth: 400, boxShadow: 3 }}>
-        <Box sx={(theme) => ({ bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1), p: 3, textAlign: 'center' })}>
+        <Box sx={(theme) => ({ bgcolor: theme.palette.hero, p: 3, textAlign: 'center' })}>
           <Typography variant="h5" component="h2" sx={{ fontWeight: 800 }}>
             {t('core.app.name')}
           </Typography>

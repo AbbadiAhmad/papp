@@ -1,6 +1,6 @@
 import createCache, { type EmotionCache } from '@emotion/cache';
 import type { ThemePack } from '@papp/shared-types';
-import { alpha, createTheme, lighten, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, darken, lighten, type Theme } from '@mui/material/styles';
 import { prefixer } from 'stylis';
 import rtlPlugin from 'stylis-plugin-rtl';
 import { API_BASE_URL } from '../shared/api/httpClient';
@@ -64,13 +64,24 @@ function deriveDarkPalette(light: ThemePack['light']): ThemePack['light'] {
   };
 }
 
+declare module '@mui/material/styles' {
+  interface Palette {
+    /** Soft banner color from the theme pack (`hero`). */
+    hero: string;
+  }
+  interface PaletteOptions {
+    hero?: string;
+  }
+}
+
 export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null = null, dark = false): Theme {
   // A theme pack is data only (packages/shared-types/src/appearance.ts):
   // palette + fonts + radius + shell. `dark` is the already-resolved mode
   // (user choice or OS setting, see ColorModeContext).
   const active = pack ?? BUILT_IN_THEME;
   const c = dark ? (active.dark ?? deriveDarkPalette(active.light)) : active.light;
-  const border = `1px solid ${c.border}`;
+  const playful = active.playful === true;
+  const border = `${playful ? 2 : 1}px solid ${c.border}`;
   const radius = active.radius;
   // A soft tint of the accent: table headers, hover rows, selected rows.
   const tint = alpha(c.primary, dark ? 0.14 : 0.08);
@@ -78,7 +89,7 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
   // overlay keeps the brand/actions legible: solid at the start edge, fading to
   // show the picture; it follows the reading direction.
   const headerPicture = active.headerImage
-    ? `linear-gradient(${direction === 'rtl' ? 'to left' : 'to right'}, ${c.headerBg} 0%, ${alpha(c.headerBg, 0.9)} 30%, ${alpha(c.headerBg, 0.5)} 100%), url("${API_BASE_URL}/appearance/themes/${active.key}/assets/${active.headerImage}")`
+    ? `linear-gradient(${direction === 'rtl' ? 'to left' : 'to right'}, ${c.headerBg} 0%, ${alpha(c.headerBg, playful ? 0.8 : 0.9)} 28%, ${alpha(c.headerBg, playful ? 0.1 : 0.5)} 100%), url("${API_BASE_URL}/appearance/themes/${active.key}/assets/${active.headerImage}")`
     : undefined;
 
   return createTheme({
@@ -90,6 +101,7 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       background: { default: c.background, paper: c.surface },
       text: { primary: c.text, secondary: c.textMuted },
       divider: c.border,
+      hero: c.hero,
       success: { main: c.success },
       warning: { main: c.warning },
       error: { main: c.error },
@@ -97,6 +109,7 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
     },
     typography: {
       fontFamily: direction === 'rtl' ? active.fonts.ar : active.fonts.en,
+      ...(playful ? { fontSize: 15.5 } : {}),
       button: { textTransform: 'none', fontWeight: 700 },
       h4: { fontWeight: 800 },
       h5: { fontWeight: 800 },
@@ -129,6 +142,32 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       MuiTableCell: { styleOverrides: { root: { borderColor: c.border }, head: { fontWeight: 800, color: c.text } } },
       MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { backgroundColor: tint } } } },
       MuiTab: { styleOverrides: { root: { fontWeight: 700 } } },
+      ...(playful
+        ? {
+            // Child-friendly: chunky pill buttons with a "pressed" edge, soft colored card shadows, roomy tabs.
+            MuiButton: {
+              styleOverrides: {
+                root: {
+                  borderRadius: 999,
+                  minHeight: 44,
+                  paddingInline: 22,
+                  fontSize: '1rem',
+                  fontWeight: 800,
+                  '&.MuiButton-contained.MuiButton-colorPrimary': {
+                    boxShadow: `0 4px 0 ${darken(c.primary, dark ? 0.35 : 0.25)}`,
+                    '&:hover': { boxShadow: `0 4px 0 ${darken(c.primary, dark ? 0.35 : 0.25)}`, filter: 'brightness(1.06)' },
+                    '&:active': { boxShadow: 'none', transform: 'translateY(3px)' },
+                  },
+                },
+                sizeSmall: { minHeight: 34, paddingInline: 14, fontSize: '0.875rem' },
+              },
+            },
+            MuiCard: { defaultProps: { variant: 'outlined' }, styleOverrides: { root: { borderRadius: radius, border, boxShadow: `0 6px 16px ${alpha(c.primary, dark ? 0.0 : 0.1)}` } } },
+            MuiTab: { styleOverrides: { root: { fontWeight: 800, fontSize: '1rem', minHeight: 52, borderRadius: 999 } } },
+            MuiTabs: { styleOverrides: { indicator: { height: 4, borderRadius: 4 } } },
+            MuiChip: { styleOverrides: { root: { fontWeight: 800, borderWidth: 2 } } },
+          }
+        : {}),
     },
   });
 }

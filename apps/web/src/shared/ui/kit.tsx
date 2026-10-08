@@ -67,7 +67,7 @@ export function PageHero({ title, subtitle, action, illustration = true, media }
         flexWrap: 'wrap',
         p: { xs: 2, sm: 3 },
         borderRadius: `${theme.shape.borderRadius}px`,
-        bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1),
+        bgcolor: theme.palette.hero,
       })}
     >
       {media ?? (illustration ? <BooksIllustration /> : null)}

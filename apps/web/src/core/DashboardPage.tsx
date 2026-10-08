@@ -1,4 +1,4 @@
-import { Box, Card, CardActionArea, Typography } from '@mui/material';
+import { alpha, Box, Card, CardActionArea, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
@@ -7,6 +7,9 @@ import { labelOf } from '../shared/modules/applyMenuLayout';
 import { resolveMenuIcon } from '../shared/modules/menuIcons';
 import { useNavNodes } from '../shared/components/PageLayout';
 import { CardGrid, PageHero } from '../shared/ui/kit';
+
+/** Each shortcut gets its own accent so the page reads as colorful tiles, not a wall of one hue. */
+const ACCENTS = ['primary', 'secondary', 'success', 'info', 'warning', 'error'] as const;
 
 /**
  * Home: a welcome banner plus a shortcut tile for every page this user can
@@ -38,10 +41,17 @@ export function DashboardPage() {
             {labelOf(node, language, t)}
           </Typography>
           <CardGrid min={190}>
-            {leaves.map((leaf) => (
+            {leaves.map((leaf, index) => (
               <Card key={leaf.id}>
                 <CardActionArea component={RouterLink} to={leaf.route} sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: 'flex-start' }}>
-                  <Box sx={{ display: 'flex', color: 'primary.main' }}>{resolveMenuIcon(leaf.iconName ?? (node.type === 'group' ? node.iconName : undefined))}</Box>
+                  <Box
+                    sx={(theme) => {
+                      const accent = theme.palette[ACCENTS[index % ACCENTS.length]].main;
+                      return { display: 'grid', placeItems: 'center', width: 44, height: 44, borderRadius: '50%', flexShrink: 0, color: accent, bgcolor: alpha(accent, theme.palette.mode === 'dark' ? 0.22 : 0.14) };
+                    }}
+                  >
+                    {resolveMenuIcon(leaf.iconName ?? (node.type === 'group' ? node.iconName : undefined))}
+                  </Box>
                   <Typography sx={{ fontWeight: 700 }}>{labelOf(leaf, language, t)}</Typography>
                 </CardActionArea>
               </Card>

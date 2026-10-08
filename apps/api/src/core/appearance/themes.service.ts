@@ -7,6 +7,10 @@ import { resolveThemesDir } from './themes-dir';
 const IMAGE_TYPES: Record<string, string> = {
   svg: 'image/svg+xml',
   png: 'image/png',
+  woff2: 'font/woff2',
+  woff: 'font/woff',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   webp: 'image/webp',
@@ -45,10 +49,12 @@ export class ThemesService {
     return this.readPack(resolveThemesDir(), key);
   }
 
-  /** The pack's declared header picture, or null if the pack/file isn't exactly that. */
+  /** A file the pack itself declares (header picture or font file), or null for anything else. */
   async readHeaderImage(key: string, file: string): Promise<{ data: Buffer; contentType: string } | null> {
     const theme = await this.findTheme(key);
-    if (!theme || !theme.headerImage || theme.headerImage !== file) return null;
+    if (!theme) return null;
+    const declared = theme.headerImage === file || (theme.fontFiles ?? []).some((f) => f.file === file);
+    if (!declared) return null;
     try {
       const data = await readFile(join(resolveThemesDir(), key, file));
       const ext = file.slice(file.lastIndexOf('.') + 1).toLowerCase();

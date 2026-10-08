@@ -13,6 +13,7 @@ import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageL
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
 import { RouteErrorBoundary } from './shared/components/ErrorBoundary';
 import * as authApi from './shared/api/auth';
+import { API_BASE_URL } from './shared/api/httpClient';
 import { LoginPage } from './core/auth/LoginPage';
 import { RegisterPage } from './core/auth/RegisterPage';
 import { SetupPage } from './core/auth/SetupPage';
@@ -364,12 +365,23 @@ function ThemedShell() {
          * PrintCodesPage.tsx's own `@media print` block for that layer).
          */}
         <GlobalStyles
-          styles={{
+          styles={[
+            // Fonts the active theme pack ships itself (themes/README.md), served by the public asset endpoint.
+            ...(pack?.fontFiles ?? []).map((f) => ({
+              '@font-face': {
+                fontFamily: `"${f.family}"`,
+                src: `url("${API_BASE_URL}/appearance/themes/${pack?.key}/assets/${f.file}")`,
+                fontWeight: f.weight ?? 400,
+                fontDisplay: 'swap',
+              },
+            })),
+            {
             '@media print': {
               '[data-app-shell="topbar"], [data-app-shell="drawer"], [data-app-shell="drawer-root"], [data-app-shell="main-spacer"]': { display: 'none !important' },
               '[data-app-shell="main"]': { padding: '0 !important', margin: '0 !important', width: '100% !important' },
             },
-          }}
+            },
+          ]}
         />
         <BrowserRouter>
           <AuthProvider>

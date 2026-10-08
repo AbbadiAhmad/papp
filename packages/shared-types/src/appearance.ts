@@ -45,6 +45,19 @@ export const themePackSchema = z.object({
     .regex(/^[A-Za-z0-9_-]{1,60}\.(svg|png|jpe?g|webp)$/)
     .optional(),
   fonts: z.object({ ar: fontStack, en: fontStack }),
+  /** Optional font files shipped inside the theme folder (woff2/woff/ttf/otf), registered as @font-face under `family` so `fonts.ar/en` can name them. */
+  fontFiles: z
+    .array(
+      z.object({
+        family: z.string().regex(/^[A-Za-z0-9 _-]{1,60}$/),
+        file: z.string().regex(/^[A-Za-z0-9_-]{1,60}\.(woff2?|ttf|otf)$/),
+        weight: z.number().int().min(100).max(900).optional(),
+      }),
+    )
+    .max(12)
+    .optional(),
+  /** Child-friendly styling: bigger pill buttons, thicker borders and soft colored shadows. Colors/radius still come from the palette. */
+  playful: z.boolean().optional(),
   light: themePaletteSchema,
   /** Optional; when absent the theme is light-only. */
   dark: themePaletteSchema.optional(),

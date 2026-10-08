@@ -121,4 +121,21 @@ describe('ThemesService + AppearanceController', () => {
     const { themes } = await controller.listThemes();
     expect(themes).toEqual([]);
   });
+
+  it('serves a font file only if the pack declares it in fontFiles', async () => {
+    await install('font_pack', pack('font_pack', { fontFiles: [{ family: 'Thmanyah Sans', file: 'Thmanyah-Regular.woff2', weight: 400 }] }));
+    await writeFile(join(dir, 'font_pack', 'Thmanyah-Regular.woff2'), 'wOF2');
+    await writeFile(join(dir, 'font_pack', 'Other.woff2'), 'wOF2');
+    const themes = new ThemesService();
+    expect((await themes.readHeaderImage('font_pack', 'Thmanyah-Regular.woff2'))?.contentType).toBe('font/woff2');
+    await expect(themes.readHeaderImage('font_pack', 'Other.woff2')).resolves.toBeNull();
+  });
+
+  it('rejects a font entry that is a path, and a playful flag that is not a boolean', async () => {
+    await install('bad_font', pack('bad_font', { fontFiles: [{ family: 'X', file: '../x.woff2' }] }));
+    await install('bad_flag', pack('bad_flag', { playful: 'yes' }));
+    await install('ok_flag', pack('ok_flag', { playful: true }));
+    const { themes } = await controller.listThemes();
+    expect(themes.map((t) => t.key)).toEqual(['ok_flag']);
+  });
 });

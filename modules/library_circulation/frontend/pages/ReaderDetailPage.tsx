@@ -1,5 +1,4 @@
 import {
-  alpha,
   Alert,
   Avatar,
   Box,
@@ -108,7 +107,7 @@ export function ReaderDetailPage() {
           <Stack spacing={2}>
             {/* Reader Header Card — §3.2: photo/avatar, name, code, class, current borrowing count, total fines, account status */}
             <Card>
-              <CardContent sx={(theme) => ({ bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1) })}>
+              <CardContent sx={(theme) => ({ bgcolor: theme.palette.hero })}>
                 <Stack direction="row" spacing={3} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                   <QrCodeImage value={student.code} size={96} />
                   <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 800 }}>{(student.name ?? student.code).charAt(0).toUpperCase()}</Avatar>

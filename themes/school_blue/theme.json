@@ -1,25 +1,54 @@
 {
   "key": "school_blue",
-  "version": "1.0.0",
-  "name": { "ar": "أزرق المدرسة", "en": "School Blue" },
-  "description": { "ar": "تصميم ودّي بتبويب علوي وبطاقات مستديرة.", "en": "Friendly look with top tabs and rounded cards." },
+  "version": "2.0.0",
+  "name": {
+    "ar": "مكتبة الأطفال",
+    "en": "Kids Library"
+  },
+  "description": {
+    "ar": "ألوان مرحة وأزرار كبيرة وخط مستدير، مناسب للأطفال.",
+    "en": "Cheerful colors, big friendly buttons and a rounded font made for children."
+  },
   "shell": "tabs",
   "headerImage": "header.svg",
-  "radius": 16,
+  "playful": true,
+  "radius": 24,
   "fonts": {
-    "ar": "\"Cairo\", \"Segoe UI\", Tahoma, Arial, sans-serif",
-    "en": "\"Nunito\", \"Segoe UI\", Roboto, Arial, sans-serif"
+    "ar": "\"Thmanyah Sans\", \"Baloo Bhaijaan 2\", \"Segoe UI\", Tahoma, Arial, sans-serif",
+    "en": "\"Thmanyah Sans\", \"Baloo Bhaijaan 2\", \"Segoe UI\", Roboto, Arial, sans-serif"
   },
   "light": {
-    "primary": "#3b78d8", "primaryContrast": "#ffffff", "secondary": "#c2701f",
-    "background": "#eef4fc", "surface": "#ffffff", "text": "#16284a", "textMuted": "#5d6f8f",
-    "border": "#dbe5f3", "hero": "#dcebfb", "headerBg": "#27559f", "headerText": "#ffffff",
-    "success": "#1f7a3f", "warning": "#8a5a00", "error": "#a3262a", "info": "#2459a8"
+    "primary": "#2F6BFF",
+    "primaryContrast": "#ffffff",
+    "secondary": "#FF8A00",
+    "background": "#EAF5FF",
+    "surface": "#ffffff",
+    "text": "#1B2A57",
+    "textMuted": "#52608A",
+    "border": "#CFE3FA",
+    "hero": "#FFE9A8",
+    "headerBg": "#2F6BFF",
+    "headerText": "#ffffff",
+    "success": "#12894B",
+    "warning": "#A85F00",
+    "error": "#D93848",
+    "info": "#6C46E0"
   },
   "dark": {
-    "primary": "#5b94ee", "primaryContrast": "#0c1730", "secondary": "#e0a35a",
-    "background": "#0f1829", "surface": "#18243a", "text": "#e8eefb", "textMuted": "#9db0d1",
-    "border": "#2b3b5a", "hero": "#1b2e52", "headerBg": "#16284a", "headerText": "#ffffff",
-    "success": "#7fdc9d", "warning": "#f3cd72", "error": "#ff9a9d", "info": "#9cc1fa"
+    "primary": "#6F9BFF",
+    "primaryContrast": "#0B1230",
+    "secondary": "#FFAA3B",
+    "background": "#101B3A",
+    "surface": "#1A2750",
+    "text": "#F1F5FF",
+    "textMuted": "#A9B8E6",
+    "border": "#2E3F7A",
+    "hero": "#2B3A78",
+    "headerBg": "#1B2F7A",
+    "headerText": "#ffffff",
+    "success": "#6EE7A0",
+    "warning": "#FFD166",
+    "error": "#FF8A8F",
+    "info": "#B7A3FF"
   }
 }

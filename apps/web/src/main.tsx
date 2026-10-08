@@ -1,6 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+// Bundled (offline-safe, OFL) rounded Arabic + Latin face used by the playful themes as the fallback behind any
+// font a theme pack ships itself (e.g. Thmanyah, see themes/README.md).
+import '@fontsource/baloo-bhaijaan-2/arabic-500.css';
+import '@fontsource/baloo-bhaijaan-2/arabic-700.css';
+import '@fontsource/baloo-bhaijaan-2/arabic-800.css';
+import '@fontsource/baloo-bhaijaan-2/latin-500.css';
+import '@fontsource/baloo-bhaijaan-2/latin-700.css';
+import '@fontsource/baloo-bhaijaan-2/latin-800.css';
 
 const container = document.getElementById('root');
 if (!container) {
