@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import type { IncomingMessage } from 'node:http';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 /**
  * Dev-server proxy for the api's top-level route prefixes.
@@ -73,9 +73,31 @@ function bypassHtmlNavigations(req: IncomingMessage): string | undefined {
 // works the same way (`VITE_API_URL=... npm run dev`).
 const apiTarget = process.env.VITE_API_URL || 'http://localhost:3000';
 
+/**
+ * Build identifier baked into the bundle (`__APP_VERSION__`) AND published as
+ * `/version.json`, so the running SPA can tell whether the server now serves a
+ * newer build (D94). CI/docker pass `APP_VERSION` (e.g. the git SHA); a plain
+ * local build falls back to the build timestamp, which still differs per build.
+ */
+const appVersion = process.env.APP_VERSION || String(Date.now());
+
+function emitVersionFile(): Plugin {
+  return {
+    name: 'papp-emit-version-json',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: appVersion }),
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), emitVersionFile()],
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   server: {
     host: true,
     port: 5173,
