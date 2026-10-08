@@ -177,6 +177,17 @@ async function main(): Promise<void> {
       await prisma.$executeRaw`INSERT INTO library_catalog_books (title) VALUES (${SEEDED_BOOK_TITLE})`;
     }
 
+    // Migration 0015 makes the child-friendly top-tabs theme the product default. The older specs cover the
+    // permanent-sidebar shell (mirrored drawer in RTL/LTR, nav groups), which is still a supported shell, so pin the
+    // fixture database to the built-in sidebar theme here; appearance.spec.ts switches to the tabs theme itself. Runs
+    // before the api process starts, so SettingsService's cache can't hold a stale value.
+    logger.log('Pinning the active theme to the built-in sidebar look for the sidebar specs...');
+    await prisma.systemSetting.upsert({
+      where: { key: 'appearance.active_theme' },
+      update: { value: 'default' },
+      create: { key: 'appearance.active_theme', value: 'default' },
+    });
+
     logger.log('Playwright Tier 2 fixture bootstrap complete.');
   } finally {
     await app.close();

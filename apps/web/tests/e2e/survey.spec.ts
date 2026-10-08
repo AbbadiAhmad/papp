@@ -37,7 +37,8 @@ test.describe('Survey smoke flow', () => {
 
     const [surveysResponse] = await Promise.all([
       page.waitForResponse((response) => isApiResponse(response, '/api/survey/surveys')),
-      page.getByRole('link', { name: TEXT.ar.surveysMenu, exact: true }).click(),
+      // Scoped to the sidebar: the home page now also has a shortcut tile with the same name.
+      page.locator('.MuiDrawer-docked').getByRole('link', { name: TEXT.ar.surveysMenu, exact: true }).click(),
     ]);
     expect(surveysResponse.status()).toBe(200);
     await page.waitForURL(/\/survey\/surveys$/);

@@ -39,7 +39,8 @@ test.describe('Template module smoke flow', () => {
     // label is never rendered as its own row in this case.
     const [itemsResponse] = await Promise.all([
       page.waitForResponse((response) => isApiResponse(response, '/api/template/items')),
-      page.getByRole('link', { name: 'العناصر', exact: true }).click(),
+      // Scoped to the sidebar: the home page now also has a shortcut tile with the same name.
+      page.locator('.MuiDrawer-docked').getByRole('link', { name: 'العناصر', exact: true }).click(),
     ]);
     expect(itemsResponse.status()).toBe(200);
     await page.waitForURL(/\/template\/items$/);
