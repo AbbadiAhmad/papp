@@ -33,3 +33,7 @@ blob-report/
 
 # misc
 *.local
+
+# Thmanyah font: license forbids hosting the files; local only (see the README in that folder)
+apps/web/src/assets/fonts/thmanyah/*.woff2
+apps/web/src/assets/fonts/thmanyah/thmanyah.css

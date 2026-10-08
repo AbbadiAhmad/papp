@@ -22,23 +22,11 @@ Themes name fonts in `fonts.ar` / `fonts.en` (plain stacks). The app bundles the
 open-licensed rounded font **Baloo Bhaijaan 2** (Arabic + Latin) as a fallback,
 so playful themes look right out of the box and offline.
 
-To use a font you are licensed for (for example **Thmanyah Sans**, which Thmanyah
-distributes from its own site, not from this repository):
-
-1. Download it from Thmanyah's official page and read its license.
-2. Copy the web-format files (`woff2` is best) into the theme folder, e.g.
-   `themes/school_blue/Thmanyah-Regular.woff2`, `Thmanyah-Bold.woff2`.
-3. Declare them in `theme.json` (the family name must match the first name in `fonts`):
-
-```json
-"fontFiles": [
-  { "family": "Thmanyah Sans", "file": "Thmanyah-Regular.woff2", "weight": 400 },
-  { "family": "Thmanyah Sans", "file": "Thmanyah-Bold.woff2", "weight": 700 }
-]
-```
-
-`school_blue` already lists "Thmanyah Sans" first in its stacks, so it starts
-using the files as soon as step 3 is done (until then the bundled font shows).
+Theme packs do **not** ship font files, and the api never serves fonts: some font
+licenses (Thmanyah's, for one) forbid hosting files for download. A licensed font
+is instead bundled into the web build; see
+`apps/web/src/assets/fonts/thmanyah/README.md`. `school_blue` lists "Thmanyah Sans"
+first, so it is used automatically wherever that font was added to the build.
 
 `"playful": true` turns on the child-friendly styling (big pill buttons, thicker
 borders, soft shadows).

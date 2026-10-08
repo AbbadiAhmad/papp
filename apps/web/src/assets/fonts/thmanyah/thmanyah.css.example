@@ -1,0 +1,6 @@
+/* Thmanyah Sans — bundled into the app build only. NOT committed (see README.md here). */
+@font-face { font-family: "Thmanyah Sans"; font-weight: 300; font-display: swap; src: url("./thmanyahsans-Light.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 400; font-display: swap; src: url("./thmanyahsans-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 500; font-display: swap; src: url("./thmanyahsans-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 700; font-display: swap; src: url("./thmanyahsans-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 900; font-display: swap; src: url("./thmanyahsans-Black.woff2") format("woff2"); }

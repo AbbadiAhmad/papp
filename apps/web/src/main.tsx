@@ -10,6 +10,10 @@ import '@fontsource/baloo-bhaijaan-2/latin-500.css';
 import '@fontsource/baloo-bhaijaan-2/latin-700.css';
 import '@fontsource/baloo-bhaijaan-2/latin-800.css';
 
+// Thmanyah Sans: bundled into the build only if the owner dropped the licensed files in (local, gitignored; see the
+// README in that folder). No files -> this glob is empty and the app uses the bundled open font instead.
+import.meta.glob('./assets/fonts/thmanyah/thmanyah.css', { eager: true });
+
 const container = document.getElementById('root');
 if (!container) {
   throw new Error('Root element "#root" not found');

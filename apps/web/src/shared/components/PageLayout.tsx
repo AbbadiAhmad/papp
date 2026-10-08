@@ -389,7 +389,7 @@ export function TopBar() {
           >
             <LocalLibraryIcon />
           </Box>
-          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2 }}>
+          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, textShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
             Annur Apps
           </Typography>
         </Box>
