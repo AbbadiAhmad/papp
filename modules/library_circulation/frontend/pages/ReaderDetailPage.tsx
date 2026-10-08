@@ -32,6 +32,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type BookInfo, type BorrowingStatus, type LibraryBorrowing, type StudentActionHistoryEntry } from '../api';
 import { ExtendLoanDialog } from './ExtendLoanDialog';
+import { StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { QrCodeImage } from './QrCodeImage';
 
 const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
@@ -106,10 +107,10 @@ export function ReaderDetailPage() {
           <Stack spacing={2}>
             {/* Reader Header Card — §3.2: photo/avatar, name, code, class, current borrowing count, total fines, account status */}
             <Card>
-              <CardContent>
+              <CardContent sx={(theme) => ({ bgcolor: theme.palette.hero })}>
                 <Stack direction="row" spacing={3} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                   <QrCodeImage value={student.code} size={96} />
-                  <Avatar sx={{ width: 56, height: 56 }}>{(student.name ?? student.code).charAt(0).toUpperCase()}</Avatar>
+                  <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 800 }}>{(student.name ?? student.code).charAt(0).toUpperCase()}</Avatar>
                   <Stack spacing={1} sx={{ flex: 1 }}>
                     <Typography variant="h5">{student.name ?? student.code}</Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -117,21 +118,12 @@ export function ReaderDetailPage() {
                       {student.className ?? '—'}
                     </Typography>
                     <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-                      <Chip
-                        size="small"
-                        label={t('library_circulation.students.current_books_count', { count: student.activeBorrowingsCount })}
-                        color="primary"
-                      />
+                      <StatusPill tone="info" label={t('library_circulation.students.current_books_count', { count: student.activeBorrowingsCount })} />
                       {student.unpaidFinesTotal > 0 ? (
-                        <Chip
-                          size="small"
-                          color="warning"
-                          label={t('library_circulation.students.unpaid_fines_total', { amount: student.unpaidFinesTotal })}
-                        />
+                        <StatusPill tone="warning" label={t('library_circulation.students.unpaid_fines_total', { amount: student.unpaidFinesTotal })} />
                       ) : null}
-                      <Chip
-                        size="small"
-                        color={student.isActive ? 'success' : 'default'}
+                      <StatusPill
+                        tone={student.isActive ? 'success' : 'neutral'}
                         label={t(student.isActive ? 'library_circulation.students.status_active' : 'library_circulation.students.status_inactive')}
                       />
                     </Stack>

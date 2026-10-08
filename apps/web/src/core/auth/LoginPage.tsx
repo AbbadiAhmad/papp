@@ -52,10 +52,15 @@ export function LoginPage() {
   };
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
-      <Card sx={{ width: 380 }}>
-        <CardContent>
-          <Typography variant="h5" component="h2" gutterBottom>
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)', px: 2, py: 4 }}>
+      <Card sx={{ width: '100%', maxWidth: 400, boxShadow: 3 }}>
+        <Box sx={(theme) => ({ bgcolor: theme.palette.hero, p: 3, textAlign: 'center' })}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 800 }}>
+            {t('core.app.name')}
+          </Typography>
+        </Box>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="h6" component="h3" gutterBottom>
             {t('core.auth.login')}
           </Typography>
           <Box component="form" onSubmit={handleSubmit} noValidate>

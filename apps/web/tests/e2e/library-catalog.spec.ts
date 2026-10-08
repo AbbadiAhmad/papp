@@ -15,6 +15,8 @@ import { READER_USER, SEEDED_BOOK_TITLE, TEXT } from './support/test-data';
  */
 test.describe('Library Catalog smoke flow', () => {
   test('a reader can view the books list and open a book detail page', async ({ page }) => {
+    // The books list defaults to the card view; this smoke flow opens a book from a table row.
+    await page.addInitScript(() => window.localStorage.setItem('papp:books-view', 'table'));
     await page.goto('/login');
     await page.getByLabel(TEXT.ar.email).fill(READER_USER.email);
     await page.getByLabel(TEXT.ar.password).fill(READER_USER.password);
@@ -31,7 +33,8 @@ test.describe('Library Catalog smoke flow', () => {
     // shown because the account really holds library_catalog.books.view).
     const [booksResponse] = await Promise.all([
       page.waitForResponse((res) => res.url().includes('/api/library/books') && res.request().method() === 'GET'),
-      page.getByRole('link', { name: TEXT.ar.booksMenu, exact: true }).click(),
+      // Scoped to the sidebar: the home page now also has a shortcut tile with the same name.
+      page.locator('.MuiDrawer-docked').getByRole('link', { name: TEXT.ar.booksMenu, exact: true }).click(),
     ]);
     expect(booksResponse.status()).toBe(200);
     await page.waitForURL(/\/library\/books$/);

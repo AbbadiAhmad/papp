@@ -1,9 +1,24 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { READER_USER, SEEDED_BOOK_TITLE, TEXT } from './support/test-data';
 
 /** No Eastern Arabic-Indic digit (٠-٩, U+0660-0669) anywhere in the string — D6/CLAUDE.md rule 4. */
 function hasNoEasternArabicDigits(text: string): boolean {
   return !/[٠-٩]/.test(text);
+}
+
+/**
+ * The sidebar's bounding box, polled until it exists. Right after login the shell can remount once as the route
+ * changes from /login to / (GuardedAppRoutes keys on pathname), so a single immediate read can see no sidebar.
+ */
+async function sidebarBox(page: Page) {
+  let box: { x: number; y: number; width: number; height: number } | null = null;
+  await expect
+    .poll(async () => {
+      box = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
+      return box !== null;
+    })
+    .toBe(true);
+  return box;
 }
 
 /**
@@ -37,7 +52,7 @@ test.describe('Language switch / RTL', () => {
     // PageLayout.tsx also mounts a mobile overlay `Drawer` kept in the DOM
     // via `ModalProps={{ keepMounted: true }}`, so a bare `.MuiDrawer-paper`
     // resolves to two elements at this (desktop) viewport width.
-    const drawerBox = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
+    const drawerBox = await sidebarBox(page);
     expect(drawerBox).not.toBeNull();
     // Mirrored to the physical right edge in RTL (stylis-plugin-rtl flips
     // the drawer's `left:0` CSS to `right:0` — see PageLayout.tsx).
@@ -72,9 +87,9 @@ test.describe('Language switch / RTL', () => {
     // it first, in its own now-English label, before the child link exists.
     await page.getByRole('button', { name: TEXT.en.libraryMenuGroup, exact: true }).click();
     // The sidebar's own label is now real English copy, not just the dir attribute.
-    await expect(page.getByText(TEXT.en.booksMenu, { exact: true })).toBeVisible();
+    await expect(page.locator('.MuiDrawer-docked').getByText(TEXT.en.booksMenu, { exact: true })).toBeVisible();
 
-    const drawerBoxLtr = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
+    const drawerBoxLtr = await sidebarBox(page);
     expect(drawerBoxLtr).not.toBeNull();
     // Back on the physical left edge in LTR.
     expect(drawerBoxLtr!.x).toBeLessThan(20);
@@ -94,12 +109,14 @@ test.describe('Language switch / RTL', () => {
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
 
-    const drawerBoxRtl = await page.locator('.MuiDrawer-docked .MuiDrawer-paper').boundingBox();
+    const drawerBoxRtl = await sidebarBox(page);
     expect(drawerBoxRtl).not.toBeNull();
     expect(drawerBoxRtl!.x + drawerBoxRtl!.width).toBeGreaterThan(viewport!.width - 20);
   });
 
   test('numbers/dates on a real page stay Latin-digit/Gregorian in the Arabic UI', async ({ page }) => {
+    // The books list defaults to the card view; the created-at date column this test reads is in the table view.
+    await page.addInitScript(() => window.localStorage.setItem('papp:books-view', 'table'));
     await page.goto('/login');
     await page.getByLabel(TEXT.ar.email).fill(READER_USER.email);
     await page.getByLabel(TEXT.ar.password).fill(READER_USER.password);

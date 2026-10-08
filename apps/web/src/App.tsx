@@ -5,6 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, BrowserRouter, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
+import { ColorModeProvider, useColorMode } from './app/ColorModeContext';
+import { MenuLayoutProvider, ThemePackProvider, useThemePack } from './app/AppearanceContext';
+import { AppearancePage } from './core/appearance/AppearancePage';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
 import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageLayout';
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
@@ -281,6 +284,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/appearance"
+          element={
+            <RequirePermissionRoute code="appearance.view">
+              <AppearancePage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
           path="/modules"
           element={
             <RequirePermissionRoute code="modules.view">
@@ -328,7 +339,9 @@ function GuardedAppRoutes() {
 function ThemedShell() {
   const { direction } = useLanguage();
   const cache = useMemo(() => createEmotionCacheFor(direction), [direction]);
-  const theme = useMemo(() => createAppTheme(direction), [direction]);
+  const { pack } = useThemePack();
+  const { dark } = useColorMode();
+  const theme = useMemo(() => createAppTheme(direction, pack, dark), [direction, pack, dark]);
 
   return (
     <CacheProvider value={cache}>
@@ -360,12 +373,14 @@ function ThemedShell() {
         />
         <BrowserRouter>
           <AuthProvider>
-            <MobileNavProvider>
-              <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                <TopBar />
-                <GuardedAppRoutes />
-              </Box>
-            </MobileNavProvider>
+            <MenuLayoutProvider>
+              <MobileNavProvider>
+                <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                  <TopBar />
+                  <GuardedAppRoutes />
+                </Box>
+              </MobileNavProvider>
+            </MenuLayoutProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>
@@ -387,7 +402,11 @@ function ThemedShell() {
 function App() {
   return (
     <LanguageProvider>
-      <ThemedShell />
+      <ThemePackProvider>
+        <ColorModeProvider>
+          <ThemedShell />
+        </ColorModeProvider>
+      </ThemePackProvider>
     </LanguageProvider>
   );
 }

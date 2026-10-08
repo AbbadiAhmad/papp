@@ -4,7 +4,6 @@ import {
   Card,
   CardContent,
   Checkbox,
-  Chip,
   FormControlLabel,
   Grid,
   MenuItem,
@@ -17,7 +16,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from '@mui/material';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,16 +25,17 @@ import { QueryStateGate } from '../../../../apps/web/src/shared/components/Query
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { libraryCirculationApi, type BorrowingFilterInput, type BorrowingStatus } from '../api';
+import { PageHero, StatusPill, type Tone } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 
 const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
 
-const STATUS_COLOR: Record<BorrowingStatus, 'default' | 'success' | 'error' | 'warning'> = {
-  active: 'default',
+const STATUS_TONE: Record<BorrowingStatus, Tone> = {
+  active: 'info',
   returned: 'success',
   overdue: 'error',
   lost: 'error',
-  cancelled: 'default',
+  cancelled: 'neutral',
 };
 
 /**
@@ -104,12 +103,10 @@ export function BorrowingsPage() {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('library_circulation.menu.borrowings')}
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <PageHero title={t('library_circulation.menu.borrowings')} subtitle={t('library_circulation.borrowings.subtitle')} />
 
-      <Card sx={{ mb: 2 }}>
+      <Card>
         <CardContent>
           <Grid container spacing={2} sx={{ alignItems: 'center' }}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -193,13 +190,13 @@ export function BorrowingsPage() {
                   <TableCell>{formatDateOnly(row.dueAt, language)}</TableCell>
                   <TableCell>
                     {row.daysOverdue > 0 ? (
-                      <Chip size="small" color="error" label={row.daysOverdue} />
+                      <StatusPill tone="error" label={row.daysOverdue} />
                     ) : (
                       '—'
                     )}
                   </TableCell>
                   <TableCell>
-                    <Chip size="small" color={STATUS_COLOR[row.status]} label={t(`library_circulation.borrowing_status.${row.status}`)} />
+                    <StatusPill tone={STATUS_TONE[row.status]} label={t(`library_circulation.borrowing_status.${row.status}`)} />
                   </TableCell>
                 </TableRow>
               ))}

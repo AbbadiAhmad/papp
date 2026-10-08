@@ -41,6 +41,7 @@ const CORE_API_PATH_PREFIXES = [
   '/i18n',
   '/health',
   '/backup',
+  '/appearance',
 ];
 
 /**

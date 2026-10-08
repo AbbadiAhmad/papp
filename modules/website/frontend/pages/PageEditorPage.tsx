@@ -136,7 +136,7 @@ function PageEditorForm({ page, onSaved }: { page: WebsitePageDetail; onSaved: (
             value=""
             onChange={(e) => addBlock(e.target.value as BlockType)}
             sx={{ mt: 2, minWidth: 220 }}
-            slotProps={{ select: { displayEmpty: true } }}
+            slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }}
           >
             <MenuItem value="" disabled>
               {t('website.pages.add_block')}

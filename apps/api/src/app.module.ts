@@ -1,3 +1,4 @@
+import { AppearanceModule } from './core/appearance/appearance.module';
 import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
@@ -31,6 +32,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     RolesModule,
     BackupModule,
+    AppearanceModule,
   ],
   controllers: [AppController],
   providers: [

@@ -29,6 +29,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The copy-code tests below cover the table view; the card view has its own test at the end.
+  window.localStorage.setItem('papp:books-view', 'table');
   api.listBooks.mockResolvedValue([book()]);
 });
 
@@ -71,5 +73,19 @@ describe('BooksListPage copy-status filter', () => {
     const code = await screen.findByRole('link', { name: 'B000002 · Damaged' });
     expect(code).toHaveAttribute('href', '/library/books/bk1?copy=c2');
     expect(screen.getByRole('tab', { name: 'Damaged / lost' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('BooksListPage card view', () => {
+  it('shows each book as a card linking to its page, with an availability pill, and remembers the choice', async () => {
+    window.localStorage.setItem('papp:books-view', 'cards');
+    render(<MemoryRouter><BooksListPage /></MemoryRouter>);
+    const links = await screen.findAllByRole('link');
+    expect(links.some((l) => l.getAttribute('href') === '/library/books/bk1')).toBe(true);
+    expect(screen.getByText('Available · 1 / 3')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    expect(await screen.findByText('Damaged: 1')).toBeInTheDocument();
+    expect(window.localStorage.getItem('papp:books-view')).toBe('table');
   });
 });

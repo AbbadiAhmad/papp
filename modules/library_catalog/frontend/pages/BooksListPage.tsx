@@ -2,6 +2,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
 import EditIcon from '@mui/icons-material/Edit';
+import GridViewIcon from '@mui/icons-material/GridView';
+import TableRowsIcon from '@mui/icons-material/TableRows';
 import {
   Alert,
   Box,
@@ -24,6 +26,8 @@ import {
   Tab,
   Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -36,7 +40,19 @@ import { extractErrorMessage, isForbiddenError } from '../../../../apps/web/src/
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
+import { BookCard, CardGrid, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
+
+const VIEW_STORAGE_KEY = 'papp:books-view';
+type BooksView = 'cards' | 'table';
+
+function getStoredView(): BooksView {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'table' ? 'table' : 'cards';
+  } catch {
+    return 'cards';
+  }
+}
 
 const COPY_STATUS_OPTIONS: BookCopyStatus[] = ['available', 'borrowed', 'damaged', 'lost', 'maintenance', 'reserved'];
 
@@ -110,6 +126,15 @@ export function BooksListPage() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const reload = () => setReloadToken((n) => n + 1);
+  const [view, setViewState] = useState<BooksView>(getStoredView);
+  const setView = (next: BooksView) => {
+    setViewState(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // not persisted; still applies for this page view
+    }
+  };
 
   // Tab 1 is simply the "damaged or lost" preset of the status filter — the filter stays the one source of truth.
   const needsAttention = copyStatuses.length === 2 && copyStatuses.includes('damaged') && copyStatuses.includes('lost');
@@ -195,6 +220,20 @@ export function BooksListPage() {
             onKeyDown={(e) => e.key === 'Enter' && reload()}
             sx={{ minWidth: 220 }}
           />
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={view}
+            onChange={(_e, next: BooksView | null) => next && setView(next)}
+            aria-label={t('library_catalog.view.label')}
+          >
+            <ToggleButton value="cards" aria-label={t('library_catalog.view.cards')}>
+              <GridViewIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="table" aria-label={t('library_catalog.view.table')}>
+              <TableRowsIcon fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
           <Can permission="library_catalog.books.export">
             <Button startIcon={<DownloadIcon />} onClick={handleExport} variant="outlined">
               {t('library_catalog.actions.export')}
@@ -225,6 +264,7 @@ export function BooksListPage() {
           onChange={(e) => setCopyStatuses(typeof e.target.value === 'string' ? (e.target.value.split(',') as BookCopyStatus[]) : (e.target.value as BookCopyStatus[]))}
           sx={{ minWidth: 240 }}
           slotProps={{
+            inputLabel: { shrink: true },
             select: {
               multiple: true,
               renderValue: (selected) =>
@@ -246,6 +286,47 @@ export function BooksListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        {view === 'cards' ? (
+          (books ?? []).length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+              {t('library_catalog.filters.no_results')}
+            </Typography>
+          ) : (
+            <CardGrid min={180}>
+              {(books ?? []).map((book) => {
+                const available = book.availableCopies ?? 0;
+                return (
+                  <BookCard
+                    key={book.id}
+                    title={book.title}
+                    author={book.author}
+                    to={`/library/books/${book.id}`}
+                    status={
+                      <StatusPill
+                        tone={available > 0 ? 'success' : 'error'}
+                        label={available > 0 ? `${t('library_catalog.copy_status.available')} · ${available} / ${book.totalCopies ?? 0}` : t('library_catalog.books.none_available')}
+                      />
+                    }
+                    actions={
+                      <>
+                        <Can permission="library_catalog.books.update">
+                          <IconButton size="small" onClick={() => openEdit(book)} aria-label={t('core.common.edit')}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Can>
+                        <Can permission="library_catalog.books.delete">
+                          <IconButton size="small" onClick={() => setPendingDelete(book)} aria-label={t('core.common.delete')}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Can>
+                      </>
+                    }
+                  />
+                );
+              })}
+            </CardGrid>
+          )
+        ) : (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -331,6 +412,7 @@ export function BooksListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
       </QueryStateGate>
 
       <BookFormDialog open={formOpen} book={editingBook} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
