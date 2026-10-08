@@ -10,8 +10,8 @@ import '@fontsource/baloo-bhaijaan-2/latin-500.css';
 import '@fontsource/baloo-bhaijaan-2/latin-700.css';
 import '@fontsource/baloo-bhaijaan-2/latin-800.css';
 
-// Thmanyah Sans: bundled into the build only if the owner dropped the licensed files in (local, gitignored; see the
-// README in that folder). No files -> this glob is empty and the app uses the bundled open font instead.
+// Thmanyah Sans: bundled app asset (apps/web/src/assets/fonts/thmanyah/README.md, D101). Bundled by Vite, never served
+// as separate files by the api. Themes opt in by naming it first in their font stacks.
 import.meta.glob('./assets/fonts/thmanyah/thmanyah.css', { eager: true });
 
 const container = document.getElementById('root');
