@@ -100,4 +100,25 @@ describe('ThemesService + AppearanceController', () => {
     settingsStore.set('appearance.menu_layout', { garbage: true });
     await expect(controller.getMenuLayout()).resolves.toEqual({ groups: [], hidden: [], labels: {} });
   });
+
+  it('serves only the header picture a valid pack declares, never an arbitrary file', async () => {
+    await install('pic_pack', pack('pic_pack', { headerImage: 'header.svg' }));
+    await writeFile(join(dir, 'pic_pack', 'header.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    await writeFile(join(dir, 'pic_pack', 'secret.txt'), 'nope');
+    const themes = new ThemesService();
+    const ok = await themes.readHeaderImage('pic_pack', 'header.svg');
+    expect(ok?.contentType).toBe('image/svg+xml');
+    expect(ok?.data.toString()).toContain('<svg');
+    await expect(themes.readHeaderImage('pic_pack', 'secret.txt')).resolves.toBeNull(); // not the declared file
+    await expect(themes.readHeaderImage('pic_pack', '../theme.json')).resolves.toBeNull();
+    await expect(themes.readHeaderImage('../pic_pack', 'header.svg')).resolves.toBeNull();
+    await expect(themes.readHeaderImage('good_one', 'header.svg')).resolves.toBeNull(); // unknown pack
+  });
+
+  it('rejects a pack whose headerImage is a path or URL instead of a plain file name', async () => {
+    await install('bad_pic', pack('bad_pic', { headerImage: '../../etc/passwd' }));
+    await install('url_pic', pack('url_pic', { headerImage: 'https://evil.example/x.png' }));
+    const { themes } = await controller.listThemes();
+    expect(themes).toEqual([]);
+  });
 });

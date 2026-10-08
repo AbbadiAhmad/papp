@@ -57,18 +57,19 @@ import {
   type PaymentMethod,
   type StudentSearchResult,
 } from '../api';
+import { PageHero, StatusPill, type Tone } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 const FINE_STATUSES: FineStatus[] = ['unpaid', 'partially_paid', 'paid', 'waived', 'cancelled'];
 
-const STATUS_COLOR: Record<FineStatus, 'error' | 'warning' | 'success' | 'default'> = {
+const STATUS_TONE: Record<FineStatus, Tone> = {
   unpaid: 'error',
   partially_paid: 'warning',
   paid: 'success',
-  waived: 'default',
-  cancelled: 'default',
+  waived: 'neutral',
+  cancelled: 'neutral',
 };
 
 const EMPTY_FINE_FILTER: FineFilterInput = {
@@ -181,16 +182,19 @@ export function FinesPage() {
 
   return (
     <Box>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-        <Typography variant="h4" component="h2">
-          {t('library_circulation.menu.fines')}
-        </Typography>
-        <Can permission="library_circulation.fines.record">
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
-            {t('library_circulation.fines.create_button')}
-          </Button>
-        </Can>
-      </Stack>
+      <Box sx={{ mb: 2 }}>
+        <PageHero
+          title={t('library_circulation.menu.fines')}
+          subtitle={t('library_circulation.fines.subtitle')}
+          action={
+            <Can permission="library_circulation.fines.record">
+              <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
+                {t('library_circulation.fines.create_button')}
+              </Button>
+            </Can>
+          }
+        />
+      </Box>
 
       <Card sx={{ mb: 2 }}>
         <CardContent>
@@ -200,11 +204,11 @@ export function FinesPage() {
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <FormControl fullWidth>
-                <InputLabel id="fines-status-filter-label">{t('library_circulation.fines.status')}</InputLabel>
+                <InputLabel id="fines-status-filter-label" shrink>{t('library_circulation.fines.status')}</InputLabel>
                 <Select
                   multiple
                   labelId="fines-status-filter-label"
-                  input={<OutlinedInput label={t('library_circulation.fines.status')} />}
+                  input={<OutlinedInput notched label={t('library_circulation.fines.status')} />}
                   value={filter.status ?? []}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -328,7 +332,7 @@ export function FinesPage() {
                   <TableCell>{fine.amount}</TableCell>
                   <TableCell>{fine.amountPaid}</TableCell>
                   <TableCell>
-                    <Chip size="small" color={STATUS_COLOR[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} />
+                    <StatusPill tone={STATUS_TONE[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} />
                   </TableCell>
                   <TableCell>{fine.createdByName ?? '—'}</TableCell>
                   <TableCell align="right">
@@ -729,7 +733,7 @@ function FineDetailDialog({ fineId, onClose, onChanged }: { fineId: string | nul
                   {t('library_circulation.fines.amount_paid')}: {fine.amountPaid}
                 </Typography>
                 {fine.notes ? <Typography variant="body2">{fine.notes}</Typography> : null}
-                <Chip size="small" color={STATUS_COLOR[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} sx={{ alignSelf: 'flex-start' }} />
+                <StatusPill tone={STATUS_TONE[fine.status]} label={t(`library_circulation.fine_status.${fine.status}`)} sx={{ alignSelf: 'flex-start' }} />
               </Stack>
             )}
 

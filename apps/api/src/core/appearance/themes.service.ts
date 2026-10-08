@@ -4,6 +4,14 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveThemesDir } from './themes-dir';
 
+const IMAGE_TYPES: Record<string, string> = {
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
+
 /**
  * Discovers theme packs on disk. Read per call (a handful of tiny JSON files,
  * admin-page and login-page traffic only) so dropping a new folder into
@@ -35,6 +43,19 @@ export class ThemesService {
   async findTheme(key: string): Promise<ThemePack | null> {
     if (!/^[a-z][a-z0-9_]{1,40}$/.test(key)) return null;
     return this.readPack(resolveThemesDir(), key);
+  }
+
+  /** The pack's declared header picture, or null if the pack/file isn't exactly that. */
+  async readHeaderImage(key: string, file: string): Promise<{ data: Buffer; contentType: string } | null> {
+    const theme = await this.findTheme(key);
+    if (!theme || !theme.headerImage || theme.headerImage !== file) return null;
+    try {
+      const data = await readFile(join(resolveThemesDir(), key, file));
+      const ext = file.slice(file.lastIndexOf('.') + 1).toLowerCase();
+      return { data, contentType: IMAGE_TYPES[ext] ?? 'application/octet-stream' };
+    } catch {
+      return null;
+    }
   }
 
   private async readPack(dir: string, folder: string): Promise<ThemePack | null> {

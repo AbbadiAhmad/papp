@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Put, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { EMPTY_MENU_LAYOUT, type MenuLayout, menuLayoutSchema, type ThemePack } from '@papp/shared-types';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -44,6 +45,27 @@ export class AppearanceController {
   async listThemes(): Promise<{ activeKey: string; themes: ThemePack[] }> {
     const [activeKey, themes] = await Promise.all([this.settings.get<string>(ACTIVE_THEME_KEY), this.themes.listThemes()]);
     return { activeKey, themes };
+  }
+
+  /**
+   * A theme's own picture (e.g. the header background). `@Public()`: the login
+   * page shows it. Only files named by a validated pack's `headerImage` are
+   * ever served (never a path from the URL), so there is no traversal surface;
+   * SVGs get a locked-down CSP so an uploaded SVG can't run script.
+   */
+  @Get('themes/:key/assets/:file')
+  @Public()
+  async getThemeAsset(@Param('key') key: string, @Param('file') file: string, @Res() res: Response): Promise<void> {
+    const asset = await this.themes.readHeaderImage(key, file);
+    if (!asset) throw new NotFoundException();
+    res.set({
+      'Content-Type': asset.contentType,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cache-Control': 'public, max-age=300',
+    });
+    res.send(asset.data);
   }
 
   @Put('active-theme')

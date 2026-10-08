@@ -39,6 +39,11 @@ export const themePackSchema = z.object({
   /** `sidebar`: today's permanent drawer. `tabs`: top tab bar of menu groups, pages of the active group in a second row. */
   shell: z.enum(['sidebar', 'tabs']),
   radius: z.number().int().min(0).max(32),
+  /** Optional header background picture: a file inside the theme's own folder (svg/png/jpg/webp), served by `GET /appearance/themes/:key/assets/:file`. Never a URL. */
+  headerImage: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,60}\.(svg|png|jpe?g|webp)$/)
+    .optional(),
   fonts: z.object({ ar: fontStack, en: fontStack }),
   light: themePaletteSchema,
   /** Optional; when absent the theme is light-only. */

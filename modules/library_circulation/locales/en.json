@@ -1,4 +1,8 @@
 {
+  "library_circulation.scan.subtitle": "Scan a reader code, then book codes, to borrow or return in seconds.",
+  "library_circulation.fines.subtitle": "Record, collect and waive fines. Filter by reader, status or date.",
+  "library_circulation.finance.subtitle": "Transactions and payments recorded by the library.",
+  "library_circulation.students.subtitle": "Everyone who can borrow books, with their codes and classes.",
   "library_circulation.menu.root": "Circulation",
   "library_circulation.menu.dashboard": "Dashboard",
   "library_circulation.menu.scan": "Scan",

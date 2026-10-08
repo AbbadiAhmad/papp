@@ -57,6 +57,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { CopyHistoryDialog } from './CopyHistoryDialog';
 import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
+import { PageHero, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 import { ReaderHistoryDialog } from './ReaderHistoryDialog';
 import { ReturnDialog } from './ReturnDialog';
@@ -468,9 +469,9 @@ export function ScanPage() {
 
   return (
     <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('library_circulation.menu.scan')}
-      </Typography>
+      <Box sx={{ mb: 2 }}>
+        <PageHero title={t('library_circulation.menu.scan')} subtitle={t('library_circulation.scan.subtitle')} />
+      </Box>
 
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -543,9 +544,8 @@ export function ScanPage() {
                     {reader.student.className ? (
                       <Chip label={`${t('library_circulation.students.class')}: ${reader.student.className}`} size="small" variant="outlined" />
                     ) : null}
-                    <Chip
-                      size="small"
-                      color={wouldExceed ? 'error' : 'primary'}
+                    <StatusPill
+                      tone={wouldExceed ? 'error' : 'info'}
                       label={
                         maxBooks !== null
                           ? t('library_circulation.scan.borrowed_of_max', { count: activeCount, max: maxBooks })

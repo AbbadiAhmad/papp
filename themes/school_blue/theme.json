@@ -4,6 +4,7 @@
   "name": { "ar": "أزرق المدرسة", "en": "School Blue" },
   "description": { "ar": "تصميم ودّي بتبويب علوي وبطاقات مستديرة.", "en": "Friendly look with top tabs and rounded cards." },
   "shell": "tabs",
+  "headerImage": "header.svg",
   "radius": 16,
   "fonts": {
     "ar": "\"Cairo\", \"Segoe UI\", Tahoma, Arial, sans-serif",

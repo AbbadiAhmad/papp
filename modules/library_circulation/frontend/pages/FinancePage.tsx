@@ -26,6 +26,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { downloadBlob, libraryCirculationApi, type PaymentFilterInput } from '../api';
+import { PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 
 /** §12-13: the finance side's own read views over transactions/payments. Deep reporting/analytics is a documented follow-up (DECISIONS.md). */
@@ -35,9 +36,9 @@ export function FinancePage() {
 
   return (
     <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('library_circulation.menu.finance')}
-      </Typography>
+      <Box sx={{ mb: 2 }}>
+        <PageHero title={t('library_circulation.menu.finance')} subtitle={t('library_circulation.finance.subtitle')} />
+      </Box>
       <Tabs value={tab} onChange={(_, v: number) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label={t('library_circulation.finance.transactions_tab')} />
         <Tab label={t('library_circulation.finance.payments_tab')} />

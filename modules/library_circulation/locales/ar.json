@@ -1,4 +1,8 @@
 {
+  "library_circulation.scan.subtitle": "امسح رمز القارئ ثم رموز الكتب لتسجيل الاستعارة أو الإرجاع في ثوانٍ.",
+  "library_circulation.fines.subtitle": "سجّل الغرامات وحصّلها أو أعفِ منها. صفِّ حسب القارئ أو الحالة أو التاريخ.",
+  "library_circulation.finance.subtitle": "العمليات المالية والمدفوعات المسجّلة في المكتبة.",
+  "library_circulation.students.subtitle": "كل من يحق له استعارة الكتب مع رموزهم وصفوفهم.",
   "library_circulation.menu.root": "الإعارة",
   "library_circulation.menu.dashboard": "الرئيسية",
   "library_circulation.menu.scan": "مسح",

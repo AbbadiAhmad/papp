@@ -3,6 +3,7 @@ import type { ThemePack } from '@papp/shared-types';
 import { alpha, createTheme, lighten, type Theme } from '@mui/material/styles';
 import { prefixer } from 'stylis';
 import rtlPlugin from 'stylis-plugin-rtl';
+import { API_BASE_URL } from '../shared/api/httpClient';
 
 /**
  * ARCHITECTURE.md §9 / BUILD_PLAN.md Phase 6 item 1: the MUI `direction`
@@ -73,6 +74,12 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
   const radius = active.radius;
   // A soft tint of the accent: table headers, hover rows, selected rows.
   const tint = alpha(c.primary, dark ? 0.14 : 0.08);
+  // The header picture is a file in the theme pack (never hardcoded here). The
+  // overlay keeps the brand/actions legible: solid at the start edge, fading to
+  // show the picture; it follows the reading direction.
+  const headerPicture = active.headerImage
+    ? `linear-gradient(${direction === 'rtl' ? 'to left' : 'to right'}, ${c.headerBg} 0%, ${alpha(c.headerBg, 0.9)} 30%, ${alpha(c.headerBg, 0.5)} 100%), url("${API_BASE_URL}/appearance/themes/${active.key}/assets/${active.headerImage}")`
+    : undefined;
 
   return createTheme({
     direction,
@@ -96,9 +103,20 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       h6: { fontWeight: 700 },
     },
     shape: { borderRadius: radius },
+    mixins: { toolbar: { minHeight: 64, '@media (min-width:600px)': { minHeight: 72 } } },
     components: {
       MuiCssBaseline: { styleOverrides: { body: { backgroundColor: c.background } } },
-      MuiAppBar: { defaultProps: { elevation: 0 }, styleOverrides: { root: { backgroundColor: c.headerBg, color: c.headerText } } },
+      MuiAppBar: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            backgroundColor: c.headerBg,
+            color: c.headerText,
+            borderBottom: `3px solid ${alpha(c.primary, 0.9)}`,
+            ...(headerPicture ? { backgroundImage: headerPicture, backgroundSize: 'cover', backgroundPosition: 'center bottom', backgroundRepeat: 'no-repeat' } : {}),
+          },
+        },
+      },
       MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' }, outlined: { border, borderRadius: radius } } },
       MuiCard: { defaultProps: { variant: 'outlined' }, styleOverrides: { root: { borderRadius: radius, border } } },
       MuiDialog: { styleOverrides: { paper: { borderRadius: radius + 2 } } },

@@ -41,6 +41,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
+import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import {
   libraryCatalogApi,
   type BookCopyStatus,
@@ -212,24 +213,31 @@ export function BookDetailPage() {
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         {book ? (
           <Stack spacing={3}>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-              <Box>
-                <Typography variant="h5">{book.title}</Typography>
-                <Typography variant="body2" color="text.secondary">
+            <PageHero
+              media={
+                <Box sx={{ width: 96, flexShrink: 0 }}>
+                  <BookCover title={book.title} author={book.author} />
+                </Box>
+              }
+              title={book.title}
+              subtitle={
+                <>
                   {book.author ?? t('library_catalog.fields.no_author')} · {book.category ?? '—'}
-                </Typography>
-                {circulationInstalled ? (
-                  <RouterLink to={`/library-circulation/books/${book.id}/history`}>
-                    <Typography variant="body2">{t('library_catalog.books.view_borrowing_history')}</Typography>
-                  </RouterLink>
-                ) : null}
-              </Box>
-              <Can permission="library_catalog.books.create">
-                <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
-                  {t('library_catalog.actions.add_copy')}
-                </Button>
-              </Can>
-            </Stack>
+                  {circulationInstalled ? (
+                    <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+                      <RouterLink to={`/library-circulation/books/${book.id}/history`}>{t('library_catalog.books.view_borrowing_history')}</RouterLink>
+                    </Box>
+                  ) : null}
+                </>
+              }
+              action={
+                <Can permission="library_catalog.books.create">
+                  <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
+                    {t('library_catalog.actions.add_copy')}
+                  </Button>
+                </Can>
+              }
+            />
 
             {error ? <Alert severity="error">{error}</Alert> : null}
 

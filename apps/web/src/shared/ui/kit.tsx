@@ -57,7 +57,7 @@ function BooksIllustration() {
 }
 
 /** The welcome / page banner: a soft accent panel with title, one line of context and an optional action. */
-export function PageHero({ title, subtitle, action, illustration = true }: { title: ReactNode; subtitle?: ReactNode; action?: ReactNode; illustration?: boolean }) {
+export function PageHero({ title, subtitle, action, illustration = true, media }: { title: ReactNode; subtitle?: ReactNode; action?: ReactNode; illustration?: boolean; media?: ReactNode }) {
   return (
     <Box
       sx={(theme) => ({
@@ -70,7 +70,7 @@ export function PageHero({ title, subtitle, action, illustration = true }: { tit
         bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.1),
       })}
     >
-      {illustration ? <BooksIllustration /> : null}
+      {media ?? (illustration ? <BooksIllustration /> : null)}
       <Box sx={{ flex: 1, minWidth: 200 }}>
         <Typography variant="h4" component="h2" sx={{ textWrap: 'balance' }}>
           {title}

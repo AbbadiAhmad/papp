@@ -32,6 +32,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto';
+import LocalLibraryIcon from '@mui/icons-material/LocalLibrary';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import PaletteIcon from '@mui/icons-material/Palette';
@@ -381,9 +382,17 @@ export function TopBar() {
             <MenuIcon />
           </IconButton>
         ) : null}
-        <Typography variant="h6" component="h1" sx={{ flexGrow: 1, fontWeight: 700 }}>
-          Annur Apps
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1, minWidth: 0 }}>
+          <Box
+            aria-hidden
+            sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 2 }}
+          >
+            <LocalLibraryIcon />
+          </Box>
+          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2 }}>
+            Annur Apps
+          </Typography>
+        </Box>
 
         {status === 'authenticated' ? <NotificationsBellMenu /> : null}
 

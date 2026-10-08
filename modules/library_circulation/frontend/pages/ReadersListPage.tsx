@@ -46,6 +46,7 @@ import {
   type UpdateStudentInput,
 } from '../api';
 import { QrCodeImage } from './QrCodeImage';
+import { PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderFormDialog } from './ReaderFormDialog';
 import { ReadersImportDialog } from './ReadersImportDialog';
 
@@ -181,10 +182,10 @@ export function ReadersListPage() {
 
   return (
     <Box>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-        <Typography variant="h4" component="h2">
-          {t('library_circulation.menu.students')}
-        </Typography>
+      <Box sx={{ mb: 2 }}>
+        <PageHero title={t('library_circulation.menu.students')} subtitle={t('library_circulation.students.subtitle')} />
+      </Box>
+      <Stack direction="row" sx={{ justifyContent: 'flex-end', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={1}>
           <Can permission="library_circulation.students.export">
             <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport}>
