@@ -31,6 +31,9 @@ import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
+import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -43,6 +46,7 @@ import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
+import { useColorMode } from '../../app/ColorModeContext';
 import { useMenuLayout, useThemePack } from '../../app/AppearanceContext';
 import { applyMenuLayout, labelOf } from '../modules/applyMenuLayout';
 import { usePermission } from '../permissions';
@@ -129,7 +133,7 @@ function iconFor(node: ResolvedMenuLeaf | { id: string; iconName: string | undef
  * then the admin's menu layout (appearance, D96) applied on top. Shared by
  * the sidebar (`NavList`) and the tabs shell (`TabsNav`).
  */
-function useNavNodes(): ResolvedMenuNode[] {
+export function useNavNodes(): ResolvedMenuNode[] {
   // Only ever rendered inside PageLayout, which App.tsx mounts once fully
   // authenticated — always enabled here is correct (root D79).
   const moduleManifests = useModuleFrontendManifests(true);
@@ -351,6 +355,7 @@ export function TopBar() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
   const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const { preference: colorMode, cycle: cycleColorMode } = useColorMode();
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [langMenuAnchor, setLangMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -381,6 +386,12 @@ export function TopBar() {
         </Typography>
 
         {status === 'authenticated' ? <NotificationsBellMenu /> : null}
+
+        <Tooltip title={t(`core.common.colorMode.${colorMode}`)}>
+          <IconButton color="inherit" onClick={cycleColorMode} aria-label={t(`core.common.colorMode.${colorMode}`)}>
+            {colorMode === 'dark' ? <DarkModeIcon /> : colorMode === 'light' ? <LightModeIcon /> : <BrightnessAutoIcon />}
+          </IconButton>
+        </Tooltip>
 
         <Tooltip title={t('core.common.language')}>
           <IconButton color="inherit" onClick={(e) => setLangMenuAnchor(e.currentTarget)} aria-label={t('core.common.language')}>

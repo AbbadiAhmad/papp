@@ -1,8 +1,8 @@
-import { Box, Card, CardActionArea, CardContent, Grid, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
+import { CardGrid, PageHero, StatTile, type Tone } from '../../../../apps/web/src/shared/ui/kit';
 import { libraryCirculationApi } from '../api';
 
 /**
@@ -22,78 +22,51 @@ import { libraryCirculationApi } from '../api';
  */
 export function DashboardPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { status, data, errorMessage, reload } = useGuardedQuery(() =>
     libraryCirculationApi.getDashboardStats(),
   );
 
   const cards = data
     ? [
-        { label: t('library_circulation.dashboard.students'), value: data.students, color: 'text.primary', to: '/library-circulation/readers' },
-        { label: t('library_circulation.dashboard.total_copies'), value: data.totalCopies, color: 'text.primary', to: null },
-        { label: t('library_circulation.dashboard.available_copies'), value: data.availableCopies, color: 'success.main', to: null },
+        { label: t('library_circulation.dashboard.students'), value: data.students, tone: 'neutral' as Tone, to: '/library-circulation/readers' },
+        { label: t('library_circulation.dashboard.total_copies'), value: data.totalCopies, tone: 'neutral' as Tone, to: null },
+        { label: t('library_circulation.dashboard.available_copies'), value: data.availableCopies, tone: 'success' as Tone, to: null },
         {
           label: t('library_circulation.dashboard.borrowed_copies'),
           value: data.borrowedCopies,
-          color: 'text.primary',
+          tone: 'neutral' as Tone,
           to: '/library-circulation/borrowings?status=active',
         },
         {
           label: t('library_circulation.dashboard.overdue_borrowings'),
           value: data.overdueBorrowings,
-          color: 'error.main',
+          tone: 'error' as Tone,
           to: '/library-circulation/borrowings?overdueOnly=true',
         },
         {
           label: t('library_circulation.dashboard.unpaid_fines'),
           value: data.unpaidFinesTotal.toFixed(2),
-          color: 'error.main',
+          tone: 'error' as Tone,
           to: '/library-circulation/fines?status=unpaid,partially_paid',
         },
         {
           label: t('library_circulation.dashboard.paid_fines'),
           value: data.paidFinesTotal.toFixed(2),
-          color: 'success.main',
+          tone: 'success' as Tone,
           to: '/library-circulation/fines?status=paid',
         },
       ]
     : [];
 
   return (
-    <Box>
-      <Typography variant="h4" component="h2" gutterBottom>
-        {t('library_circulation.menu.dashboard')}
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <PageHero title={t('library_circulation.menu.dashboard')} subtitle={t('library_circulation.dashboard.subtitle')} />
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
-        <Grid container spacing={2}>
+        <CardGrid min={200}>
           {cards.map((card) => (
-            <Grid key={card.label} size={{ xs: 12, sm: 6, md: 3 }}>
-              <Card>
-                {card.to ? (
-                  <CardActionArea onClick={() => navigate(card.to as string)}>
-                    <CardContent>
-                      <Typography variant="body2" color="text.secondary">
-                        {card.label}
-                      </Typography>
-                      <Typography variant="h4" sx={{ color: card.color, mt: 1 }}>
-                        {card.value}
-                      </Typography>
-                    </CardContent>
-                  </CardActionArea>
-                ) : (
-                  <CardContent>
-                    <Typography variant="body2" color="text.secondary">
-                      {card.label}
-                    </Typography>
-                    <Typography variant="h4" sx={{ color: card.color, mt: 1 }}>
-                      {card.value}
-                    </Typography>
-                  </CardContent>
-                )}
-              </Card>
-            </Grid>
+            <StatTile key={card.label} label={card.label} value={card.value} tone={card.tone} to={card.to} />
           ))}
-        </Grid>
+        </CardGrid>
       </QueryStateGate>
     </Box>
   );

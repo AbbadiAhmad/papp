@@ -1,10 +1,11 @@
-import { CssBaseline, GlobalStyles, ThemeProvider, useMediaQuery } from '@mui/material';
+import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material';
 import { CacheProvider } from '@emotion/react';
 import { Box, CircularProgress } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, BrowserRouter, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
+import { ColorModeProvider, useColorMode } from './app/ColorModeContext';
 import { MenuLayoutProvider, ThemePackProvider, useThemePack } from './app/AppearanceContext';
 import { AppearancePage } from './core/appearance/AppearancePage';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
@@ -339,8 +340,8 @@ function ThemedShell() {
   const { direction } = useLanguage();
   const cache = useMemo(() => createEmotionCacheFor(direction), [direction]);
   const { pack } = useThemePack();
-  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
-  const theme = useMemo(() => createAppTheme(direction, pack, prefersDark), [direction, pack, prefersDark]);
+  const { dark } = useColorMode();
+  const theme = useMemo(() => createAppTheme(direction, pack, dark), [direction, pack, dark]);
 
   return (
     <CacheProvider value={cache}>
@@ -402,7 +403,9 @@ function App() {
   return (
     <LanguageProvider>
       <ThemePackProvider>
-        <ThemedShell />
+        <ColorModeProvider>
+          <ThemedShell />
+        </ColorModeProvider>
       </ThemePackProvider>
     </LanguageProvider>
   );
