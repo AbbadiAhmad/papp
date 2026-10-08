@@ -113,6 +113,10 @@ Exposed to admins from a **Users module → Settings** screen (tabs: Password Po
 
 **Settings are not core-only.** Any installed module can declare and seed its own `system_settings` keys (namespaced `<moduleKey>.<name>`) via its manifest's `settings` array, gaining its own section in the same Settings screen — see `MODULE_SPEC.md` §8. This closes a gap surfaced by real domain input (a library module needing admin-editable loan/fine policy values, `docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) and mirrors how permissions and menus were already module-declared (§7.3), not just settings.
 
+### 6.4 Frontend version refresh (D94)
+
+The SPA bakes in a build version (`__APP_VERSION__`) and the server publishes the same value at `/version.json` (`no-cache`; hashed `/assets/*` stay `immutable`). On entering the login page the SPA fetches it with `cache: 'no-store'` and does a full reload only if it differs, so a user with a stale tab picks up a new deployment after sign-out or session expiry. Loop-guarded via `sessionStorage`; best-effort on failure.
+
 ## 7. Roles & permissions (RBAC)
 
 ### 7.1 Data model (core)

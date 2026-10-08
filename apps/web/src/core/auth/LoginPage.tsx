@@ -5,6 +5,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import * as authApi from '../../shared/api/auth';
 import { extractErrorMessage } from '../../shared/api/httpClient';
+import { reloadIfNewVersion } from '../../shared/versionCheck';
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -21,6 +22,13 @@ export function LoginPage() {
   // shown) while loading/on error, same "fail closed" posture as the rest
   // of this page.
   const [registrationOpen, setRegistrationOpen] = useState(false);
+
+  // D94: the login page is where every session starts or restarts, so this is
+  // the one place we check for a newer deployed build (full reload only on a
+  // version mismatch).
+  useEffect(() => {
+    void reloadIfNewVersion();
+  }, []);
 
   useEffect(() => {
     authApi

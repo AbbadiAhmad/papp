@@ -2,7 +2,9 @@
 
 Modular back-office platform: complete user/role/permission management + audit logging + Arabic-first (RTL) multi-language UI as the base, with Library Management (books, borrowing/returning, finance) as the first real module built on top.
 
-**Current status: planning phase.** No application code has been written yet — only the planning documents in `docs/` and this memory file. Do not scaffold the actual NestJS/React app until the user has confirmed the blocking items in `docs/CHECKLIST.md`.
+**Current status: implemented.** The core platform (`apps/api`, `apps/web`, `packages/shared-types`) and the installable modules in `modules/` (`library_catalog`, `library_circulation`, `reading_club`, `survey`, `website`, plus `template`) are built; `docs/BUILD_PLAN.md` records the phases and `docs/DECISIONS.md` the decisions made along the way (check its last entries for the latest). Still check `docs/CHECKLIST.md` for items awaiting the user's decision before assuming something is settled.
+
+Local checks: `npm run build` (builds `shared-types` first, then every workspace), `npm run lint`, `npm run lint:manifests`, `npm run typecheck --workspace=@papp/web` (builds `shared-types` first — other workspaces import it, so type-checking without that build fails). Run `npm install --workspaces --include-workspace-root` first on a fresh checkout.
 
 ## Read these before touching anything in this repo
 
@@ -15,7 +17,7 @@ Modular back-office platform: complete user/role/permission management + audit l
 - `docs/CHECKLIST.md` — open items awaiting the user's decision; check before assuming something is settled.
 - `.claude/skills/papp-add-feature/SKILL.md` — the enforceable checklist version of the above; **invoke this skill whenever adding or changing a feature.**
 
-## Stack (once implementation starts)
+## Stack
 
 React + TypeScript + MUI (RTL via theme direction) · NestJS (TypeScript) · PostgreSQL · Prisma for queries/types with per-module raw SQL migrations · JWT access + refresh tokens with a Postgres-backed revocable session registry · docker-compose (`db`, `api`, `web`) · single git branch · GitHub Actions CI (D31).
 

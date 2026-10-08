@@ -27,6 +27,9 @@ COPY apps/web apps/web
 COPY modules modules
 ARG VITE_API_URL=http://localhost:3000
 ENV VITE_API_URL=${VITE_API_URL}
+# D94: build identifier (CI passes the git SHA); unset -> build timestamp.
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 RUN npm run build --workspace=@papp/shared-types
 RUN npm run build --workspace=@papp/web
 
