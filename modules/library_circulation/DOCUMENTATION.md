@@ -64,6 +64,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - `frontend/pages/StudentDetailPage.tsx` — the reader's active-books/fines tabs (§25/§10); the "Currently borrowed" tab's Actions column also opens `ExtendLoanDialog.tsx` per row.
 - `frontend/pages/QrCodeImage.tsx` — client-side QR image rendering (`qrcode` npm package) for a student's own code.
 - `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`; `borrowedCopies`/`overdueBorrowings` cards link into `BorrowingsPage.tsx` pre-filtered (LIBRARY_CIRCULATION-D34).
+- `GET /dashboard/overdue` (`dashboard.view`, `ListOverdueDto`) + the table under `DashboardPage.tsx`'s cards: overdue loans (reader, book, borrowed, due, days late), sortable columns + pagination. Sorted/sliced in memory in `CirculationService.listOverdueBorrowingsPaged` because reader/book names live in other tables (LIBRARY_CIRCULATION-D48).
 - `frontend/pages/BorrowingsPage.tsx` — Borrowings status page (LIBRARY_CIRCULATION-D34): book/reader/borrowed-date/due-date/days-overdue table, filterable by status/date-range/overdue-only, reading its initial filter off the URL (`useSearchParams`) so dashboard links land pre-filtered.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)

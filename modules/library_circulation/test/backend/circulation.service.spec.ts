@@ -444,6 +444,41 @@ describe('CirculationService', () => {
     });
   });
 
+  describe('listOverdueBorrowingsPaged (dashboard overdue table)', () => {
+    const rows = ['A', 'B', 'C'].map((n, i) => ({
+      id: `b-${n}`,
+      bookCopyId: `copy-${n}`,
+      studentId: `student-${n}`,
+      status: 'active',
+      borrowedAt: new Date('2026-01-01T00:00:00Z'),
+      dueAt: new Date(`2026-01-0${i + 2}T00:00:00Z`),
+      returnedAt: null,
+    }));
+
+    beforeEach(() => {
+      prisma.libraryBorrowing.findMany.mockResolvedValue(rows);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue(
+        ['A', 'B', 'C'].map((n) => copyRow({ id: `copy-${n}`, qrCode: `BOOK-${n}`, bookId: `book-${n}` })),
+      );
+      prisma.libraryCatalogBook.findMany.mockResolvedValue(['A', 'B', 'C'].map((n) => ({ id: `book-${n}`, title: `Title ${n}` })));
+      prisma.libraryStudent.findMany.mockResolvedValue(
+        ['A', 'B', 'C'].map((n) => studentRow({ id: `student-${n}`, userId: `user-${n}`, code: `STU-${n}` })),
+      );
+      prisma.user.findMany.mockResolvedValue(['A', 'B', 'C'].map((n) => ({ id: `user-${n}`, name: `Reader ${n}` })));
+    });
+
+    it('defaults to most-overdue first and reports the full total', async () => {
+      const result = await service.listOverdueBorrowingsPaged({ pageSize: 2 });
+      expect(result.total).toBe(3);
+      expect(result.items.map((r) => r.id)).toEqual(['b-A', 'b-B']);
+    });
+
+    it('sorts by reader name ascending and paginates', async () => {
+      const result = await service.listOverdueBorrowingsPaged({ sortBy: 'studentName', sortDir: 'asc', page: 2, pageSize: 2 });
+      expect(result.items.map((r) => r.studentName)).toEqual(['Reader C']);
+    });
+  });
+
   describe('listBorrowings (Borrowings status page, user request)', () => {
     const borrowedAt = new Date('2026-01-01T00:00:00Z');
     const pastDueAt = new Date('2026-01-05T00:00:00Z'); // definitely in the past relative to "now" in this test run

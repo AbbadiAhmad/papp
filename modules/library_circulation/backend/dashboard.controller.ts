@@ -1,5 +1,6 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { CirculationService } from './circulation.service';
+import { ListOverdueDto } from './dto/list-overdue.dto';
 import { FinesService } from './fines.service';
 import { MustChangePasswordGuard, RequirePermission } from './platform';
 import { StudentsService } from './students.service';
@@ -41,5 +42,12 @@ export class DashboardController {
       unpaidFinesTotal: financeSummary.unpaidTotal,
       paidFinesTotal: financeSummary.paidTotal,
     };
+  }
+
+  /** Overdue-books table under the cards: sortable + paginated, same gate as the cards. */
+  @Get('overdue')
+  @RequirePermission('library_circulation.dashboard.view')
+  getOverdue(@Query() q: ListOverdueDto) {
+    return this.circulation.listOverdueBorrowingsPaged(q);
   }
 }

@@ -141,6 +141,8 @@
   "library_circulation.borrowings.status": "الحالة",
   "library_circulation.borrowings.actions": "الإجراءات",
   "library_circulation.borrowings.extend": "تمديد",
+  "library_circulation.dashboard.overdue_title": "الكتب المتأخرة",
+  "library_circulation.dashboard.overdue_empty": "لا توجد كتب متأخرة.",
   "library_circulation.borrowings.book_title": "الكتاب",
   "library_circulation.borrowings.days_overdue": "التأخير (بالأيام)",
   "library_circulation.borrowings.overdue_only": "المتأخر فقط",

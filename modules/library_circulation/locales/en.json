@@ -141,6 +141,8 @@
   "library_circulation.borrowings.status": "Status",
   "library_circulation.borrowings.actions": "Actions",
   "library_circulation.borrowings.extend": "Extend",
+  "library_circulation.dashboard.overdue_title": "Overdue books",
+  "library_circulation.dashboard.overdue_empty": "No overdue books.",
   "library_circulation.borrowings.book_title": "Book",
   "library_circulation.borrowings.days_overdue": "Overdue by (days)",
   "library_circulation.borrowings.overdue_only": "Overdue only",

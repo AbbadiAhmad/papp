@@ -410,6 +410,37 @@ let CirculationService = CirculationService_1 = class CirculationService {
             };
         });
     }
+    /**
+     * Dashboard's overdue-books table (user request): still-active loans past
+     * their due date, sortable and paginated. Sorting by reader/book name spans
+     * tables, so the (small) overdue set is sorted and sliced in memory after
+     * `listBorrowings({ overdueOnly })` enriches it — `total` is the full count.
+     */
+    async listOverdueBorrowingsPaged(opts) {
+        const page = opts.page ?? 1;
+        const pageSize = opts.pageSize ?? 10;
+        const sortBy = opts.sortBy ?? 'daysOverdue';
+        const dir = (opts.sortDir ?? 'desc') === 'asc' ? 1 : -1;
+        const rows = await this.listBorrowings({ overdueOnly: true });
+        const key = (r) => {
+            if (sortBy === 'studentName')
+                return (r.studentName ?? '').toLowerCase();
+            if (sortBy === 'bookTitle')
+                return (r.bookTitle ?? r.qrCode ?? '').toLowerCase();
+            if (sortBy === 'borrowedAt')
+                return r.borrowedAt.getTime();
+            if (sortBy === 'dueAt')
+                return r.dueAt.getTime();
+            return r.daysOverdue;
+        };
+        const sorted = [...rows].sort((a, b) => {
+            const ka = key(a);
+            const kb = key(b);
+            const cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
+            return cmp !== 0 ? cmp * dir : a.id.localeCompare(b.id);
+        });
+        return { items: sorted.slice((page - 1) * pageSize, page * pageSize), total: sorted.length, page, pageSize };
+    }
     /** Feature 2.2: Get circulation history for a copy or a specific borrowing. */
     async getCirculationHistory(bookCopyId, borrowingId, limit = 10) {
         const where = {};
