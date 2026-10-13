@@ -235,3 +235,4 @@ Moved to their own file: `docs/ASSUMPTIONS.md` — every standing platform-wide 
 ## Open items still needing your decision
 
 None blocking implementation start. See `docs/ASSUMPTIONS.md` for the low-stakes defaults you can override any time without rework.
+| D96b | **Production bug: `apps/web/nginx.conf` did not proxy `/appearance`** (the dev proxy in `vite.config.ts` had it), so on a deployed build the app's `GET /appearance/menu-layout` (and active theme/themes) fell through to the SPA fallback and returned `index.html` with 200; the sidebar then crashed on `layout.hidden.filter`. Fixed by adding `appearance` to the nginx core-prefix regex; `MenuLayoutProvider` also now validates the response with `menuLayoutSchema` and falls back to the default menu; `tests/nginx-core-prefixes.test.ts` keeps nginx, vite and the controller list in sync. **Requires rebuilding/redeploying the `web` image.** | Accepted |
