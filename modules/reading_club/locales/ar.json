@@ -4,7 +4,6 @@
   "reading_club.menu.readers": "القرّاء",
   "reading_club.menu.groups": "المجموعات",
   "reading_club.menu.episodes": "المواسم",
-
   "reading_club.perm.groups.view": "عرض مجموعات القراءة",
   "reading_club.perm.groups.create": "إنشاء مجموعات القراءة",
   "reading_club.perm.groups.update": "تعديل مجموعات القراءة ومراحلها",
@@ -16,19 +15,16 @@
   "reading_club.perm.stage_completions.confirm_reward": "تأكيد تسليم المكافأة",
   "reading_club.perm.dashboard.view": "عرض لوحة متابعة نادي القراءة",
   "reading_club.perm.episodes.manage": "إدارة مواسم نادي القراءة (بدء موسم جديد)",
-
   "reading_club.dashboard.total_groups": "المجموعات",
   "reading_club.dashboard.total_active_readers": "القرّاء النشطون",
   "reading_club.dashboard.pending_rewards": "مكافآت بانتظار التسليم",
   "reading_club.dashboard.groups_heading": "المجموعات والمراحل",
   "reading_club.dashboard.member_count": "{{count}} قارئ",
   "reading_club.dashboard.readers_on_stage": "{{count}} قارئ",
-
   "reading_club.target_type.books": "كتاب",
   "reading_club.target_type.pages": "صفحة",
   "reading_club.reward_status.pending": "بانتظار تسليم المكافأة",
   "reading_club.reward_status.delivered": "تم تسليم المكافأة",
-
   "reading_club.fields.name": "الاسم",
   "reading_club.fields.description": "الوصف",
   "reading_club.fields.is_active": "نشطة",
@@ -37,7 +33,6 @@
   "reading_club.fields.target_type": "نوع الهدف",
   "reading_club.fields.target_amount": "قيمة الهدف",
   "reading_club.fields.reward_description": "المكافأة / الهدية",
-
   "reading_club.groups.create_button": "مجموعة جديدة",
   "reading_club.groups.create_title": "إنشاء مجموعة قراءة",
   "reading_club.groups.edit_title": "تعديل مجموعة القراءة",
@@ -50,7 +45,6 @@
   "reading_club.groups.delete_warning": "يوجد حالياً {{readerCount}} قارئ معيّن لهذه المجموعة، موزّعين على {{stageCount}} مرحلة. حذفها سيُلغي تعيينهم، وسيحتاجون إلى تعيين جديد لمجموعة أخرى بعد ذلك.",
   "reading_club.groups.delete_affected_readers": "تم حذف المجموعة. أصبح {{count}} قارئ ممن كانوا معيّنين لها بلا مجموعة الآن.",
   "reading_club.groups.type_to_confirm_label": "اكتب \"{{name}}\" للتأكيد",
-
   "reading_club.stages.manage_title": "إدارة المراحل",
   "reading_club.stages.add_title": "إضافة مرحلة",
   "reading_club.stages.edit_title": "تعديل المرحلة",
@@ -58,7 +52,6 @@
   "reading_club.stages.delete_title": "حذف المرحلة",
   "reading_club.stages.delete_confirm": "حذف مرحلة \"{{name}}\"؟ سجل المكافآت والإنجازات الخاص بهذه المرحلة سيبقى محفوظاً وسيظل يظهر باسم \"{{name}}\".",
   "reading_club.stages.delete_warning": "يوجد حالياً {{readerCount}} قارئ على هذه المرحلة. حذفها سينقلهم إلى بلا مرحلة، وسيحتاجون إلى نقل جديد لمرحلة أخرى بعد ذلك.",
-
   "reading_club.readers.assign_title": "تعيين قارئ لمجموعة",
   "reading_club.readers.pick_reader": "القارئ (رمز الطالب)",
   "reading_club.readers.starting_stage": "مرحلة البداية",
@@ -84,7 +77,6 @@
   "reading_club.readers.completed_at": "تاريخ الإنجاز",
   "reading_club.readers.reward_status": "المكافأة",
   "reading_club.readers.confirm_reward_button": "تأكيد تسليم المكافأة",
-
   "reading_club.episodes.current": "الموسم الحالي",
   "reading_club.episodes.closed": "منتهٍ",
   "reading_club.episodes.current_is": "الموسم الحالي: {{name}}",
@@ -102,12 +94,9 @@
   "reading_club.episodes.delete_empty_note": "لا توجد أي مجموعات أو قرّاء أو إنجازات أو سجلات كتب مسجّلة ضمن هذا الموسم.",
   "reading_club.episodes.delete_success": "تم حذف موسم \"{{name}}\".",
   "reading_club.episodes.delete_success_was_current": "تم حذف موسم \"{{name}}\". كان هو الموسم الحالي — لا يوجد موسم حالي الآن إلى أن تبدأ موسماً جديداً.",
-
   "reading_club.dashboard.pending_rewards_heading": "مكافآت بانتظار التسليم",
-
   "reading_club.readers.completion_group": "المجموعة",
   "reading_club.readers.completion_stage": "المرحلة",
-
   "reading_club.book_entries.heading": "الكتب المقروءة في هذه المرحلة",
   "reading_club.book_entries.add_button": "إضافة كتاب",
   "reading_club.book_entries.add_title": "إضافة كتاب يدوياً",
@@ -126,5 +115,26 @@
   "reading_club.book_entries.delete_confirm": "حذف \"{{title}}\" نهائياً من السجل؟ لا يمكن التراجع عن هذا الإجراء.",
   "reading_club.book_entries.discarded_label": "مستبعد",
   "reading_club.book_entries.empty": "لا توجد كتب مسجّلة لهذه المرحلة بعد.",
-  "reading_club.book_entries.added_at": "تاريخ الإضافة"
+  "reading_club.book_entries.added_at": "تاريخ الإضافة",
+  "reading_club.menu.notifications": "إشعارات النادي الخاصة بي",
+  "reading_club.perm.notifications.subscribe": "الاشتراك في إشعارات أحداث نادي القراءة",
+  "reading_club.notifications.title": "إشعارات النادي الخاصة بي",
+  "reading_club.notifications.subtitle": "اختر أحداث نادي القراءة التي تريد استلام إشعار بها في صندوق الوارد.",
+  "reading_club.notifications.save": "حفظ",
+  "reading_club.notifications.saved": "تم حفظ اشتراكاتك.",
+  "reading_club.readers.remove_button": "إزالة من النادي",
+  "reading_club.readers.remove_confirm": "هل تريد إزالة هذا القارئ من النادي؟ يبقى سجل إنجازاته محفوظًا.",
+  "reading_club.notifications.event.reader_added": "إضافة قارئ إلى النادي",
+  "reading_club.notifications.event.reader_removed": "إزالة قارئ من النادي",
+  "reading_club.notifications.event.reader_moved": "نقل قارئ إلى مجموعة أو مرحلة أخرى",
+  "reading_club.notifications.event.stage_completed": "إنهاء قارئ لمرحلة (تصبح المكافأة بانتظار التسليم)",
+  "reading_club.notifications.event.reward_given": "تسليم مكافأة لقارئ",
+  "reading_club.notifications.event.group_created": "إنشاء مجموعة",
+  "reading_club.notifications.event.group_updated": "تعديل مجموعة",
+  "reading_club.notifications.event.group_deleted": "حذف مجموعة",
+  "reading_club.notifications.event.stage_created": "إنشاء مرحلة",
+  "reading_club.notifications.event.stage_updated": "تعديل مرحلة",
+  "reading_club.notifications.event.stage_deleted": "حذف مرحلة",
+  "reading_club.notifications.event.episode_started": "بدء موسم جديد",
+  "reading_club.notifications.event.episode_deleted": "حذف موسم"
 }

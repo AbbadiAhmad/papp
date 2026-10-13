@@ -8,11 +8,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var MembershipsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MembershipsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const club_events_1 = require("./club-events");
 const episodes_service_1 = require("./episodes.service");
 const ACTIVE_BORROWING_RETURNED_STATUS = 'returned';
 /**
@@ -34,10 +38,12 @@ const ACTIVE_BORROWING_RETURNED_STATUS = 'returned';
  */
 let MembershipsService = MembershipsService_1 = class MembershipsService {
     episodes;
+    events;
     logger = new common_1.Logger(MembershipsService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(episodes) {
+    constructor(episodes, events) {
         this.episodes = episodes;
+        this.events = events;
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -260,7 +266,8 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             stageId = firstStage?.id ?? null;
             stageName = firstStage?.name ?? null;
         }
-        return this.prisma.readingClubMembership.upsert({
+        const existing = await this.prisma.readingClubMembership.findUnique({ where: { studentId: dto.studentId } });
+        const membership = await this.prisma.readingClubMembership.upsert({
             where: { studentId: dto.studentId },
             create: {
                 studentId: dto.studentId,
@@ -284,6 +291,25 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
                 assignedBy,
             },
         });
+        await this.events?.publish({
+            type: existing ? 'reader_moved' : 'reader_added',
+            studentId: dto.studentId,
+            details: `المجموعة: ${group.name}${stageName ? ` — المرحلة: ${stageName}` : ''}`,
+        });
+        return membership;
+    }
+    /**
+     * Removes a reader from the club (deletes the membership row only). The
+     * append-only completion/book-entry history is untouched, and the library
+     * student record itself is never affected (that lives in circulation).
+     * Rejected unless the membership's episode is current.
+     */
+    async removeMembership(studentId) {
+        const membership = await this.getMembershipOrThrow(studentId);
+        await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
+        await this.prisma.readingClubMembership.delete({ where: { studentId } });
+        await this.events?.publish({ type: 'reader_removed', studentId, details: membership.groupName ? `المجموعة: ${membership.groupName}` : undefined });
+        return { removed: true };
     }
     /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. Rejected unless the membership's episode is current. Re-snapshots `stageName` (READING_CLUB-D16). */
     async moveStage(studentId, dto) {
@@ -293,10 +319,12 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
         if (!stage || stage.groupId !== membership.groupId) {
             throw new common_1.BadRequestException('The given stage does not belong to this reader\'s current group');
         }
-        return this.prisma.readingClubMembership.update({
+        const updated = await this.prisma.readingClubMembership.update({
             where: { studentId },
             data: { currentStageId: stage.id, stageName: stage.name, stageStartedAt: new Date(), manualProgressAmount: 0 },
         });
+        await this.events?.publish({ type: 'reader_moved', studentId, details: `المجموعة: ${membership.groupName ?? ''} — المرحلة: ${stage.name}` });
+        return updated;
     }
     /** Records the librarian's manually-tracked running progress amount — the only progress source for a `pages`-type stage (no page-count data exists in the catalog to compute it automatically). Rejected unless the membership's episode is current. */
     async updateManualProgress(studentId, dto) {
@@ -361,5 +389,7 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
 exports.MembershipsService = MembershipsService;
 exports.MembershipsService = MembershipsService = MembershipsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [episodes_service_1.EpisodesService])
+    __param(1, (0, common_1.Optional)()),
+    __param(1, (0, common_1.Inject)(club_events_1.CLUB_EVENT_PUBLISHER)),
+    __metadata("design:paramtypes", [episodes_service_1.EpisodesService, Object])
 ], MembershipsService);

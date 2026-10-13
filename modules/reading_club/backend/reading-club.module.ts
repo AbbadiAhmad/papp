@@ -8,8 +8,13 @@ import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../../../apps/api/dist/core/notifications/notifications.module';
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
+// eslint-disable-next-line import/no-unresolved
+import { PermissionsService } from '../../../apps/api/dist/core/permissions/permissions.service';
+import { CLUB_EVENT_PUBLISHER } from './club-events';
+import { ClubEventsService } from './club-events.service';
 import { ConfirmRewardController } from './confirm-reward.controller';
 import { DashboardController } from './dashboard.controller';
+import { EventSubscriptionsController } from './event-subscriptions.controller';
 import { EpisodesController } from './episodes.controller';
 import { EpisodesService } from './episodes.service';
 import { GroupsController } from './groups.controller';
@@ -17,6 +22,7 @@ import { GroupsService } from './groups.service';
 import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
+import { PERMISSION_CHECKER } from './permission-checker';
 import { StageBookEntriesController } from './stage-book-entries.controller';
 import { StageBookEntriesService } from './stage-book-entries.service';
 import { StageCompletionsController } from './stage-completions.controller';
@@ -38,6 +44,7 @@ import { StageCompletionsService } from './stage-completions.service';
     StageBookEntriesController,
     ConfirmRewardController,
     DashboardController,
+    EventSubscriptionsController,
   ],
   providers: [
     EpisodesService,
@@ -45,7 +52,10 @@ import { StageCompletionsService } from './stage-completions.service';
     MembershipsService,
     StageCompletionsService,
     StageBookEntriesService,
+    ClubEventsService,
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
+    { provide: PERMISSION_CHECKER, useExisting: PermissionsService },
+    { provide: CLUB_EVENT_PUBLISHER, useExisting: ClubEventsService },
   ],
 })
 export class ReadingClubModule {}

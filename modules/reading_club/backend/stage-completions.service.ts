@@ -1,5 +1,6 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { CLUB_EVENT_PUBLISHER, ClubEventPublisher } from './club-events';
 import { EpisodesService } from './episodes.service';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER, NotificationsSender } from './notifications-sender';
@@ -23,6 +24,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     private readonly memberships: MembershipsService,
     private readonly episodes: EpisodesService,
     @Inject(NOTIFICATIONS_SENDER) private readonly notifications: NotificationsSender,
+    @Optional() @Inject(CLUB_EVENT_PUBLISHER) private readonly events?: ClubEventPublisher,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -87,6 +89,12 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    await this.events?.publish({
+      type: 'stage_completed',
+      studentId,
+      details: `المجموعة: ${group?.name ?? membership.groupName ?? ''} — المرحلة المنجزة: ${stage.name}${nextStage ? ` — المرحلة التالية: ${nextStage.name}` : ' — أنهى جميع المراحل'}${stage.rewardDescription ? `\n\nالمكافأة (بانتظار التسليم): ${stage.rewardDescription}` : ''}`,
+    });
+
     return completion;
   }
 
@@ -107,6 +115,12 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     if (student) {
       await this.notifyReader(student.userId, 'reading_club.reward_delivered', 'استلام المكافأة', 'تم تسليمك مكافأة نادي القراءة. أحسنت!');
     }
+
+    await this.events?.publish({
+      type: 'reward_given',
+      studentId: completion.studentId,
+      details: `المجموعة: ${completion.groupName ?? ''} — المرحلة: ${completion.stageName ?? ''}`,
+    });
 
     return updated;
   }

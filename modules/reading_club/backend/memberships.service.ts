@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { CLUB_EVENT_PUBLISHER, ClubEventPublisher } from './club-events';
 import { AssignMembershipDto } from './dto/assign-membership.dto';
 import { MoveStageDto } from './dto/move-stage.dto';
 import { UpdateProgressDto } from './dto/update-progress.dto';
@@ -36,7 +37,10 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MembershipsService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly episodes: EpisodesService) {}
+  constructor(
+    private readonly episodes: EpisodesService,
+    @Optional() @Inject(CLUB_EVENT_PUBLISHER) private readonly events?: ClubEventPublisher,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -276,7 +280,8 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       stageName = firstStage?.name ?? null;
     }
 
-    return this.prisma.readingClubMembership.upsert({
+    const existing = await this.prisma.readingClubMembership.findUnique({ where: { studentId: dto.studentId } });
+    const membership = await this.prisma.readingClubMembership.upsert({
       where: { studentId: dto.studentId },
       create: {
         studentId: dto.studentId,
@@ -300,6 +305,26 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
         assignedBy,
       },
     });
+    await this.events?.publish({
+      type: existing ? 'reader_moved' : 'reader_added',
+      studentId: dto.studentId,
+      details: `المجموعة: ${group.name}${stageName ? ` — المرحلة: ${stageName}` : ''}`,
+    });
+    return membership;
+  }
+
+  /**
+   * Removes a reader from the club (deletes the membership row only). The
+   * append-only completion/book-entry history is untouched, and the library
+   * student record itself is never affected (that lives in circulation).
+   * Rejected unless the membership's episode is current.
+   */
+  async removeMembership(studentId: string): Promise<{ removed: true }> {
+    const membership = await this.getMembershipOrThrow(studentId);
+    await this.episodes.assertEpisodeIsCurrent(membership.episodeId);
+    await this.prisma.readingClubMembership.delete({ where: { studentId } });
+    await this.events?.publish({ type: 'reader_removed', studentId, details: membership.groupName ? `المجموعة: ${membership.groupName}` : undefined });
+    return { removed: true };
   }
 
   /** Manually moves a reader to a different stage WITHIN their current group — an administrative override, not the normal "mark complete" reward flow. Rejected unless the membership's episode is current. Re-snapshots `stageName` (READING_CLUB-D16). */
@@ -310,10 +335,12 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     if (!stage || stage.groupId !== membership.groupId) {
       throw new BadRequestException('The given stage does not belong to this reader\'s current group');
     }
-    return this.prisma.readingClubMembership.update({
+    const updated = await this.prisma.readingClubMembership.update({
       where: { studentId },
       data: { currentStageId: stage.id, stageName: stage.name, stageStartedAt: new Date(), manualProgressAmount: 0 },
     });
+    await this.events?.publish({ type: 'reader_moved', studentId, details: `المجموعة: ${membership.groupName ?? ''} — المرحلة: ${stage.name}` });
+    return updated;
   }
 
   /** Records the librarian's manually-tracked running progress amount — the only progress source for a `pages`-type stage (no page-count data exists in the catalog to compute it automatically). Rejected unless the membership's episode is current. */

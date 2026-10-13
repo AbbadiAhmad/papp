@@ -64,6 +64,19 @@ export function ReaderDetailPage() {
     }
   };
 
+  const handleRemoveReader = async () => {
+    if (!studentId || !window.confirm(t('reading_club.readers.remove_confirm'))) return;
+    setBusy(true);
+    try {
+      await readingClubApi.removeReader(studentId);
+      reload();
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleConfirmReward = async (completionId: string) => {
     setBusy(true);
     try {
@@ -132,6 +145,13 @@ export function ReaderDetailPage() {
                       {reader.group ? t('reading_club.readers.move_group_button') : t('reading_club.readers.assign_button')}
                     </Button>
                   </Can>
+                  {reader.membership ? (
+                    <Can permission="reading_club.memberships.assign">
+                      <Button variant="outlined" color="error" onClick={handleRemoveReader} disabled={busy}>
+                        {t('reading_club.readers.remove_button')}
+                      </Button>
+                    </Can>
+                  ) : null}
                 </Stack>
               </CardContent>
             </Card>

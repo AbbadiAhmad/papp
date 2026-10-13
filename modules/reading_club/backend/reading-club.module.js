@@ -17,8 +17,13 @@ const common_1 = require("@nestjs/common");
 const notifications_module_1 = require("../../../apps/api/dist/core/notifications/notifications.module");
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
+// eslint-disable-next-line import/no-unresolved
+const permissions_service_1 = require("../../../apps/api/dist/core/permissions/permissions.service");
+const club_events_1 = require("./club-events");
+const club_events_service_1 = require("./club-events.service");
 const confirm_reward_controller_1 = require("./confirm-reward.controller");
 const dashboard_controller_1 = require("./dashboard.controller");
+const event_subscriptions_controller_1 = require("./event-subscriptions.controller");
 const episodes_controller_1 = require("./episodes.controller");
 const episodes_service_1 = require("./episodes.service");
 const groups_controller_1 = require("./groups.controller");
@@ -26,6 +31,7 @@ const groups_service_1 = require("./groups.service");
 const memberships_controller_1 = require("./memberships.controller");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
+const permission_checker_1 = require("./permission-checker");
 const stage_book_entries_controller_1 = require("./stage-book-entries.controller");
 const stage_book_entries_service_1 = require("./stage-book-entries.service");
 const stage_completions_controller_1 = require("./stage-completions.controller");
@@ -50,6 +56,7 @@ exports.ReadingClubModule = ReadingClubModule = __decorate([
             stage_book_entries_controller_1.StageBookEntriesController,
             confirm_reward_controller_1.ConfirmRewardController,
             dashboard_controller_1.DashboardController,
+            event_subscriptions_controller_1.EventSubscriptionsController,
         ],
         providers: [
             episodes_service_1.EpisodesService,
@@ -57,7 +64,10 @@ exports.ReadingClubModule = ReadingClubModule = __decorate([
             memberships_service_1.MembershipsService,
             stage_completions_service_1.StageCompletionsService,
             stage_book_entries_service_1.StageBookEntriesService,
+            club_events_service_1.ClubEventsService,
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
+            { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },
+            { provide: club_events_1.CLUB_EVENT_PUBLISHER, useExisting: club_events_service_1.ClubEventsService },
         ],
     })
 ], ReadingClubModule);

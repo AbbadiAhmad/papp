@@ -40,6 +40,10 @@ let MembershipsController = class MembershipsController {
     async updateProgress(studentId, dto) {
         return this.memberships.updateManualProgress(studentId, dto);
     }
+    /** Removes the reader from the club (membership only — completion history and the library student record stay). */
+    async remove(studentId) {
+        return this.memberships.removeMembership(studentId);
+    }
 };
 exports.MembershipsController = MembershipsController;
 __decorate([
@@ -92,6 +96,15 @@ __decorate([
     __metadata("design:paramtypes", [String, update_progress_dto_1.UpdateProgressDto]),
     __metadata("design:returntype", Promise)
 ], MembershipsController.prototype, "updateProgress", null);
+__decorate([
+    (0, common_1.Delete)(':studentId'),
+    (0, platform_1.RequirePermission)('reading_club.memberships.assign'),
+    (0, platform_1.Audit)({ category: 'reading_club.memberships', entityType: 'ReadingClubMembership', action: 'remove', fetchState: fetchMembershipState }),
+    __param(0, (0, common_1.Param)('studentId', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], MembershipsController.prototype, "remove", null);
 exports.MembershipsController = MembershipsController = __decorate([
     (0, common_1.Controller)('api/reading-club/readers'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

@@ -985,3 +985,15 @@ model UserRole {
   @@id([userId, roleId])
   @@map("user_roles")
 }
+
+/// Per-user opt-in to club events (migration 005, READING_CLUB-D20).
+model ReadingClubEventSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  eventType String   @map("event_type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, eventType])
+  @@index([eventType])
+  @@map("reading_club_event_subscriptions")
+}
