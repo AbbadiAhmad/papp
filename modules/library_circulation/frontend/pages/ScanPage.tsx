@@ -48,7 +48,7 @@ import {
   type ScanStudentResult,
   type StudentSearchResult,
 } from '../api';
-import { readingClubIntegration, type ReadingClubPendingReward } from '../readingClubIntegration';
+import { readingClubIntegration, type ReadingClubPendingReward, type ReadingClubReaderOverview } from '../readingClubIntegration';
 import { PanelHeading } from './PanelHeading';
 import { BookCopyAutocomplete } from './BookCopyAutocomplete';
 import { BorrowDialog, type BorrowDialogBook } from './BorrowDialog';
@@ -112,6 +112,7 @@ export function ScanPage() {
   const [historyView, setHistoryView] = useState<'incidents' | 'all'>('incidents');
   const [readerSectionsLoading, setReaderSectionsLoading] = useState(false);
   const [pendingRewards, setPendingRewards] = useState<ReadingClubPendingReward[]>([]);
+  const [clubOverview, setClubOverview] = useState<ReadingClubReaderOverview | null>(null);
   const [maxBooks, setMaxBooks] = useState<number | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [finePerDay, setFinePerDay] = useState(0);
@@ -250,6 +251,50 @@ export function ScanPage() {
     };
   }, [canSeeRewards, readerId]);
 
+  const loadClubOverview = (studentId: string, isCancelled: () => boolean = () => false) =>
+    readingClubIntegration
+      .getReaderOverview(studentId)
+      .then((overview) => {
+        if (!isCancelled()) setClubOverview(overview);
+      })
+      .catch(() => {
+        if (!isCancelled()) setClubOverview(null);
+      });
+
+  useEffect(() => {
+    if (!canSeeRewards || !readerId) {
+      setClubOverview(null);
+      return;
+    }
+    let cancelled = false;
+    void loadClubOverview(readerId, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeRewards, readerId]);
+
+  /** Librarian confirms the current stage is finished: reader advances to the next stage (or finishes the group). */
+  const completeReadingClubStage = async () => {
+    if (!readerId) return;
+    const finishedStage = clubOverview?.stage?.name ?? '';
+    const wasLast = !clubOverview?.groupStages.some((s) => s.stageOrder > (clubOverview.stage?.stageOrder ?? 0));
+    try {
+      await readingClubIntegration.completeStage(readerId);
+      setMessage(
+        wasLast
+          ? t('library_circulation.scan.reading_club_all_done_message', { stage: finishedStage })
+          : t('library_circulation.scan.reading_club_stage_done_message', { stage: finishedStage }),
+      );
+      await Promise.all([
+        loadClubOverview(readerId),
+        readingClubIntegration.getPendingRewards(readerId).then(setPendingRewards).catch(() => undefined),
+      ]);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
   const confirmReadingClubReward = async (completionId: string) => {
     try {
       await readingClubIntegration.confirmReward(completionId);
@@ -264,6 +309,7 @@ export function ScanPage() {
     setReaderCode('');
     setOtherLoan(null);
     setPendingRewards([]);
+    setClubOverview(null);
     setTimeout(() => readerInputRef.current?.focus(), 0);
   };
 
@@ -652,6 +698,63 @@ export function ScanPage() {
                       </List>
                     )}
                   </CollapsibleSection>
+
+                  {clubOverview?.membership ? (
+                    <Box sx={{ p: 1.5, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        {t('library_circulation.scan.reading_club_heading', { group: clubOverview.group?.name ?? clubOverview.membership.groupName ?? '' })}
+                      </Typography>
+                      {clubOverview.stage && clubOverview.progress ? (
+                        <Stack spacing={1}>
+                          <Typography variant="body2">
+                            {t('library_circulation.scan.reading_club_current_stage', {
+                              stage: clubOverview.stage.name,
+                              done: clubOverview.progress.progressAmount,
+                              target: clubOverview.progress.targetAmount,
+                              unit: t(`library_circulation.scan.reading_club_unit_${clubOverview.progress.targetType}`),
+                            })}
+                          </Typography>
+                          <Can permission="reading_club.stage_completions.mark">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color={clubOverview.progress.isComplete ? 'success' : 'inherit'}
+                              onClick={completeReadingClubStage}
+                              sx={{ alignSelf: 'flex-start' }}
+                            >
+                              {t('library_circulation.scan.reading_club_complete_stage_button')}
+                            </Button>
+                          </Can>
+                        </Stack>
+                      ) : clubOverview.completions.length > 0 && clubOverview.groupStages.length > 0 ? (
+                        <Alert severity="success">{t('library_circulation.scan.reading_club_all_done_banner')}</Alert>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('library_circulation.scan.reading_club_no_stage')}
+                        </Typography>
+                      )}
+                      {clubOverview.completions.length > 0 ? (
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          {t('library_circulation.scan.reading_club_completed_stages', {
+                            stages: [...clubOverview.completions]
+                              .sort((a, b) => (a.stageOrder ?? 0) - (b.stageOrder ?? 0))
+                              .map((c) => c.stageName ?? '')
+                              .join('، '),
+                          })}
+                        </Typography>
+                      ) : null}
+                      {clubOverview.stage && clubOverview.groupStages.some((st) => st.stageOrder > clubOverview.stage!.stageOrder) ? (
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          {t('library_circulation.scan.reading_club_upcoming_stages', {
+                            stages: clubOverview.groupStages
+                              .filter((st) => st.stageOrder > clubOverview.stage!.stageOrder)
+                              .map((st) => st.name)
+                              .join('، '),
+                          })}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  ) : null}
 
                   {pendingRewards.length > 0 ? (
                     <>

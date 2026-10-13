@@ -152,6 +152,13 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // All of the group's stages in order, so a caller (e.g. the circulation
+    // Scan page's club panel) can show upcoming stages without a second,
+    // differently-permissioned `groups/:id/stages` call.
+    const groupStages = membership?.groupId
+      ? await this.prisma.readingClubStage.findMany({ where: { groupId: membership.groupId }, orderBy: { stageOrder: 'asc' } })
+      : [];
+
     const completions = await this.prisma.readingClubStageCompletion.findMany({
       where: { studentId },
       orderBy: { completedAt: 'desc' },
@@ -180,6 +187,7 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       group,
       stage,
       progress,
+      groupStages,
       completions: completionRows,
     };
   }
