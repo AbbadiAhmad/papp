@@ -175,8 +175,15 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     // later deleted (READING_CLUB-D16; a live join would return null the
     // moment that happens, silently breaking the group/stage columns this
     // session's earlier commit just added).
+    // READING_CLUB-D23: the present (reward) text is read live from the stage row — null once that stage was deleted.
+    const stageIds = [...new Set(completions.map((c) => c.stageId).filter((id): id is string => !!id))];
+    const rewardStages = stageIds.length
+      ? await this.prisma.readingClubStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, rewardDescription: true } })
+      : [];
+    const rewardByStage = new Map(rewardStages.map((st) => [st.id, st.rewardDescription]));
     const completionRows = completions.map((completion) => ({
       ...completion,
+      rewardDescription: (completion.stageId && rewardByStage.get(completion.stageId)) || null,
       groupName: completion.groupName,
       stageName: completion.stageName,
       stageOrder: completion.stageOrder,

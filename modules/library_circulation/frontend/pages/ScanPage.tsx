@@ -718,7 +718,8 @@ export function ScanPage() {
                             <Button
                               size="small"
                               variant="contained"
-                              color={clubOverview.progress.isComplete ? 'success' : 'inherit'}
+                              color="success"
+                              disabled={!clubOverview.progress.isComplete}
                               onClick={completeReadingClubStage}
                               sx={{ alignSelf: 'flex-start' }}
                             >

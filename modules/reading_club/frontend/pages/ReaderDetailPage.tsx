@@ -241,6 +241,7 @@ export function ReaderDetailPage() {
                           <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
                           <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
                           <TableCell>{t('reading_club.readers.completed_at')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present')}</TableCell>
                           <TableCell>{t('reading_club.readers.reward_status')}</TableCell>
                           <TableCell align="right">{t('core.common.actions')}</TableCell>
                         </TableRow>
@@ -257,6 +258,7 @@ export function ReaderDetailPage() {
                                 : '—'}
                             </TableCell>
                             <TableCell>{formatDateOnly(completion.completedAt, language)}</TableCell>
+                            <TableCell>{completion.rewardDescription ?? '—'}</TableCell>
                             <TableCell>
                               <Chip
                                 size="small"

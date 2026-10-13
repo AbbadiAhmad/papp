@@ -61,7 +61,13 @@ export function AssignReaderDialog({ open, onClose, onAssigned }: { open: boolea
             options={students}
             value={selectedStudent}
             onChange={(_, value) => setSelectedStudent(value)}
-            getOptionLabel={(option) => `${option.code}${option.className ? ` — ${option.className}` : ''}`}
+            getOptionLabel={(option) => `${option.name ? `${option.name} — ` : ''}${option.code}${option.className ? ` — ${option.className}` : ''}`}
+            // Default filter matches against the label, which now holds name + code + class, so the librarian can search by either.
+            filterOptions={(opts, { inputValue }) => {
+              const q = inputValue.trim().toLowerCase();
+              return q ? opts.filter((o) => `${o.name ?? ''} ${o.code} ${o.className ?? ''}`.toLowerCase().includes(q)) : opts;
+            }}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
             renderInput={(params) => <TextField {...params} label={t('reading_club.readers.pick_reader')} />}
           />
           <TextField

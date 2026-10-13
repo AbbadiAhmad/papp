@@ -75,6 +75,7 @@
   "reading_club.readers.mark_complete_button": "Mark stage finished & give reward",
   "reading_club.readers.history_heading": "Stage completion history",
   "reading_club.readers.completed_at": "Completed on",
+  "reading_club.readers.present": "Present",
   "reading_club.readers.reward_status": "Reward",
   "reading_club.readers.confirm_reward_button": "Confirm reward given",
   "reading_club.episodes.current": "Current episode",

@@ -43,6 +43,12 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     if (!stage) throw new NotFoundException('Current stage not found');
 
     const progress = await this.memberships.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
+    // READING_CLUB-D22: a stage can only be finished once its books/pages goal is reached.
+    if (!progress.isComplete) {
+      throw new ConflictException(
+        `The stage goal has not been reached yet (${progress.progressAmount}/${progress.targetAmount} ${progress.targetType})`,
+      );
+    }
     // A membership with a live `currentStageId` (guaranteed by
     // getMembershipOrThrow) always has a live `groupId` too — a stage
     // cannot outlive its own group (removeGroup deletes its stages first,
