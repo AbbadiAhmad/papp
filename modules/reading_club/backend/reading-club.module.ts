@@ -23,6 +23,8 @@ import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
 import { PERMISSION_CHECKER } from './permission-checker';
+import { PresentsController } from './presents.controller';
+import { PresentsService } from './presents.service';
 import { StageBookEntriesController } from './stage-book-entries.controller';
 import { StageBookEntriesService } from './stage-book-entries.service';
 import { StageCompletionsController } from './stage-completions.controller';
@@ -45,6 +47,7 @@ import { StageCompletionsService } from './stage-completions.service';
     ConfirmRewardController,
     DashboardController,
     EventSubscriptionsController,
+    PresentsController,
   ],
   providers: [
     EpisodesService,
@@ -52,6 +55,7 @@ import { StageCompletionsService } from './stage-completions.service';
     MembershipsService,
     StageCompletionsService,
     StageBookEntriesService,
+    PresentsService,
     ClubEventsService,
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
     { provide: PERMISSION_CHECKER, useExisting: PermissionsService },

@@ -928,12 +928,31 @@ model ReadingClubStageCompletion {
   rewardStatus                String    @default("pending") @map("reward_status")
   rewardDeliveredAt           DateTime? @map("reward_delivered_at")
   rewardDeliveredBy           String?   @map("reward_delivered_by") @db.Uuid
+  /// The present as it was at completion: {description, episodeName, groupName, stageName, stageOrder} (migration 006).
+  rewardSnapshot              Json?     @map("reward_snapshot")
   createdAt                   DateTime  @default(now()) @map("created_at")
 
   @@index([studentId])
   @@index([episodeId])
   @@index([rewardStatus])
   @@map("reading_club_stage_completions")
+}
+
+/// A present the librarian gives a reader outside the stage flow (migration 006, READING_CLUB-D25).
+model ReadingClubPresent {
+  id          String   @id @default(uuid()) @db.Uuid
+  studentId   String   @map("student_id") @db.Uuid
+  episodeId   String   @map("episode_id") @db.Uuid
+  description String
+  /// {episodeName, groupName, stageName} at the time it was given.
+  context     Json?
+  givenBy     String   @map("given_by") @db.Uuid
+  givenAt     DateTime @default(now()) @map("given_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([episodeId])
+  @@map("reading_club_presents")
 }
 
 /// Per-stage book tracking (item D) — auto-synced from returned borrowings

@@ -50,6 +50,23 @@ export function ReaderDetailPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [presentOpen, setPresentOpen] = useState(false);
+  const [presentText, setPresentText] = useState('');
+
+  const handleGivePresent = async () => {
+    if (!studentId || !presentText.trim()) return;
+    setBusy(true);
+    try {
+      await readingClubApi.givePresent(studentId, presentText.trim());
+      setPresentOpen(false);
+      setPresentText('');
+      reload();
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleMarkComplete = async () => {
     if (!studentId) return;
@@ -226,6 +243,55 @@ export function ReaderDetailPage() {
 
             <Paper>
               <Box sx={{ p: 2 }}>
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="h6">{t('reading_club.readers.presents_heading')}</Typography>
+                  <Can permission="reading_club.presents.give">
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setPresentText('');
+                        setPresentOpen(true);
+                      }}
+                    >
+                      {t('reading_club.readers.give_present_button')}
+                    </Button>
+                  </Can>
+                </Stack>
+                {reader.presents.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t('core.common.no_data')}
+                  </Typography>
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>{t('reading_club.readers.present')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_episode')}</TableCell>
+                          <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
+                          <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_given_at')}</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {reader.presents.map((present) => (
+                          <TableRow key={present.id}>
+                            <TableCell>{present.description}</TableCell>
+                            <TableCell>{present.context?.episodeName ?? '—'}</TableCell>
+                            <TableCell>{present.context?.groupName ?? '—'}</TableCell>
+                            <TableCell>{present.context?.stageName ?? '—'}</TableCell>
+                            <TableCell>{formatDateOnly(present.givenAt, language)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            </Paper>
+
+            <Paper>
+              <Box sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   {t('reading_club.readers.history_heading')}
                 </Typography>
@@ -288,6 +354,29 @@ export function ReaderDetailPage() {
       </QueryStateGate>
 
       <AssignReaderDialog open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={reload} />
+
+      <Dialog open={presentOpen} onClose={() => setPresentOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('reading_club.readers.give_present_title')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={2}
+            label={t('reading_club.readers.present_text')}
+            value={presentText}
+            onChange={(e) => setPresentText(e.target.value)}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPresentOpen(false)}>{t('core.common.cancel')}</Button>
+          <Button variant="contained" onClick={handleGivePresent} disabled={busy || !presentText.trim()}>
+            {t('reading_club.readers.give_present_button')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={moveStageOpen} onClose={() => setMoveStageOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('reading_club.readers.move_stage_button')}</DialogTitle>

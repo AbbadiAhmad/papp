@@ -139,5 +139,12 @@
   "reading_club.notifications.event.episode_deleted": "An episode is deleted",
   "reading_club.menu.settings": "Settings",
   "reading_club.settings.title": "Club settings",
-  "reading_club.settings.subtitle": "Settings for the reading club."
+  "reading_club.settings.subtitle": "Settings for the reading club.",
+  "reading_club.perm.presents.give": "Give a present to a reader",
+  "reading_club.readers.give_present_button": "Give a present",
+  "reading_club.readers.give_present_title": "Give a present",
+  "reading_club.readers.present_text": "Present description",
+  "reading_club.readers.presents_heading": "Presents given",
+  "reading_club.readers.present_given_at": "Given on",
+  "reading_club.readers.present_episode": "Episode"
 }

@@ -119,6 +119,7 @@ describe('StageCompletionsService events', () => {
     const prisma = {
       readingClubStage: { findUnique: jest.fn(async () => stage), findFirst: jest.fn(async () => null) },
       readingClubGroup: { findUnique: jest.fn(async () => ({ name: 'Group A' })) },
+      readingClubEpisode: { findUnique: jest.fn(async () => ({ name: 'S' })) },
       readingClubStageCompletion: {
         create: jest.fn(async () => ({ id: 'c1' })),
         findUnique: jest.fn(async () => ({ id: 'c1', studentId: 'st', rewardStatus: 'pending', groupName: 'Group A', stageName: 'Stage 1' })),

@@ -6,6 +6,7 @@ import type { NotificationsSender } from '../../backend/notifications-sender';
 
 interface MockPrisma {
   readingClubGroup: { findUnique: jest.Mock };
+  readingClubEpisode: { findUnique: jest.Mock };
   readingClubStage: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
   readingClubStageCompletion: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
   readingClubMembership: { update: jest.Mock };
@@ -17,6 +18,7 @@ interface MockPrisma {
 function createMockPrisma(): MockPrisma {
   return {
     readingClubGroup: { findUnique: jest.fn() },
+    readingClubEpisode: { findUnique: jest.fn(() => Promise.resolve({ id: 'ep-1', name: 'Season 1' })) },
     readingClubStage: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(() => Promise.resolve([])) },
     readingClubStageCompletion: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     readingClubMembership: { update: jest.fn() },
@@ -105,6 +107,7 @@ describe('StageCompletionsService', () => {
           targetAmountAtCompletion: 5,
           progressAmountAtCompletion: 5,
           markedBy: 'librarian-1',
+          rewardSnapshot: { description: 'Sticker pack', episodeName: 'Season 1', groupName: 'Grade 3 Readers', stageName: 'Stage 1', stageOrder: 1 },
           rewardStatus: 'pending',
         }),
       });

@@ -61,6 +61,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     });
 
     const group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId! } });
+    const episode = await this.prisma.readingClubEpisode.findUnique({ where: { id: membership.episodeId } });
 
     const [completion] = await this.prisma.$transaction([
       this.prisma.readingClubStageCompletion.create({
@@ -75,6 +76,14 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
           targetAmountAtCompletion: stage.targetAmount,
           progressAmountAtCompletion: progress.progressAmount,
           markedBy,
+          // READING_CLUB-D24: the present as it was when the stage was finished.
+          rewardSnapshot: {
+            description: stage.rewardDescription ?? null,
+            episodeName: episode?.name ?? null,
+            groupName: group?.name ?? membership.groupName ?? null,
+            stageName: stage.name,
+            stageOrder: stage.stageOrder,
+          },
           rewardStatus: 'pending',
         },
       }),

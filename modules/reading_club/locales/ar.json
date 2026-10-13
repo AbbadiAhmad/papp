@@ -139,5 +139,12 @@
   "reading_club.notifications.event.episode_deleted": "حذف موسم",
   "reading_club.menu.settings": "الإعدادات",
   "reading_club.settings.title": "إعدادات النادي",
-  "reading_club.settings.subtitle": "إعدادات نادي القراءة."
+  "reading_club.settings.subtitle": "إعدادات نادي القراءة.",
+  "reading_club.perm.presents.give": "تسليم هدية لقارئ",
+  "reading_club.readers.give_present_button": "تسليم هدية",
+  "reading_club.readers.give_present_title": "تسليم هدية",
+  "reading_club.readers.present_text": "وصف الهدية",
+  "reading_club.readers.presents_heading": "الهدايا المسلّمة",
+  "reading_club.readers.present_given_at": "تاريخ التسليم",
+  "reading_club.readers.present_episode": "الموسم"
 }

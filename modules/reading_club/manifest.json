@@ -27,7 +27,8 @@
     { "code": "reading_club.stage_completions.confirm_reward", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.confirm_reward" },
     { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" },
     { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" },
-    { "code": "reading_club.notifications.subscribe", "category": "reading_club", "descriptionKey": "reading_club.perm.notifications.subscribe" }
+    { "code": "reading_club.notifications.subscribe", "category": "reading_club", "descriptionKey": "reading_club.perm.notifications.subscribe" },
+    { "code": "reading_club.presents.give", "category": "reading_club", "descriptionKey": "reading_club.perm.presents.give" }
   ],
 
   "defaultRolePermissions": {
@@ -43,7 +44,8 @@
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
       "reading_club.episodes.manage",
-      "reading_club.notifications.subscribe"
+      "reading_club.notifications.subscribe",
+      "reading_club.presents.give"
     ],
     "library_assistant": [
       "reading_club.groups.view",
@@ -57,7 +59,8 @@
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
       "reading_club.episodes.manage",
-      "reading_club.notifications.subscribe"
+      "reading_club.notifications.subscribe",
+      "reading_club.presents.give"
     ],
     "finance": ["reading_club.notifications.subscribe"],
     "reader": []
