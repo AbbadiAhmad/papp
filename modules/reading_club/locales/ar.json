@@ -116,9 +116,8 @@
   "reading_club.book_entries.discarded_label": "مستبعد",
   "reading_club.book_entries.empty": "لا توجد كتب مسجّلة لهذه المرحلة بعد.",
   "reading_club.book_entries.added_at": "تاريخ الإضافة",
-  "reading_club.menu.notifications": "إشعارات النادي الخاصة بي",
   "reading_club.perm.notifications.subscribe": "الاشتراك في إشعارات أحداث نادي القراءة",
-  "reading_club.notifications.title": "إشعارات النادي الخاصة بي",
+  "reading_club.notifications.title": "الاشتراك في الإشعارات",
   "reading_club.notifications.subtitle": "اختر أحداث نادي القراءة التي تريد استلام إشعار بها في صندوق الوارد.",
   "reading_club.notifications.save": "حفظ",
   "reading_club.notifications.saved": "تم حفظ اشتراكاتك.",
@@ -136,5 +135,8 @@
   "reading_club.notifications.event.stage_updated": "تعديل مرحلة",
   "reading_club.notifications.event.stage_deleted": "حذف مرحلة",
   "reading_club.notifications.event.episode_started": "بدء موسم جديد",
-  "reading_club.notifications.event.episode_deleted": "حذف موسم"
+  "reading_club.notifications.event.episode_deleted": "حذف موسم",
+  "reading_club.menu.settings": "الإعدادات",
+  "reading_club.settings.title": "إعدادات النادي",
+  "reading_club.settings.subtitle": "إعدادات نادي القراءة."
 }

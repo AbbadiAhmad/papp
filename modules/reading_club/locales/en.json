@@ -116,9 +116,8 @@
   "reading_club.book_entries.discarded_label": "Discarded",
   "reading_club.book_entries.empty": "No books recorded for this stage yet.",
   "reading_club.book_entries.added_at": "Added on",
-  "reading_club.menu.notifications": "My club notifications",
   "reading_club.perm.notifications.subscribe": "Subscribe to reading club event notifications",
-  "reading_club.notifications.title": "My club notifications",
+  "reading_club.notifications.title": "Notification subscriptions",
   "reading_club.notifications.subtitle": "Choose which reading club events you want to be notified about in your inbox.",
   "reading_club.notifications.save": "Save",
   "reading_club.notifications.saved": "Your subscriptions were saved.",
@@ -136,5 +135,8 @@
   "reading_club.notifications.event.stage_updated": "A stage is updated",
   "reading_club.notifications.event.stage_deleted": "A stage is deleted",
   "reading_club.notifications.event.episode_started": "A new episode is started",
-  "reading_club.notifications.event.episode_deleted": "An episode is deleted"
+  "reading_club.notifications.event.episode_deleted": "An episode is deleted",
+  "reading_club.menu.settings": "Settings",
+  "reading_club.settings.title": "Club settings",
+  "reading_club.settings.subtitle": "Settings for the reading club."
 }

@@ -106,12 +106,12 @@
       "requiredPermission": "reading_club.groups.view"
     },
     {
-      "id": "reading_club.notifications",
-      "labelKey": "reading_club.menu.notifications",
-      "icon": "Notifications",
-      "parentId": null,
-      "order": 23,
-      "route": "/reading-club/notifications",
+      "id": "reading_club.settings",
+      "labelKey": "reading_club.menu.settings",
+      "icon": "Settings",
+      "parentId": "reading_club.root",
+      "order": 4,
+      "route": "/reading-club/settings",
       "requiredPermission": "reading_club.notifications.subscribe"
     },
     {
@@ -151,10 +151,10 @@
       "component": "frontend/pages/GroupsListPage.tsx"
     },
     {
-      "pattern": "/reading-club/notifications",
+      "pattern": "/reading-club/settings",
       "access": "authenticated",
       "requiredPermission": "reading_club.notifications.subscribe",
-      "component": "frontend/pages/NotificationSubscriptionsPage.tsx"
+      "component": "frontend/pages/SettingsPage.tsx"
     },
     {
       "pattern": "/reading-club/episodes",

@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Card, CardContent, Checkbox, FormControlLabel, FormGroup, Snackbar } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Checkbox, FormControlLabel, FormGroup, Snackbar, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
@@ -7,8 +7,8 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { readingClubApi } from '../api';
 
-/** "My club notifications" — each user ticks the club events they want in their inbox (READING_CLUB-D20). */
-export function NotificationSubscriptionsPage() {
+/** Club settings — currently the per-user notification subscriptions: each permitted user ticks the club events they want in their inbox (READING_CLUB-D20/D21). */
+export function SettingsPage() {
   const { t } = useTranslation();
   const { status, data, errorMessage, reload } = useGuardedQuery(() => readingClubApi.getMyEventSubscriptions());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -43,10 +43,16 @@ export function NotificationSubscriptionsPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <PageHero title={t('reading_club.notifications.title')} subtitle={t('reading_club.notifications.subtitle')} />
+      <PageHero title={t('reading_club.settings.title')} subtitle={t('reading_club.settings.subtitle')} />
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <Card>
           <CardContent>
+            <Typography variant="h6" component="h2">
+              {t('reading_club.notifications.title')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {t('reading_club.notifications.subtitle')}
+            </Typography>
             {error ? (
               <Alert severity="error" sx={{ mb: 2 }}>
                 {error}
