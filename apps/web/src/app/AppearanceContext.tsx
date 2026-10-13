@@ -1,4 +1,4 @@
-import type { MenuLayout, ThemePack } from '@papp/shared-types';
+import { menuLayoutSchema, type MenuLayout, type ThemePack } from '@papp/shared-types';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { appearanceApi } from '../shared/api/appearance';
 import { useAuth } from './AuthContext';
@@ -51,7 +51,12 @@ export function MenuLayoutProvider({ children }: PropsWithChildren) {
     let cancelled = false;
     appearanceApi
       .getMenuLayout()
-      .then((r) => !cancelled && setLayout(r))
+      .then((r) => {
+        // Never trust the response shape: a stale/older API (or an HTML fallback served with 200) can return something
+        // without `hidden`/`groups`, which used to crash the whole sidebar (`layout.hidden.filter`). Invalid -> default order.
+        const parsed = menuLayoutSchema.safeParse(r);
+        if (!cancelled) setLayout(parsed.success ? parsed.data : EMPTY_LAYOUT);
+      })
       .catch(() => undefined);
     return () => {
       cancelled = true;
