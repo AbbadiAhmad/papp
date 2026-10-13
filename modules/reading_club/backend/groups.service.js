@@ -8,11 +8,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var GroupsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GroupsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const club_events_1 = require("./club-events");
 const episodes_service_1 = require("./episodes.service");
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 /**
@@ -31,10 +35,12 @@ const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
  */
 let GroupsService = GroupsService_1 = class GroupsService {
     episodes;
+    events;
     logger = new common_1.Logger(GroupsService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(episodes) {
+    constructor(episodes, events) {
         this.episodes = episodes;
+        this.events = events;
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -77,19 +83,23 @@ let GroupsService = GroupsService_1 = class GroupsService {
     async createGroup(dto, createdBy) {
         const episodeId = dto.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
         await this.episodes.assertEpisodeIsCurrent(episodeId);
-        return this.prisma.readingClubGroup.create({
+        const created = await this.prisma.readingClubGroup.create({
             data: { episodeId, name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
             include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
+        await this.events?.publish({ type: 'group_created', details: `المجموعة: ${created.name}` });
+        return created;
     }
     async updateGroup(id, dto) {
         const group = await this.getGroupOrThrow(id);
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
-        return this.prisma.readingClubGroup.update({
+        const updated = await this.prisma.readingClubGroup.update({
             where: { id },
             data: { name: dto.name, description: dto.description, isActive: dto.isActive },
             include: { stages: { orderBy: { stageOrder: 'asc' } } },
         });
+        await this.events?.publish({ type: 'group_updated', details: `المجموعة: ${updated.name}` });
+        return updated;
     }
     /**
      * Deletion is now ALWAYS allowed, regardless of history (READING_CLUB-D16
@@ -112,6 +122,7 @@ let GroupsService = GroupsService_1 = class GroupsService {
             this.prisma.readingClubStage.deleteMany({ where: { groupId: id } }),
             this.prisma.readingClubGroup.delete({ where: { id } }),
         ]);
+        await this.events?.publish({ type: 'group_deleted', details: `المجموعة: ${group.name} (قراء متأثرون: ${affectedActiveReaderCount})` });
         return { affectedActiveReaderCount };
     }
     // --- Stages --------------------------------------------------------------
@@ -122,8 +133,9 @@ let GroupsService = GroupsService_1 = class GroupsService {
     async createStage(groupId, dto) {
         const group = await this.getGroupOrThrow(groupId);
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+        let created;
         try {
-            return await this.prisma.readingClubStage.create({
+            created = await this.prisma.readingClubStage.create({
                 data: {
                     groupId,
                     stageOrder: dto.stageOrder,
@@ -137,13 +149,16 @@ let GroupsService = GroupsService_1 = class GroupsService {
         catch (error) {
             throw this.translateUniqueConstraintError(error);
         }
+        await this.events?.publish({ type: 'stage_created', details: `المجموعة: ${group.name} — المرحلة: ${created.name}` });
+        return created;
     }
     async updateStage(stageId, dto) {
         const stage = await this.getStageOrThrow(stageId);
         const group = await this.getGroupOrThrow(stage.groupId);
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+        let updated;
         try {
-            return await this.prisma.readingClubStage.update({
+            updated = await this.prisma.readingClubStage.update({
                 where: { id: stageId },
                 data: {
                     stageOrder: dto.stageOrder,
@@ -157,6 +172,8 @@ let GroupsService = GroupsService_1 = class GroupsService {
         catch (error) {
             throw this.translateUniqueConstraintError(error);
         }
+        await this.events?.publish({ type: 'stage_updated', details: `المجموعة: ${group.name} — المرحلة: ${updated.name}` });
+        return updated;
     }
     /**
      * Deletion is now ALWAYS allowed, regardless of history — same
@@ -173,6 +190,7 @@ let GroupsService = GroupsService_1 = class GroupsService {
         await this.episodes.assertEpisodeIsCurrent(group.episodeId);
         const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } });
         await this.prisma.readingClubStage.delete({ where: { id: stageId } });
+        await this.events?.publish({ type: 'stage_deleted', details: `المجموعة: ${group.name} — المرحلة: ${stage.name} (قراء متأثرون: ${affectedActiveReaderCount})` });
         return { affectedActiveReaderCount };
     }
     /** The stage immediately after `currentStage` in its own group's order, or `null` if `currentStage` is the last one. */
@@ -270,5 +288,7 @@ let GroupsService = GroupsService_1 = class GroupsService {
 exports.GroupsService = GroupsService;
 exports.GroupsService = GroupsService = GroupsService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [episodes_service_1.EpisodesService])
+    __param(1, (0, common_1.Optional)()),
+    __param(1, (0, common_1.Inject)(club_events_1.CLUB_EVENT_PUBLISHER)),
+    __metadata("design:paramtypes", [episodes_service_1.EpisodesService, Object])
 ], GroupsService);

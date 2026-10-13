@@ -8,10 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardController = void 0;
 const common_1 = require("@nestjs/common");
 const circulation_service_1 = require("./circulation.service");
+const list_overdue_dto_1 = require("./dto/list-overdue.dto");
 const fines_service_1 = require("./fines.service");
 const platform_1 = require("./platform");
 const students_service_1 = require("./students.service");
@@ -41,6 +45,10 @@ let DashboardController = class DashboardController {
             paidFinesTotal: financeSummary.paidTotal,
         };
     }
+    /** Overdue-books table under the cards: sortable + paginated, same gate as the cards. */
+    getOverdue(q) {
+        return this.circulation.listOverdueBorrowingsPaged(q);
+    }
 };
 exports.DashboardController = DashboardController;
 __decorate([
@@ -50,6 +58,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], DashboardController.prototype, "getStats", null);
+__decorate([
+    (0, common_1.Get)('overdue'),
+    (0, platform_1.RequirePermission)('library_circulation.dashboard.view'),
+    __param(0, (0, common_1.Query)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [list_overdue_dto_1.ListOverdueDto]),
+    __metadata("design:returntype", void 0)
+], DashboardController.prototype, "getOverdue", null);
 exports.DashboardController = DashboardController = __decorate([
     (0, common_1.Controller)('api/library-circulation/dashboard'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

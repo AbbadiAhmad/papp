@@ -84,6 +84,10 @@ reading_club_stage_book_entries(       -- per-stage "books read this stage" trac
 
 `defaultRolePermissions`: `admin` gets all 11 (including `episodes.manage`). `library_assistant` (the platform's own mapping of "the librarian", per `docs/LIBRARY_MODULE_REQUIREMENTS.md` §1) also gets all 11 by default — the librarian requirement explicitly wants them defining groups/stages/episodes themselves, unlike `library_circulation`'s own `loan_policy` setting (admin/finance-only by default). `finance`/`reader` get none.
 
+## Club event notifications (READING_CLUB-D20)
+
+Users holding `reading_club.notifications.subscribe` (default: admin, library_assistant, **finance**) tick the events they want in the club's **Settings** page (`/reading-club/settings`, a child of the club menu; the menu group shows whenever any child is visible, so finance, which lacks `dashboard.view`, still reaches it). Events: reader added / removed / moved, stage completed (reward pending), reward given, group created/updated/deleted, stage created/updated/deleted, episode started/deleted. Services publish through the optional `CLUB_EVENT_PUBLISHER` token (`backend/club-events.ts`); `ClubEventsService` fans out one in-app notification per subscriber via core's Notification Center, skipping users who have lost the permission. `DELETE /readers/:studentId` (`memberships.assign`) removes a reader from the club and emits `reader_removed`. A user can only read/change their own subscriptions. Notification text is hardcoded Arabic (ASSUMPTIONS A15); manual progress updates and book-entry changes do not emit events.
+
 ## Routes
 
 Backend, all under `api/reading-club`, `MustChangePasswordGuard` + the global `JwtAuthGuard`/`PermissionGuard`:
@@ -173,6 +177,16 @@ Adds `page_count INTEGER CHECK (page_count IS NULL OR page_count > 0)` to `readi
 3. `npx prisma generate` (never `prisma migrate`) from `apps/api/` to pick up the new `pageCount Int?` field on `ReadingClubStageBookEntry` in `schema.prisma`. **Also apply `library_catalog`'s own migration 007 first (or at the same time)** — this module's auto-sync reads `library_catalog_books.page_count`, which doesn't exist until that migration runs.
 
 `down/004_add_page_count_to_book_entries.sql` exists alongside it — drops the `page_count` column.
+
+### 005 — club event subscriptions
+
+Adds `reading_club_event_subscriptions(id, user_id -> users ON DELETE CASCADE, event_type, created_at, UNIQUE(user_id, event_type))`. **REQUIRES MANUAL MIGRATION** (PLATFORM-GAP-001). See READING_CLUB-D20.
+
+1. Apply the SQL: `psql $DATABASE_URL -f modules/reading_club/migrations/005_add_event_subscriptions.sql`
+2. Register it:
+   `INSERT INTO module_migrations (module_key, filename, checksum) VALUES ('reading_club', '005_add_event_subscriptions.sql', 'ff82f48eceaf6966d73889e1157917d7b39ef56654e9c76df59fb163021b985e');`
+   (sha256 of the file contents; recompute if the file is ever edited.)
+3. `npx prisma generate` from `apps/api/` for the new `ReadingClubEventSubscription` model. `down/005_add_event_subscriptions.sql` drops the table.
 
 ### Down migrations (root D48 / D86)
 

@@ -4,6 +4,7 @@ import { EpisodesPage } from './pages/EpisodesPage';
 import { GroupsListPage } from './pages/GroupsListPage';
 import { ReaderDetailPage } from './pages/ReaderDetailPage';
 import { ReadersListPage } from './pages/ReadersListPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 /**
  * The module's `frontend.entry` target (manifest.json). Exports the two
@@ -16,6 +17,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/reading-club/readers/:studentId', element: <ReaderDetailPage /> },
   { path: '/reading-club/groups', element: <GroupsListPage /> },
   { path: '/reading-club/episodes', element: <EpisodesPage /> },
+  { path: '/reading-club/settings', element: <SettingsPage /> },
 ];
 
 /** No public routes — every screen needs an authenticated, permission-gated staff session. */

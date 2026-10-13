@@ -26,7 +26,8 @@
     { "code": "reading_club.stage_completions.mark", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.mark" },
     { "code": "reading_club.stage_completions.confirm_reward", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.confirm_reward" },
     { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" },
-    { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" }
+    { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" },
+    { "code": "reading_club.notifications.subscribe", "category": "reading_club", "descriptionKey": "reading_club.perm.notifications.subscribe" }
   ],
 
   "defaultRolePermissions": {
@@ -41,7 +42,8 @@
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
-      "reading_club.episodes.manage"
+      "reading_club.episodes.manage",
+      "reading_club.notifications.subscribe"
     ],
     "library_assistant": [
       "reading_club.groups.view",
@@ -54,9 +56,10 @@
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
-      "reading_club.episodes.manage"
+      "reading_club.episodes.manage",
+      "reading_club.notifications.subscribe"
     ],
-    "finance": [],
+    "finance": ["reading_club.notifications.subscribe"],
     "reader": []
   },
 
@@ -103,6 +106,15 @@
       "requiredPermission": "reading_club.groups.view"
     },
     {
+      "id": "reading_club.settings",
+      "labelKey": "reading_club.menu.settings",
+      "icon": "Settings",
+      "parentId": "reading_club.root",
+      "order": 4,
+      "route": "/reading-club/settings",
+      "requiredPermission": "reading_club.notifications.subscribe"
+    },
+    {
       "id": "reading_club.episodes",
       "labelKey": "reading_club.menu.episodes",
       "icon": "Event",
@@ -137,6 +149,12 @@
       "access": "authenticated",
       "requiredPermission": "reading_club.groups.view",
       "component": "frontend/pages/GroupsListPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/settings",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.notifications.subscribe",
+      "component": "frontend/pages/SettingsPage.tsx"
     },
     {
       "pattern": "/reading-club/episodes",

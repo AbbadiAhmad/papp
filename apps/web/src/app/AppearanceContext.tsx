@@ -6,6 +6,21 @@ import { useAuth } from './AuthContext';
 const EMPTY_LAYOUT: MenuLayout = { groups: [], hidden: [], labels: {} };
 
 /**
+ * Structural guard for the menu-layout response. Deliberately NOT `menuLayoutSchema.safeParse` from
+ * `@papp/shared-types`: the web workspace only imports TYPES from it (erased at build), and its test job does not
+ * build that package first, so a runtime import would fail to resolve there. The server validates fully; this only
+ * has to keep a malformed body (stale API, HTML fallback) from crashing the sidebar.
+ */
+function isMenuLayout(value: unknown): value is MenuLayout {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  const groupsOk =
+    Array.isArray(v.groups) &&
+    v.groups.every((g) => typeof g === 'object' && g !== null && typeof (g as { id?: unknown }).id === 'string' && Array.isArray((g as { itemIds?: unknown }).itemIds));
+  return groupsOk && Array.isArray(v.hidden) && typeof v.labels === 'object' && v.labels !== null;
+}
+
+/**
  * The active theme pack. Fetched from the PUBLIC `GET /appearance/active`, so
  * the login page is themed too. `null` = the built-in look (also the state
  * while loading and if the request fails — a theme problem must never block
@@ -51,7 +66,11 @@ export function MenuLayoutProvider({ children }: PropsWithChildren) {
     let cancelled = false;
     appearanceApi
       .getMenuLayout()
-      .then((r) => !cancelled && setLayout(r))
+      .then((r) => {
+        // Never trust the response shape: a stale/older API (or an HTML fallback served with 200) can return something
+        // without `hidden`/`groups`, which used to crash the whole sidebar (`layout.hidden.filter`). Invalid -> default order.
+        if (!cancelled) setLayout(isMenuLayout(r) ? r : EMPTY_LAYOUT);
+      })
       .catch(() => undefined);
     return () => {
       cancelled = true;

@@ -1,5 +1,6 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { CLUB_EVENT_PUBLISHER, ClubEventPublisher } from './club-events';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { CreateStageDto } from './dto/create-stage.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
@@ -27,7 +28,10 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GroupsService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly episodes: EpisodesService) {}
+  constructor(
+    private readonly episodes: EpisodesService,
+    @Optional() @Inject(CLUB_EVENT_PUBLISHER) private readonly events?: ClubEventPublisher,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -74,20 +78,24 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   async createGroup(dto: CreateGroupDto, createdBy: string) {
     const episodeId = dto.episodeId ?? (await this.episodes.getCurrentEpisode()).id;
     await this.episodes.assertEpisodeIsCurrent(episodeId);
-    return this.prisma.readingClubGroup.create({
+    const created = await this.prisma.readingClubGroup.create({
       data: { episodeId, name: dto.name, description: dto.description, isActive: dto.isActive ?? true, createdBy },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
+    await this.events?.publish({ type: 'group_created', details: `المجموعة: ${created.name}` });
+    return created;
   }
 
   async updateGroup(id: string, dto: UpdateGroupDto) {
     const group = await this.getGroupOrThrow(id);
     await this.episodes.assertEpisodeIsCurrent(group.episodeId);
-    return this.prisma.readingClubGroup.update({
+    const updated = await this.prisma.readingClubGroup.update({
       where: { id },
       data: { name: dto.name, description: dto.description, isActive: dto.isActive },
       include: { stages: { orderBy: { stageOrder: 'asc' } } },
     });
+    await this.events?.publish({ type: 'group_updated', details: `المجموعة: ${updated.name}` });
+    return updated;
   }
 
   /**
@@ -111,6 +119,7 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
       this.prisma.readingClubStage.deleteMany({ where: { groupId: id } }),
       this.prisma.readingClubGroup.delete({ where: { id } }),
     ]);
+    await this.events?.publish({ type: 'group_deleted', details: `المجموعة: ${group.name} (قراء متأثرون: ${affectedActiveReaderCount})` });
     return { affectedActiveReaderCount };
   }
 
@@ -124,8 +133,9 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
   async createStage(groupId: string, dto: CreateStageDto) {
     const group = await this.getGroupOrThrow(groupId);
     await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+    let created;
     try {
-      return await this.prisma.readingClubStage.create({
+      created = await this.prisma.readingClubStage.create({
         data: {
           groupId,
           stageOrder: dto.stageOrder,
@@ -138,14 +148,17 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       throw this.translateUniqueConstraintError(error);
     }
+    await this.events?.publish({ type: 'stage_created', details: `المجموعة: ${group.name} — المرحلة: ${created.name}` });
+    return created;
   }
 
   async updateStage(stageId: string, dto: UpdateStageDto) {
     const stage = await this.getStageOrThrow(stageId);
     const group = await this.getGroupOrThrow(stage.groupId);
     await this.episodes.assertEpisodeIsCurrent(group.episodeId);
+    let updated;
     try {
-      return await this.prisma.readingClubStage.update({
+      updated = await this.prisma.readingClubStage.update({
         where: { id: stageId },
         data: {
           stageOrder: dto.stageOrder,
@@ -158,6 +171,8 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       throw this.translateUniqueConstraintError(error);
     }
+    await this.events?.publish({ type: 'stage_updated', details: `المجموعة: ${group.name} — المرحلة: ${updated.name}` });
+    return updated;
   }
 
   /**
@@ -175,6 +190,7 @@ export class GroupsService implements OnModuleInit, OnModuleDestroy {
     await this.episodes.assertEpisodeIsCurrent(group.episodeId);
     const affectedActiveReaderCount = await this.prisma.readingClubMembership.count({ where: { currentStageId: stageId } });
     await this.prisma.readingClubStage.delete({ where: { id: stageId } });
+    await this.events?.publish({ type: 'stage_deleted', details: `المجموعة: ${group.name} — المرحلة: ${stage.name} (قراء متأثرون: ${affectedActiveReaderCount})` });
     return { affectedActiveReaderCount };
   }
 

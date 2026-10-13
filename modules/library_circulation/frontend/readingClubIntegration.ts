@@ -17,7 +17,20 @@ export interface ReadingClubPendingReward {
   completedAt: string;
 }
 
+/** Subset of reading_club's `GET /readers/:studentId` this module renders on the Scan page. */
+export interface ReadingClubReaderOverview {
+  membership: { groupId: string | null; groupName: string | null; currentStageId: string | null; stageName: string | null } | null;
+  group: { id: string; name: string } | null;
+  stage: { id: string; stageOrder: number; name: string; rewardDescription: string | null } | null;
+  progress: { targetType: 'books' | 'pages'; targetAmount: number; progressAmount: number; isComplete: boolean } | null;
+  groupStages: { id: string; stageOrder: number; name: string; targetType: 'books' | 'pages'; targetAmount: number }[];
+  completions: { id: string; stageName: string | null; stageOrder: number | null; completedAt: string; rewardStatus: 'pending' | 'delivered' }[];
+}
+
 export const readingClubIntegration = {
+  getReaderOverview: (studentId: string) =>
+    apiClient.get<ReadingClubReaderOverview>(`/api/reading-club/readers/${studentId}`).then((r) => r.data),
+  completeStage: (studentId: string) => apiClient.post(`/api/reading-club/readers/${studentId}/complete-stage`).then((r) => r.data),
   getPendingRewards: (studentId: string) =>
     apiClient.get<ReadingClubPendingReward[]>(`/api/reading-club/readers/${studentId}/pending-rewards`).then((r) => r.data),
   confirmReward: (completionId: string) => apiClient.post(`/api/reading-club/stage-completions/${completionId}/confirm-reward`).then((r) => r.data),

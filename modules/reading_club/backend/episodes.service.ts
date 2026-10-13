@@ -1,5 +1,6 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { CLUB_EVENT_PUBLISHER, ClubEventPublisher } from './club-events';
 import { CreateEpisodeDto } from './dto/create-episode.dto';
 
 /**
@@ -17,6 +18,8 @@ import { CreateEpisodeDto } from './dto/create-episode.dto';
 export class EpisodesService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EpisodesService.name);
   private readonly prisma = new PrismaClient();
+
+  constructor(@Optional() @Inject(CLUB_EVENT_PUBLISHER) private readonly events?: ClubEventPublisher) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -76,6 +79,7 @@ export class EpisodesService implements OnModuleInit, OnModuleDestroy {
     );
 
     const results = await this.prisma.$transaction(ops);
+    await this.events?.publish({ type: 'episode_started', details: `الموسم: ${dto.name}` });
     return results[results.length - 1];
   }
 
@@ -141,6 +145,8 @@ export class EpisodesService implements OnModuleInit, OnModuleDestroy {
       this.prisma.readingClubGroup.deleteMany({ where: { episodeId: id } }),
       this.prisma.readingClubEpisode.delete({ where: { id } }),
     ]);
+
+    await this.events?.publish({ type: 'episode_deleted', details: `الموسم: ${episode.name}` });
 
     return {
       affectedGroupCount: preview.groupCount,

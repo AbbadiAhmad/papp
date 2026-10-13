@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StageCompletionsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const club_events_1 = require("./club-events");
 const episodes_service_1 = require("./episodes.service");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
@@ -33,12 +34,14 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
     memberships;
     episodes;
     notifications;
+    events;
     logger = new common_1.Logger(StageCompletionsService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(memberships, episodes, notifications) {
+    constructor(memberships, episodes, notifications, events) {
         this.memberships = memberships;
         this.episodes = episodes;
         this.notifications = notifications;
+        this.events = events;
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -91,6 +94,11 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
             const rewardNote = stage.rewardDescription ? ` المكافأة: ${stage.rewardDescription}.` : '';
             await this.notifyReader(student.userId, 'reading_club.stage_completed', 'إنجاز مرحلة في نادي القراءة', `أحسنت! لقد أنهيت مرحلة "${stage.name}".${rewardNote}`);
         }
+        await this.events?.publish({
+            type: 'stage_completed',
+            studentId,
+            details: `المجموعة: ${group?.name ?? membership.groupName ?? ''} — المرحلة المنجزة: ${stage.name}${nextStage ? ` — المرحلة التالية: ${nextStage.name}` : ' — أنهى جميع المراحل'}${stage.rewardDescription ? `\n\nالمكافأة (بانتظار التسليم): ${stage.rewardDescription}` : ''}`,
+        });
         return completion;
     }
     /** Confirms the physical reward was handed over — independent of, and possibly later than, `markComplete` itself. Callable from this module's own reader page OR from library_circulation's scan-page hook. */
@@ -109,6 +117,11 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         if (student) {
             await this.notifyReader(student.userId, 'reading_club.reward_delivered', 'استلام المكافأة', 'تم تسليمك مكافأة نادي القراءة. أحسنت!');
         }
+        await this.events?.publish({
+            type: 'reward_given',
+            studentId: completion.studentId,
+            details: `المجموعة: ${completion.groupName ?? ''} — المرحلة: ${completion.stageName ?? ''}`,
+        });
         return updated;
     }
     /**
@@ -219,6 +232,8 @@ exports.StageCompletionsService = StageCompletionsService;
 exports.StageCompletionsService = StageCompletionsService = StageCompletionsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(2, (0, common_1.Inject)(notifications_sender_1.NOTIFICATIONS_SENDER)),
+    __param(3, (0, common_1.Optional)()),
+    __param(3, (0, common_1.Inject)(club_events_1.CLUB_EVENT_PUBLISHER)),
     __metadata("design:paramtypes", [memberships_service_1.MembershipsService,
-        episodes_service_1.EpisodesService, Object])
+        episodes_service_1.EpisodesService, Object, Object])
 ], StageCompletionsService);

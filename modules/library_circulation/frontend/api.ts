@@ -79,6 +79,23 @@ export interface BorrowingFilterInput {
   borrowedTo?: string;
 }
 
+export type OverdueSortBy = 'studentName' | 'bookTitle' | 'borrowedAt' | 'dueAt' | 'daysOverdue';
+
+export interface OverdueQuery {
+  sortBy: OverdueSortBy;
+  sortDir: 'asc' | 'desc';
+  page: number;
+  pageSize: number;
+}
+
+/** GET /dashboard/overdue — dashboard's overdue-books table. */
+export interface OverdueResult {
+  items: BorrowingListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface LibraryStudentDetail extends LibraryStudent {
   email: string | null;
   isActive: boolean;
@@ -532,6 +549,8 @@ export const libraryCirculationApi = {
 
   // Dashboard
   getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
+  getOverdueBorrowings: (params: OverdueQuery) =>
+    apiClient.get<OverdueResult>(`${BASE}/dashboard/overdue`, { params }).then((r) => r.data),
 
   // Settings
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),

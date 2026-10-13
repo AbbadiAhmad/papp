@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request } from 'express';
 import { AssignMembershipDto } from './dto/assign-membership.dto';
@@ -51,5 +51,13 @@ export class MembershipsController {
   @Audit({ category: 'reading_club.memberships', entityType: 'ReadingClubMembership', action: 'update_progress', fetchState: fetchMembershipState })
   async updateProgress(@Param('studentId', new ParseUUIDPipe()) studentId: string, @Body() dto: UpdateProgressDto) {
     return this.memberships.updateManualProgress(studentId, dto);
+  }
+
+  /** Removes the reader from the club (membership only — completion history and the library student record stay). */
+  @Delete(':studentId')
+  @RequirePermission('reading_club.memberships.assign')
+  @Audit({ category: 'reading_club.memberships', entityType: 'ReadingClubMembership', action: 'remove', fetchState: fetchMembershipState })
+  async remove(@Param('studentId', new ParseUUIDPipe()) studentId: string) {
+    return this.memberships.removeMembership(studentId);
   }
 }

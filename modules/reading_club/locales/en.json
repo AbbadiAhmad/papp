@@ -4,7 +4,6 @@
   "reading_club.menu.readers": "Readers",
   "reading_club.menu.groups": "Groups",
   "reading_club.menu.episodes": "Episodes",
-
   "reading_club.perm.groups.view": "View reading groups",
   "reading_club.perm.groups.create": "Create reading groups",
   "reading_club.perm.groups.update": "Edit reading groups and stages",
@@ -16,19 +15,16 @@
   "reading_club.perm.stage_completions.confirm_reward": "Confirm a reward was delivered",
   "reading_club.perm.dashboard.view": "View the reading club dashboard",
   "reading_club.perm.episodes.manage": "Manage reading club episodes (start a new one)",
-
   "reading_club.dashboard.total_groups": "Groups",
   "reading_club.dashboard.total_active_readers": "Active readers",
   "reading_club.dashboard.pending_rewards": "Rewards awaiting delivery",
   "reading_club.dashboard.groups_heading": "Groups & stages",
   "reading_club.dashboard.member_count": "{{count}} reader(s)",
   "reading_club.dashboard.readers_on_stage": "{{count}} reader(s)",
-
   "reading_club.target_type.books": "books",
   "reading_club.target_type.pages": "pages",
   "reading_club.reward_status.pending": "Reward pending",
   "reading_club.reward_status.delivered": "Reward delivered",
-
   "reading_club.fields.name": "Name",
   "reading_club.fields.description": "Description",
   "reading_club.fields.is_active": "Active",
@@ -37,7 +33,6 @@
   "reading_club.fields.target_type": "Target type",
   "reading_club.fields.target_amount": "Target amount",
   "reading_club.fields.reward_description": "Reward / present",
-
   "reading_club.groups.create_button": "New group",
   "reading_club.groups.create_title": "Create reading group",
   "reading_club.groups.edit_title": "Edit reading group",
@@ -50,7 +45,6 @@
   "reading_club.groups.delete_warning": "{{readerCount}} reader(s) are currently assigned to this group, across {{stageCount}} stage(s). Deleting it will unassign them — they'll need to be assigned to a new group afterward.",
   "reading_club.groups.delete_affected_readers": "Group deleted. {{count}} reader(s) who were assigned to it are now unassigned.",
   "reading_club.groups.type_to_confirm_label": "Type \"{{name}}\" to confirm",
-
   "reading_club.stages.manage_title": "Manage stages",
   "reading_club.stages.add_title": "Add a stage",
   "reading_club.stages.edit_title": "Edit stage",
@@ -58,7 +52,6 @@
   "reading_club.stages.delete_title": "Delete stage",
   "reading_club.stages.delete_confirm": "Delete stage \"{{name}}\"? Any reward or completion history for this stage will be kept and will still show \"{{name}}\" as its stage name.",
   "reading_club.stages.delete_warning": "{{readerCount}} reader(s) are currently on this stage. Deleting it will move them to no stage — they'll need to be moved to a new stage afterward.",
-
   "reading_club.readers.assign_title": "Assign reader to a group",
   "reading_club.readers.pick_reader": "Reader (student code)",
   "reading_club.readers.starting_stage": "Starting stage",
@@ -84,7 +77,6 @@
   "reading_club.readers.completed_at": "Completed on",
   "reading_club.readers.reward_status": "Reward",
   "reading_club.readers.confirm_reward_button": "Confirm reward given",
-
   "reading_club.episodes.current": "Current episode",
   "reading_club.episodes.closed": "Closed",
   "reading_club.episodes.current_is": "Current episode: {{name}}",
@@ -102,12 +94,9 @@
   "reading_club.episodes.delete_empty_note": "This episode has no groups, readers, completions, or book entries recorded under it.",
   "reading_club.episodes.delete_success": "Episode \"{{name}}\" deleted.",
   "reading_club.episodes.delete_success_was_current": "Episode \"{{name}}\" deleted. It was the current episode — no episode is current now until you start a new one.",
-
   "reading_club.dashboard.pending_rewards_heading": "Rewards awaiting delivery",
-
   "reading_club.readers.completion_group": "Group",
   "reading_club.readers.completion_stage": "Stage",
-
   "reading_club.book_entries.heading": "Books read this stage",
   "reading_club.book_entries.add_button": "Add a book",
   "reading_club.book_entries.add_title": "Add a book manually",
@@ -126,5 +115,28 @@
   "reading_club.book_entries.delete_confirm": "Permanently delete \"{{title}}\" from the record? This cannot be undone.",
   "reading_club.book_entries.discarded_label": "Discarded",
   "reading_club.book_entries.empty": "No books recorded for this stage yet.",
-  "reading_club.book_entries.added_at": "Added on"
+  "reading_club.book_entries.added_at": "Added on",
+  "reading_club.perm.notifications.subscribe": "Subscribe to reading club event notifications",
+  "reading_club.notifications.title": "Notification subscriptions",
+  "reading_club.notifications.subtitle": "Choose which reading club events you want to be notified about in your inbox.",
+  "reading_club.notifications.save": "Save",
+  "reading_club.notifications.saved": "Your subscriptions were saved.",
+  "reading_club.readers.remove_button": "Remove from club",
+  "reading_club.readers.remove_confirm": "Remove this reader from the club? Their completion history is kept.",
+  "reading_club.notifications.event.reader_added": "A reader is added to the club",
+  "reading_club.notifications.event.reader_removed": "A reader is removed from the club",
+  "reading_club.notifications.event.reader_moved": "A reader is moved to another group or stage",
+  "reading_club.notifications.event.stage_completed": "A reader completes a stage (reward becomes pending)",
+  "reading_club.notifications.event.reward_given": "A reward is handed to a reader",
+  "reading_club.notifications.event.group_created": "A group is created",
+  "reading_club.notifications.event.group_updated": "A group is updated",
+  "reading_club.notifications.event.group_deleted": "A group is deleted",
+  "reading_club.notifications.event.stage_created": "A stage is created",
+  "reading_club.notifications.event.stage_updated": "A stage is updated",
+  "reading_club.notifications.event.stage_deleted": "A stage is deleted",
+  "reading_club.notifications.event.episode_started": "A new episode is started",
+  "reading_club.notifications.event.episode_deleted": "An episode is deleted",
+  "reading_club.menu.settings": "Settings",
+  "reading_club.settings.title": "Club settings",
+  "reading_club.settings.subtitle": "Settings for the reading club."
 }

@@ -5,11 +5,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var EpisodesService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EpisodesService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const club_events_1 = require("./club-events");
 /**
  * Episodes (seasons/years) — the top-level scope everything else in this
  * module now lives under (groups/stages/memberships/completions/book
@@ -22,8 +29,12 @@ const client_1 = require("@prisma/client");
  * this module).
  */
 let EpisodesService = EpisodesService_1 = class EpisodesService {
+    events;
     logger = new common_1.Logger(EpisodesService_1.name);
     prisma = new client_1.PrismaClient();
+    constructor(events) {
+        this.events = events;
+    }
     async onModuleInit() {
         await this.prisma.$connect();
         this.logger.log('reading_club (episodes) Prisma client connected');
@@ -71,6 +82,7 @@ let EpisodesService = EpisodesService_1 = class EpisodesService {
             data: { name: dto.name, isCurrent: true, createdBy },
         }));
         const results = await this.prisma.$transaction(ops);
+        await this.events?.publish({ type: 'episode_started', details: `الموسم: ${dto.name}` });
         return results[results.length - 1];
     }
     /**
@@ -126,6 +138,7 @@ let EpisodesService = EpisodesService_1 = class EpisodesService {
             this.prisma.readingClubGroup.deleteMany({ where: { episodeId: id } }),
             this.prisma.readingClubEpisode.delete({ where: { id } }),
         ]);
+        await this.events?.publish({ type: 'episode_deleted', details: `الموسم: ${episode.name}` });
         return {
             affectedGroupCount: preview.groupCount,
             affectedReaderCount: preview.readerCount,
@@ -137,5 +150,8 @@ let EpisodesService = EpisodesService_1 = class EpisodesService {
 };
 exports.EpisodesService = EpisodesService;
 exports.EpisodesService = EpisodesService = EpisodesService_1 = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __param(0, (0, common_1.Optional)()),
+    __param(0, (0, common_1.Inject)(club_events_1.CLUB_EVENT_PUBLISHER)),
+    __metadata("design:paramtypes", [Object])
 ], EpisodesService);

@@ -281,6 +281,14 @@ export const readingClubApi = {
   updateProgress: (studentId: string, manualProgressAmount: number) =>
     apiClient.put<ReadingClubMembership>(`${BASE}/readers/${studentId}/progress`, { manualProgressAmount }).then((r) => r.data),
 
+  removeReader: (studentId: string) => apiClient.delete(`${BASE}/readers/${studentId}`).then((r) => r.data),
+
+  // My club-event notification subscriptions
+  getMyEventSubscriptions: () =>
+    apiClient.get<{ available: string[]; subscribed: string[] }>(`${BASE}/event-subscriptions/me`).then((r) => r.data),
+  setMyEventSubscriptions: (eventTypes: string[]) =>
+    apiClient.put<{ subscribed: string[] }>(`${BASE}/event-subscriptions/me`, { eventTypes }).then((r) => r.data),
+
   // Stage completions / rewards
   completeStage: (studentId: string) =>
     apiClient.post<ReadingClubStageCompletion>(`${BASE}/readers/${studentId}/complete-stage`).then((r) => r.data),
