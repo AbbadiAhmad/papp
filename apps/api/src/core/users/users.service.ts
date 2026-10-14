@@ -16,6 +16,7 @@ import {
   PASSWORD_RESET_TEMPLATE_KEY,
   PasswordPolicy,
 } from '../settings/settings.types';
+import { normalizeDateOfBirth, toDateOnly } from './date-of-birth.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { LandingPageOption } from './landing-page-option';
@@ -113,6 +114,14 @@ export class UsersService {
     return toPublicUser(user);
   }
 
+  /** undefined = leave unchanged, null = clear, string = set (400 unless a real, past calendar date). */
+  private parseDateOfBirth(value: string | null | undefined): Date | null | undefined {
+    if (value === undefined || value === null) return value;
+    const normalized = normalizeDateOfBirth(value);
+    if (!normalized) throw new BadRequestException('dateOfBirth must be a real date between 1900-01-01 and today (YYYY-MM-DD)');
+    return toDateOnly(normalized);
+  }
+
   async create(dto: CreateUserDto, createdBy?: string): Promise<PublicUser> {
     const policy = await this.getPasswordPolicy();
     assertPasswordMeetsPolicy(dto.password, policy);
@@ -126,6 +135,7 @@ export class UsersService {
           passwordHash,
           externalId: dto.externalId,
           department: dto.department,
+          dateOfBirth: this.parseDateOfBirth(dto.dateOfBirth),
           mustChangePassword: dto.mustChangePassword ?? true,
           createdBy,
         },
@@ -154,6 +164,7 @@ export class UsersService {
       name: dto.name,
       externalId: dto.externalId,
       department: dto.department,
+      dateOfBirth: this.parseDateOfBirth(dto.dateOfBirth),
       isActive: dto.isActive,
     };
 

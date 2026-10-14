@@ -41,16 +41,22 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StudentsExcelService = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const argon2 = __importStar(require("argon2"));
 const exceljs_1 = __importDefault(require("exceljs"));
 const node_crypto_1 = require("node:crypto");
+const date_of_birth_1 = require("./date-of-birth");
+const reader_import_extension_1 = require("./reader-import-extension");
 const students_service_1 = require("./students.service");
 const READER_ROLE_CODE = 'reader';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,7 +72,20 @@ const HEADER_ALIASES = {
     'external id': 'externalId',
     externalid: 'externalId',
     department: 'department',
+    'date of birth': 'dateOfBirth',
+    dateofbirth: 'dateOfBirth',
+    dob: 'dateOfBirth',
+    birthdate: 'dateOfBirth',
+    'birth date': 'dateOfBirth',
     active: 'isActive',
+    // Reading-club columns — only acted on when the reading_club module is installed.
+    club: 'club',
+    'in club': 'club',
+    'reading club': 'club',
+    'club group': 'clubGroup',
+    group: 'clubGroup',
+    'club stage': 'clubStage',
+    stage: 'clubStage',
 };
 /**
  * Excel import/export of readers (mirrors core's D30/D42 users import:
@@ -82,9 +101,20 @@ const HEADER_ALIASES = {
  */
 let StudentsExcelService = class StudentsExcelService {
     students;
+    moduleRef;
     prisma = new client_1.PrismaClient();
-    constructor(students) {
+    constructor(students, moduleRef) {
         this.students = students;
+        this.moduleRef = moduleRef;
+    }
+    /** The reading_club extension, when that module is installed (it registers under a plain-string token). */
+    clubExtension() {
+        try {
+            return this.moduleRef?.get(reader_import_extension_1.READER_IMPORT_EXTENSION, { strict: false }) ?? null;
+        }
+        catch {
+            return null;
+        }
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -93,8 +123,17 @@ let StudentsExcelService = class StudentsExcelService {
         await this.prisma.$disconnect();
     }
     // --- export ---------------------------------------------------------------
+    /**
+     * With reading_club installed, three extra columns (Club / Club Group /
+     * Club Stage — the import's own columns, so the file round-trips) plus a
+     * "Club reference" sheet listing every valid group/stage; the group and
+     * stage cells get dropdowns from it, so a librarian never types a name
+     * (or an ID) by hand.
+     */
     async exportWorkbook() {
         const rows = await this.students.list();
+        const extension = this.clubExtension();
+        const club = extension ? await extension.exportData(rows.map((r) => r.id)) : null;
         const workbook = new exceljs_1.default.Workbook();
         const sheet = workbook.addWorksheet('Readers');
         sheet.columns = [
@@ -105,9 +144,18 @@ let StudentsExcelService = class StudentsExcelService {
             { header: 'External ID', key: 'externalId', width: 18 },
             { header: 'Department', key: 'department', width: 20 },
             { header: 'Active', key: 'isActive', width: 10 },
+            { header: 'Date of Birth', key: 'dateOfBirth', width: 16 },
+            ...(club
+                ? [
+                    { header: 'Club', key: 'club', width: 10 },
+                    { header: 'Club Group', key: 'clubGroup', width: 22 },
+                    { header: 'Club Stage', key: 'clubStage', width: 22 },
+                ]
+                : []),
         ];
         sheet.getRow(1).font = { bold: true };
         for (const r of rows) {
+            const member = club?.members[r.id];
             sheet.addRow({
                 code: r.code,
                 name: r.name ?? '',
@@ -116,7 +164,38 @@ let StudentsExcelService = class StudentsExcelService {
                 externalId: r.externalId ?? '',
                 department: r.department ?? '',
                 isActive: r.isActive ? 'yes' : 'no',
+                dateOfBirth: r.dateOfBirth ?? '',
+                ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
             });
+        }
+        if (club) {
+            const ref = workbook.addWorksheet('Club reference');
+            ref.columns = [
+                { header: 'Group', key: 'group', width: 24 },
+                { header: 'Stage order', key: 'order', width: 12 },
+                { header: 'Stage', key: 'stage', width: 24 },
+                { header: '', key: 'gap', width: 4 },
+                { header: 'Groups (dropdown list)', key: 'groupList', width: 24 },
+                { header: 'Stages (dropdown list)', key: 'stageList', width: 24 },
+            ];
+            ref.getRow(1).font = { bold: true };
+            const stageNames = [...new Set(club.groups.flatMap((g) => g.stages.map((s) => s.name)))];
+            const lines = Math.max(club.groups.reduce((n, g) => n + Math.max(1, g.stages.length), 0), club.groups.length, stageNames.length);
+            const table = club.groups.flatMap((g) => g.stages.length ? g.stages.map((s) => ({ group: g.name, order: s.order, stage: s.name })) : [{ group: g.name, order: '', stage: '' }]);
+            for (let i = 0; i < lines; i++) {
+                ref.addRow({ ...(table[i] ?? {}), groupList: club.groups[i]?.name ?? '', stageList: stageNames[i] ?? '' });
+            }
+            const lastRow = Math.max(2, lines + 1);
+            const lastReaderRow = rows.length + 1;
+            for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
+                sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
+                if (club.groups.length) {
+                    sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
+                }
+                if (stageNames.length) {
+                    sheet.getCell(`K${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
+                }
+            }
         }
         return Buffer.from(await workbook.xlsx.writeBuffer());
     }
@@ -139,26 +218,42 @@ let StudentsExcelService = class StudentsExcelService {
                 columns.set(col, field);
         });
         if (!columns.size) {
-            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active)');
+            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, Date of Birth, and optionally Club, Club Group, Club Stage)');
         }
         const rows = [];
         for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
             const row = sheet.getRow(rowNumber);
             const parsed = {
-                row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, isActive: null,
+                row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, dateOfBirth: null, isActive: null,
+                club: null, clubGroup: null, clubStage: null,
             };
             let any = false;
             for (const [col, field] of columns) {
-                const text = cellText(row.getCell(col).value);
+                const rawValue = row.getCell(col).value;
+                const text = field === 'dateOfBirth' && rawValue instanceof Date ? (Number.isNaN(rawValue.getTime()) ? 'invalid' : rawValue.toISOString().slice(0, 10)) : cellText(rawValue);
                 if (!text)
                     continue;
                 any = true;
-                if (field === 'isActive') {
+                if (field === 'dateOfBirth') {
+                    const normalized = (0, date_of_birth_1.normalizeDateOfBirth)(text);
+                    if (normalized)
+                        parsed.dateOfBirth = normalized;
+                    else
+                        parsed.dateOfBirthInvalid = true;
+                }
+                else if (field === 'isActive') {
                     const flag = parseFlag(text);
                     if (flag === undefined)
                         parsed.isActiveInvalid = true;
                     else
                         parsed.isActive = flag;
+                }
+                else if (field === 'club') {
+                    const flag = parseFlag(text);
+                    if (flag === undefined)
+                        parsed.clubInvalid = true;
+                    else
+                        parsed.club = flag;
                 }
                 else {
                     parsed[field] = text;
@@ -189,6 +284,8 @@ let StudentsExcelService = class StudentsExcelService {
             const fail = (error) => ({ ...row, valid: false, error, action: null, matchedStudentId: null });
             if (row.isActiveInvalid)
                 return fail('Active must be yes/no');
+            if (row.dateOfBirthInvalid)
+                return fail('Invalid date of birth (use YYYY-MM-DD; not in the future)');
             if (row.email && !EMAIL_RE.test(row.email))
                 return fail(`Invalid email "${row.email}"`);
             if (!row.code && !row.email)
@@ -224,6 +321,29 @@ let StudentsExcelService = class StudentsExcelService {
                 return fail('Email is required for a new reader');
             return { ...row, valid: true, error: null, action: 'create', matchedStudentId: null };
         });
+        // Club columns: validated by the reading_club extension when installed.
+        const clubRows = results.filter((r) => r.valid && (r.club !== null || r.clubGroup || r.clubStage || r.clubInvalid));
+        if (clubRows.length) {
+            const extension = this.clubExtension();
+            const clubErrors = new Map();
+            for (const r of clubRows)
+                if (r.clubInvalid)
+                    clubErrors.set(r.row, 'Club must be yes/no');
+            if (!extension) {
+                for (const r of clubRows)
+                    if (!clubErrors.has(r.row))
+                        clubErrors.set(r.row, 'Club columns need the Reading Club module to be installed');
+            }
+            else {
+                for (const e of await extension.validate(clubRows.filter((r) => !clubErrors.has(r.row))))
+                    clubErrors.set(e.row, e.error);
+            }
+            for (const r of results) {
+                const error = clubErrors.get(r.row);
+                if (error && r.valid)
+                    Object.assign(r, { valid: false, error, action: null, matchedStudentId: null });
+            }
+        }
         const validCount = results.filter((r) => r.valid).length;
         return { rows: results, validCount, invalidCount: results.length - validCount, allValid: results.length > 0 && validCount === results.length };
     }
@@ -238,6 +358,7 @@ let StudentsExcelService = class StudentsExcelService {
         // Hash outside the transaction — argon2 is deliberately slow.
         const creates = report.rows.filter((r) => r.action === 'create');
         const hashes = await Promise.all(creates.map(() => argon2.hash((0, node_crypto_1.randomBytes)(18).toString('base64url'), { type: argon2.argon2id })));
+        const studentIdByRow = new Map();
         try {
             await this.prisma.$transaction(async (tx) => {
                 let createIndex = 0;
@@ -249,6 +370,7 @@ let StudentsExcelService = class StudentsExcelService {
                             email: row.email ?? undefined,
                             externalId: row.externalId ?? undefined,
                             department: row.department ?? undefined,
+                            dateOfBirth: row.dateOfBirth ? (0, date_of_birth_1.toDateOnly)(row.dateOfBirth) : undefined,
                             isActive: row.isActive ?? undefined,
                         };
                         if (Object.values(userData).some((v) => v !== undefined)) {
@@ -257,6 +379,7 @@ let StudentsExcelService = class StudentsExcelService {
                         if (row.code)
                             await this.students.reconcileCodeSequence(tx, row.code);
                         await tx.libraryStudent.update({ where: { id: student.id }, data: { code: row.code ?? undefined, className: row.className ?? undefined } });
+                        studentIdByRow.set(row.row, student.id);
                     }
                     else {
                         const code = row.code ?? (await this.students.allocateCode(tx));
@@ -268,6 +391,7 @@ let StudentsExcelService = class StudentsExcelService {
                                 name: row.name,
                                 externalId: row.externalId ?? undefined,
                                 department: row.department ?? undefined,
+                                dateOfBirth: row.dateOfBirth ? (0, date_of_birth_1.toDateOnly)(row.dateOfBirth) : undefined,
                                 isActive: row.isActive ?? true,
                                 passwordHash: hashes[createIndex++],
                                 mustChangePassword: true,
@@ -275,7 +399,8 @@ let StudentsExcelService = class StudentsExcelService {
                             },
                         });
                         await tx.userRole.create({ data: { userId: user.id, roleId: readerRole.id, assignedBy: importedBy } });
-                        await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+                        const created = await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+                        studentIdByRow.set(row.row, created.id);
                     }
                 }
             }, { timeout: 120_000 });
@@ -287,13 +412,24 @@ let StudentsExcelService = class StudentsExcelService {
             }
             throw error;
         }
+        // Club membership is applied after the reader rows are safely committed.
+        const extension = this.clubExtension();
+        if (extension) {
+            const entries = report.rows
+                .filter((r) => r.club !== null || r.clubGroup)
+                .flatMap((r) => (studentIdByRow.has(r.row) ? [{ row: r.row, club: r.club, clubGroup: r.clubGroup, clubStage: r.clubStage, studentId: studentIdByRow.get(r.row) }] : []));
+            if (entries.length)
+                await extension.apply(entries, importedBy);
+        }
         return report;
     }
 };
 exports.StudentsExcelService = StudentsExcelService;
 exports.StudentsExcelService = StudentsExcelService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [students_service_1.StudentsService])
+    __param(1, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [students_service_1.StudentsService,
+        core_1.ModuleRef])
 ], StudentsExcelService);
 /** ExcelJS cell values may be rich objects (hyperlink emails, formulas, rich text) — flatten to trimmed text. */
 function cellText(value) {

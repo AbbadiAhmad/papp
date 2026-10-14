@@ -666,6 +666,8 @@ describe('ModuleRegistryService', () => {
           installedAt: row.installedAt,
           updatedAt: row.updatedAt,
           manifestSnapshot: { some: 'snapshot' },
+          dataDropped: undefined,
+          availableVersion: null,
         },
       ]);
     });

@@ -168,6 +168,7 @@ function UserFormFields({
   const [password, setPassword] = useState('');
   const [externalId, setExternalId] = useState(user?.externalId ?? '');
   const [department, setDepartment] = useState(user?.department ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(user?.dateOfBirth ?? '');
   const [mustChangePassword, setMustChangePassword] = useState(user?.mustChangePassword ?? true);
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
   const initialRoleIds = new Set((user?.roles ?? []).map((r) => r.id));
@@ -207,6 +208,7 @@ function UserFormFields({
           name,
           externalId: externalId || undefined,
           department: department || undefined,
+          dateOfBirth: dateOfBirth || null,
           isActive,
           mustChangePassword,
         };
@@ -220,6 +222,7 @@ function UserFormFields({
           password,
           externalId: externalId || undefined,
           department: department || undefined,
+          dateOfBirth: dateOfBirth || undefined,
           mustChangePassword,
         };
         await onSubmit(dto);
@@ -257,6 +260,14 @@ function UserFormFields({
           />
           <TextField label={t('core.users.external_id')} value={externalId} onChange={(e) => setExternalId(e.target.value)} fullWidth />
           <TextField label={t('core.users.department')} value={department} onChange={(e) => setDepartment(e.target.value)} fullWidth />
+          <TextField
+            label={t('core.users.date_of_birth')}
+            type="date"
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            fullWidth
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: '1900-01-01', max: new Date().toISOString().slice(0, 10) } }}
+          />
           <FormControlLabel
             control={<Checkbox checked={mustChangePassword} onChange={(e) => setMustChangePassword(e.target.checked)} />}
             label={t('core.users.must_change_password')}

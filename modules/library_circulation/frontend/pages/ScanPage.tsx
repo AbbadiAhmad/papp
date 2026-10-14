@@ -118,6 +118,8 @@ export function ScanPage() {
   const [maxBooks, setMaxBooks] = useState<number | null>(null);
   const [loanPeriodDays, setLoanPeriodDays] = useState(14);
   const [finePerDay, setFinePerDay] = useState(0);
+  const [fineUnit, setFineUnit] = useState<'day' | 'week'>('day');
+  const [maxFine, setMaxFine] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -148,6 +150,8 @@ export function ScanPage() {
         setMaxBooks(policy.maxBooksPerStudent);
         setLoanPeriodDays(policy.loanPeriodDays);
         setFinePerDay(Number(policy.finePerDay) || 0);
+        setFineUnit(policy.fineUnit === 'week' ? 'week' : 'day');
+        setMaxFine(Number(policy.maxFine) || 0);
       })
       .catch(() => undefined); // advisory only — the server enforces the limit on borrow
   }, []);
@@ -1032,6 +1036,8 @@ export function ScanPage() {
         borrowing={returnTarget?.borrowing ?? null}
         bookLabel={returnTarget?.label ?? null}
         finePerDay={finePerDay}
+        fineUnit={fineUnit}
+        maxFine={maxFine}
         onReturn={confirmReturn}
         onClose={() => setReturnTarget(null)}
         loading={busy}

@@ -5,6 +5,9 @@ import { BorrowingsPage } from './pages/BorrowingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
+import { StatisticsPage } from './pages/StatisticsPage';
+import { MessagesPage } from './pages/MessagesPage';
+import { ReaderCardsPage } from './pages/ReaderCardsPage';
 import { ScanPage } from './pages/ScanPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReaderDetailPage } from './pages/ReaderDetailPage';
@@ -26,6 +29,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/dashboard', element: <DashboardPage /> },
   { path: '/library-circulation/scan', element: <ScanPage /> },
   { path: '/library-circulation/readers', element: <ReadersListPage /> },
+  { path: '/library-circulation/readers/print-cards', element: <ReaderCardsPage /> },
   { path: '/library-circulation/readers/:readerId', element: <ReaderDetailPage /> },
   // Old "students" URLs (bookmarks, printed links) keep working.
   { path: '/library-circulation/students', element: <Navigate to="/library-circulation/readers" replace /> },
@@ -34,6 +38,8 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/fines', element: <FinesPage /> },
   { path: '/library-circulation/finance', element: <FinancePage /> },
   { path: '/library-circulation/books/:bookId/history', element: <BookHistoryPage /> },
+  { path: '/library-circulation/statistics', element: <StatisticsPage /> },
+  { path: '/library-circulation/messages', element: <MessagesPage /> },
   { path: '/library-circulation/settings', element: <SettingsPage /> },
 ];
 

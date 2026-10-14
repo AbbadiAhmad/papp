@@ -35,6 +35,8 @@ export interface NotificationsSenderInput {
   targetType: 'user';
   targetId: string;
   sentBy: string | null;
+  /** true = also email, false = in-app only; omitted = follow the category's setting. */
+  email?: boolean;
 }
 
 export interface NotificationsSender {

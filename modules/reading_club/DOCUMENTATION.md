@@ -88,6 +88,14 @@ reading_club_stage_book_entries(       -- per-stage "books read this stage" trac
 
 Users holding `reading_club.notifications.subscribe` (default: admin, library_assistant, **finance**) tick the events they want in the club's **Settings** page (`/reading-club/settings`, a child of the club menu; the menu group shows whenever any child is visible, so finance, which lacks `dashboard.view`, still reaches it). Events: reader added / removed / moved, stage completed (reward pending), reward given, group created/updated/deleted, stage created/updated/deleted, episode started/deleted. Services publish through the optional `CLUB_EVENT_PUBLISHER` token (`backend/club-events.ts`); `ClubEventsService` fans out one in-app notification per subscriber via core's Notification Center, skipping users who have lost the permission. `DELETE /readers/:studentId` (`memberships.assign`) removes a reader from the club and emits `reader_removed`. A user can only read/change their own subscriptions. Notification text is hardcoded Arabic (ASSUMPTIONS A15); manual progress updates and book-entry changes do not emit events.
 
+## Readers-import club columns (READING_CLUB-D30)
+
+`backend/reader-import.service.ts` implements library_circulation's optional readers-import extension (plain-string token, no cross-module import). The Excel columns `Club`, `Club Group`, `Club Stage` add/move/remove readers in the CURRENT episode; blank stage = first stage, same group keeps progress.
+
+## Statistics (READING_CLUB-D32, D33)
+
+`/reading-club/statistics` (`reading_club.statistics.view`) → `GET /api/reading-club/statistics?episodeId&from&to&ageBandYears&top`. Club-only (library figures are on library_circulation's own statistics page, LIBRARY_CIRCULATION-D57). Backend: `backend/statistics.service.ts` (pure helpers `tally`, `ageInYears` + the aggregation), frontend: `frontend/pages/StatisticsPage.tsx` (tabs: Overview, Groups & stages, Readers, Club books, Age & seasons). Needs `users.date_of_birth` (core migration 0016) for the age tab.
+
 ## Routes
 
 Backend, all under `api/reading-club`, `MustChangePasswordGuard` + the global `JwtAuthGuard`/`PermissionGuard`:

@@ -16,10 +16,14 @@ import { CirculationService } from './circulation.service';
 import { DashboardController } from './dashboard.controller';
 import { FinesController } from './fines.controller';
 import { FinesService } from './fines.service';
+import { MessagesController } from './messages.controller';
+import { MessagesService } from './messages.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
 import { PERMISSION_CHECKER } from './permission-checker';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
+import { StatisticsController } from './statistics.controller';
+import { StatisticsService } from './statistics.service';
 import { StudentsExcelService } from './students-excel.service';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
@@ -32,13 +36,15 @@ import { StudentsService } from './students.service';
  */
 @Module({
   imports: [NotificationsModule],
-  controllers: [StudentsController, CirculationController, FinesController, SettingsController, DashboardController],
+  controllers: [StudentsController, CirculationController, FinesController, SettingsController, DashboardController, MessagesController, StatisticsController],
   providers: [
     StudentsService,
     StudentsExcelService,
     CirculationService,
     FinesService,
     SettingsService,
+    MessagesService,
+    StatisticsService,
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
     // PermissionsModule is @Global, so the real service is injectable here without importing its module.
     { provide: PERMISSION_CHECKER, useExisting: PermissionsService },

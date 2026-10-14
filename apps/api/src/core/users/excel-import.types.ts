@@ -11,6 +11,13 @@ export interface ParsedImportRow {
   externalId: string | null;
   roleCode: string | null;
   department: string | null;
+  /**
+   * `YYYY-MM-DD`; null = blank cell; undefined = the file has no such column
+   * (an update then leaves the stored value alone).
+   */
+  dateOfBirth?: string | null;
+  /** Set when the cell held something that is not a valid past date. */
+  dateOfBirthInvalid?: boolean;
 }
 
 export type ImportRowAction = 'create' | 'update';
@@ -38,4 +45,5 @@ export interface ExportRow {
   externalId: string | null;
   role: string;
   department: string | null;
+  dateOfBirth: string | null;
 }

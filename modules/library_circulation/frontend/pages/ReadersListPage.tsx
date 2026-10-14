@@ -1,5 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
+import BadgeIcon from '@mui/icons-material/Badge';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -190,6 +191,11 @@ export function ReadersListPage() {
           <Can permission="library_circulation.students.export">
             <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport}>
               {t('library_circulation.students.export')}
+            </Button>
+          </Can>
+          <Can permission="library_circulation.students.print_cards">
+            <Button startIcon={<BadgeIcon />} variant="outlined" component={RouterLink} to="/library-circulation/readers/print-cards">
+              {t('library_circulation.reader_cards.open_button')}
             </Button>
           </Can>
           <Can permission="library_circulation.students.import">

@@ -22,6 +22,7 @@ const scan_dto_1 = require("./dto/scan.dto");
 const circulation_service_1 = require("./circulation.service");
 const fines_service_1 = require("./fines.service");
 const permission_checker_1 = require("./permission-checker");
+const settings_service_1 = require("./settings.service");
 const students_service_1 = require("./students.service");
 const platform_1 = require("./platform");
 const fetchBorrowingState = (prisma, req) => prisma.libraryBorrowing.findUnique({ where: { id: req.body?.borrowingId ?? '' } });
@@ -98,7 +99,7 @@ let CirculationController = class CirculationController {
         // Auto-create fines for late returns — skipped when the librarian already added an inline fine covering this same return (dto.fine below), to avoid double-charging.
         if (daysLate > 0 && !dto.fine) {
             const policy = await this.circulation.getLoanPolicy();
-            const amount = daysLate * policy.finePerDay;
+            const amount = (0, settings_service_1.computeLateFine)(daysLate, policy);
             if (amount > 0) {
                 lateFine = await this.fines.createLateFine(borrowingBefore.studentId, dto.borrowingId, amount, user.userId);
             }

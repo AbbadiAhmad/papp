@@ -29,7 +29,7 @@ const fetchStudentState = async (prisma, req) => {
         return null;
     const user = await prisma.user.findUnique({
         where: { id: student.userId },
-        select: { name: true, email: true, externalId: true, department: true, isActive: true, mustChangePassword: true },
+        select: { name: true, email: true, externalId: true, department: true, dateOfBirth: true, isActive: true, mustChangePassword: true },
     });
     return { ...student, ...user };
 };
@@ -59,6 +59,10 @@ let StudentsController = class StudentsController {
     /** Suggested next reader code for the Add form (read-only peek; same pattern as library_catalog's `copies/next-code`). Before `:id` for the usual Express ordering reason. */
     async peekNextCode() {
         return { code: await this.students.peekNextCode() };
+    }
+    /** Readers available for ID-card printing (the page filters/selects client-side). Before `:id`. */
+    async listForCards() {
+        return this.students.list();
     }
     async export(res) {
         const buffer = await this.excel.exportWorkbook();
@@ -132,6 +136,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "peekNextCode", null);
+__decorate([
+    (0, common_1.Get)('print-cards'),
+    (0, platform_1.RequirePermission)('library_circulation.students.print_cards'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "listForCards", null);
 __decorate([
     (0, common_1.Get)('export'),
     (0, platform_1.RequirePermission)('library_circulation.students.export'),

@@ -7,6 +7,8 @@ export interface SendNotificationInput {
   bodyMarkdown: string;
   targetType: NotificationTargetType;
   targetId?: string;
+  /** role targets: several roles at once (union of holders). */
+  targetIds?: string[];
 }
 
 export const notificationsApi = {

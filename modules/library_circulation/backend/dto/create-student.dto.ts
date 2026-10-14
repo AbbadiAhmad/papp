@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
 
 /**
  * Creates the student's platform account AND its library profile in one
@@ -38,4 +38,9 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   department?: string;
+
+  /** `YYYY-MM-DD`; validated (real date, not in the future) in StudentsService. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be a date in YYYY-MM-DD format' })
+  dateOfBirth?: string;
 }

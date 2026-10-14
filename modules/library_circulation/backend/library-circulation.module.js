@@ -25,10 +25,14 @@ const circulation_service_1 = require("./circulation.service");
 const dashboard_controller_1 = require("./dashboard.controller");
 const fines_controller_1 = require("./fines.controller");
 const fines_service_1 = require("./fines.service");
+const messages_controller_1 = require("./messages.controller");
+const messages_service_1 = require("./messages.service");
 const notifications_sender_1 = require("./notifications-sender");
 const permission_checker_1 = require("./permission-checker");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
+const statistics_controller_1 = require("./statistics.controller");
+const statistics_service_1 = require("./statistics.service");
 const students_excel_service_1 = require("./students-excel.service");
 const students_controller_1 = require("./students.controller");
 const students_service_1 = require("./students.service");
@@ -44,13 +48,15 @@ exports.LibraryCirculationModule = LibraryCirculationModule;
 exports.LibraryCirculationModule = LibraryCirculationModule = __decorate([
     (0, common_1.Module)({
         imports: [notifications_module_1.NotificationsModule],
-        controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController, dashboard_controller_1.DashboardController],
+        controllers: [students_controller_1.StudentsController, circulation_controller_1.CirculationController, fines_controller_1.FinesController, settings_controller_1.SettingsController, dashboard_controller_1.DashboardController, messages_controller_1.MessagesController, statistics_controller_1.StatisticsController],
         providers: [
             students_service_1.StudentsService,
             students_excel_service_1.StudentsExcelService,
             circulation_service_1.CirculationService,
             fines_service_1.FinesService,
             settings_service_1.SettingsService,
+            messages_service_1.MessagesService,
+            statistics_service_1.StatisticsService,
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
             // PermissionsModule is @Global, so the real service is injectable here without importing its module.
             { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },

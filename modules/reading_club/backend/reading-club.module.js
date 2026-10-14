@@ -32,8 +32,11 @@ const memberships_controller_1 = require("./memberships.controller");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
 const permission_checker_1 = require("./permission-checker");
+const reader_import_service_1 = require("./reader-import.service");
 const presents_controller_1 = require("./presents.controller");
 const presents_service_1 = require("./presents.service");
+const statistics_controller_1 = require("./statistics.controller");
+const statistics_service_1 = require("./statistics.service");
 const stage_book_entries_controller_1 = require("./stage-book-entries.controller");
 const stage_book_entries_service_1 = require("./stage-book-entries.service");
 const stage_completions_controller_1 = require("./stage-completions.controller");
@@ -60,6 +63,7 @@ exports.ReadingClubModule = ReadingClubModule = __decorate([
             dashboard_controller_1.DashboardController,
             event_subscriptions_controller_1.EventSubscriptionsController,
             presents_controller_1.PresentsController,
+            statistics_controller_1.StatisticsController,
         ],
         providers: [
             episodes_service_1.EpisodesService,
@@ -68,7 +72,11 @@ exports.ReadingClubModule = ReadingClubModule = __decorate([
             stage_completions_service_1.StageCompletionsService,
             stage_book_entries_service_1.StageBookEntriesService,
             presents_service_1.PresentsService,
+            statistics_service_1.StatisticsService,
             club_events_service_1.ClubEventsService,
+            reader_import_service_1.ReaderImportService,
+            // Picked up lazily by library_circulation's readers import (ModuleRef, strict:false) — see its reader-import-extension.ts.
+            { provide: reader_import_service_1.READER_IMPORT_EXTENSION, useExisting: reader_import_service_1.ReaderImportService },
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
             { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },
             { provide: club_events_1.CLUB_EVENT_PUBLISHER, useExisting: club_events_service_1.ClubEventsService },

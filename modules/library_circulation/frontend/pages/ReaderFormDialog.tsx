@@ -50,6 +50,7 @@ function FormFields({ student, onClose, onSubmit }: { student: LibraryStudent | 
   const [className, setClassName] = useState(student?.className ?? '');
   const [externalId, setExternalId] = useState(student?.externalId ?? '');
   const [department, setDepartment] = useState(student?.department ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(student?.dateOfBirth ?? '');
   const [isActive, setIsActive] = useState(student?.isActive ?? true);
   const [resetPassword, setResetPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +83,7 @@ function FormFields({ student, onClose, onSubmit }: { student: LibraryStudent | 
           email,
           externalId,
           department,
+          dateOfBirth: dateOfBirth || null,
           isActive,
           ...(resetPassword ? { resetPassword: true } : {}),
         });
@@ -93,6 +95,7 @@ function FormFields({ student, onClose, onSubmit }: { student: LibraryStudent | 
           className: className || undefined,
           externalId: externalId || undefined,
           department: department || undefined,
+          dateOfBirth: dateOfBirth || undefined,
         });
       }
       onClose();
@@ -122,6 +125,13 @@ function FormFields({ student, onClose, onSubmit }: { student: LibraryStudent | 
           <TextField label={t('library_circulation.students.class_name')} value={className} onChange={(e) => setClassName(e.target.value)} />
           <TextField label={t('library_circulation.students.external_id')} value={externalId} onChange={(e) => setExternalId(e.target.value)} />
           <TextField label={t('library_circulation.students.department')} value={department} onChange={(e) => setDepartment(e.target.value)} />
+          <TextField
+            label={t('library_circulation.students.date_of_birth')}
+            type="date"
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: '1900-01-01', max: new Date().toISOString().slice(0, 10) } }}
+          />
           {isEdit ? (
             <>
               <FormControlLabel

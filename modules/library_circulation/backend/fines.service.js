@@ -110,6 +110,11 @@ let FinesService = FinesService_1 = class FinesService {
         });
         if (fines.length === 0)
             return { fines: [], totalAmount: 0 };
+        // Open fines first (unpaid, then partially paid); settled ones (paid/
+        // waived/cancelled) after. Array.sort is stable, so within each group
+        // the query's newest-first order is kept.
+        const statusRank = (status) => (status === 'unpaid' ? 0 : status === 'partially_paid' ? 1 : 2);
+        fines.sort((a, b) => statusRank(a.status) - statusRank(b.status));
         const studentIdsToResolve = [...new Set(fines.map((f) => f.studentId))];
         const students = await this.prisma.libraryStudent.findMany({ where: { id: { in: studentIdsToResolve } } });
         const studentById = new Map(students.map((s) => [s.id, s]));

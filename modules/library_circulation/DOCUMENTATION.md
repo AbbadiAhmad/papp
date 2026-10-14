@@ -49,7 +49,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 
 ## Settings
 
-`library_circulation.loan_policy` (`{ maxBooksPerStudent, loanPeriodDays, finePerDay }`) — read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet), never hardcoded. This is THE concrete case (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) that motivated building the module-`settings` manifest mechanism in the first place.
+`library_circulation.loan_policy` (`{ maxBooksPerStudent, loanPeriodDays, finePerDay, fineUnit: "day"|"week", maxFine }` — `finePerDay` keeps its old key but is a decimal rate per `fineUnit`; `maxFine` 0 = no cap; see `computeLateFine` in `settings.service.ts`) — read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet), never hardcoded. This is THE concrete case (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) that motivated building the module-`settings` manifest mechanism in the first place.
 
 ## Key files
 
@@ -67,6 +67,15 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - `frontend/pages/DashboardPage.tsx` — §18's stat cards, reading `GET /dashboard`; `borrowedCopies`/`overdueBorrowings` cards link into `BorrowingsPage.tsx` pre-filtered (LIBRARY_CIRCULATION-D34).
 - `GET /dashboard/overdue` (`dashboard.view`, `ListOverdueDto`) + the table under `DashboardPage.tsx`'s cards: overdue loans (reader, book, borrowed, due, days late), sortable columns + pagination. Sorted/sliced in memory in `CirculationService.listOverdueBorrowingsPaged` because reader/book names live in other tables (LIBRARY_CIRCULATION-D48).
 - `frontend/pages/BorrowingsPage.tsx` — Borrowings status page (LIBRARY_CIRCULATION-D34): book/reader/borrowed-date/due-date/days-overdue table, filterable by status/date-range/overdue-only, reading its initial filter off the URL (`useSearchParams`) so dashboard links land pre-filtered.
+
+## Reader ID cards, club import columns, fines order
+
+- **ID cards**: `/library-circulation/readers/print-cards` (permission `students.print_cards`) — filter, tick readers, print credit-card-size cards (85.6x54 mm, 2 per row on A4). Custom text = setting `library_circulation.reader_card` (edited on that page with `settings.update`). Data: `GET students/print-cards`.
+- **Readers import** also reads optional `Club` (yes/no), `Club Group`, `Club Stage` (current reading-club episode; needs the reading_club module — see its DOCUMENTATION/DECISIONS D30). Extension point: `backend/reader-import-extension.ts`.
+- **Readers export** adds `Club`/`Club Group`/`Club Stage` + a `Club reference` sheet with dropdowns when reading_club is installed (no IDs anywhere; names matched forgivingly on import — READING_CLUB-D31).
+- **Statistics** (`/library-circulation/statistics`, `statistics.view`): collection use, readers, overdue, fines, age groups — see D57. Backend `backend/statistics.service.ts`, page `frontend/pages/StatisticsPage.tsx`.
+- **Messages** (`/library-circulation/messages`, `messages.send` / `messages.templates`): compose to all / chosen readers / readers with unpaid fines / readers with overdue books (optional period), from a saved template or free text, in-app only or also by email. Placeholders: `{{name}} {{code}} {{class}} {{books}} {{fines_total}} {{days_late}}`. Templates in `system_settings` `library_circulation.message_templates`. Details: D54.
+- **Fines list** order: unpaid, partially paid, then the rest; newest first within each.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)
 

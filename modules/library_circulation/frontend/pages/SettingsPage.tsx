@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Card, CardContent, Snackbar, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, MenuItem, Snackbar, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
@@ -35,6 +35,10 @@ export function SettingsPage() {
     if (!policy) return;
     const numeric = Number(value);
     setPolicy({ ...policy, [field]: Number.isNaN(numeric) ? 0 : numeric });
+  };
+
+  const handleUnitChange = (value: string) => {
+    if (policy) setPolicy({ ...policy, fineUnit: value === 'week' ? 'week' : 'day' });
   };
 
   const handleSave = async () => {
@@ -87,11 +91,30 @@ export function SettingsPage() {
                 slotProps={{ htmlInput: { min: 1 } }}
               />
               <TextField
-                label={t('library_circulation.settings.fine_per_day')}
+                label={t('library_circulation.settings.fine_amount')}
                 type="number"
                 value={policy.finePerDay}
                 onChange={(e) => handleChange('finePerDay', e.target.value)}
-                slotProps={{ htmlInput: { min: 0 } }}
+                helperText={t('library_circulation.settings.fine_amount_help')}
+                slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+              />
+              <TextField
+                select
+                label={t('library_circulation.settings.fine_unit')}
+                value={policy.fineUnit}
+                onChange={(e) => handleUnitChange(e.target.value)}
+                helperText={t(policy.fineUnit === 'week' ? 'library_circulation.settings.fine_unit_week_help' : 'library_circulation.settings.fine_unit_day_help')}
+              >
+                <MenuItem value="day">{t('library_circulation.settings.fine_unit_day')}</MenuItem>
+                <MenuItem value="week">{t('library_circulation.settings.fine_unit_week')}</MenuItem>
+              </TextField>
+              <TextField
+                label={t('library_circulation.settings.max_fine')}
+                type="number"
+                value={policy.maxFine}
+                onChange={(e) => handleChange('maxFine', e.target.value)}
+                helperText={t('library_circulation.settings.max_fine_help')}
+                slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
               />
               <Box>
                 <Button variant="contained" onClick={handleSave} disabled={saving}>

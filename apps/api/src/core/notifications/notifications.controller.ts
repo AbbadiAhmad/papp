@@ -46,6 +46,7 @@ export class NotificationsController {
       bodyMarkdown: dto.bodyMarkdown,
       targetType: dto.targetType,
       targetId: dto.targetId ?? null,
+      targetIds: dto.targetIds,
       sentBy: user.userId, // a person composed this send — never null here
     });
     // `id` at the top level is what AuditInterceptor's entityId fallback

@@ -1,5 +1,6 @@
 // Same-repo Vite import — see modules/template/frontend/api.ts's own docblock.
 import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
 
 export type BorrowingStatus = 'active' | 'returned' | 'overdue' | 'lost' | 'cancelled';
 export type FineStatus = 'unpaid' | 'partially_paid' | 'paid' | 'waived' | 'cancelled';
@@ -24,6 +25,8 @@ export interface LibraryStudent {
   isActive: boolean;
   externalId: string | null;
   department: string | null;
+  /** YYYY-MM-DD or null. */
+  dateOfBirth?: string | null;
 }
 
 /** "Name (CODE)" — the one way every circulation screen identifies a reader. */
@@ -186,6 +189,8 @@ export interface CreateStudentInput {
   academicYearId?: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string;
 }
 
 export interface UpdateStudentInput {
@@ -196,6 +201,8 @@ export interface UpdateStudentInput {
   email?: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD to set, null to clear. */
+  dateOfBirth?: string | null;
   isActive?: boolean;
   mustChangePassword?: boolean;
   /** Generates a new temporary password, returned once as `temporaryPassword`. */
@@ -212,10 +219,110 @@ export interface StudentImportRow {
   className: string | null;
   externalId: string | null;
   department: string | null;
+  dateOfBirth?: string | null;
   isActive: boolean | null;
+  club: boolean | null;
+  clubGroup: string | null;
+  clubStage: string | null;
   valid: boolean;
   error: string | null;
   action: 'create' | 'update' | null;
+}
+
+export interface LibStatsPerson {
+  studentId: string;
+  code: string;
+  name: string;
+  className: string | null;
+}
+export interface LibStatsBook {
+  title: string;
+  author: string | null;
+  category: string | null;
+}
+export interface LibraryStatisticsData {
+  period: { from: string | null; to: string | null };
+  readers: { total: number; active: number; withoutDateOfBirth: number; newInPeriod: number };
+  collection: {
+    titles: number;
+    copies: number;
+    copiesByStatus: StatsCount[];
+    newTitles: number;
+    neverBorrowed: { count: number; sample: Array<LibStatsBook & { copies: number }> };
+  };
+  activity: {
+    borrowings: number;
+    returns: number;
+    onLoanNow: number;
+    overdueNow: number;
+    borrowers: number;
+    borrowerRatePct: number | null;
+    avgLoanDays: number | null;
+    onTimeRatePct: number | null;
+    avgDaysLate: number | null;
+    byMonth: Array<{ month: string; count: number }>;
+    byWeekday: Array<{ weekday: number; count: number }>;
+  };
+  overdue: { buckets: StatsCount[]; readers: Array<LibStatsPerson & { books: number; maxDaysLate: number }> };
+  returnConditions: StatsCount[];
+  readersActivity: {
+    topReaders: Array<LibStatsPerson & { borrowings: number }>;
+    inactive: { count: number; sample: LibStatsPerson[] };
+    byClass: Array<{ className: string | null; readers: number; borrowings: number; perReader: number }>;
+  };
+  books: {
+    topBooks: Array<LibStatsBook & { count: number }>;
+    topRated: Array<LibStatsBook & { readingLevel: string | null; average: number; ratings: number }>;
+    categories: StatsCount[];
+    levels: StatsCount[];
+    highDemand: Array<LibStatsBook & { borrowings: number; copies: number; perCopy: number }>;
+  };
+  fines: {
+    issuedCount: number;
+    issuedAmount: number;
+    paidAmount: number;
+    outstandingAmount: number;
+    byStatus: StatsCount[];
+    byType: Array<{ name: string; count: number; amount: number }>;
+  };
+  byAge: {
+    bandYears: number;
+    bands: Array<{ label: string | null; readers: number; borrowings: number; categories: StatsCount[]; levels: StatsCount[]; topBooks: Array<{ title: string; count: number }> }>;
+  };
+}
+export interface LibraryStatisticsQuery {
+  from?: string;
+  to?: string;
+  ageBandYears?: number;
+  minRatings?: number;
+}
+
+export type MessageRecipientMode = 'all' | 'individual' | 'unpaid_fines' | 'overdue';
+
+export interface MessageRecipients {
+  mode: MessageRecipientMode;
+  studentIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface MessageTemplate {
+  id?: string;
+  name: string;
+  title: string;
+  bodyMarkdown: string;
+}
+
+export interface MessagePreview {
+  recipientCount: number;
+  sample: Array<{ code: string; name: string }>;
+}
+
+export interface MessageSendResult {
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  emailedCount: number;
 }
 
 export interface StudentImportReport {
@@ -375,7 +482,11 @@ export type ScanResult = ScanStudentResult | ScanBookCopyResult | ScanNotFoundRe
 export interface LoanPolicy {
   maxBooksPerStudent: number;
   loanPeriodDays: number;
+  /** Late fine per `fineUnit`; decimals allowed. */
   finePerDay: number;
+  fineUnit: 'day' | 'week';
+  /** 0 = no limit. */
+  maxFine: number;
 }
 
 export interface LibraryFinancialTransaction {
@@ -483,6 +594,7 @@ export const libraryCirculationApi = {
     const params = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== '' && v !== undefined && v !== 'all'));
     return apiClient.get<StudentListPage>(`${BASE}/students/paged`, { params }).then((r) => r.data);
   },
+  listStudentsForCards: () => apiClient.get<LibraryStudent[]>(`${BASE}/students/print-cards`).then((r) => r.data),
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
   searchStudents: (q: string) => apiClient.get<StudentSearchResult[]>(`${BASE}/students/search`, { params: { q } }).then((r) => r.data),
   getActiveBorrowingsForStudent: (studentId: string) =>
@@ -552,8 +664,23 @@ export const libraryCirculationApi = {
   getOverdueBorrowings: (params: OverdueQuery) =>
     apiClient.get<OverdueResult>(`${BASE}/dashboard/overdue`, { params }).then((r) => r.data),
 
+  // Statistics
+  getStatistics: (query: LibraryStatisticsQuery) => apiClient.get<LibraryStatisticsData>(`${BASE}/statistics`, { params: query }).then((r) => r.data),
+
+  // Messages to readers
+  listMessageTemplates: () => apiClient.get<MessageTemplate[]>(`${BASE}/messages/templates`).then((r) => r.data),
+  saveMessageTemplates: (templates: MessageTemplate[]) =>
+    apiClient.put<MessageTemplate[]>(`${BASE}/messages/templates`, { templates }).then((r) => r.data),
+  searchMessageReaders: (q: string) =>
+    apiClient.get<StudentSearchResult[]>(`${BASE}/messages/readers/search`, { params: { q } }).then((r) => r.data),
+  previewMessage: (recipients: MessageRecipients) => apiClient.post<MessagePreview>(`${BASE}/messages/preview`, { recipients }).then((r) => r.data),
+  sendMessage: (dto: { recipients: MessageRecipients; title: string; bodyMarkdown: string; sendEmail: boolean }) =>
+    apiClient.post<MessageSendResult>(`${BASE}/messages/send`, dto).then((r) => r.data),
+
   // Settings
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),
+  getReaderCardSettings: () => apiClient.get<{ headerText: string }>(`${BASE}/settings/reader-card`).then((r) => r.data),
+  updateReaderCardSettings: (dto: { headerText: string }) => apiClient.put<{ headerText: string }>(`${BASE}/settings/reader-card`, dto).then((r) => r.data),
   updateLoanPolicy: (dto: LoanPolicy) => apiClient.put<LoanPolicy>(`${BASE}/settings/loan-policy`, dto).then((r) => r.data),
 };
 

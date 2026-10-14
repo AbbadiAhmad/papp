@@ -45,6 +45,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const argon2 = __importStar(require("argon2"));
 const node_crypto_1 = require("node:crypto");
+const date_of_birth_1 = require("./date-of-birth");
 const READER_ROLE_CODE = 'reader';
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 const STUDENT_CODE_PREFIX = 'R';
@@ -67,6 +68,15 @@ const MAX_CODE_ALLOCATION_ATTEMPTS = 50;
  * though they're core tables, so no cross-module service import is needed
  * for this.
  */
+/** undefined = leave unchanged, null = clear, string = set (400 unless a real, past calendar date). */
+function parseDateOfBirth(value) {
+    if (value === undefined || value === null)
+        return value;
+    const normalized = (0, date_of_birth_1.normalizeDateOfBirth)(value);
+    if (!normalized)
+        throw new common_1.BadRequestException('dateOfBirth must be a real date between 1900-01-01 and today (YYYY-MM-DD)');
+    return (0, date_of_birth_1.toDateOnly)(normalized);
+}
 let StudentsService = class StudentsService {
     static { StudentsService_1 = this; }
     logger = new common_1.Logger(StudentsService_1.name);
@@ -166,7 +176,7 @@ let StudentsService = class StudentsService {
         const users = userIds.length
             ? await this.prisma.user.findMany({
                 where: { id: { in: userIds } },
-                select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true },
+                select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true, dateOfBirth: true },
             })
             : [];
         const userById = new Map(users.map((u) => [u.id, u]));
@@ -191,6 +201,7 @@ let StudentsService = class StudentsService {
                 isActive: u?.isActive ?? true,
                 externalId: u?.externalId ?? null,
                 department: u?.department ?? null,
+                dateOfBirth: (0, date_of_birth_1.formatDateOnly)(u?.dateOfBirth),
             };
         });
     }
@@ -321,7 +332,7 @@ let StudentsService = class StudentsService {
     async findById(id) {
         const student = await this.getOrThrow(id);
         const [user, activeBorrowingsRaw, openFines, allFines] = await Promise.all([
-            this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true, externalId: true, department: true, mustChangePassword: true } }),
+            this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true, externalId: true, department: true, dateOfBirth: true, mustChangePassword: true } }),
             this.prisma.libraryBorrowing.findMany({
                 where: { studentId: id, status: { in: ['active', 'overdue'] } },
                 orderBy: { borrowedAt: 'desc' },
@@ -346,6 +357,7 @@ let StudentsService = class StudentsService {
             isActive: user?.isActive ?? true,
             externalId: user?.externalId ?? null,
             department: user?.department ?? null,
+            dateOfBirth: (0, date_of_birth_1.formatDateOnly)(user?.dateOfBirth),
             mustChangePassword: user?.mustChangePassword ?? false,
             activeBorrowingsCount: activeBorrowings.length,
             unpaidFinesTotal,
@@ -483,6 +495,7 @@ let StudentsService = class StudentsService {
         email: 'library_circulation.students.email',
         externalId: 'library_circulation.students.external_id',
         department: 'library_circulation.students.department',
+        dateOfBirth: 'library_circulation.students.date_of_birth',
         isActive: 'library_circulation.students.is_active',
         mustChangePassword: 'library_circulation.students.must_change_password',
     };
@@ -521,6 +534,7 @@ let StudentsService = class StudentsService {
                         name: dto.name,
                         externalId: dto.externalId || undefined,
                         department: dto.department || undefined,
+                        dateOfBirth: parseDateOfBirth(dto.dateOfBirth),
                         passwordHash,
                         mustChangePassword: true,
                         createdBy,
@@ -567,6 +581,7 @@ let StudentsService = class StudentsService {
             email: dto.email,
             externalId: dto.externalId,
             department: dto.department,
+            dateOfBirth: parseDateOfBirth(dto.dateOfBirth),
             isActive: dto.isActive,
             mustChangePassword: dto.mustChangePassword,
         };

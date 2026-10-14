@@ -7,6 +7,8 @@ export interface CreateUserInput {
   password: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string;
   mustChangePassword?: boolean;
 }
 
@@ -15,6 +17,8 @@ export interface UpdateUserInput {
   name?: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD to set, null to clear. */
+  dateOfBirth?: string | null;
   isActive?: boolean;
   mustChangePassword?: boolean;
   password?: string;

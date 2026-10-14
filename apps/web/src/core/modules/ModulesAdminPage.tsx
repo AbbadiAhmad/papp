@@ -208,7 +208,19 @@ export function ModulesAdminPage() {
               {pageRows.map((entry) => (
                   <TableRow key={entry.key} hover>
                     <TableCell>{entry.key}</TableCell>
-                    <TableCell>{entry.version}</TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <span>{entry.version}</span>
+                        {entry.availableVersion ? (
+                          <Chip
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            label={t('core.modules.update_available', { version: entry.availableVersion })}
+                          />
+                        ) : null}
+                      </Stack>
+                    </TableCell>
                     <TableCell>
                       <Stack spacing={0.5}>
                         <Chip size="small" color={STATUS_COLOR[entry.status]} label={t(`core.modules.status.${entry.status}`)} />
@@ -227,7 +239,12 @@ export function ModulesAdminPage() {
                               size="small"
                               onClick={() => handleUpgrade(entry.key)}
                               disabled={restarting}
-                              aria-label={t('core.modules.upgrade')}
+                              color={entry.availableVersion ? 'warning' : 'default'}
+                              aria-label={
+                                entry.availableVersion
+                                  ? t('core.modules.upgrade_to', { version: entry.availableVersion })
+                                  : t('core.modules.upgrade')
+                              }
                             >
                               <UpgradeIcon fontSize="small" />
                             </IconButton>

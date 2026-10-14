@@ -1,7 +1,7 @@
 {
   "key": "reading_club",
   "name": "Reading Club",
-  "version": "1.1.4",
+  "version": "1.1.8",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_circulation"],
   "description": "Reading groups made of ordered stages (books or pages), reader assignment/progress tracking, and stage-completion rewards — built on library_circulation's students/borrowing history.",
@@ -26,6 +26,7 @@
     { "code": "reading_club.stage_completions.mark", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.mark" },
     { "code": "reading_club.stage_completions.confirm_reward", "category": "reading_club", "descriptionKey": "reading_club.perm.stage_completions.confirm_reward" },
     { "code": "reading_club.dashboard.view", "category": "reading_club", "descriptionKey": "reading_club.perm.dashboard.view" },
+    { "code": "reading_club.statistics.view", "category": "reading_club", "descriptionKey": "reading_club.perm.statistics.view" },
     { "code": "reading_club.episodes.manage", "category": "reading_club", "descriptionKey": "reading_club.perm.episodes.manage" },
     { "code": "reading_club.notifications.subscribe", "category": "reading_club", "descriptionKey": "reading_club.perm.notifications.subscribe" },
     { "code": "reading_club.presents.give", "category": "reading_club", "descriptionKey": "reading_club.perm.presents.give" },
@@ -44,6 +45,7 @@
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
+      "reading_club.statistics.view",
       "reading_club.episodes.manage",
       "reading_club.notifications.subscribe",
       "reading_club.presents.give",
@@ -60,6 +62,7 @@
       "reading_club.stage_completions.mark",
       "reading_club.stage_completions.confirm_reward",
       "reading_club.dashboard.view",
+      "reading_club.statistics.view",
       "reading_club.episodes.manage",
       "reading_club.notifications.subscribe",
       "reading_club.presents.give",
@@ -112,11 +115,20 @@
       "requiredPermission": "reading_club.groups.view"
     },
     {
+      "id": "reading_club.statistics",
+      "labelKey": "reading_club.menu.statistics",
+      "icon": "Poll",
+      "parentId": "reading_club.root",
+      "order": 4,
+      "route": "/reading-club/statistics",
+      "requiredPermission": "reading_club.statistics.view"
+    },
+    {
       "id": "reading_club.settings",
       "labelKey": "reading_club.menu.settings",
       "icon": "Settings",
       "parentId": "reading_club.root",
-      "order": 4,
+      "order": 5,
       "route": "/reading-club/settings",
       "requiredPermission": "reading_club.notifications.subscribe"
     },
@@ -155,6 +167,12 @@
       "access": "authenticated",
       "requiredPermission": "reading_club.groups.view",
       "component": "frontend/pages/GroupsListPage.tsx"
+    },
+    {
+      "pattern": "/reading-club/statistics",
+      "access": "authenticated",
+      "requiredPermission": "reading_club.statistics.view",
+      "component": "frontend/pages/StatisticsPage.tsx"
     },
     {
       "pattern": "/reading-club/settings",
