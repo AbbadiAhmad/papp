@@ -1,5 +1,5 @@
 import { NotificationTargetType } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 /**
  * POST /notifications body (D21): target is a platform user, a role (its
@@ -29,4 +29,16 @@ export class SendNotificationDto {
   @IsOptional()
   @IsUUID()
   targetId?: string;
+
+  /**
+   * Role targets only: several roles at once. Recipients are the UNION of
+   * the roles' current holders (a user holding two selected roles gets one
+   * notice). When present it takes the place of `targetId`.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  targetIds?: string[];
 }

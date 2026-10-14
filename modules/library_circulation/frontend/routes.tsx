@@ -5,6 +5,7 @@ import { BorrowingsPage } from './pages/BorrowingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
+import { ReaderCardsPage } from './pages/ReaderCardsPage';
 import { ScanPage } from './pages/ScanPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReaderDetailPage } from './pages/ReaderDetailPage';
@@ -26,6 +27,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/dashboard', element: <DashboardPage /> },
   { path: '/library-circulation/scan', element: <ScanPage /> },
   { path: '/library-circulation/readers', element: <ReadersListPage /> },
+  { path: '/library-circulation/readers/print-cards', element: <ReaderCardsPage /> },
   { path: '/library-circulation/readers/:readerId', element: <ReaderDetailPage /> },
   // Old "students" URLs (bookmarks, printed links) keep working.
   { path: '/library-circulation/students', element: <Navigate to="/library-circulation/readers" replace /> },

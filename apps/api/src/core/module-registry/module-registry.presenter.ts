@@ -10,6 +10,12 @@ export interface PublicModuleEntry {
   updatedAt: Date;
   manifestSnapshot: unknown;
   dataDropped: boolean;
+  /**
+   * Version of the package currently on disk when it differs from the
+   * installed `version` (i.e. an upgrade is available); only ever set by
+   * `ModuleRegistryService.list()`.
+   */
+  availableVersion?: string | null;
 }
 
 export function toPublicModuleEntry(row: ModuleRegistryEntry): PublicModuleEntry {

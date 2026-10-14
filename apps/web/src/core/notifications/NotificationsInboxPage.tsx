@@ -46,7 +46,7 @@ export function NotificationsInboxPage() {
                         {item.title}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {formatDateTime(item.createdAt, language)} — {item.category}
+                        {formatDateTime(item.createdAt, language)} — {t(`core.notifications.categories.${item.category}`, { defaultValue: item.category })}
                       </Typography>
                       <Typography
                         variant="body2"

@@ -62,6 +62,13 @@ export class StudentsController {
     return { code: await this.students.peekNextCode() };
   }
 
+  /** Readers available for ID-card printing (the page filters/selects client-side). Before `:id`. */
+  @Get('print-cards')
+  @RequirePermission('library_circulation.students.print_cards')
+  async listForCards() {
+    return this.students.list();
+  }
+
   @Get('export')
   @RequirePermission('library_circulation.students.export')
   async export(@Res() res: Response): Promise<void> {

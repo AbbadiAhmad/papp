@@ -23,6 +23,7 @@ import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 import { NOTIFICATIONS_SENDER } from './notifications-sender';
 import { PERMISSION_CHECKER } from './permission-checker';
+import { READER_IMPORT_EXTENSION, ReaderImportService } from './reader-import.service';
 import { PresentsController } from './presents.controller';
 import { PresentsService } from './presents.service';
 import { StageBookEntriesController } from './stage-book-entries.controller';
@@ -57,6 +58,9 @@ import { StageCompletionsService } from './stage-completions.service';
     StageBookEntriesService,
     PresentsService,
     ClubEventsService,
+    ReaderImportService,
+    // Picked up lazily by library_circulation's readers import (ModuleRef, strict:false) — see its reader-import-extension.ts.
+    { provide: READER_IMPORT_EXTENSION, useExisting: ReaderImportService },
     { provide: NOTIFICATIONS_SENDER, useExisting: NotificationsService },
     { provide: PERMISSION_CHECKER, useExisting: PermissionsService },
     { provide: CLUB_EVENT_PUBLISHER, useExisting: ClubEventsService },

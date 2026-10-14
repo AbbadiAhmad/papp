@@ -1,6 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { UpdateLoanPolicyDto } from './dto/update-loan-policy.dto';
+import { UpdateReaderCardDto } from './dto/update-reader-card.dto';
+
+export const READER_CARD_KEY = 'library_circulation.reader_card';
+
+export interface ReaderCardSettings {
+  headerText: string;
+}
 
 export const LOAN_POLICY_KEY = 'library_circulation.loan_policy';
 export const LOAN_POLICY_FALLBACK: LoanPolicy = { maxBooksPerStudent: 5, loanPeriodDays: 14, finePerDay: 1 };
@@ -50,6 +57,22 @@ export class SettingsService implements OnModuleInit, OnModuleDestroy {
       where: { key: LOAN_POLICY_KEY },
       update: { value: value as unknown as Prisma.InputJsonValue },
       create: { key: LOAN_POLICY_KEY, value: value as unknown as Prisma.InputJsonValue },
+    });
+    return value;
+  }
+
+  async getReaderCard(): Promise<ReaderCardSettings> {
+    const row = await this.prisma.systemSetting.findUnique({ where: { key: READER_CARD_KEY } });
+    const value = row?.value as Partial<ReaderCardSettings> | undefined;
+    return { headerText: typeof value?.headerText === 'string' ? value.headerText : '' };
+  }
+
+  async updateReaderCard(dto: UpdateReaderCardDto): Promise<ReaderCardSettings> {
+    const value: ReaderCardSettings = { headerText: dto.headerText };
+    await this.prisma.systemSetting.upsert({
+      where: { key: READER_CARD_KEY },
+      update: { value: value as unknown as Prisma.InputJsonValue },
+      create: { key: READER_CARD_KEY, value: value as unknown as Prisma.InputJsonValue },
     });
     return value;
   }

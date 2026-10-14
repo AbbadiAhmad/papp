@@ -68,6 +68,12 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 - `GET /dashboard/overdue` (`dashboard.view`, `ListOverdueDto`) + the table under `DashboardPage.tsx`'s cards: overdue loans (reader, book, borrowed, due, days late), sortable columns + pagination. Sorted/sliced in memory in `CirculationService.listOverdueBorrowingsPaged` because reader/book names live in other tables (LIBRARY_CIRCULATION-D48).
 - `frontend/pages/BorrowingsPage.tsx` — Borrowings status page (LIBRARY_CIRCULATION-D34): book/reader/borrowed-date/due-date/days-overdue table, filterable by status/date-range/overdue-only, reading its initial filter off the URL (`useSearchParams`) so dashboard links land pre-filtered.
 
+## Reader ID cards, club import columns, fines order
+
+- **ID cards**: `/library-circulation/readers/print-cards` (permission `students.print_cards`) — filter, tick readers, print credit-card-size cards (85.6x54 mm, 2 per row on A4). Custom text = setting `library_circulation.reader_card` (edited on that page with `settings.update`). Data: `GET students/print-cards`.
+- **Readers import** also reads optional `Club` (yes/no), `Club Group`, `Club Stage` (current reading-club episode; needs the reading_club module — see its DOCUMENTATION/DECISIONS D30). Extension point: `backend/reader-import-extension.ts`.
+- **Fines list** order: unpaid, partially paid, then the rest; newest first within each.
+
 ## Known gotchas / deliberate v1 scope cuts (read before extending)
 
 - **`overdue` is a valid `library_borrowings.status` value but nothing proactively sets it** — no scheduler/cron infrastructure exists anywhere in this platform yet. Lateness is instead computed on demand at return time (`returnedAt - dueAt`) for the fine calculation, and now also live for the Borrowings status page's `overdueOnly` filter/`daysOverdue` column (LIBRARY_CIRCULATION-D34 — `status IN ('active','overdue') AND due_at < now()`, never a literal `status = 'overdue'` match). Don't add a cron job to "fix" this without raising it with the user first — it's a platform-wide gap, not this module's alone.

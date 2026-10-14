@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const common_1 = require("@nestjs/common");
 const update_loan_policy_dto_1 = require("./dto/update-loan-policy.dto");
+const update_reader_card_dto_1 = require("./dto/update-reader-card.dto");
 const platform_1 = require("./platform");
 const settings_service_1 = require("./settings.service");
 let SettingsController = class SettingsController {
@@ -27,6 +28,13 @@ let SettingsController = class SettingsController {
     }
     async updateLoanPolicy(dto) {
         return this.settings.updateLoanPolicy(dto);
+    }
+    /** Text printed on reader ID cards — readable by whoever may print cards. */
+    async getReaderCard() {
+        return this.settings.getReaderCard();
+    }
+    async updateReaderCard(dto) {
+        return this.settings.updateReaderCard(dto);
     }
 };
 exports.SettingsController = SettingsController;
@@ -46,6 +54,22 @@ __decorate([
     __metadata("design:paramtypes", [update_loan_policy_dto_1.UpdateLoanPolicyDto]),
     __metadata("design:returntype", Promise)
 ], SettingsController.prototype, "updateLoanPolicy", null);
+__decorate([
+    (0, common_1.Get)('reader-card'),
+    (0, platform_1.RequirePermission)('library_circulation.students.print_cards'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], SettingsController.prototype, "getReaderCard", null);
+__decorate([
+    (0, common_1.Put)('reader-card'),
+    (0, platform_1.RequirePermission)('library_circulation.settings.update'),
+    (0, platform_1.Audit)({ category: 'library_circulation.settings', entityType: 'SystemSetting', action: 'update' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [update_reader_card_dto_1.UpdateReaderCardDto]),
+    __metadata("design:returntype", Promise)
+], SettingsController.prototype, "updateReaderCard", null);
 exports.SettingsController = SettingsController = __decorate([
     (0, common_1.Controller)('api/library-circulation/settings'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

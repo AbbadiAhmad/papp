@@ -11,7 +11,7 @@ interface MockTx {
 interface MockPrisma {
   $transaction: jest.Mock;
   user: { findUnique: jest.Mock; findMany: jest.Mock };
-  role: { findUnique: jest.Mock };
+  role: { findUnique: jest.Mock; findMany: jest.Mock };
   notificationRecipient: { update: jest.Mock };
 }
 
@@ -53,7 +53,7 @@ describe('NotificationsService.send', () => {
       // Runs the callback against the mock tx client, like the real thing.
       $transaction: jest.fn((cb: (t: MockTx) => unknown) => Promise.resolve(cb(tx))),
       user: { findUnique: jest.fn(), findMany: jest.fn() },
-      role: { findUnique: jest.fn() },
+      role: { findUnique: jest.fn(), findMany: jest.fn() },
       notificationRecipient: { update: jest.fn() },
     };
     prisma.notificationRecipient.update.mockResolvedValue({});
@@ -158,6 +158,26 @@ describe('NotificationsService.send', () => {
           { notificationId: 'notif-1', userId: 'u3' },
         ],
       });
+    });
+
+    it('several roles (targetIds): one notification, recipients are the union of holders, audit keeps the list', async () => {
+      prisma.role.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+      prisma.user.findMany.mockResolvedValue([alice, bob]);
+
+      const result = await service.send(baseInput({ targetType: 'role', targetId: null, targetIds: ['r1', 'r2', 'r1'] }));
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isActive: true, userRoles: { some: { roleId: { in: ['r1', 'r2'] } } } } }),
+      );
+      expect(result.recipientCount).toBe(2);
+      expect(tx.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ targetType: 'role', targetId: null }) });
+    });
+
+    it('rejects targetIds on a non-role target, or combined with targetId, or with an unknown role', async () => {
+      await expect(service.send(baseInput({ targetType: 'user', targetId: null, targetIds: ['r1'] }))).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.send(baseInput({ targetType: 'role', targetId: 'r1', targetIds: ['r1'] }))).rejects.toBeInstanceOf(BadRequestException);
+      prisma.role.findMany.mockResolvedValue([{ id: 'r1' }]);
+      await expect(service.send(baseInput({ targetType: 'role', targetId: null, targetIds: ['r1', 'missing'] }))).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('404s on an unknown role before creating anything', async () => {

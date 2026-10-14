@@ -41,16 +41,21 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StudentsExcelService = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const client_1 = require("@prisma/client");
 const argon2 = __importStar(require("argon2"));
 const exceljs_1 = __importDefault(require("exceljs"));
 const node_crypto_1 = require("node:crypto");
+const reader_import_extension_1 = require("./reader-import-extension");
 const students_service_1 = require("./students.service");
 const READER_ROLE_CODE = 'reader';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -67,6 +72,14 @@ const HEADER_ALIASES = {
     externalid: 'externalId',
     department: 'department',
     active: 'isActive',
+    // Reading-club columns — only acted on when the reading_club module is installed.
+    club: 'club',
+    'in club': 'club',
+    'reading club': 'club',
+    'club group': 'clubGroup',
+    group: 'clubGroup',
+    'club stage': 'clubStage',
+    stage: 'clubStage',
 };
 /**
  * Excel import/export of readers (mirrors core's D30/D42 users import:
@@ -82,9 +95,20 @@ const HEADER_ALIASES = {
  */
 let StudentsExcelService = class StudentsExcelService {
     students;
+    moduleRef;
     prisma = new client_1.PrismaClient();
-    constructor(students) {
+    constructor(students, moduleRef) {
         this.students = students;
+        this.moduleRef = moduleRef;
+    }
+    /** The reading_club extension, when that module is installed (it registers under a plain-string token). */
+    clubExtension() {
+        try {
+            return this.moduleRef?.get(reader_import_extension_1.READER_IMPORT_EXTENSION, { strict: false }) ?? null;
+        }
+        catch {
+            return null;
+        }
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -139,13 +163,14 @@ let StudentsExcelService = class StudentsExcelService {
                 columns.set(col, field);
         });
         if (!columns.size) {
-            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active)');
+            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, and optionally Club, Club Group, Club Stage)');
         }
         const rows = [];
         for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
             const row = sheet.getRow(rowNumber);
             const parsed = {
                 row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, isActive: null,
+                club: null, clubGroup: null, clubStage: null,
             };
             let any = false;
             for (const [col, field] of columns) {
@@ -159,6 +184,13 @@ let StudentsExcelService = class StudentsExcelService {
                         parsed.isActiveInvalid = true;
                     else
                         parsed.isActive = flag;
+                }
+                else if (field === 'club') {
+                    const flag = parseFlag(text);
+                    if (flag === undefined)
+                        parsed.clubInvalid = true;
+                    else
+                        parsed.club = flag;
                 }
                 else {
                     parsed[field] = text;
@@ -224,6 +256,29 @@ let StudentsExcelService = class StudentsExcelService {
                 return fail('Email is required for a new reader');
             return { ...row, valid: true, error: null, action: 'create', matchedStudentId: null };
         });
+        // Club columns: validated by the reading_club extension when installed.
+        const clubRows = results.filter((r) => r.valid && (r.club !== null || r.clubGroup || r.clubStage || r.clubInvalid));
+        if (clubRows.length) {
+            const extension = this.clubExtension();
+            const clubErrors = new Map();
+            for (const r of clubRows)
+                if (r.clubInvalid)
+                    clubErrors.set(r.row, 'Club must be yes/no');
+            if (!extension) {
+                for (const r of clubRows)
+                    if (!clubErrors.has(r.row))
+                        clubErrors.set(r.row, 'Club columns need the Reading Club module to be installed');
+            }
+            else {
+                for (const e of await extension.validate(clubRows.filter((r) => !clubErrors.has(r.row))))
+                    clubErrors.set(e.row, e.error);
+            }
+            for (const r of results) {
+                const error = clubErrors.get(r.row);
+                if (error && r.valid)
+                    Object.assign(r, { valid: false, error, action: null, matchedStudentId: null });
+            }
+        }
         const validCount = results.filter((r) => r.valid).length;
         return { rows: results, validCount, invalidCount: results.length - validCount, allValid: results.length > 0 && validCount === results.length };
     }
@@ -238,6 +293,7 @@ let StudentsExcelService = class StudentsExcelService {
         // Hash outside the transaction — argon2 is deliberately slow.
         const creates = report.rows.filter((r) => r.action === 'create');
         const hashes = await Promise.all(creates.map(() => argon2.hash((0, node_crypto_1.randomBytes)(18).toString('base64url'), { type: argon2.argon2id })));
+        const studentIdByRow = new Map();
         try {
             await this.prisma.$transaction(async (tx) => {
                 let createIndex = 0;
@@ -257,6 +313,7 @@ let StudentsExcelService = class StudentsExcelService {
                         if (row.code)
                             await this.students.reconcileCodeSequence(tx, row.code);
                         await tx.libraryStudent.update({ where: { id: student.id }, data: { code: row.code ?? undefined, className: row.className ?? undefined } });
+                        studentIdByRow.set(row.row, student.id);
                     }
                     else {
                         const code = row.code ?? (await this.students.allocateCode(tx));
@@ -275,7 +332,8 @@ let StudentsExcelService = class StudentsExcelService {
                             },
                         });
                         await tx.userRole.create({ data: { userId: user.id, roleId: readerRole.id, assignedBy: importedBy } });
-                        await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+                        const created = await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+                        studentIdByRow.set(row.row, created.id);
                     }
                 }
             }, { timeout: 120_000 });
@@ -287,13 +345,24 @@ let StudentsExcelService = class StudentsExcelService {
             }
             throw error;
         }
+        // Club membership is applied after the reader rows are safely committed.
+        const extension = this.clubExtension();
+        if (extension) {
+            const entries = report.rows
+                .filter((r) => r.club !== null || r.clubGroup)
+                .flatMap((r) => (studentIdByRow.has(r.row) ? [{ row: r.row, club: r.club, clubGroup: r.clubGroup, clubStage: r.clubStage, studentId: studentIdByRow.get(r.row) }] : []));
+            if (entries.length)
+                await extension.apply(entries, importedBy);
+        }
         return report;
     }
 };
 exports.StudentsExcelService = StudentsExcelService;
 exports.StudentsExcelService = StudentsExcelService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [students_service_1.StudentsService])
+    __param(1, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [students_service_1.StudentsService,
+        core_1.ModuleRef])
 ], StudentsExcelService);
 /** ExcelJS cell values may be rich objects (hyperlink emails, formulas, rich text) — flatten to trimmed text. */
 function cellText(value) {

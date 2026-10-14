@@ -60,6 +60,10 @@ let StudentsController = class StudentsController {
     async peekNextCode() {
         return { code: await this.students.peekNextCode() };
     }
+    /** Readers available for ID-card printing (the page filters/selects client-side). Before `:id`. */
+    async listForCards() {
+        return this.students.list();
+    }
     async export(res) {
         const buffer = await this.excel.exportWorkbook();
         res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="library-readers-export.xlsx"' });
@@ -132,6 +136,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], StudentsController.prototype, "peekNextCode", null);
+__decorate([
+    (0, common_1.Get)('print-cards'),
+    (0, platform_1.RequirePermission)('library_circulation.students.print_cards'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], StudentsController.prototype, "listForCards", null);
 __decorate([
     (0, common_1.Get)('export'),
     (0, platform_1.RequirePermission)('library_circulation.students.export'),

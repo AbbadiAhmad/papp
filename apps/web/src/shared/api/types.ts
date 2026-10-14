@@ -180,6 +180,8 @@ export interface PublicModuleEntry {
   updatedAt: string;
   manifestSnapshot: unknown;
   dataDropped: boolean;
+  /** Version on disk when it differs from `version` — an upgrade is available. */
+  availableVersion?: string | null;
 }
 
 /**

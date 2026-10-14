@@ -235,12 +235,12 @@ export function PrintCodesPage() {
       <Box className="print-codes-sheet">
         {copies.map((copy) => (
           <Box key={copy.id} className="print-codes-sticker">
-            {/* Left: header + location. Middle: QR. Right: code printed vertically (LIBRARY_CATALOG-D23). */}
+            {/* Left: custom header text, printed vertically. Middle: QR + location. Right: code printed vertically (LIBRARY_CATALOG-D23). */}
+            {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
             <Box className="print-codes-sticker-side">
-              {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
+              <QrCodeImage value={copy.qrCode} size={110} />
               {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
             </Box>
-            <QrCodeImage value={copy.qrCode} size={110} />
             <Typography className="print-codes-sticker-code">{copy.qrCode}</Typography>
           </Box>
         ))}
@@ -293,10 +293,10 @@ export function PrintCodesPage() {
             overflow: hidden;
             break-inside: avoid;
           }
-          .print-codes-sticker-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; }
-          .print-codes-sticker img { width: 28mm !important; height: 28mm !important; flex: none; align-self: center; }
-          .print-codes-sticker-header { font-size: 8pt; line-height: 1.2; font-weight: bold; margin: 0; overflow: hidden; word-break: break-word; }
-          .print-codes-sticker-location { font-size: 9pt; line-height: 1.2; color: #000; margin: 0; overflow: hidden; word-break: break-word; }
+          .print-codes-sticker-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1mm; }
+          .print-codes-sticker img { width: 28mm !important; height: 28mm !important; flex: none; }
+          .print-codes-sticker-header { writing-mode: vertical-rl; font-size: 8pt; line-height: 1.2; font-weight: bold; margin: 0; flex: none; align-self: center; max-height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .print-codes-sticker-location { font-size: 8pt; line-height: 1.1; color: #000; margin: 0; max-width: 100%; text-align: center; overflow: hidden; word-break: break-word; }
           .print-codes-sticker-code { writing-mode: vertical-rl; font-size: 12pt; font-weight: bold; margin: 0; white-space: nowrap; flex: none; align-self: center; letter-spacing: 0.5pt; }
         }
       `}</style>

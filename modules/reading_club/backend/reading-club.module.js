@@ -32,6 +32,7 @@ const memberships_controller_1 = require("./memberships.controller");
 const memberships_service_1 = require("./memberships.service");
 const notifications_sender_1 = require("./notifications-sender");
 const permission_checker_1 = require("./permission-checker");
+const reader_import_service_1 = require("./reader-import.service");
 const presents_controller_1 = require("./presents.controller");
 const presents_service_1 = require("./presents.service");
 const stage_book_entries_controller_1 = require("./stage-book-entries.controller");
@@ -69,6 +70,9 @@ exports.ReadingClubModule = ReadingClubModule = __decorate([
             stage_book_entries_service_1.StageBookEntriesService,
             presents_service_1.PresentsService,
             club_events_service_1.ClubEventsService,
+            reader_import_service_1.ReaderImportService,
+            // Picked up lazily by library_circulation's readers import (ModuleRef, strict:false) — see its reader-import-extension.ts.
+            { provide: reader_import_service_1.READER_IMPORT_EXTENSION, useExisting: reader_import_service_1.ReaderImportService },
             { provide: notifications_sender_1.NOTIFICATIONS_SENDER, useExisting: notifications_service_1.NotificationsService },
             { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService },
             { provide: club_events_1.CLUB_EVENT_PUBLISHER, useExisting: club_events_service_1.ClubEventsService },

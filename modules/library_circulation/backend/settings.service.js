@@ -7,9 +7,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 var SettingsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SettingsService = exports.LOAN_POLICY_FALLBACK = exports.LOAN_POLICY_KEY = void 0;
+exports.SettingsService = exports.LOAN_POLICY_FALLBACK = exports.LOAN_POLICY_KEY = exports.READER_CARD_KEY = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+exports.READER_CARD_KEY = 'library_circulation.reader_card';
 exports.LOAN_POLICY_KEY = 'library_circulation.loan_policy';
 exports.LOAN_POLICY_FALLBACK = { maxBooksPerStudent: 5, loanPeriodDays: 14, finePerDay: 1 };
 /**
@@ -46,6 +47,20 @@ let SettingsService = SettingsService_1 = class SettingsService {
             where: { key: exports.LOAN_POLICY_KEY },
             update: { value: value },
             create: { key: exports.LOAN_POLICY_KEY, value: value },
+        });
+        return value;
+    }
+    async getReaderCard() {
+        const row = await this.prisma.systemSetting.findUnique({ where: { key: exports.READER_CARD_KEY } });
+        const value = row?.value;
+        return { headerText: typeof value?.headerText === 'string' ? value.headerText : '' };
+    }
+    async updateReaderCard(dto) {
+        const value = { headerText: dto.headerText };
+        await this.prisma.systemSetting.upsert({
+            where: { key: exports.READER_CARD_KEY },
+            update: { value: value },
+            create: { key: exports.READER_CARD_KEY, value: value },
         });
         return value;
     }

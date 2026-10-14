@@ -213,6 +213,9 @@ export interface StudentImportRow {
   externalId: string | null;
   department: string | null;
   isActive: boolean | null;
+  club: boolean | null;
+  clubGroup: string | null;
+  clubStage: string | null;
   valid: boolean;
   error: string | null;
   action: 'create' | 'update' | null;
@@ -483,6 +486,7 @@ export const libraryCirculationApi = {
     const params = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== '' && v !== undefined && v !== 'all'));
     return apiClient.get<StudentListPage>(`${BASE}/students/paged`, { params }).then((r) => r.data);
   },
+  listStudentsForCards: () => apiClient.get<LibraryStudent[]>(`${BASE}/students/print-cards`).then((r) => r.data),
   listStudents: () => apiClient.get<LibraryStudent[]>(`${BASE}/students`).then((r) => r.data),
   searchStudents: (q: string) => apiClient.get<StudentSearchResult[]>(`${BASE}/students/search`, { params: { q } }).then((r) => r.data),
   getActiveBorrowingsForStudent: (studentId: string) =>
@@ -554,6 +558,8 @@ export const libraryCirculationApi = {
 
   // Settings
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),
+  getReaderCardSettings: () => apiClient.get<{ headerText: string }>(`${BASE}/settings/reader-card`).then((r) => r.data),
+  updateReaderCardSettings: (dto: { headerText: string }) => apiClient.put<{ headerText: string }>(`${BASE}/settings/reader-card`, dto).then((r) => r.data),
   updateLoanPolicy: (dto: LoanPolicy) => apiClient.put<LoanPolicy>(`${BASE}/settings/loan-policy`, dto).then((r) => r.data),
 };
 

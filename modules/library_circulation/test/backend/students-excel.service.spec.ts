@@ -57,6 +57,29 @@ describe('StudentsExcelService', () => {
     expect(rows[0]).toMatchObject({ row: 2, code: 'S1', name: 'Aisha', email: 'a@b.test' });
   });
 
+  it('parses the optional reading-club columns', async () => {
+    const rows = await ctx.service.parseWorkbook(
+      await workbookBuffer(['Code', 'Club', 'Club Group', 'Club Stage'], [['S1', 'yes', 'Eagles', '2'], ['S2', 'no', null, null], ['S3', 'maybe', null, null]]),
+    );
+    expect(rows[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: '2' });
+    expect(rows[1]).toMatchObject({ club: false, clubGroup: null });
+    expect(rows[2]).toMatchObject({ club: null, clubInvalid: true });
+  });
+
+  it('rejects club columns when the reading_club extension is not installed, and defers to it when it is', async () => {
+    ctx.prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'st1', code: 'S1', userId: 'u1' }] as never);
+    const rows = [{ row: 2, code: 'S1', name: null, email: null, className: null, externalId: null, department: null, isActive: null, club: true, clubGroup: 'Eagles', clubStage: null }];
+
+    const without = await ctx.service.validateRows(rows as never);
+    expect(without.rows[0]).toMatchObject({ valid: false });
+    expect(without.rows[0].error).toMatch(/Reading Club module/);
+
+    const extension = { validate: jest.fn(async () => [{ row: 2, error: 'Club group "Eagles" not found in the current episode' }]), apply: jest.fn() };
+    (ctx.service as unknown as { moduleRef: unknown }).moduleRef = { get: () => extension };
+    const withExt = await ctx.service.validateRows(rows as never);
+    expect(withExt.rows[0].error).toMatch(/not found/);
+  });
+
   it('rejects a file with no recognizable header', async () => {
     await expect(ctx.service.parseWorkbook(await workbookBuffer(['foo', 'bar'], [['1', '2']]))).rejects.toBeInstanceOf(BadRequestException);
   });

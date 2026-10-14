@@ -269,6 +269,23 @@ describe('FinesService', () => {
   });
 
   describe('list (Fines page filters)', () => {
+    it('puts unpaid, then partially paid fines first; settled ones last (newest first within each group)', async () => {
+      prisma.libraryFine.findMany.mockResolvedValue([
+        fineRow({ id: 'paid-new', status: 'paid' }),
+        fineRow({ id: 'partial-new', status: 'partially_paid' }),
+        fineRow({ id: 'unpaid-new', status: 'unpaid' }),
+        fineRow({ id: 'unpaid-old', status: 'unpaid' }),
+        fineRow({ id: 'waived-old', status: 'waived' }),
+      ]);
+      prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', code: 'STU-001', userId: 'user-reader' }]);
+      prisma.libraryFineType.findMany.mockResolvedValue([{ id: 'type-1', name: 'Late Return' }]);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      const result = await service.list({});
+
+      expect(result.fines.map((f: { id: string }) => f.id)).toEqual(['unpaid-new', 'unpaid-old', 'partial-new', 'paid-new', 'waived-old']);
+    });
+
     it('enriches each fine with reader code/name, fine type name, and creator name, plus a filtered total', async () => {
       prisma.libraryFine.findMany.mockResolvedValue([fineRow({ id: 'fine-1', amount: 10 }), fineRow({ id: 'fine-2', amount: 5 })]);
       prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'student-1', code: 'STU-001', userId: 'user-reader' }]);

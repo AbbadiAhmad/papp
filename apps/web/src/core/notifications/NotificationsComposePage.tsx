@@ -1,11 +1,13 @@
-import { Alert, Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
-import { useState, type FormEvent } from 'react';
+import { Alert, Autocomplete, Box, Button, Checkbox, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { extractErrorMessage } from '../../shared/api/httpClient';
 import { notificationsApi, type SendNotificationInput } from '../../shared/api/notifications';
+import { rolesApi } from '../../shared/api/roles';
+import { usersApi } from '../../shared/api/users';
 import { useGatedCall } from '../../shared/permissions';
-import type { NotificationTargetType } from '../../shared/api/types';
+import type { NotificationTargetType, PublicRole, PublicUser } from '../../shared/api/types';
 
 export function NotificationsComposePage() {
   const { t } = useTranslation();
@@ -16,10 +18,26 @@ export function NotificationsComposePage() {
   const [title, setTitle] = useState('');
   const [bodyMarkdown, setBodyMarkdown] = useState('');
   const [targetType, setTargetType] = useState<NotificationTargetType>('all_users');
-  const [targetId, setTargetId] = useState('');
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [roles, setRoles] = useState<PublicRole[]>([]);
+  const [users, setUsers] = useState<PublicUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Pickers need the lists; a failure just leaves the picker empty (the
+  // backend still validates whatever is sent).
+  useEffect(() => {
+    if (targetType === 'role' && roles.length === 0) {
+      rolesApi.list().then(setRoles).catch(() => undefined);
+    }
+    if (targetType === 'user' && users.length === 0) {
+      usersApi.list().then(setUsers).catch(() => undefined);
+    }
+  }, [targetType, roles.length, users.length]);
+
+  const roleLabel = (role: PublicRole) => t(role.nameI18nKey, { defaultValue: role.code });
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -32,8 +50,19 @@ export function NotificationsComposePage() {
         title,
         bodyMarkdown,
         targetType,
-        targetId: targetType === 'all_users' ? undefined : targetId,
+        targetId: targetType === 'user' ? (userId ?? '') : undefined,
+        targetIds: targetType === 'role' ? roleIds : undefined,
       };
+      if (targetType === 'role' && roleIds.length === 0) {
+        setError(t('core.notifications.select_roles_required'));
+        setSubmitting(false);
+        return;
+      }
+      if (targetType === 'user' && !userId) {
+        setError(t('core.notifications.select_user_required'));
+        setSubmitting(false);
+        return;
+      }
       const result = await gated('notifications.send', () => notificationsApi.send(dto));
       setSuccess(t('core.notifications.sent', { recipients: result.recipientCount }));
       setTitle('');
@@ -54,7 +83,9 @@ export function NotificationsComposePage() {
         <Stack spacing={2}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {success ? <Alert severity="success">{success}</Alert> : null}
-          <TextField label={t('core.notifications.category')} value={category} onChange={(e) => setCategory(e.target.value)} required fullWidth />
+          <TextField select label={t('core.notifications.category')} value={category} onChange={(e) => setCategory(e.target.value)} required fullWidth>
+            <MenuItem value="system.announcement">{t('core.notifications.categories.system.announcement')}</MenuItem>
+          </TextField>
           <TextField label={t('core.notifications.title')} value={title} onChange={(e) => setTitle(e.target.value)} required fullWidth />
           <TextField
             label={t('core.notifications.body')}
@@ -76,13 +107,38 @@ export function NotificationsComposePage() {
             <MenuItem value="role">{t('core.notifications.target_role')}</MenuItem>
             <MenuItem value="user">{t('core.notifications.target_user')}</MenuItem>
           </TextField>
-          {targetType !== 'all_users' ? (
-            <TextField
-              label={targetType === 'role' ? t('core.notifications.role_id') : t('core.notifications.user_id')}
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              required
-              fullWidth
+          {targetType === 'role' ? (
+            <Autocomplete
+              multiple
+              disableCloseOnSelect
+              options={roles}
+              value={roles.filter((r) => roleIds.includes(r.id))}
+              getOptionLabel={roleLabel}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              onChange={(_, value) => setRoleIds(value.map((r) => r.id))}
+              renderOption={(props, option, { selected }) => (
+                <li {...props} key={option.id}>
+                  <Checkbox checked={selected} sx={{ marginInlineEnd: 1 }} />
+                  {roleLabel(option)}
+                </li>
+              )}
+              renderValue={(value, getItemProps) =>
+                value.map((option, index) => {
+                  const { key, ...itemProps } = getItemProps({ index });
+                  return <Chip {...itemProps} key={key} label={roleLabel(option)} size="small" />;
+                })
+              }
+              renderInput={(params) => <TextField {...params} label={t('core.notifications.roles')} required={roleIds.length === 0} />}
+            />
+          ) : null}
+          {targetType === 'user' ? (
+            <Autocomplete
+              options={users}
+              value={users.find((u) => u.id === userId) ?? null}
+              getOptionLabel={(u) => `${u.name} (${u.email})`}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              onChange={(_, value) => setUserId(value?.id ?? null)}
+              renderInput={(params) => <TextField {...params} label={t('core.notifications.user')} required />}
             />
           ) : null}
           <Stack direction="row" spacing={2}>
