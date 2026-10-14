@@ -109,6 +109,7 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
                       <TableCell>{t('library_circulation.students.code')}</TableCell>
                       <TableCell>{t('library_circulation.students.name')}</TableCell>
                       <TableCell>{t('core.auth.email')}</TableCell>
+                      <TableCell>{t('library_circulation.students.import_club')}</TableCell>
                       <TableCell>{t('library_circulation.students.import_action')}</TableCell>
                       <TableCell>{t('library_circulation.students.import_error')}</TableCell>
                     </TableRow>
@@ -120,6 +121,15 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
                         <TableCell>{row.code ?? (row.action === 'create' ? t('library_circulation.students.import_auto_code') : '—')}</TableCell>
                         <TableCell>{row.name ?? '—'}</TableCell>
                         <TableCell>{row.email ?? '—'}</TableCell>
+                        <TableCell>
+                          {row.club === false
+                            ? t('library_circulation.students.import_club_remove')
+                            : row.clubGroup
+                              ? `${row.clubGroup}${row.clubStage ? ` / ${row.clubStage}` : ''}`
+                              : row.club
+                                ? t('library_circulation.students.import_club_member')
+                                : '—'}
+                        </TableCell>
                         <TableCell>
                           {row.valid ? (
                             <Chip size="small" color={row.action === 'create' ? 'success' : 'info'} label={t(`library_circulation.students.import_action_${row.action}`)} />

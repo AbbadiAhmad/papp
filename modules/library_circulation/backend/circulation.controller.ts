@@ -9,6 +9,7 @@ import { ScanDto } from './dto/scan.dto';
 import { CirculationService } from './circulation.service';
 import { FinesService } from './fines.service';
 import { PERMISSION_CHECKER, PermissionChecker } from './permission-checker';
+import { computeLateFine } from './settings.service';
 import { StudentsService } from './students.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
@@ -122,7 +123,7 @@ export class CirculationController {
     // Auto-create fines for late returns — skipped when the librarian already added an inline fine covering this same return (dto.fine below), to avoid double-charging.
     if (daysLate > 0 && !dto.fine) {
       const policy = await this.circulation.getLoanPolicy();
-      const amount = daysLate * policy.finePerDay;
+      const amount = computeLateFine(daysLate, policy);
       if (amount > 0) {
         lateFine = await this.fines.createLateFine(borrowingBefore.studentId, dto.borrowingId, amount, user.userId);
       }

@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { ListStudentsDto } from './dto/list-students.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { formatDateOnly, normalizeDateOfBirth, toDateOnly } from './date-of-birth';
 
 const READER_ROLE_CODE = 'reader';
 const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
@@ -41,6 +42,14 @@ export interface CreatedStudent {
  * though they're core tables, so no cross-module service import is needed
  * for this.
  */
+/** undefined = leave unchanged, null = clear, string = set (400 unless a real, past calendar date). */
+function parseDateOfBirth(value: string | null | undefined): Date | null | undefined {
+  if (value === undefined || value === null) return value;
+  const normalized = normalizeDateOfBirth(value);
+  if (!normalized) throw new BadRequestException('dateOfBirth must be a real date between 1900-01-01 and today (YYYY-MM-DD)');
+  return toDateOnly(normalized);
+}
+
 @Injectable()
 export class StudentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StudentsService.name);
@@ -147,7 +156,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     const users = userIds.length
       ? await this.prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true },
+          select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true, dateOfBirth: true },
         })
       : [];
     const userById = new Map(users.map((u) => [u.id, u]));
@@ -172,6 +181,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
         isActive: u?.isActive ?? true,
         externalId: u?.externalId ?? null,
         department: u?.department ?? null,
+        dateOfBirth: formatDateOnly(u?.dateOfBirth),
       };
     });
   }
@@ -318,7 +328,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
   async findById(id: string) {
     const student = await this.getOrThrow(id);
     const [user, activeBorrowingsRaw, openFines, allFines] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true, externalId: true, department: true, mustChangePassword: true } }),
+      this.prisma.user.findUnique({ where: { id: student.userId }, select: { name: true, email: true, isActive: true, externalId: true, department: true, dateOfBirth: true, mustChangePassword: true } }),
       this.prisma.libraryBorrowing.findMany({
         where: { studentId: id, status: { in: ['active', 'overdue'] } },
         orderBy: { borrowedAt: 'desc' },
@@ -346,6 +356,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
       isActive: user?.isActive ?? true,
       externalId: user?.externalId ?? null,
       department: user?.department ?? null,
+      dateOfBirth: formatDateOnly(user?.dateOfBirth),
       mustChangePassword: user?.mustChangePassword ?? false,
       activeBorrowingsCount: activeBorrowings.length,
       unpaidFinesTotal,
@@ -492,6 +503,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
     email: 'library_circulation.students.email',
     externalId: 'library_circulation.students.external_id',
     department: 'library_circulation.students.department',
+    dateOfBirth: 'library_circulation.students.date_of_birth',
     isActive: 'library_circulation.students.is_active',
     mustChangePassword: 'library_circulation.students.must_change_password',
   };
@@ -534,6 +546,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
             name: dto.name,
             externalId: dto.externalId || undefined,
             department: dto.department || undefined,
+            dateOfBirth: parseDateOfBirth(dto.dateOfBirth),
             passwordHash,
             mustChangePassword: true,
             createdBy,
@@ -583,6 +596,7 @@ export class StudentsService implements OnModuleInit, OnModuleDestroy {
       email: dto.email,
       externalId: dto.externalId,
       department: dto.department,
+      dateOfBirth: parseDateOfBirth(dto.dateOfBirth),
       isActive: dto.isActive,
       mustChangePassword: dto.mustChangePassword,
     };

@@ -25,6 +25,10 @@ interface ReturnDialogProps {
   bookLabel?: string | null;
   /** Late-fee rate per day from the loan policy; when > 0 a late return pre-fills a fine for the days late. */
   finePerDay?: number;
+  /** What `finePerDay` is charged per (default: each day late). */
+  fineUnit?: 'day' | 'week';
+  /** Cap on the late fine; 0/omitted = none. */
+  maxFine?: number;
   onReturn: (returnStatus: string, returnNotes?: string, returnedAt?: string, fine?: ReturnFineInput) => Promise<void>;
   onClose: () => void;
   loading?: boolean;
@@ -39,7 +43,7 @@ const RETURN_STATUSES: { value: ReturnStatus; labelKey: string }[] = [
 
 const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
 
-export function ReturnDialog({ open, borrowing, bookLabel, finePerDay = 0, onReturn, onClose, loading = false }: ReturnDialogProps) {
+export function ReturnDialog({ open, borrowing, bookLabel, finePerDay = 0, fineUnit = 'day', maxFine = 0, onReturn, onClose, loading = false }: ReturnDialogProps) {
   const { t, i18n } = useTranslation();
   const { hasPermission } = useAuth();
   // Recording a payment is its own permission; without it the fine can only be created unpaid.
@@ -112,9 +116,16 @@ export function ReturnDialog({ open, borrowing, bookLabel, finePerDay = 0, onRet
 
   const daysLate = calculateDaysLate();
 
-  /** The late fine's suggested amount is days late x the daily rate; any other type uses its configured default. */
+  /** Same rule as the server's `computeLateFine`: rate x days (or started weeks), rounded to cents, capped by the maximum fine. */
+  const lateFineAmount = (() => {
+    const units = fineUnit === 'week' ? Math.ceil(daysLate / 7) : daysLate;
+    const amount = Math.round(units * finePerDay * 100) / 100;
+    return maxFine > 0 ? Math.min(amount, maxFine) : amount;
+  })();
+
+  /** The late fine's suggested amount follows the policy (rate, unit, cap); any other type uses its configured default. */
   const defaultAmountFor = (ft: LibraryFineType): string =>
-    ft.code === 'FINE-LATE' && daysLate > 0 && finePerDay > 0 ? String(daysLate * finePerDay) : ft.defaultAmount;
+    ft.code === 'FINE-LATE' && daysLate > 0 && finePerDay > 0 ? String(lateFineAmount) : ft.defaultAmount;
 
   // Once a return status/fine type is picked, pre-fill a reasonable default
   // amount so the librarian reviews/adjusts rather than types from scratch —

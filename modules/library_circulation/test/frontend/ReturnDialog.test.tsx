@@ -32,8 +32,8 @@ beforeEach(() => {
   api.listFineTypes.mockResolvedValue(TYPES);
 });
 
-function open(b: ReturnType<typeof borrowing>, onReturn = vi.fn(async () => undefined), finePerDay = 2) {
-  render(<ReturnDialog open borrowing={b as never} bookLabel="Dune" finePerDay={finePerDay} onReturn={onReturn} onClose={vi.fn()} />);
+function open(b: ReturnType<typeof borrowing>, onReturn = vi.fn(async () => undefined), finePerDay = 2, extra: { fineUnit?: 'day' | 'week'; maxFine?: number } = {}) {
+  render(<ReturnDialog open borrowing={b as never} bookLabel="Dune" finePerDay={finePerDay} {...extra} onReturn={onReturn} onClose={vi.fn()} />);
   return onReturn;
 }
 
@@ -48,6 +48,16 @@ describe('ReturnDialog fine payment', () => {
     await waitFor(() => expect(onReturn).toHaveBeenCalled());
     const [, , , fine] = onReturn.mock.calls[0] as unknown[];
     expect(fine).toMatchObject({ fineTypeId: 'ft-late', amount: 6, paid: true, paymentMethod: 'cash' });
+  });
+
+  it('suggests a decimal rate, per started week, capped at the maximum fine', async () => {
+    open(borrowing(10), undefined, 1.5, { fineUnit: 'week' }); // 10 days = 2 started weeks x 1.5
+    await waitFor(() => expect(screen.getByDisplayValue('3')).toBeInTheDocument());
+  });
+
+  it('caps the suggested late fine at the maximum', async () => {
+    open(borrowing(10), undefined, 1.25, { maxFine: 4 }); // 10 x 1.25 = 12.5 -> 4
+    await waitFor(() => expect(screen.getByDisplayValue('4')).toBeInTheDocument());
   });
 
   it('unticking "Paid now" records the fine as unpaid (no paid flag sent)', async () => {

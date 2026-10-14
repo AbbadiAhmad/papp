@@ -230,6 +230,72 @@ export interface DashboardStats {
 
 const BASE = '/api/reading-club';
 
+export type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
+import type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
+
+export interface StatsPerson {
+  studentId: string;
+  code: string;
+  name: string;
+  className: string | null;
+}
+export interface StatsStage {
+  id: string;
+  order: number;
+  name: string;
+  targetType: StageTargetType;
+  targetAmount: number;
+  readersNow: number;
+  avgProgressPct: number | null;
+  avgDaysInStage: number | null;
+  completed: number;
+  completionRate: number | null;
+  categories: StatsCount[];
+  levels: StatsCount[];
+}
+export interface StatsGroup {
+  id: string;
+  name: string;
+  members: number;
+  completions: number;
+  categories: StatsCount[];
+  levels: StatsCount[];
+  stages: StatsStage[];
+}
+export interface StatsAgeBand {
+  label: string | null;
+  members: number;
+  completions: number;
+  categories: StatsCount[];
+}
+export interface ClubStatistics {
+  period: { from: string | null; to: string | null };
+  episode: { id: string; name: string; isCurrent: boolean } | null;
+  participation: {
+    activeReaders: number;
+    members: number;
+    participationPct: number | null;
+    finishedAllStages: number;
+    borrowingsPerMember: number | null;
+    borrowingsPerNonMember: number | null;
+  };
+  achievements: { completions: number; presents: number; completionsByMonth: Array<{ month: string; count: number }> };
+  rewards: { pending: number; oldestPendingDays: number | null; avgDaysToDeliver: number | null };
+  topReaders: Array<StatsPerson & { groupName: string | null; completions: number; booksRead: number }>;
+  stalled: Array<StatsPerson & { groupName: string | null; stageName: string | null; daysInStage: number; progressPct: number | null }>;
+  categories: StatsCount[];
+  levels: StatsCount[];
+  groups: StatsGroup[];
+  byAge: { bandYears: number; bands: StatsAgeBand[] };
+  episodes: Array<{ id: string; name: string; isCurrent: boolean; groups: number; completions: number; readersWithCompletion: number }>;
+}
+export interface StatisticsQuery {
+  episodeId?: string;
+  from?: string;
+  to?: string;
+  ageBandYears?: number;
+}
+
 export const readingClubApi = {
   // Episodes
   listEpisodes: () => apiClient.get<ReadingClubEpisode[]>(`${BASE}/episodes`).then((r) => r.data),
@@ -327,6 +393,9 @@ export const readingClubApi = {
       .then((r) => r.data),
   removeBookEntry: (studentId: string, entryId: string) =>
     apiClient.delete<void>(`${BASE}/readers/${studentId}/book-entries/${entryId}`).then((r) => r.data),
+
+  // Statistics
+  getStatistics: (query: StatisticsQuery) => apiClient.get<ClubStatistics>(`${BASE}/statistics`, { params: query }).then((r) => r.data),
 
   // Dashboard
   getDashboardStats: (episodeId?: string) =>

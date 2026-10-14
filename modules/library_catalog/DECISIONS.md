@@ -29,3 +29,4 @@ Append-only, same format as root `docs/DECISIONS.md` (see `docs/MODULE_SPEC.md` 
 
 | LIBRARY_CATALOG-D26 | **Sticker sheet enlarged: 3 per row, 62mm x 40mm each (was 4 per row, 45mm x 30mm).** Layout per sticker: header text + location on the left, a 28mm QR in the middle, the copy code printed vertically (`writing-mode: vertical-rl`) on the right to save width. Print CSS only, no data change. | Accepted |
 | LIBRARY_CATALOG-PAGINATION | Lists paginated through the shared `Paginated` wrapper (root D103); frontend only, no migration, patch version bump. | Accepted |
+| LIBRARY_CATALOG-D27 | **Sticker custom (header) text is printed vertically** (user request), in its own narrow column on the left; the QR plus the location now sit together in the middle, the code stays vertical on the right. Print CSS/markup only; version 1.2.3. | Accepted |

@@ -1,7 +1,7 @@
 {
   "key": "library_circulation",
   "name": "Library Circulation & Finance",
-  "version": "1.5.4",
+  "version": "1.5.10",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_catalog"],
   "description": "Students, staff-performed borrow/return, fines, and the finance side (transactions/payments/receipts) built on top of library_catalog's books/copies (D44). Requirements captured in docs/LIBRARY_MODULE_REQUIREMENTS.md.",
@@ -22,6 +22,10 @@
     { "code": "library_circulation.students.delete", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.delete" },
     { "code": "library_circulation.students.import", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.import" },
     { "code": "library_circulation.students.export", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.export" },
+    { "code": "library_circulation.students.print_cards", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.print_cards" },
+    { "code": "library_circulation.messages.send", "category": "library_circulation", "descriptionKey": "library_circulation.perm.messages.send" },
+    { "code": "library_circulation.messages.templates", "category": "library_circulation", "descriptionKey": "library_circulation.perm.messages.templates" },
+    { "code": "library_circulation.statistics.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.statistics.view" },
     { "code": "library_circulation.borrow", "category": "library_circulation", "descriptionKey": "library_circulation.perm.borrow" },
     { "code": "library_circulation.borrowings.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.borrowings.view" },
     { "code": "library_circulation.return", "category": "library_circulation", "descriptionKey": "library_circulation.perm.return" },
@@ -44,6 +48,10 @@
       "library_circulation.students.delete",
       "library_circulation.students.import",
       "library_circulation.students.export",
+      "library_circulation.students.print_cards",
+      "library_circulation.messages.send",
+      "library_circulation.messages.templates",
+      "library_circulation.statistics.view",
       "library_circulation.borrow",
       "library_circulation.borrowings.view",
       "library_circulation.return",
@@ -63,6 +71,10 @@
       "library_circulation.students.update",
       "library_circulation.students.import",
       "library_circulation.students.export",
+      "library_circulation.students.print_cards",
+      "library_circulation.messages.send",
+      "library_circulation.messages.templates",
+      "library_circulation.statistics.view",
       "library_circulation.borrow",
       "library_circulation.borrowings.view",
       "library_circulation.return",
@@ -84,9 +96,23 @@
 
   "settings": [
     {
+      "key": "library_circulation.message_templates",
+      "type": "json",
+      "default": [],
+      "labelKey": "library_circulation.messages.templates_label",
+      "requiredPermission": "library_circulation.messages.templates"
+    },
+    {
+      "key": "library_circulation.reader_card",
+      "type": "json",
+      "default": { "headerText": "" },
+      "labelKey": "library_circulation.settings.reader_card_label",
+      "requiredPermission": "library_circulation.settings.update"
+    },
+    {
       "key": "library_circulation.loan_policy",
       "type": "json",
-      "default": { "maxBooksPerStudent": 5, "loanPeriodDays": 14, "finePerDay": 1 },
+      "default": { "maxBooksPerStudent": 5, "loanPeriodDays": 14, "finePerDay": 1, "fineUnit": "day", "maxFine": 0 },
       "labelKey": "library_circulation.settings.loan_policy_label",
       "requiredPermission": "library_circulation.settings.update"
     }
@@ -157,11 +183,29 @@
       "requiredPermission": "library_circulation.finance.view"
     },
     {
+      "id": "library_circulation.statistics",
+      "labelKey": "library_circulation.menu.statistics",
+      "icon": "Poll",
+      "parentId": "library_circulation.root",
+      "order": 6,
+      "route": "/library-circulation/statistics",
+      "requiredPermission": "library_circulation.statistics.view"
+    },
+    {
+      "id": "library_circulation.messages",
+      "labelKey": "library_circulation.menu.messages",
+      "icon": "Notifications",
+      "parentId": "library_circulation.root",
+      "order": 7,
+      "route": "/library-circulation/messages",
+      "requiredPermission": "library_circulation.messages.send"
+    },
+    {
       "id": "library_circulation.settings",
       "labelKey": "library_circulation.menu.settings",
       "icon": "Settings",
       "parentId": "library_circulation.root",
-      "order": 6,
+      "order": 8,
       "route": "/library-circulation/settings",
       "requiredPermission": "library_circulation.settings.update"
     }
@@ -185,6 +229,12 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.students.view",
       "component": "frontend/pages/ReadersListPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/readers/print-cards",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.students.print_cards",
+      "component": "frontend/pages/ReaderCardsPage.tsx"
     },
     {
       "pattern": "/library-circulation/readers/:readerId",
@@ -215,6 +265,18 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.borrow",
       "component": "frontend/pages/BookHistoryPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/statistics",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.statistics.view",
+      "component": "frontend/pages/StatisticsPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/messages",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.messages.send",
+      "component": "frontend/pages/MessagesPage.tsx"
     },
     {
       "pattern": "/library-circulation/settings",

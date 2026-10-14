@@ -106,7 +106,20 @@ export class ModuleRegistryService {
 
   async list(): Promise<PublicModuleEntry[]> {
     const rows = await this.prisma.moduleRegistryEntry.findMany({ orderBy: { key: 'asc' } });
-    return rows.map(toPublicModuleEntry);
+    return rows.map((row) => ({ ...toPublicModuleEntry(row), availableVersion: this.diskVersionIfNewer(row.key, row.version) }));
+  }
+
+  /** The on-disk manifest version when it differs from the installed one, else null. Never throws. */
+  private diskVersionIfNewer(key: string, installedVersion: string): string | null {
+    if (key === 'core') return null;
+    try {
+      const manifestPath = this.manifestPathFor(key);
+      if (!existsSync(manifestPath)) return null;
+      const raw = this.readManifestJson(manifestPath) as { version?: unknown };
+      return typeof raw.version === 'string' && raw.version !== installedVersion ? raw.version : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -15,8 +15,15 @@ export interface SendNotificationInput {
   targetType: NotificationTargetType;
   /** user_id or role_id; must be null/absent for 'all_users' (D21). */
   targetId?: string | null;
+  /** 'role' targets only: several roles; recipients are the union of holders. */
+  targetIds?: string[];
   /** null = system-generated (ARCHITECTURE.md §12.1). */
   sentBy?: string | null;
+  /**
+   * Per-send override of the category's email setting: true = also email,
+   * false = in-app only. Omitted = follow `notifications.categories`.
+   */
+  email?: boolean;
 }
 
 export interface SendResult {
@@ -81,7 +88,9 @@ export class NotificationsService {
           bodyMarkdown: input.bodyMarkdown,
           sentBy: input.sentBy ?? null,
           targetType: input.targetType,
-          targetId: input.targetType === 'all_users' ? null : input.targetId,
+          // Several roles don't fit the single target_id column: store the
+          // id only for a single target; the full list is in the audit row.
+          targetId: input.targetType === 'all_users' ? null : (this.singleTargetId(input) ?? null),
         },
       });
       if (recipients.length > 0) {
@@ -113,6 +122,7 @@ export class NotificationsService {
             title: notification.title,
             targetType: notification.targetType,
             targetId: notification.targetId,
+            ...(input.targetIds ? { targetIds: input.targetIds } : {}),
             recipientCount: recipients.length,
           },
         });
@@ -124,7 +134,7 @@ export class NotificationsService {
       }
     }
 
-    const emailedCount = (await this.isEmailEnabled(input.category))
+    const emailedCount = (input.email ?? (await this.isEmailEnabled(input.category)))
       ? await this.emailRecipients(notification, recipients)
       : 0;
 
@@ -188,7 +198,23 @@ export class NotificationsService {
 
   // --- internals ------------------------------------------------------------
 
+  private singleTargetId(input: SendNotificationInput): string | null | undefined {
+    if (input.targetType === 'role' && input.targetIds && input.targetIds.length > 0) {
+      return input.targetIds.length === 1 ? input.targetIds[0] : null;
+    }
+    return input.targetId;
+  }
+
   private assertTargetShape(input: SendNotificationInput): void {
+    if (input.targetIds && input.targetIds.length > 0) {
+      if (input.targetType !== 'role') {
+        throw new BadRequestException("targetIds is only valid when targetType is 'role'");
+      }
+      if (input.targetId) {
+        throw new BadRequestException('Provide either targetId or targetIds, not both');
+      }
+      return;
+    }
     if (input.targetType === 'all_users' && input.targetId) {
       throw new BadRequestException("targetId must be omitted when targetType is 'all_users'");
     }
@@ -209,6 +235,18 @@ export class NotificationsService {
         return [user];
       }
       case 'role': {
+        if (input.targetIds && input.targetIds.length > 0) {
+          const ids = Array.from(new Set(input.targetIds));
+          const found = await this.prisma.role.findMany({ where: { id: { in: ids } }, select: { id: true } });
+          if (found.length !== ids.length) {
+            throw new NotFoundException('Target role not found');
+          }
+          return this.prisma.user.findMany({
+            where: { isActive: true, userRoles: { some: { roleId: { in: ids } } } },
+            select,
+            orderBy: { createdAt: 'asc' },
+          });
+        }
         const role = await this.prisma.role.findUnique({ where: { id: input.targetId as string } });
         if (!role) {
           throw new NotFoundException('Target role not found');

@@ -46,15 +46,99 @@ describe('StudentsExcelService', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer as never);
     const ws = wb.worksheets[0];
-    expect(ws.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active']);
+    expect(ws.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth']);
     expect(ws.getRow(2).getCell(1).value).toBe('STU000001');
     expect(ws.getRow(2).getCell(7).value).toBe('yes');
+  });
+
+  it('with reading_club installed, exports Club / Club Group / Club Stage plus a reference sheet and dropdowns', async () => {
+    ctx.students.list.mockResolvedValue([
+      { id: 'st1', code: 'S1', name: 'Aisha', email: 'a@b.test', className: '5A', externalId: null, department: null, isActive: true, dateOfBirth: '2014-05-06' },
+      { id: 'st2', code: 'S2', name: 'Omar', email: 'o@b.test', className: '5A', externalId: null, department: null, isActive: true },
+    ] as never);
+    const extension = {
+      exportData: jest.fn(async () => ({
+        members: { st1: { group: 'Eagles', stage: 'Silver' } },
+        groups: [{ name: 'Eagles', stages: [{ order: 1, name: 'Bronze' }, { order: 2, name: 'Silver' }] }, { name: 'Owls', stages: [] }],
+      })),
+      validate: jest.fn(),
+      apply: jest.fn(),
+    };
+    (ctx.service as unknown as { moduleRef: unknown }).moduleRef = { get: () => extension };
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await ctx.service.exportWorkbook()) as never);
+    const readers = wb.getWorksheet('Readers')!;
+    expect(readers.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth', 'Club', 'Club Group', 'Club Stage']);
+    expect([readers.getRow(2).getCell(9).value, readers.getRow(2).getCell(10).value, readers.getRow(2).getCell(11).value]).toEqual(['yes', 'Eagles', 'Silver']);
+    expect([readers.getRow(3).getCell(9).value, readers.getRow(3).getCell(10).value]).toEqual(['no', '']);
+    expect(readers.getCell('J2').dataValidation).toMatchObject({ type: 'list' });
+
+    const ref = wb.getWorksheet('Club reference')!;
+    expect(ref.getRow(2).getCell(1).value).toBe('Eagles');
+    expect(ref.getRow(3).getCell(3).value).toBe('Silver');
+    expect(ref.getRow(4).getCell(1).value).toBe('Owls');
+    expect(ref.getRow(3).getCell(6).value).toBe('Silver'); // distinct stage-name dropdown list
+
+    // The exported file feeds straight back into the import parser.
+    const parsed = await ctx.service.parseWorkbook((await wb.xlsx.writeBuffer()) as never);
+    expect(parsed[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: 'Silver' });
+    expect(parsed[1]).toMatchObject({ club: false, clubGroup: null });
+  });
+
+  it('parses the Date of Birth column (text or a real Excel date) and flags invalid / future dates', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Readers');
+    ws.addRow(['Code', 'Date of Birth']);
+    ws.addRow(['S1', '2014-05-06']);
+    ws.addRow(['S2', new Date(Date.UTC(2013, 0, 31))]);
+    ws.addRow(['S3', '31/12/2014']);
+    ws.addRow(['S4', '2999-01-01']);
+    ws.addRow(['S5', null]);
+    const rows = await ctx.service.parseWorkbook(Buffer.from(await wb.xlsx.writeBuffer()));
+    expect(rows[0].dateOfBirth).toBe('2014-05-06');
+    expect(rows[1].dateOfBirth).toBe('2013-01-31');
+    expect(rows[2]).toMatchObject({ dateOfBirth: null, dateOfBirthInvalid: true });
+    expect(rows[3].dateOfBirthInvalid).toBe(true);
+    expect(rows).toHaveLength(5);
+    expect(rows[4].dateOfBirth).toBeNull(); // blank cell: an existing reader keeps theirs
+  });
+
+  it('a row with an invalid date of birth is rejected by validation', async () => {
+    const report = await ctx.service.validateRows([
+      { row: 2, code: 'S9', name: 'X', email: 'x@y.test', className: null, externalId: null, department: null, dateOfBirth: null, dateOfBirthInvalid: true, isActive: null, club: null, clubGroup: null, clubStage: null },
+    ] as never);
+    expect(report.rows[0]).toMatchObject({ valid: false });
+    expect(report.rows[0].error).toMatch(/date of birth/i);
   });
 
   it('parses recognized columns case-insensitively and skips blank rows', async () => {
     const rows = await ctx.service.parseWorkbook(await workbookBuffer(['CODE', 'name', 'E-mail?', 'Email'], [['S1', 'Aisha', 'x', 'a@b.test'], [null, null, null, null]]));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ row: 2, code: 'S1', name: 'Aisha', email: 'a@b.test' });
+  });
+
+  it('parses the optional reading-club columns', async () => {
+    const rows = await ctx.service.parseWorkbook(
+      await workbookBuffer(['Code', 'Club', 'Club Group', 'Club Stage'], [['S1', 'yes', 'Eagles', '2'], ['S2', 'no', null, null], ['S3', 'maybe', null, null]]),
+    );
+    expect(rows[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: '2' });
+    expect(rows[1]).toMatchObject({ club: false, clubGroup: null });
+    expect(rows[2]).toMatchObject({ club: null, clubInvalid: true });
+  });
+
+  it('rejects club columns when the reading_club extension is not installed, and defers to it when it is', async () => {
+    ctx.prisma.libraryStudent.findMany.mockResolvedValue([{ id: 'st1', code: 'S1', userId: 'u1' }] as never);
+    const rows = [{ row: 2, code: 'S1', name: null, email: null, className: null, externalId: null, department: null, isActive: null, club: true, clubGroup: 'Eagles', clubStage: null }];
+
+    const without = await ctx.service.validateRows(rows as never);
+    expect(without.rows[0]).toMatchObject({ valid: false });
+    expect(without.rows[0].error).toMatch(/Reading Club module/);
+
+    const extension = { validate: jest.fn(async () => [{ row: 2, error: 'Club group "Eagles" not found in the current episode' }]), apply: jest.fn() };
+    (ctx.service as unknown as { moduleRef: unknown }).moduleRef = { get: () => extension };
+    const withExt = await ctx.service.validateRows(rows as never);
+    expect(withExt.rows[0].error).toMatch(/not found/);
   });
 
   it('rejects a file with no recognizable header', async () => {

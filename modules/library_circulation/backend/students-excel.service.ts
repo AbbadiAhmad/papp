@@ -1,14 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import ExcelJS from 'exceljs';
 import { randomBytes } from 'node:crypto';
+import { normalizeDateOfBirth, toDateOnly } from './date-of-birth';
+import { READER_IMPORT_EXTENSION, ReaderImportExtension } from './reader-import-extension';
 import { StudentsService } from './students.service';
 
 const READER_ROLE_CODE = 'reader';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Field = 'code' | 'name' | 'email' | 'className' | 'externalId' | 'department' | 'isActive';
+type Field = 'code' | 'name' | 'email' | 'className' | 'externalId' | 'department' | 'dateOfBirth' | 'isActive' | 'club' | 'clubGroup' | 'clubStage';
 
 /** Header text (lower-cased, trimmed) -> field. English only; the export writes exactly these. */
 const HEADER_ALIASES: Record<string, Field> = {
@@ -22,7 +25,20 @@ const HEADER_ALIASES: Record<string, Field> = {
   'external id': 'externalId',
   externalid: 'externalId',
   department: 'department',
+  'date of birth': 'dateOfBirth',
+  dateofbirth: 'dateOfBirth',
+  dob: 'dateOfBirth',
+  birthdate: 'dateOfBirth',
+  'birth date': 'dateOfBirth',
   active: 'isActive',
+  // Reading-club columns — only acted on when the reading_club module is installed.
+  club: 'club',
+  'in club': 'club',
+  'reading club': 'club',
+  'club group': 'clubGroup',
+  group: 'clubGroup',
+  'club stage': 'clubStage',
+  stage: 'clubStage',
 };
 
 export interface ParsedStudentRow {
@@ -33,10 +49,18 @@ export interface ParsedStudentRow {
   className: string | null;
   externalId: string | null;
   department: string | null;
+  /** `YYYY-MM-DD`; null = blank cell (an existing reader keeps theirs). */
+  dateOfBirth: string | null;
+  dateOfBirthInvalid?: boolean;
   /** null = column blank (unchanged on update, active on create). */
   isActive: boolean | null;
   /** Set when the Active cell held something that isn't yes/no — reported as the row's error. */
   isActiveInvalid?: boolean;
+  /** Club = yes/no (null = blank). Always the CURRENT reading-club episode. */
+  club: boolean | null;
+  clubGroup: string | null;
+  clubStage: string | null;
+  clubInvalid?: boolean;
 }
 
 export interface StudentImportRowResult extends ParsedStudentRow {
@@ -69,7 +93,19 @@ export interface StudentImportReport {
 export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly students: StudentsService) {}
+  constructor(
+    private readonly students: StudentsService,
+    @Optional() private readonly moduleRef?: ModuleRef,
+  ) {}
+
+  /** The reading_club extension, when that module is installed (it registers under a plain-string token). */
+  private clubExtension(): ReaderImportExtension | null {
+    try {
+      return this.moduleRef?.get<ReaderImportExtension>(READER_IMPORT_EXTENSION, { strict: false }) ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -81,8 +117,18 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
 
   // --- export ---------------------------------------------------------------
 
+  /**
+   * With reading_club installed, three extra columns (Club / Club Group /
+   * Club Stage — the import's own columns, so the file round-trips) plus a
+   * "Club reference" sheet listing every valid group/stage; the group and
+   * stage cells get dropdowns from it, so a librarian never types a name
+   * (or an ID) by hand.
+   */
   async exportWorkbook(): Promise<Buffer> {
     const rows = await this.students.list();
+    const extension = this.clubExtension();
+    const club = extension ? await extension.exportData(rows.map((r) => r.id)) : null;
+
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Readers');
     sheet.columns = [
@@ -93,9 +139,18 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       { header: 'External ID', key: 'externalId', width: 18 },
       { header: 'Department', key: 'department', width: 20 },
       { header: 'Active', key: 'isActive', width: 10 },
+      { header: 'Date of Birth', key: 'dateOfBirth', width: 16 },
+      ...(club
+        ? [
+            { header: 'Club', key: 'club', width: 10 },
+            { header: 'Club Group', key: 'clubGroup', width: 22 },
+            { header: 'Club Stage', key: 'clubStage', width: 22 },
+          ]
+        : []),
     ];
     sheet.getRow(1).font = { bold: true };
     for (const r of rows) {
+      const member = club?.members[r.id];
       sheet.addRow({
         code: r.code,
         name: r.name ?? '',
@@ -104,7 +159,45 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
         externalId: r.externalId ?? '',
         department: r.department ?? '',
         isActive: r.isActive ? 'yes' : 'no',
+        dateOfBirth: r.dateOfBirth ?? '',
+        ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
       });
+    }
+
+    if (club) {
+      const ref = workbook.addWorksheet('Club reference');
+      ref.columns = [
+        { header: 'Group', key: 'group', width: 24 },
+        { header: 'Stage order', key: 'order', width: 12 },
+        { header: 'Stage', key: 'stage', width: 24 },
+        { header: '', key: 'gap', width: 4 },
+        { header: 'Groups (dropdown list)', key: 'groupList', width: 24 },
+        { header: 'Stages (dropdown list)', key: 'stageList', width: 24 },
+      ];
+      ref.getRow(1).font = { bold: true };
+      const stageNames = [...new Set(club.groups.flatMap((g) => g.stages.map((s) => s.name)))];
+      const lines = Math.max(
+        club.groups.reduce((n, g) => n + Math.max(1, g.stages.length), 0),
+        club.groups.length,
+        stageNames.length,
+      );
+      const table: Array<{ group: string; order: number | string; stage: string }> = club.groups.flatMap<{ group: string; order: number | string; stage: string }>((g) =>
+        g.stages.length ? g.stages.map((s) => ({ group: g.name, order: s.order, stage: s.name })) : [{ group: g.name, order: '', stage: '' }],
+      );
+      for (let i = 0; i < lines; i++) {
+        ref.addRow({ ...(table[i] ?? {}), groupList: club.groups[i]?.name ?? '', stageList: stageNames[i] ?? '' });
+      }
+      const lastRow = Math.max(2, lines + 1);
+      const lastReaderRow = rows.length + 1;
+      for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
+        sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
+        if (club.groups.length) {
+          sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
+        }
+        if (stageNames.length) {
+          sheet.getCell(`K${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
+        }
+      }
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
@@ -127,24 +220,34 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       if (field) columns.set(col, field);
     });
     if (!columns.size) {
-      throw new BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active)');
+      throw new BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, Date of Birth, and optionally Club, Club Group, Club Stage)');
     }
 
     const rows: ParsedStudentRow[] = [];
     for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
       const row = sheet.getRow(rowNumber);
       const parsed: ParsedStudentRow = {
-        row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, isActive: null,
+        row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, dateOfBirth: null, isActive: null,
+        club: null, clubGroup: null, clubStage: null,
       };
       let any = false;
       for (const [col, field] of columns) {
-        const text = cellText(row.getCell(col).value);
+        const rawValue = row.getCell(col).value;
+        const text = field === 'dateOfBirth' && rawValue instanceof Date ? (Number.isNaN(rawValue.getTime()) ? 'invalid' : rawValue.toISOString().slice(0, 10)) : cellText(rawValue);
         if (!text) continue;
         any = true;
-        if (field === 'isActive') {
+        if (field === 'dateOfBirth') {
+          const normalized = normalizeDateOfBirth(text);
+          if (normalized) parsed.dateOfBirth = normalized;
+          else parsed.dateOfBirthInvalid = true;
+        } else if (field === 'isActive') {
           const flag = parseFlag(text);
           if (flag === undefined) parsed.isActiveInvalid = true;
           else parsed.isActive = flag;
+        } else if (field === 'club') {
+          const flag = parseFlag(text);
+          if (flag === undefined) parsed.clubInvalid = true;
+          else parsed.club = flag;
         } else {
           parsed[field] = text;
         }
@@ -176,6 +279,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       const fail = (error: string): StudentImportRowResult => ({ ...row, valid: false, error, action: null, matchedStudentId: null });
 
       if (row.isActiveInvalid) return fail('Active must be yes/no');
+      if (row.dateOfBirthInvalid) return fail('Invalid date of birth (use YYYY-MM-DD; not in the future)');
       if (row.email && !EMAIL_RE.test(row.email)) return fail(`Invalid email "${row.email}"`);
       if (!row.code && !row.email) return fail('Each row needs a Code or an Email');
 
@@ -208,6 +312,23 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       return { ...row, valid: true, error: null, action: 'create', matchedStudentId: null };
     });
 
+    // Club columns: validated by the reading_club extension when installed.
+    const clubRows = results.filter((r) => r.valid && (r.club !== null || r.clubGroup || r.clubStage || r.clubInvalid));
+    if (clubRows.length) {
+      const extension = this.clubExtension();
+      const clubErrors = new Map<number, string>();
+      for (const r of clubRows) if (r.clubInvalid) clubErrors.set(r.row, 'Club must be yes/no');
+      if (!extension) {
+        for (const r of clubRows) if (!clubErrors.has(r.row)) clubErrors.set(r.row, 'Club columns need the Reading Club module to be installed');
+      } else {
+        for (const e of await extension.validate(clubRows.filter((r) => !clubErrors.has(r.row)))) clubErrors.set(e.row, e.error);
+      }
+      for (const r of results) {
+        const error = clubErrors.get(r.row);
+        if (error && r.valid) Object.assign(r, { valid: false, error, action: null, matchedStudentId: null });
+      }
+    }
+
     const validCount = results.filter((r) => r.valid).length;
     return { rows: results, validCount, invalidCount: results.length - validCount, allValid: results.length > 0 && validCount === results.length };
   }
@@ -224,6 +345,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
     const creates = report.rows.filter((r) => r.action === 'create');
     const hashes = await Promise.all(creates.map(() => argon2.hash(randomBytes(18).toString('base64url'), { type: argon2.argon2id })));
 
+    const studentIdByRow = new Map<number, string>();
     try {
       await this.prisma.$transaction(
         async (tx) => {
@@ -236,6 +358,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
                 email: row.email ?? undefined,
                 externalId: row.externalId ?? undefined,
                 department: row.department ?? undefined,
+                dateOfBirth: row.dateOfBirth ? toDateOnly(row.dateOfBirth) : undefined,
                 isActive: row.isActive ?? undefined,
               };
               if (Object.values(userData).some((v) => v !== undefined)) {
@@ -243,6 +366,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
               }
               if (row.code) await this.students.reconcileCodeSequence(tx, row.code);
               await tx.libraryStudent.update({ where: { id: student.id }, data: { code: row.code ?? undefined, className: row.className ?? undefined } });
+              studentIdByRow.set(row.row, student.id);
             } else {
               const code = row.code ?? (await this.students.allocateCode(tx));
               if (row.code) await this.students.reconcileCodeSequence(tx, row.code);
@@ -252,6 +376,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
                   name: row.name!,
                   externalId: row.externalId ?? undefined,
                   department: row.department ?? undefined,
+                  dateOfBirth: row.dateOfBirth ? toDateOnly(row.dateOfBirth) : undefined,
                   isActive: row.isActive ?? true,
                   passwordHash: hashes[createIndex++],
                   mustChangePassword: true,
@@ -259,7 +384,8 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
                 },
               });
               await tx.userRole.create({ data: { userId: user.id, roleId: readerRole.id, assignedBy: importedBy } });
-              await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+              const created = await tx.libraryStudent.create({ data: { userId: user.id, code, className: row.className ?? undefined } });
+              studentIdByRow.set(row.row, created.id);
             }
           }
         },
@@ -271,6 +397,15 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException(`Import rejected — a reader or user with this ${target} already exists (nothing was imported)`);
       }
       throw error;
+    }
+
+    // Club membership is applied after the reader rows are safely committed.
+    const extension = this.clubExtension();
+    if (extension) {
+      const entries = report.rows
+        .filter((r) => r.club !== null || r.clubGroup)
+        .flatMap((r) => (studentIdByRow.has(r.row) ? [{ row: r.row, club: r.club, clubGroup: r.clubGroup, clubStage: r.clubStage, studentId: studentIdByRow.get(r.row)! }] : []));
+      if (entries.length) await extension.apply(entries, importedBy);
     }
     return report;
   }

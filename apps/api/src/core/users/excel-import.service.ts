@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeDateOfBirth, toDateOnly } from './date-of-birth.util';
 import { ExportRow, ImportReport, ImportRowResult, ParsedImportRow } from './excel-import.types';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,6 +17,11 @@ const HEADER_ALIASES: Record<string, keyof Omit<ParsedImportRow, 'row'>> = {
   'external id': 'externalId',
   role: 'roleCode',
   department: 'department',
+  'date of birth': 'dateOfBirth',
+  dateofbirth: 'dateOfBirth',
+  dob: 'dateOfBirth',
+  birthdate: 'dateOfBirth',
+  'birth date': 'dateOfBirth',
 };
 
 /**
@@ -56,10 +62,11 @@ export class ExcelImportService {
 
     if (!columnByIndex.size) {
       throw new BadRequestException(
-        'No recognized columns found in the header row (expected: name, email, ID, role, department)',
+        'No recognized columns found in the header row (expected: name, email, ID, role, department, date of birth)',
       );
     }
 
+    const hasDateOfBirthColumn = [...columnByIndex.values()].includes('dateOfBirth');
     const rows: ParsedImportRow[] = [];
     for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
       const row = worksheet.getRow(rowNumber);
@@ -74,10 +81,22 @@ export class ExcelImportService {
         externalId: null,
         roleCode: null,
         department: null,
+        // Only present when the file has the column — otherwise an update leaves the stored value alone.
+        ...(hasDateOfBirthColumn ? { dateOfBirth: null } : {}),
       };
       let hasAnyValue = false;
       for (const [colNumber, field] of columnByIndex) {
         const cellValue = row.getCell(colNumber).value;
+        if (field === 'dateOfBirth') {
+          const text = this.cellToDateText(cellValue);
+          if (text !== null) {
+            hasAnyValue = true;
+            const normalized = normalizeDateOfBirth(text);
+            if (normalized) parsed.dateOfBirth = normalized;
+            else parsed.dateOfBirthInvalid = true;
+          }
+          continue;
+        }
         const value = this.cellToString(cellValue);
         if (value !== null) hasAnyValue = true;
         (parsed as unknown as Record<string, string | null>)[field] = value;
@@ -139,6 +158,9 @@ export class ExcelImportService {
     }
     if (!EMAIL_RE.test(parsed.email)) {
       return { ...base, error: `Invalid email: ${parsed.email}` };
+    }
+    if (parsed.dateOfBirthInvalid) {
+      return { ...base, error: 'Invalid date of birth (use YYYY-MM-DD; not in the future)' };
     }
     if (!parsed.roleCode) {
       return { ...base, error: 'Missing required field: role' };
@@ -207,6 +229,7 @@ export class ExcelImportService {
               email: row.email!,
               externalId: row.externalId,
               department: row.department,
+              dateOfBirth: row.dateOfBirth === undefined ? undefined : row.dateOfBirth === null ? null : toDateOnly(row.dateOfBirth),
             },
           });
           await tx.userRole.upsert({
@@ -225,6 +248,7 @@ export class ExcelImportService {
               email: row.email!,
               externalId: row.externalId,
               department: row.department,
+              dateOfBirth: row.dateOfBirth === undefined ? undefined : row.dateOfBirth === null ? null : toDateOnly(row.dateOfBirth),
               passwordHash,
               mustChangePassword: true,
               createdBy: importedBy,
@@ -252,6 +276,7 @@ export class ExcelImportService {
       externalId: user.externalId,
       role: user.userRoles.map((ur) => ur.role.code).join(','),
       department: user.department,
+      dateOfBirth: user.dateOfBirth ? user.dateOfBirth.toISOString().slice(0, 10) : null,
     }));
 
     const workbook = new ExcelJS.Workbook();
@@ -262,11 +287,18 @@ export class ExcelImportService {
       { header: 'id', key: 'externalId', width: 18 },
       { header: 'role', key: 'role', width: 20 },
       { header: 'department', key: 'department', width: 20 },
+      { header: 'date of birth', key: 'dateOfBirth', width: 16 },
     ];
     worksheet.addRows(exportRows);
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(arrayBuffer);
+  }
+
+  /** A date cell (Excel stores real dates) or text -> `YYYY-MM-DD`-ish text; null when blank. */
+  private cellToDateText(value: ExcelJS.CellValue): string | null {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'invalid' : value.toISOString().slice(0, 10);
+    return this.cellToString(value);
   }
 
   private cellToString(value: ExcelJS.CellValue): string | null {

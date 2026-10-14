@@ -17,7 +17,7 @@ const fetchStudentState = async (prisma: PrismaClient, req: Request) => {
   if (!student) return null;
   const user = await prisma.user.findUnique({
     where: { id: student.userId },
-    select: { name: true, email: true, externalId: true, department: true, isActive: true, mustChangePassword: true },
+    select: { name: true, email: true, externalId: true, department: true, dateOfBirth: true, isActive: true, mustChangePassword: true },
   });
   return { ...student, ...user };
 };
@@ -60,6 +60,13 @@ export class StudentsController {
   @RequirePermission('library_circulation.students.create')
   async peekNextCode() {
     return { code: await this.students.peekNextCode() };
+  }
+
+  /** Readers available for ID-card printing (the page filters/selects client-side). Before `:id`. */
+  @Get('print-cards')
+  @RequirePermission('library_circulation.students.print_cards')
+  async listForCards() {
+    return this.students.list();
   }
 
   @Get('export')

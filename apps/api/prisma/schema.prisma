@@ -74,6 +74,8 @@ model User {
   name                String
   externalId          String?   @unique @map("external_id")
   department          String?
+  /// Calendar date (no time zone); null = unknown. Migration 0016.
+  dateOfBirth         DateTime? @db.Date @map("date_of_birth")
   /// @Sensitive
   passwordHash        String    @map("password_hash")
   mustChangePassword  Boolean   @default(false) @map("must_change_password")

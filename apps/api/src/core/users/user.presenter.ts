@@ -14,6 +14,8 @@ export interface PublicUser {
   name: string;
   externalId: string | null;
   department: string | null;
+  /** `YYYY-MM-DD`, or null when unknown. */
+  dateOfBirth: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   lastLoginAt: Date | null;
@@ -31,6 +33,7 @@ export function toPublicUser(user: User, roles?: PublicRole[]): PublicUser {
     name: user.name,
     externalId: user.externalId,
     department: user.department,
+    dateOfBirth: user.dateOfBirth ? user.dateOfBirth.toISOString().slice(0, 10) : null,
     mustChangePassword: user.mustChangePassword,
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,

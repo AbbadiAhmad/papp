@@ -13,6 +13,8 @@ export interface PublicUser {
   name: string;
   externalId: string | null;
   department: string | null;
+  /** YYYY-MM-DD or null. */
+  dateOfBirth?: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
@@ -180,6 +182,8 @@ export interface PublicModuleEntry {
   updatedAt: string;
   manifestSnapshot: unknown;
   dataDropped: boolean;
+  /** Version on disk when it differs from `version` — an upgrade is available. */
+  availableVersion?: string | null;
 }
 
 /**
