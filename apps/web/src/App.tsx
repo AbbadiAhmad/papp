@@ -22,14 +22,11 @@ import { ForbiddenPage } from './core/ForbiddenPage';
 import { NotFoundPage } from './core/NotFoundPage';
 import { UsersListPage } from './core/users/UsersListPage';
 import { UsersImportPage } from './core/users/UsersImportPage';
-import { ChangePasswordPage } from './core/users/ChangePasswordPage';
-import { MyPreferencesPage } from './core/users/MyPreferencesPage';
+import { AccountPage } from './core/users/AccountPage';
 import { useGuardedQuery } from './shared/hooks/useGuardedQuery';
 import { usersApi } from './shared/api/users';
 import { RolesListPage } from './core/roles/RolesListPage';
 import { PermissionsMatrixPage } from './core/permissions/PermissionsMatrixPage';
-import { MyPermissionsPage } from './core/permissions/MyPermissionsPage';
-import { SessionsPage } from './core/sessions/SessionsPage';
 import { AuditPage } from './core/audit/AuditPage';
 import { BackupPage } from './core/backup/BackupPage';
 import { SettingsPage } from './core/settings/SettingsPage';
@@ -220,7 +217,12 @@ function AppRoutes() {
     <PageLayout>
       <Routes>
         <Route path="/" element={<LandingPageRedirect />} />
-        <Route path="/my-preferences" element={<MyPreferencesPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/account/:tab" element={<AccountPage />} />
+        <Route path="/my-preferences" element={<Navigate to="/account/preferences" replace />} />
+        <Route path="/change-password" element={<Navigate to="/account/password" replace />} />
+        <Route path="/my-permissions" element={<Navigate to="/account/permissions" replace />} />
+        <Route path="/sessions" element={<Navigate to="/account/sessions" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/register" element={<Navigate to="/" replace />} />
         <Route path="/force-password-change" element={<Navigate to="/" replace />} />
@@ -253,30 +255,6 @@ function AppRoutes() {
           element={
             <RequirePermissionRoute code="permissions.view">
               <PermissionsMatrixPage />
-            </RequirePermissionRoute>
-          }
-        />
-        <Route
-          path="/sessions"
-          element={
-            <RequirePermissionRoute code="sessions.view_my">
-              <SessionsPage />
-            </RequirePermissionRoute>
-          }
-        />
-        <Route
-          path="/change-password"
-          element={
-            <RequirePermissionRoute code="users.password.change_my">
-              <ChangePasswordPage />
-            </RequirePermissionRoute>
-          }
-        />
-        <Route
-          path="/my-permissions"
-          element={
-            <RequirePermissionRoute code="permissions.view_my">
-              <MyPermissionsPage />
             </RequirePermissionRoute>
           }
         />

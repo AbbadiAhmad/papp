@@ -12,7 +12,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListSubheader,
   Menu,
   MenuItem,
   Tab,
@@ -31,8 +30,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
-import KeyIcon from '@mui/icons-material/Key';
-import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto';
 import LocalLibraryIcon from '@mui/icons-material/LocalLibrary';
@@ -522,7 +519,7 @@ function PlatformMenuButton() {
 export function TopBar() {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const { status, user, logout, hasPermission, mustChangePassword } = useAuth();
+  const { status, user, logout, mustChangePassword } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
@@ -628,28 +625,17 @@ export function TopBar() {
             <Menu anchorEl={userMenuAnchor} open={Boolean(userMenuAnchor)} onClose={() => setUserMenuAnchor(null)}>
               <MenuItem disabled>{user.email}</MenuItem>
               <Divider />
-              <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'transparent' }}>{t('core.menu.account')}</ListSubheader>
-              {/* Personal pages live here, not in the side menu; each shows only with its own permission. */}
-              {[
-                { route: '/my-preferences', label: 'core.menu.myPreferences', icon: <ManageAccountsIcon fontSize="small" />, permission: null },
-                { route: '/change-password', label: 'core.menu.changePassword', icon: <KeyIcon fontSize="small" />, permission: 'users.password.change_my' },
-                { route: '/my-permissions', label: 'core.menu.myPermissions', icon: <ShieldIcon fontSize="small" />, permission: 'permissions.view_my' },
-                { route: '/sessions', label: 'core.menu.sessions', icon: <LockPersonIcon fontSize="small" />, permission: 'sessions.view_my' },
-              ]
-                .filter((item) => item.permission === null || hasPermission(item.permission))
-                .map((item) => (
-                  <MenuItem
-                    key={item.route}
-                    onClick={() => {
-                      setUserMenuAnchor(null);
-                      navigate(item.route);
-                    }}
-                  >
-                    <ListItemIcon>{item.icon}</ListItemIcon>
-                    {t(item.label)}
-                  </MenuItem>
-                ))}
-              <Divider />
+              <MenuItem
+                onClick={() => {
+                  setUserMenuAnchor(null);
+                  navigate('/account');
+                }}
+              >
+                <ListItemIcon>
+                  <ManageAccountsIcon fontSize="small" />
+                </ListItemIcon>
+                {t('core.account.title')}
+              </MenuItem>
               <MenuItem onClick={handleLogout}>
                 <ListItemIcon>
                   <LogoutIcon fontSize="small" />

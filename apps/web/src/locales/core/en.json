@@ -198,5 +198,14 @@
   "core.changePassword.current": "Current password",
   "core.changePassword.hint": "Changing your password signs you out of all your other devices and browsers. This one stays signed in.",
   "core.changePassword.success": "Password changed.",
-  "core.changePassword.successOthers": "Password changed. {{count}} other session(s) were signed out."
+  "core.changePassword.successOthers": "Password changed. {{count}} other session(s) were signed out.",
+  "core.account.title": "My account",
+  "core.account.tabProfile": "My information",
+  "core.account.profileNote": "This is what the system stores about you. It can only be changed by an administrator; the one thing you can change yourself is your password.",
+  "core.account.name": "Name",
+  "core.account.email": "Email",
+  "core.account.memberSince": "Member since",
+  "core.account.none": "Not set",
+  "core.account.statusActive": "Active",
+  "core.account.statusInactive": "Inactive"
 }
