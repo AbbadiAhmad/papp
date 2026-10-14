@@ -382,7 +382,12 @@ export function TopBar() {
             <MenuIcon />
           </IconButton>
         ) : null}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1, minWidth: 0 }}>
+        {/* Clicking the brand goes to "/", which redirects to the user's landing page. */}
+        <Box
+          component={RouterLink}
+          to="/"
+          sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
+        >
           <Box
             aria-hidden
             sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 2 }}

@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   getActiveBorrowingsForStudent: vi.fn(),
   listFines: vi.fn(),
   getCopyCirculationHistory: vi.fn(),
+  getBookCirculationHistory: vi.fn(),
   getStudent: vi.fn(),
   searchStudents: vi.fn(),
   returnBorrowing: vi.fn(),
@@ -57,6 +58,7 @@ beforeEach(() => {
   api.getActiveBorrowingsForStudent.mockResolvedValue([]);
   api.listFines.mockResolvedValue({ fines: [] });
   api.getCopyCirculationHistory.mockResolvedValue([]);
+  api.getBookCirculationHistory.mockResolvedValue([]);
   api.borrow.mockResolvedValue({});
   api.getStudentIncidents.mockResolvedValue({ damagedCount: 2, lostCount: 1, lastIncidentAt: '2026-09-10', items: [{ borrowingId: 'b9', kind: 'damaged', occurredAt: '2026-09-10', bookTitle: 'Old book', qrCode: 'B9', returnNotes: null, fines: [] }] });
   api.searchBookCopies.mockResolvedValue([]);
