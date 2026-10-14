@@ -108,7 +108,7 @@ export interface ReadingClubStageCompletion {
 }
 
 /** A reader's own completion history row — same shape as `ReadingClubStageCompletion` now that groupName/stageName/stageOrder live on the base type itself (READING_CLUB-D16); kept as a distinct alias since call sites already reference it by this name. */
-export type ReaderCompletionRow = ReadingClubStageCompletion & { rewardDescription?: string | null };
+export type ReaderCompletionRow = ReadingClubStageCompletion & { rewardDescription?: string | null; markedByName?: string | null; rewardDeliveredByName?: string | null };
 
 export interface ReadingClubPresent {
   id: string;
@@ -117,6 +117,7 @@ export interface ReadingClubPresent {
   description: string;
   context: { episodeName?: string | null; groupName?: string | null; stageName?: string | null } | null;
   givenBy: string;
+  givenByName?: string | null;
   givenAt: string;
 }
 

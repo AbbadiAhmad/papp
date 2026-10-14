@@ -146,5 +146,9 @@
   "reading_club.readers.present_text": "وصف الهدية",
   "reading_club.readers.presents_heading": "الهدايا المسلّمة",
   "reading_club.readers.present_given_at": "تاريخ التسليم",
-  "reading_club.readers.present_episode": "الموسم"
+  "reading_club.readers.present_episode": "الموسم",
+  "reading_club.readers.additional_present": "هدية إضافية",
+  "reading_club.readers.present_type": "النوع",
+  "reading_club.readers.given_by": "سلّمها",
+  "reading_club.readers.delivered_by": "سلّم المكافأة"
 }

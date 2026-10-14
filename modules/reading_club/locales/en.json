@@ -146,5 +146,9 @@
   "reading_club.readers.present_text": "Present description",
   "reading_club.readers.presents_heading": "Presents given",
   "reading_club.readers.present_given_at": "Given on",
-  "reading_club.readers.present_episode": "Episode"
+  "reading_club.readers.present_episode": "Episode",
+  "reading_club.readers.additional_present": "Additional present",
+  "reading_club.readers.present_type": "Type",
+  "reading_club.readers.given_by": "Given by",
+  "reading_club.readers.delivered_by": "Delivered by"
 }

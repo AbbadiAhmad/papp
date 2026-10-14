@@ -370,6 +370,30 @@ describe('MembershipsService', () => {
     });
   });
 
+  describe('getReaderDetail — who gave each present (READING_CLUB-D27)', () => {
+    it('resolves givenByName for additional presents and delivered-by for stage rewards', async () => {
+      const service = buildService(prisma);
+      prisma.libraryStudent.findUnique.mockResolvedValue({ id: 'student-1', userId: 'user-1', code: 'STU1' });
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', name: 'Reader One' });
+      prisma.readingClubMembership.findUnique.mockResolvedValue(null);
+      prisma.readingClubStageCompletion.findMany.mockResolvedValue([
+        { id: 'c1', stageId: null, markedBy: 'lib-1', rewardDeliveredBy: 'lib-2', rewardSnapshot: { description: 'Pack' } },
+      ]);
+      prisma.readingClubPresent.findMany.mockResolvedValue([{ id: 'p1', givenBy: 'lib-1', description: 'Voucher' }]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'lib-1', name: 'Librarian One' },
+        { id: 'lib-2', name: 'Librarian Two' },
+      ]);
+
+      const detail = await service.getReaderDetail('student-1');
+
+      expect(detail.presents[0]).toEqual(expect.objectContaining({ givenByName: 'Librarian One' }));
+      expect(detail.completions[0]).toEqual(
+        expect.objectContaining({ markedByName: 'Librarian One', rewardDeliveredByName: 'Librarian Two', rewardDescription: 'Pack' }),
+      );
+    });
+  });
+
   describe('getReaderDetail — completion history reads its own name snapshot, never a live join (READING_CLUB-D16)', () => {
     it('displays a completion\'s groupName/stageName/stageOrder straight from the row, even though its live group/stage are gone', async () => {
       const student = { id: 'student-1', userId: 'user-1', code: 'STU1', className: '3A' };

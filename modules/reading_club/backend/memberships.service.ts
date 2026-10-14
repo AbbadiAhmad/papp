@@ -184,7 +184,23 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       stageOrder: completion.stageOrder,
     }));
 
-    const presents = await this.prisma.readingClubPresent.findMany({ where: { studentId }, orderBy: { givenAt: 'desc' } });
+    const presentRows = await this.prisma.readingClubPresent.findMany({ where: { studentId }, orderBy: { givenAt: 'desc' } });
+
+    // READING_CLUB-D27: resolve who gave each present — the additional-present giver, and for stage rewards who confirmed delivery / who marked the stage finished.
+    const actorIds = [
+      ...new Set([
+        ...presentRows.map((p) => p.givenBy),
+        ...completionRows.flatMap((c) => [c.markedBy, c.rewardDeliveredBy]),
+      ].filter((id): id is string => !!id)),
+    ];
+    const actors = actorIds.length ? ((await this.prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })) ?? []) : [];
+    const actorName = (id: string | null) => (id ? (actors.find((a) => a.id === id)?.name ?? null) : null);
+    const presents = presentRows.map((p) => ({ ...p, givenByName: actorName(p.givenBy) }));
+    const completionsWithActors = completionRows.map((c) => ({
+      ...c,
+      markedByName: actorName(c.markedBy),
+      rewardDeliveredByName: actorName(c.rewardDeliveredBy),
+    }));
 
     return {
       studentId: student.id,
@@ -196,7 +212,7 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       stage,
       progress,
       groupStages,
-      completions: completionRows,
+      completions: completionsWithActors,
       presents,
     };
   }

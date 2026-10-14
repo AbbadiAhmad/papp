@@ -267,20 +267,26 @@ export function ReaderDetailPage() {
                       <TableHead>
                         <TableRow>
                           <TableCell>{t('reading_club.readers.present')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_type')}</TableCell>
                           <TableCell>{t('reading_club.readers.present_episode')}</TableCell>
                           <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
                           <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
                           <TableCell>{t('reading_club.readers.present_given_at')}</TableCell>
+                          <TableCell>{t('reading_club.readers.given_by')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {reader.presents.map((present) => (
                           <TableRow key={present.id}>
                             <TableCell>{present.description}</TableCell>
+                            <TableCell>
+                              <Chip size="small" color="info" label={t('reading_club.readers.additional_present')} />
+                            </TableCell>
                             <TableCell>{present.context?.episodeName ?? '—'}</TableCell>
                             <TableCell>{present.context?.groupName ?? '—'}</TableCell>
                             <TableCell>{present.context?.stageName ?? '—'}</TableCell>
                             <TableCell>{formatDateOnly(present.givenAt, language)}</TableCell>
+                            <TableCell>{present.givenByName ?? '—'}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -309,6 +315,7 @@ export function ReaderDetailPage() {
                           <TableCell>{t('reading_club.readers.completed_at')}</TableCell>
                           <TableCell>{t('reading_club.readers.present')}</TableCell>
                           <TableCell>{t('reading_club.readers.reward_status')}</TableCell>
+                          <TableCell>{t('reading_club.readers.delivered_by')}</TableCell>
                           <TableCell align="right">{t('core.common.actions')}</TableCell>
                         </TableRow>
                       </TableHead>
@@ -332,6 +339,7 @@ export function ReaderDetailPage() {
                                 color={completion.rewardStatus === 'delivered' ? 'success' : 'warning'}
                               />
                             </TableCell>
+                            <TableCell>{completion.rewardDeliveredByName ?? '—'}</TableCell>
                             <TableCell align="right">
                               {completion.rewardStatus === 'pending' ? (
                                 <Can permission="reading_club.stage_completions.confirm_reward">
