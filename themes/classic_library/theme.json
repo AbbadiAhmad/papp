@@ -6,8 +6,8 @@
     "en": "Classic Library"
   },
   "description": {
-    "ar": "مظهر هادئ ورسمي للمكتبات العامة والجامعية ومكتبات الكبار: أزرق بحري مع لمسة ذهبية وقائمة جانبية دائمة.",
-    "en": "A calm, formal look for public, academic and adult libraries: deep navy with a brass accent and a permanent side menu."
+    "ar": "مظهر هادئ ورسمي لمكتبات الكبار والمكتبات الجامعية.",
+    "en": "A calm, formal look for adult and academic libraries."
   },
   "shell": "sidebar",
   "radius": 6,
