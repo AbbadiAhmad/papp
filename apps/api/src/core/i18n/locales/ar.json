@@ -53,6 +53,7 @@
   "core.menu.settings": "الإعدادات",
   "core.menu.modules": "الوحدات",
   "core.menu.myPreferences": "تفضيلاتي",
+  "core.menu.account": "الحساب",
 
   "core.auth.login": "تسجيل الدخول",
   "core.auth.logout": "تسجيل الخروج",

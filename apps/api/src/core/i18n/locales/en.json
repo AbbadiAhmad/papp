@@ -53,6 +53,7 @@
   "core.menu.settings": "Settings",
   "core.menu.modules": "Modules",
   "core.menu.myPreferences": "My Preferences",
+  "core.menu.account": "Account",
 
   "core.auth.login": "Log in",
   "core.auth.logout": "Log out",

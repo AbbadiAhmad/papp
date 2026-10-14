@@ -11,6 +11,7 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Tab,
@@ -125,8 +126,6 @@ const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
   { type: 'leaf', id: 'users', labelKey: 'core.menu.users', iconName: undefined, route: '/users', requiredPermission: 'users.view' },
   { type: 'leaf', id: 'roles', labelKey: 'core.menu.roles', iconName: undefined, route: '/roles', requiredPermission: 'roles.view' },
   { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: 'permissions.view' },
-  { type: 'leaf', id: 'my-permissions', labelKey: 'core.menu.myPermissions', iconName: undefined, route: '/my-permissions', requiredPermission: 'permissions.view_my' },
-  { type: 'leaf', id: 'sessions', labelKey: 'core.menu.sessions', iconName: undefined, route: '/sessions', requiredPermission: 'sessions.view_my' },
   { type: 'leaf', id: 'audit', labelKey: 'core.menu.audit', iconName: undefined, route: '/audit', requiredPermission: 'audit.view' },
   { type: 'leaf', id: 'backup', labelKey: 'core.menu.backup', iconName: undefined, route: '/backup', requiredPermission: 'backup.export' },
   { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: 'notifications.view' },
@@ -141,8 +140,6 @@ const CORE_ICONS: Record<string, ReactNode> = {
   users: <GroupIcon />,
   roles: <AssignmentIndIcon />,
   permissions: <ShieldIcon />,
-  'my-permissions': <ShieldIcon />,
-  sessions: <LockPersonIcon />,
   audit: <HistoryIcon />,
   backup: <CloudDownloadIcon />,
   notifications: <NotificationsIcon />,
@@ -437,7 +434,7 @@ function PlatformMenuButton() {
 export function TopBar() {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const { status, user, logout } = useAuth();
+  const { status, user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -540,17 +537,27 @@ export function TopBar() {
             <Menu anchorEl={userMenuAnchor} open={Boolean(userMenuAnchor)} onClose={() => setUserMenuAnchor(null)}>
               <MenuItem disabled>{user.email}</MenuItem>
               <Divider />
-              <MenuItem
-                onClick={() => {
-                  setUserMenuAnchor(null);
-                  navigate('/my-preferences');
-                }}
-              >
-                <ListItemIcon>
-                  <ManageAccountsIcon fontSize="small" />
-                </ListItemIcon>
-                {t('core.menu.myPreferences')}
-              </MenuItem>
+              <ListSubheader sx={{ lineHeight: '32px', bgcolor: 'transparent' }}>{t('core.menu.account')}</ListSubheader>
+              {/* Personal pages live here, not in the side menu; each shows only with its own permission. */}
+              {[
+                { route: '/my-preferences', label: 'core.menu.myPreferences', icon: <ManageAccountsIcon fontSize="small" />, permission: null },
+                { route: '/my-permissions', label: 'core.menu.myPermissions', icon: <ShieldIcon fontSize="small" />, permission: 'permissions.view_my' },
+                { route: '/sessions', label: 'core.menu.sessions', icon: <LockPersonIcon fontSize="small" />, permission: 'sessions.view_my' },
+              ]
+                .filter((item) => item.permission === null || hasPermission(item.permission))
+                .map((item) => (
+                  <MenuItem
+                    key={item.route}
+                    onClick={() => {
+                      setUserMenuAnchor(null);
+                      navigate(item.route);
+                    }}
+                  >
+                    <ListItemIcon>{item.icon}</ListItemIcon>
+                    {t(item.label)}
+                  </MenuItem>
+                ))}
+              <Divider />
               <MenuItem onClick={handleLogout}>
                 <ListItemIcon>
                   <LogoutIcon fontSize="small" />
