@@ -19,6 +19,11 @@ export interface SendNotificationInput {
   targetIds?: string[];
   /** null = system-generated (ARCHITECTURE.md §12.1). */
   sentBy?: string | null;
+  /**
+   * Per-send override of the category's email setting: true = also email,
+   * false = in-app only. Omitted = follow `notifications.categories`.
+   */
+  email?: boolean;
 }
 
 export interface SendResult {
@@ -129,7 +134,7 @@ export class NotificationsService {
       }
     }
 
-    const emailedCount = (await this.isEmailEnabled(input.category))
+    const emailedCount = (input.email ?? (await this.isEmailEnabled(input.category)))
       ? await this.emailRecipients(notification, recipients)
       : 0;
 

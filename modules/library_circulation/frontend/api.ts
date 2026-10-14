@@ -221,6 +221,34 @@ export interface StudentImportRow {
   action: 'create' | 'update' | null;
 }
 
+export type MessageRecipientMode = 'all' | 'individual' | 'unpaid_fines' | 'overdue';
+
+export interface MessageRecipients {
+  mode: MessageRecipientMode;
+  studentIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface MessageTemplate {
+  id?: string;
+  name: string;
+  title: string;
+  bodyMarkdown: string;
+}
+
+export interface MessagePreview {
+  recipientCount: number;
+  sample: Array<{ code: string; name: string }>;
+}
+
+export interface MessageSendResult {
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  emailedCount: number;
+}
+
 export interface StudentImportReport {
   rows: StudentImportRow[];
   validCount: number;
@@ -555,6 +583,16 @@ export const libraryCirculationApi = {
   getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
   getOverdueBorrowings: (params: OverdueQuery) =>
     apiClient.get<OverdueResult>(`${BASE}/dashboard/overdue`, { params }).then((r) => r.data),
+
+  // Messages to readers
+  listMessageTemplates: () => apiClient.get<MessageTemplate[]>(`${BASE}/messages/templates`).then((r) => r.data),
+  saveMessageTemplates: (templates: MessageTemplate[]) =>
+    apiClient.put<MessageTemplate[]>(`${BASE}/messages/templates`, { templates }).then((r) => r.data),
+  searchMessageReaders: (q: string) =>
+    apiClient.get<StudentSearchResult[]>(`${BASE}/messages/readers/search`, { params: { q } }).then((r) => r.data),
+  previewMessage: (recipients: MessageRecipients) => apiClient.post<MessagePreview>(`${BASE}/messages/preview`, { recipients }).then((r) => r.data),
+  sendMessage: (dto: { recipients: MessageRecipients; title: string; bodyMarkdown: string; sendEmail: boolean }) =>
+    apiClient.post<MessageSendResult>(`${BASE}/messages/send`, dto).then((r) => r.data),
 
   // Settings
   getLoanPolicy: () => apiClient.get<LoanPolicy>(`${BASE}/settings/loan-policy`).then((r) => r.data),

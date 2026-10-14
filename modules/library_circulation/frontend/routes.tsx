@@ -5,6 +5,7 @@ import { BorrowingsPage } from './pages/BorrowingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { FinancePage } from './pages/FinancePage';
 import { FinesPage } from './pages/FinesPage';
+import { MessagesPage } from './pages/MessagesPage';
 import { ReaderCardsPage } from './pages/ReaderCardsPage';
 import { ScanPage } from './pages/ScanPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -36,6 +37,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/library-circulation/fines', element: <FinesPage /> },
   { path: '/library-circulation/finance', element: <FinancePage /> },
   { path: '/library-circulation/books/:bookId/history', element: <BookHistoryPage /> },
+  { path: '/library-circulation/messages', element: <MessagesPage /> },
   { path: '/library-circulation/settings', element: <SettingsPage /> },
 ];
 

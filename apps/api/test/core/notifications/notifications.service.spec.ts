@@ -273,6 +273,18 @@ describe('NotificationsService.send', () => {
       expect(result.recipientCount).toBe(1); // the in-app row still fanned out
     });
 
+    it('a per-send email override beats the category setting, both ways', async () => {
+      prisma.user.findUnique.mockResolvedValue(alice);
+      settings.get.mockResolvedValue({ 'system.announcement': { email: false } });
+      email.send.mockResolvedValue(true);
+      expect((await service.send(baseInput({ email: true }))).emailedCount).toBe(1);
+
+      email.send.mockClear();
+      settings.get.mockResolvedValue({ 'system.announcement': { email: true } });
+      expect((await service.send(baseInput({ email: false }))).emailedCount).toBe(0);
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
     it('sends NO email when the category is present but email: false', async () => {
       settings.get.mockResolvedValue({ 'system.announcement': { email: false } });
       prisma.user.findUnique.mockResolvedValue(alice);

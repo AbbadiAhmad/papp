@@ -1,7 +1,7 @@
 {
   "key": "library_circulation",
   "name": "Library Circulation & Finance",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_catalog"],
   "description": "Students, staff-performed borrow/return, fines, and the finance side (transactions/payments/receipts) built on top of library_catalog's books/copies (D44). Requirements captured in docs/LIBRARY_MODULE_REQUIREMENTS.md.",
@@ -23,6 +23,8 @@
     { "code": "library_circulation.students.import", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.import" },
     { "code": "library_circulation.students.export", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.export" },
     { "code": "library_circulation.students.print_cards", "category": "library_circulation", "descriptionKey": "library_circulation.perm.students.print_cards" },
+    { "code": "library_circulation.messages.send", "category": "library_circulation", "descriptionKey": "library_circulation.perm.messages.send" },
+    { "code": "library_circulation.messages.templates", "category": "library_circulation", "descriptionKey": "library_circulation.perm.messages.templates" },
     { "code": "library_circulation.borrow", "category": "library_circulation", "descriptionKey": "library_circulation.perm.borrow" },
     { "code": "library_circulation.borrowings.view", "category": "library_circulation", "descriptionKey": "library_circulation.perm.borrowings.view" },
     { "code": "library_circulation.return", "category": "library_circulation", "descriptionKey": "library_circulation.perm.return" },
@@ -46,6 +48,8 @@
       "library_circulation.students.import",
       "library_circulation.students.export",
       "library_circulation.students.print_cards",
+      "library_circulation.messages.send",
+      "library_circulation.messages.templates",
       "library_circulation.borrow",
       "library_circulation.borrowings.view",
       "library_circulation.return",
@@ -66,6 +70,8 @@
       "library_circulation.students.import",
       "library_circulation.students.export",
       "library_circulation.students.print_cards",
+      "library_circulation.messages.send",
+      "library_circulation.messages.templates",
       "library_circulation.borrow",
       "library_circulation.borrowings.view",
       "library_circulation.return",
@@ -86,6 +92,13 @@
   "roleAccessLocked": {},
 
   "settings": [
+    {
+      "key": "library_circulation.message_templates",
+      "type": "json",
+      "default": [],
+      "labelKey": "library_circulation.messages.templates_label",
+      "requiredPermission": "library_circulation.messages.templates"
+    },
     {
       "key": "library_circulation.reader_card",
       "type": "json",
@@ -167,11 +180,20 @@
       "requiredPermission": "library_circulation.finance.view"
     },
     {
+      "id": "library_circulation.messages",
+      "labelKey": "library_circulation.menu.messages",
+      "icon": "Notifications",
+      "parentId": "library_circulation.root",
+      "order": 6,
+      "route": "/library-circulation/messages",
+      "requiredPermission": "library_circulation.messages.send"
+    },
+    {
       "id": "library_circulation.settings",
       "labelKey": "library_circulation.menu.settings",
       "icon": "Settings",
       "parentId": "library_circulation.root",
-      "order": 6,
+      "order": 7,
       "route": "/library-circulation/settings",
       "requiredPermission": "library_circulation.settings.update"
     }
@@ -231,6 +253,12 @@
       "access": "authenticated",
       "requiredPermission": "library_circulation.borrow",
       "component": "frontend/pages/BookHistoryPage.tsx"
+    },
+    {
+      "pattern": "/library-circulation/messages",
+      "access": "authenticated",
+      "requiredPermission": "library_circulation.messages.send",
+      "component": "frontend/pages/MessagesPage.tsx"
     },
     {
       "pattern": "/library-circulation/settings",
