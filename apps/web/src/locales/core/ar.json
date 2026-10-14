@@ -171,10 +171,15 @@
   "core.appearance.saved": "تم الحفظ.",
   "core.common.rows_per_page": "عدد الصفوف في الصفحة",
   "core.common.displayed_rows": "{{from}}–{{to}} من {{count}}",
-  "core.settings.landing_pages": "الصفحات الافتراضية",
-  "core.settings.landing_pages.help": "اختر الصفحة التي تفتح أولاً. يمكن للمستخدم تغيير صفحته بعد الدخول من تفضيلاتي. إذا تم تعطيل الوحدة المختارة أو حذفها يعود الافتراضي الخاص بالمنصة.",
-  "core.settings.landing_pages.anonymous": "صفحة الزوار غير المسجلين",
-  "core.settings.landing_pages.anonymous_default": "الافتراضي في المنصة (صفحة تسجيل الدخول)",
-  "core.settings.landing_pages.authenticated": "الصفحة الافتراضية بعد تسجيل الدخول",
-  "core.settings.landing_pages.authenticated_default": "الافتراضي في المنصة (صفحة الترحيب)"
+  "core.appearance.landing.help": "اختر الصفحة التي تفتح أولاً. يمكن للمستخدم تغيير صفحته بعد الدخول من تفضيلاتي. إذا تم تعطيل الوحدة المختارة أو حذفها يعود الافتراضي الخاص بالمنصة.",
+  "core.appearance.landing.anonymousDefault": "الافتراضي في المنصة (صفحة تسجيل الدخول)",
+  "core.appearance.landing.authenticatedDefault": "الافتراضي في المنصة (صفحة الترحيب)",
+  "core.appearance.landing.anonymous": "صفحة الزوار غير المسجلين",
+  "core.appearance.landing.authenticated": "الصفحة الافتراضية بعد تسجيل الدخول",
+  "core.appearance.landing.title": "الصفحة الأولى",
+  "core.appearance.brandingTitle": "العنوان",
+  "core.appearance.brandingHint": "الاسم الظاهر في الشريط العلوي وتبويب المتصفح. اترك إحدى اللغتين فارغة لاستخدام الأخرى.",
+  "core.appearance.titleAr": "العنوان (بالعربية)",
+  "core.appearance.titleEn": "العنوان (بالإنجليزية)",
+  "core.appearance.brandingSection": "العنوان والصفحة الأولى"
 }

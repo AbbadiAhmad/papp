@@ -6,10 +6,12 @@ import { NotFoundPage } from '../../../../apps/web/src/core/NotFoundPage';
 import { isNotFoundError, extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { websiteApi, type WebsitePageDetail } from '../api';
 import { BlockRenderer } from './BlockRenderer';
+import { SiteMenu } from './SiteMenu';
 
 /**
- * No site header/footer here on purpose: the platform's own top bar/theme
- * provides the chrome (WEBSITE-D7). No homepage configured, a draft page or an
+ * No site title/logo bar here on purpose: the platform's own top bar/theme
+ * provides the chrome (WEBSITE-D7). The header/footer MENUS render as plain link
+ * rows above/below the page (SiteMenu, WEBSITE-D9). No homepage configured, a draft page or an
  * unknown slug all show the platform's standard 404 page.
  *
  * The module's one visitor-facing page (manifest routes `/site` and
@@ -58,6 +60,8 @@ export function PublicSitePage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <SiteMenu location="header" />
+
       <Box sx={{ flex: 1 }}>
         {status === 'loading' ? (
           <Stack sx={{ alignItems: 'center', py: 8 }}>
@@ -75,6 +79,8 @@ export function PublicSitePage() {
 
         {status === 'ready' && page ? page.blocks.map((block) => <BlockRenderer key={block.id} block={block} />) : null}
       </Box>
+
+      <SiteMenu location="footer" />
     </Box>
   );
 }

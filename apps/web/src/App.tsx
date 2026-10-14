@@ -6,7 +6,7 @@ import { Navigate, Route, BrowserRouter, Routes, useLocation } from 'react-route
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
 import { ColorModeProvider, useColorMode } from './app/ColorModeContext';
-import { MenuLayoutProvider, ThemePackProvider, useThemePack } from './app/AppearanceContext';
+import { BrandingProvider, MenuLayoutProvider, ThemePackProvider, useThemePack } from './app/AppearanceContext';
 import { AppearancePage } from './core/appearance/AppearancePage';
 import { createAppTheme, createEmotionCacheFor } from './app/theme';
 import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageLayout';
@@ -431,9 +431,11 @@ function App() {
   return (
     <LanguageProvider>
       <ThemePackProvider>
-        <ColorModeProvider>
-          <ThemedShell />
-        </ColorModeProvider>
+        <BrandingProvider>
+          <ColorModeProvider>
+            <ThemedShell />
+          </ColorModeProvider>
+        </BrandingProvider>
       </ThemePackProvider>
     </LanguageProvider>
   );

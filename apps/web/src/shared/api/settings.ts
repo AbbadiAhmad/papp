@@ -1,5 +1,5 @@
 import { apiClient } from './httpClient';
-import type { LandingPagesSettings, NotificationTemplate, PasswordPolicy, TokenLifetimes } from './types';
+import type { NotificationTemplate, PasswordPolicy, TokenLifetimes } from './types';
 
 export const settingsApi = {
   getPasswordPolicy: () => apiClient.get<PasswordPolicy>('/settings/password-policy').then((r) => r.data),
@@ -27,9 +27,4 @@ export const settingsApi = {
         selfRegistrationRoleCode,
       })
       .then((r) => r.data),
-
-  getLandingPages: () => apiClient.get<LandingPagesSettings>('/settings/landing-pages').then((r) => r.data),
-  /** A field omitted is left unchanged; `null` resets that audience to the platform default. */
-  updateLandingPages: (dto: { anonymous?: string | null; authenticated?: string | null }) =>
-    apiClient.put<LandingPagesSettings>('/settings/landing-pages', dto).then((r) => r.data),
 };

@@ -5,10 +5,15 @@ import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
+import { UpdateBrandingDto } from './dto/update-branding.dto';
+import { UpdateLandingPagesDto } from '../settings/dto/update-landing-pages.dto';
+import { LandingService } from '../settings/landing.service';
 import { SettingsService } from '../settings/settings.service';
 import { ThemesService } from './themes.service';
 
 export const ACTIVE_THEME_KEY = 'appearance.active_theme';
+export const BRANDING_KEY = 'appearance.branding';
+export const DEFAULT_APP_TITLE = 'Annur Apps';
 export const MENU_LAYOUT_KEY = 'appearance.menu_layout';
 /** The built-in look; always valid, needs no pack on disk. */
 export const DEFAULT_THEME_KEY = 'default';
@@ -22,6 +27,8 @@ export const DEFAULT_THEME_KEY = 'default';
  *  - GET  /appearance/menu-layout  logged in is enough (the sidebar renders from it).
  *  - GET  /appearance/themes       appearance.view
  *  - PUT  /appearance/active-theme, PUT /appearance/menu-layout   appearance.manage
+ *  - GET  /appearance/branding     @Public: the app title shown in the top bar (per language)
+ *  - GET/PUT /appearance/landing-pages  appearance.view / appearance.manage: which page opens first
  */
 @Controller('appearance')
 @UseGuards(MustChangePasswordGuard)
@@ -29,6 +36,7 @@ export class AppearanceController {
   constructor(
     private readonly settings: SettingsService,
     private readonly themes: ThemesService,
+    private readonly landing: LandingService,
   ) {}
 
   @Get('active')
@@ -97,4 +105,45 @@ export class AppearanceController {
     await this.settings.set(MENU_LAYOUT_KEY, parsed.data, user.userId);
     return parsed.data;
   }
+
+  /** Never throws and never returns an empty title: a missing/corrupt row falls back to the built-in name. */
+  @Get('branding')
+  @Public()
+  async getBranding(): Promise<AppBranding> {
+    const stored = await this.settings.get<Partial<AppBranding> | null>(BRANDING_KEY).catch(() => null);
+    return normalizeBranding(stored);
+  }
+
+  @Put('branding')
+  @RequirePermission('appearance.manage')
+  async setBranding(@Body() dto: UpdateBrandingDto, @CurrentUser() user: AuthenticatedUser): Promise<AppBranding> {
+    const branding = normalizeBranding({ titleAr: dto.titleAr, titleEn: dto.titleEn });
+    await this.settings.set(BRANDING_KEY, branding, user.userId);
+    return branding;
+  }
+
+  @Get('landing-pages')
+  @RequirePermission('appearance.view')
+  async getLandingPages() {
+    return this.landing.getAdminView();
+  }
+
+  /** Audited by SettingsService.set() like every other write here (no @Audit, see class docblock). */
+  @Put('landing-pages')
+  @RequirePermission('appearance.manage')
+  async setLandingPages(@Body() dto: UpdateLandingPagesDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.landing.update(dto, user.userId);
+  }
+}
+
+export interface AppBranding {
+  titleAr: string;
+  titleEn: string;
+}
+
+/** Each language falls back to the other, then to the built-in name, so the bar is never blank. */
+function normalizeBranding(stored: Partial<AppBranding> | null | undefined): AppBranding {
+  const ar = typeof stored?.titleAr === 'string' ? stored.titleAr.trim() : '';
+  const en = typeof stored?.titleEn === 'string' ? stored.titleEn.trim() : '';
+  return { titleAr: ar || en || DEFAULT_APP_TITLE, titleEn: en || ar || DEFAULT_APP_TITLE };
 }

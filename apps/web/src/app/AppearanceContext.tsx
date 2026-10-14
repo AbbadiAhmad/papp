@@ -1,6 +1,6 @@
 import type { MenuLayout, ThemePack } from '@papp/shared-types';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
-import { appearanceApi } from '../shared/api/appearance';
+import { appearanceApi, type AppBranding } from '../shared/api/appearance';
 import { useAuth } from './AuthContext';
 
 const EMPTY_LAYOUT: MenuLayout = { groups: [], hidden: [], labels: {} };
@@ -84,4 +84,38 @@ export function MenuLayoutProvider({ children }: PropsWithChildren) {
 
 export function useMenuLayout() {
   return useContext(MenuLayoutContext);
+}
+
+const DEFAULT_BRANDING: AppBranding = { titleAr: 'Annur Apps', titleEn: 'Annur Apps' };
+
+/**
+ * The app title (top bar + browser tab), admin-editable per language. Public
+ * endpoint so the login page shows it too; any failure keeps the built-in name.
+ */
+const BrandingContext = createContext<{ branding: AppBranding; reload: () => void }>({ branding: DEFAULT_BRANDING, reload: () => undefined });
+
+export function BrandingProvider({ children }: PropsWithChildren) {
+  const [branding, setBranding] = useState<AppBranding>(DEFAULT_BRANDING);
+  const [token, setToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    appearanceApi
+      .getBranding()
+      .then((r) => {
+        if (!cancelled && r && typeof r.titleAr === 'string' && typeof r.titleEn === 'string') setBranding(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const reload = useCallback(() => setToken((n) => n + 1), []);
+  const value = useMemo(() => ({ branding, reload }), [branding, reload]);
+  return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>;
+}
+
+export function useBranding() {
+  return useContext(BrandingContext);
 }

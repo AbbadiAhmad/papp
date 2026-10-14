@@ -171,10 +171,15 @@
   "core.appearance.saved": "Saved.",
   "core.common.rows_per_page": "Rows per page",
   "core.common.displayed_rows": "{{from}}–{{to}} of {{count}}",
-  "core.settings.landing_pages": "Landing pages",
-  "core.settings.landing_pages.help": "Choose which page opens first. Users can override the logged-in page in My Preferences. If the chosen module is deactivated or removed, the platform default applies again.",
-  "core.settings.landing_pages.anonymous": "Page for visitors who are not logged in",
-  "core.settings.landing_pages.anonymous_default": "Platform default (Login page)",
-  "core.settings.landing_pages.authenticated": "Default page after login",
-  "core.settings.landing_pages.authenticated_default": "Platform default (Welcome page)"
+  "core.appearance.landing.help": "Choose which page opens first. Users can override the logged-in page in My Preferences. If the chosen module is deactivated or removed, the platform default applies again.",
+  "core.appearance.landing.anonymousDefault": "Platform default (Login page)",
+  "core.appearance.landing.authenticatedDefault": "Platform default (Welcome page)",
+  "core.appearance.landing.anonymous": "Page for visitors who are not logged in",
+  "core.appearance.landing.authenticated": "Default page after login",
+  "core.appearance.landing.title": "Start page",
+  "core.appearance.brandingTitle": "Title",
+  "core.appearance.brandingHint": "The name shown in the top bar and browser tab. Leave one language empty to reuse the other.",
+  "core.appearance.titleAr": "Title (Arabic)",
+  "core.appearance.titleEn": "Title (English)",
+  "core.appearance.brandingSection": "Title & start page"
 }
