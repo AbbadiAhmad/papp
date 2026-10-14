@@ -1,7 +1,7 @@
 {
   "key": "survey",
   "name": "Survey",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Google-Forms-style survey builder: sections/questions with conditional show/hide logic driven by prior enumeration answers, public or login-required shareable links, optional post-submit answer editing, completion notifications to the owner and/or admin-configured addresses, and reporting including a dynamic pivot table.",
@@ -21,6 +21,9 @@
     { "code": "survey.surveys.update", "category": "survey", "descriptionKey": "survey.perm.surveys.update" },
     { "code": "survey.surveys.delete", "category": "survey", "descriptionKey": "survey.perm.surveys.delete" },
     { "code": "survey.surveys.publish", "category": "survey", "descriptionKey": "survey.perm.surveys.publish" },
+    { "code": "survey.surveys.archive", "category": "survey", "descriptionKey": "survey.perm.surveys.archive" },
+    { "code": "survey.surveys.export", "category": "survey", "descriptionKey": "survey.perm.surveys.export" },
+    { "code": "survey.surveys.import", "category": "survey", "descriptionKey": "survey.perm.surveys.import" },
     { "code": "survey.responses.view", "category": "survey", "descriptionKey": "survey.perm.responses.view" },
     { "code": "survey.responses.export", "category": "survey", "descriptionKey": "survey.perm.responses.export" },
     { "code": "survey.responses.delete", "category": "survey", "descriptionKey": "survey.perm.responses.delete" }
@@ -33,6 +36,9 @@
       "survey.surveys.update",
       "survey.surveys.delete",
       "survey.surveys.publish",
+      "survey.surveys.archive",
+      "survey.surveys.export",
+      "survey.surveys.import",
       "survey.responses.view",
       "survey.responses.export",
       "survey.responses.delete"
@@ -65,6 +71,12 @@
       "access": "authenticated",
       "requiredPermission": "survey.surveys.view",
       "component": "frontend/pages/SurveysListPage.tsx"
+    },
+    {
+      "pattern": "/survey/surveys/archived",
+      "access": "authenticated",
+      "requiredPermission": "survey.surveys.view",
+      "component": "frontend/pages/SurveysArchivedPage.tsx"
     },
     {
       "pattern": "/survey/surveys/:surveyId/edit",

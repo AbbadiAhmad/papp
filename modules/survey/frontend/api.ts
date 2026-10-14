@@ -25,6 +25,7 @@ export interface SurveySummary {
   title: string;
   description: string | null;
   status: SurveyStatus;
+  archivedAt: string | null;
   requiresLogin: boolean;
   responseCount: number;
   createdAt: string;
@@ -174,7 +175,21 @@ export interface SurveyDataset {
 
 export const surveyApi = {
   // --- admin: survey definition ---
-  list: () => apiClient.get<SurveySummary[]>('/api/survey/surveys').then((r) => r.data),
+  list: (archived = false) =>
+    apiClient.get<SurveySummary[]>('/api/survey/surveys', { params: archived ? { archived: true } : undefined }).then((r) => r.data),
+  archive: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/archive`).then((r) => r.data),
+  unarchive: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/unarchive`).then((r) => r.data),
+  duplicate: (id: string, title?: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/duplicate`, { title }).then((r) => r.data),
+  exportPackage: (id: string, withResponses: boolean) =>
+    apiClient
+      .get<Blob>(`/api/survey/surveys/${id}/${withResponses ? 'export-with-responses' : 'export'}`, { responseType: 'blob' })
+      .then((r) => r.data),
+  importPackage: (file: File, includeResponses: boolean) => {
+    const form = new FormData();
+    form.append('includeResponses', String(includeResponses));
+    form.append('file', file);
+    return apiClient.post<SurveyDetail>('/api/survey/surveys/import', form).then((r) => r.data);
+  },
   get: (id: string) => apiClient.get<SurveyDetail>(`/api/survey/surveys/${id}`).then((r) => r.data),
   create: (dto: CreateSurveyInput) => apiClient.post<SurveyDetail>('/api/survey/surveys', dto).then((r) => r.data),
   update: (id: string, dto: UpdateSurveyInput) => apiClient.patch<SurveyDetail>(`/api/survey/surveys/${id}`, dto).then((r) => r.data),

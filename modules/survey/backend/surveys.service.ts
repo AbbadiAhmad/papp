@@ -26,8 +26,9 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$disconnect();
   }
 
-  async list() {
+  async list(archived = false) {
     const surveys = await this.prisma.surveySurvey.findMany({
+      where: { archivedAt: archived ? { not: null } : null },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { responses: true } } },
     });
@@ -36,6 +37,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       title: s.title,
       description: s.description,
       status: s.status,
+      archivedAt: s.archivedAt,
       requiresLogin: s.requiresLogin,
       responseCount: s._count.responses,
       createdAt: s.createdAt,
@@ -85,6 +87,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
     const survey = await this.getSurveyOrThrow(id, {
       sections: { include: { questions: true } },
     });
+    this.assertNotArchived(survey);
     if (survey.status === 'published') return survey;
     if (survey.sections.length === 0 || survey.sections.every((s) => s.questions.length === 0)) {
       throw new BadRequestException('Cannot publish a survey with no questions');
@@ -100,9 +103,32 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'closed' } });
   }
 
+  /** Moves a survey to the archive; a published one is closed first so it stops taking responses. */
+  async archive(id: string) {
+    const survey = await this.getSurveyOrThrow(id);
+    if (survey.archivedAt) return survey;
+    return this.prisma.surveySurvey.update({
+      where: { id },
+      data: { archivedAt: new Date(), status: survey.status === 'published' ? 'closed' : survey.status },
+    });
+  }
+
+  /** Brings an archived survey back to the main list (its status is left as it was — a restored survey is never silently reopened). */
+  async unarchive(id: string) {
+    await this.getSurveyOrThrow(id);
+    return this.prisma.surveySurvey.update({ where: { id }, data: { archivedAt: null } });
+  }
+
+  private assertNotArchived(survey: { archivedAt: Date | null }): void {
+    if (survey.archivedAt) {
+      throw new ConflictException('Restore this survey from the archive first');
+    }
+  }
+
   /** closed -> published again (a closed survey was previously a dead end). */
   async reopen(id: string) {
     const survey = await this.getSurveyOrThrow(id);
+    this.assertNotArchived(survey);
     if (survey.status !== 'closed') {
       throw new ConflictException('Only a closed survey can be reopened');
     }
@@ -237,7 +263,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
    * BEFORE the transaction so a bad rule rejects the whole save with no
    * partial write.
    */
-  private validateStructure(dto: SurveyStructureDto): void {
+  validateStructure(dto: SurveyStructureDto): void {
     const questionsById = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)));
     const sectionIds = new Set(dto.sections.map((s) => s.id));
     const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id] as const)));

@@ -465,6 +465,8 @@ model SurveySurvey {
   closesAt                 DateTime?    @map("closes_at")
   /// Optional per-survey text shown to respondents once the survey is closed.
   closedMessage            String?      @map("closed_message")
+  /// Archived surveys leave the main list; NULL = active. See migration 003.
+  archivedAt               DateTime?    @map("archived_at")
   createdAt                DateTime     @default(now()) @map("created_at")
   updatedAt                DateTime     @updatedAt @map("updated_at")
 

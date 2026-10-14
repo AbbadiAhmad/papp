@@ -29,8 +29,9 @@ let SurveysService = SurveysService_1 = class SurveysService {
     async onModuleDestroy() {
         await this.prisma.$disconnect();
     }
-    async list() {
+    async list(archived = false) {
         const surveys = await this.prisma.surveySurvey.findMany({
+            where: { archivedAt: archived ? { not: null } : null },
             orderBy: { createdAt: 'desc' },
             include: { _count: { select: { responses: true } } },
         });
@@ -39,6 +40,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
             title: s.title,
             description: s.description,
             status: s.status,
+            archivedAt: s.archivedAt,
             requiresLogin: s.requiresLogin,
             responseCount: s._count.responses,
             createdAt: s.createdAt,
@@ -83,6 +85,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
         const survey = await this.getSurveyOrThrow(id, {
             sections: { include: { questions: true } },
         });
+        this.assertNotArchived(survey);
         if (survey.status === 'published')
             return survey;
         if (survey.sections.length === 0 || survey.sections.every((s) => s.questions.length === 0)) {
@@ -97,9 +100,30 @@ let SurveysService = SurveysService_1 = class SurveysService {
         }
         return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'closed' } });
     }
+    /** Moves a survey to the archive; a published one is closed first so it stops taking responses. */
+    async archive(id) {
+        const survey = await this.getSurveyOrThrow(id);
+        if (survey.archivedAt)
+            return survey;
+        return this.prisma.surveySurvey.update({
+            where: { id },
+            data: { archivedAt: new Date(), status: survey.status === 'published' ? 'closed' : survey.status },
+        });
+    }
+    /** Brings an archived survey back to the main list (its status is left as it was — a restored survey is never silently reopened). */
+    async unarchive(id) {
+        await this.getSurveyOrThrow(id);
+        return this.prisma.surveySurvey.update({ where: { id }, data: { archivedAt: null } });
+    }
+    assertNotArchived(survey) {
+        if (survey.archivedAt) {
+            throw new common_1.ConflictException('Restore this survey from the archive first');
+        }
+    }
     /** closed -> published again (a closed survey was previously a dead end). */
     async reopen(id) {
         const survey = await this.getSurveyOrThrow(id);
+        this.assertNotArchived(survey);
         if (survey.status !== 'closed') {
             throw new common_1.ConflictException('Only a closed survey can be reopened');
         }

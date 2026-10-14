@@ -170,7 +170,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
         // Never distinguishes "doesn't exist" from "not published" to an
         // anonymous/authenticated respondent — same 404-not-403 rule
         // MODULE_SPEC.md §7.2 already applies to library_catalog's public route.
-        if (!survey || survey.status === 'draft') {
+        if (!survey || survey.status === 'draft' || survey.archivedAt) {
             throw new common_1.NotFoundException('Survey not found');
         }
         if (survey.status === 'closed') {

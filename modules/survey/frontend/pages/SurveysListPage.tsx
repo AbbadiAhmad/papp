@@ -1,4 +1,8 @@
 import AddIcon from '@mui/icons-material/Add';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import InventoryIcon from '@mui/icons-material/Inventory2';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -41,6 +45,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { surveyApi, type SurveyStatus, type SurveySummary } from '../api';
+import { DuplicateSurveyDialog, ExportPackageButton, ImportSurveyDialog } from '../components/SurveyTransfer';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const STATUS_COLOR: Record<SurveyStatus, 'default' | 'success' | 'warning'> = {
@@ -112,6 +117,8 @@ export function SurveysListPage() {
   const { status, data: surveys, errorMessage, reload } = useGuardedQuery(() => surveyApi.list());
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState<SurveySummary | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SurveySummary | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [linkSnackbar, setLinkSnackbar] = useState<string | null>(null);
@@ -156,6 +163,8 @@ export function SurveysListPage() {
     await runStatusChange(survey, () => (action === 'close' ? surveyApi.close(survey.id) : surveyApi.reopen(survey.id)));
   };
 
+  const handleArchive = (survey: SurveySummary) => runStatusChange(survey, () => surveyApi.archive(survey.id));
+
   const copyShareLink = async (survey: SurveySummary) => {
     const url = `${window.location.origin}/survey/${survey.id}`;
     try {
@@ -170,11 +179,21 @@ export function SurveysListPage() {
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h5">{t('survey.menu.root')}</Typography>
-        <Can permission="survey.surveys.create">
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
-            {t('survey.list.create_button')}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button startIcon={<InventoryIcon />} onClick={() => navigate('/survey/surveys/archived')}>
+            {t('survey.archive.open_page')}
           </Button>
-        </Can>
+          <Can permission="survey.surveys.import">
+            <Button startIcon={<FileUploadIcon />} onClick={() => setImportOpen(true)}>
+              {t('survey.transfer.import')}
+            </Button>
+          </Can>
+          <Can permission="survey.surveys.create">
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
+              {t('survey.list.create_button')}
+            </Button>
+          </Can>
+        </Stack>
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
@@ -258,6 +277,23 @@ export function SurveysListPage() {
                         </Tooltip>
                       )}
                     </Can>
+                    <Can permission="survey.surveys.create">
+                      <Tooltip title={t('survey.transfer.duplicate')}>
+                        <IconButton size="small" onClick={() => setDuplicating(survey)} aria-label={t('survey.transfer.duplicate')}>
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Can>
+                    <ExportPackageButton survey={survey} onError={setSnackbar} />
+                    <Can permission="survey.surveys.archive">
+                      <Tooltip title={t('survey.archive.archive')}>
+                        <span>
+                          <IconButton size="small" disabled={busyId !== null} onClick={() => handleArchive(survey)} aria-label={t('survey.archive.archive')}>
+                            <ArchiveIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Can>
                     <Can permission="survey.surveys.delete">
                       <Tooltip title={t('core.common.delete')}>
                         <IconButton size="small" onClick={() => setPendingDelete(survey)}>
@@ -276,6 +312,16 @@ export function SurveysListPage() {
       </QueryStateGate>
 
       <CreateSurveyDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => navigate(`/survey/surveys/${id}/edit`)} />
+
+      {duplicating ? (
+        <DuplicateSurveyDialog
+          key={duplicating.id}
+          survey={duplicating}
+          onClose={() => setDuplicating(null)}
+          onDuplicated={(id) => navigate(`/survey/surveys/${id}/edit`)}
+        />
+      ) : null}
+      <ImportSurveyDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={(id) => navigate(`/survey/surveys/${id}/edit`)} />
 
       <ConfirmDialog
         open={pendingDelete !== null}
