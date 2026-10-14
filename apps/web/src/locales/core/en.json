@@ -17,6 +17,7 @@
   "core.users.inactive": "Inactive",
   "core.users.last_login": "Last login",
   "core.users.department": "Department",
+  "core.users.date_of_birth": "Date of birth",
   "core.users.roles": "Roles",
   "core.users.external_id": "External ID",
   "core.users.must_change_password": "Must change password",

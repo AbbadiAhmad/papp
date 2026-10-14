@@ -551,7 +551,7 @@ describe('StudentsService', () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
         where: { id: { in: ['user-1', 'user-2'] } },
-        select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true },
+        select: { id: true, name: true, email: true, isActive: true, externalId: true, department: true, dateOfBirth: true },
       });
       expect(result).toEqual([
         expect.objectContaining({ id: 'student-1', name: 'Aisha' }),

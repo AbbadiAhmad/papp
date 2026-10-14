@@ -30,6 +30,8 @@ class CreateStudentDto {
     academicYearId;
     externalId;
     department;
+    /** `YYYY-MM-DD`; validated (real date, not in the future) in StudentsService. */
+    dateOfBirth;
 }
 exports.CreateStudentDto = CreateStudentDto;
 __decorate([
@@ -66,3 +68,8 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateStudentDto.prototype, "department", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Matches)(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be a date in YYYY-MM-DD format' }),
+    __metadata("design:type", String)
+], CreateStudentDto.prototype, "dateOfBirth", void 0);

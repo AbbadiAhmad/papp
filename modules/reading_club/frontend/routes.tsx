@@ -4,6 +4,7 @@ import { EpisodesPage } from './pages/EpisodesPage';
 import { GroupsListPage } from './pages/GroupsListPage';
 import { ReaderDetailPage } from './pages/ReaderDetailPage';
 import { ReadersListPage } from './pages/ReadersListPage';
+import { StatisticsPage } from './pages/StatisticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 /**
@@ -17,6 +18,7 @@ export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/reading-club/readers/:studentId', element: <ReaderDetailPage /> },
   { path: '/reading-club/groups', element: <GroupsListPage /> },
   { path: '/reading-club/episodes', element: <EpisodesPage /> },
+  { path: '/reading-club/statistics', element: <StatisticsPage /> },
   { path: '/reading-club/settings', element: <SettingsPage /> },
 ];
 

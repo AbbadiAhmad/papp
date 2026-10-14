@@ -17,6 +17,7 @@
   "core.users.inactive": "غير نشط",
   "core.users.last_login": "آخر تسجيل دخول",
   "core.users.department": "القسم",
+  "core.users.date_of_birth": "تاريخ الميلاد",
   "core.users.roles": "الأدوار",
   "core.users.external_id": "الرقم التعريفي",
   "core.users.must_change_password": "يتطلب تغيير كلمة المرور",

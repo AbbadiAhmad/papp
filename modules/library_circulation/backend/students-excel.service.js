@@ -55,6 +55,7 @@ const client_1 = require("@prisma/client");
 const argon2 = __importStar(require("argon2"));
 const exceljs_1 = __importDefault(require("exceljs"));
 const node_crypto_1 = require("node:crypto");
+const date_of_birth_1 = require("./date-of-birth");
 const reader_import_extension_1 = require("./reader-import-extension");
 const students_service_1 = require("./students.service");
 const READER_ROLE_CODE = 'reader';
@@ -71,6 +72,11 @@ const HEADER_ALIASES = {
     'external id': 'externalId',
     externalid: 'externalId',
     department: 'department',
+    'date of birth': 'dateOfBirth',
+    dateofbirth: 'dateOfBirth',
+    dob: 'dateOfBirth',
+    birthdate: 'dateOfBirth',
+    'birth date': 'dateOfBirth',
     active: 'isActive',
     // Reading-club columns — only acted on when the reading_club module is installed.
     club: 'club',
@@ -138,6 +144,7 @@ let StudentsExcelService = class StudentsExcelService {
             { header: 'External ID', key: 'externalId', width: 18 },
             { header: 'Department', key: 'department', width: 20 },
             { header: 'Active', key: 'isActive', width: 10 },
+            { header: 'Date of Birth', key: 'dateOfBirth', width: 16 },
             ...(club
                 ? [
                     { header: 'Club', key: 'club', width: 10 },
@@ -157,6 +164,7 @@ let StudentsExcelService = class StudentsExcelService {
                 externalId: r.externalId ?? '',
                 department: r.department ?? '',
                 isActive: r.isActive ? 'yes' : 'no',
+                dateOfBirth: r.dateOfBirth ?? '',
                 ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
             });
         }
@@ -180,12 +188,12 @@ let StudentsExcelService = class StudentsExcelService {
             const lastRow = Math.max(2, lines + 1);
             const lastReaderRow = rows.length + 1;
             for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
-                sheet.getCell(`H${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
+                sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
                 if (club.groups.length) {
-                    sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
+                    sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
                 }
                 if (stageNames.length) {
-                    sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
+                    sheet.getCell(`K${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
                 }
             }
         }
@@ -210,22 +218,30 @@ let StudentsExcelService = class StudentsExcelService {
                 columns.set(col, field);
         });
         if (!columns.size) {
-            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, and optionally Club, Club Group, Club Stage)');
+            throw new common_1.BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, Date of Birth, and optionally Club, Club Group, Club Stage)');
         }
         const rows = [];
         for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
             const row = sheet.getRow(rowNumber);
             const parsed = {
-                row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, isActive: null,
+                row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, dateOfBirth: null, isActive: null,
                 club: null, clubGroup: null, clubStage: null,
             };
             let any = false;
             for (const [col, field] of columns) {
-                const text = cellText(row.getCell(col).value);
+                const rawValue = row.getCell(col).value;
+                const text = field === 'dateOfBirth' && rawValue instanceof Date ? (Number.isNaN(rawValue.getTime()) ? 'invalid' : rawValue.toISOString().slice(0, 10)) : cellText(rawValue);
                 if (!text)
                     continue;
                 any = true;
-                if (field === 'isActive') {
+                if (field === 'dateOfBirth') {
+                    const normalized = (0, date_of_birth_1.normalizeDateOfBirth)(text);
+                    if (normalized)
+                        parsed.dateOfBirth = normalized;
+                    else
+                        parsed.dateOfBirthInvalid = true;
+                }
+                else if (field === 'isActive') {
                     const flag = parseFlag(text);
                     if (flag === undefined)
                         parsed.isActiveInvalid = true;
@@ -268,6 +284,8 @@ let StudentsExcelService = class StudentsExcelService {
             const fail = (error) => ({ ...row, valid: false, error, action: null, matchedStudentId: null });
             if (row.isActiveInvalid)
                 return fail('Active must be yes/no');
+            if (row.dateOfBirthInvalid)
+                return fail('Invalid date of birth (use YYYY-MM-DD; not in the future)');
             if (row.email && !EMAIL_RE.test(row.email))
                 return fail(`Invalid email "${row.email}"`);
             if (!row.code && !row.email)
@@ -352,6 +370,7 @@ let StudentsExcelService = class StudentsExcelService {
                             email: row.email ?? undefined,
                             externalId: row.externalId ?? undefined,
                             department: row.department ?? undefined,
+                            dateOfBirth: row.dateOfBirth ? (0, date_of_birth_1.toDateOnly)(row.dateOfBirth) : undefined,
                             isActive: row.isActive ?? undefined,
                         };
                         if (Object.values(userData).some((v) => v !== undefined)) {
@@ -372,6 +391,7 @@ let StudentsExcelService = class StudentsExcelService {
                                 name: row.name,
                                 externalId: row.externalId ?? undefined,
                                 department: row.department ?? undefined,
+                                dateOfBirth: row.dateOfBirth ? (0, date_of_birth_1.toDateOnly)(row.dateOfBirth) : undefined,
                                 isActive: row.isActive ?? true,
                                 passwordHash: hashes[createIndex++],
                                 mustChangePassword: true,

@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, IsUUID, Matches, MinLength, ValidateIf } from 'class-validator';
 
 /**
  * Everything on the reader — library profile AND the linked platform
@@ -36,6 +36,11 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   department?: string;
+
+  /** `YYYY-MM-DD` to set, `null` to clear, omitted = unchanged. */
+  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be a date in YYYY-MM-DD format' })
+  dateOfBirth?: string | null;
 
   @IsOptional()
   @IsBoolean()

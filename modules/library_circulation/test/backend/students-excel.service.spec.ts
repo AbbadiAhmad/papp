@@ -46,14 +46,14 @@ describe('StudentsExcelService', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer as never);
     const ws = wb.worksheets[0];
-    expect(ws.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active']);
+    expect(ws.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth']);
     expect(ws.getRow(2).getCell(1).value).toBe('STU000001');
     expect(ws.getRow(2).getCell(7).value).toBe('yes');
   });
 
   it('with reading_club installed, exports Club / Club Group / Club Stage plus a reference sheet and dropdowns', async () => {
     ctx.students.list.mockResolvedValue([
-      { id: 'st1', code: 'S1', name: 'Aisha', email: 'a@b.test', className: '5A', externalId: null, department: null, isActive: true },
+      { id: 'st1', code: 'S1', name: 'Aisha', email: 'a@b.test', className: '5A', externalId: null, department: null, isActive: true, dateOfBirth: '2014-05-06' },
       { id: 'st2', code: 'S2', name: 'Omar', email: 'o@b.test', className: '5A', externalId: null, department: null, isActive: true },
     ] as never);
     const extension = {
@@ -69,10 +69,10 @@ describe('StudentsExcelService', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await ctx.service.exportWorkbook()) as never);
     const readers = wb.getWorksheet('Readers')!;
-    expect(readers.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Club', 'Club Group', 'Club Stage']);
-    expect([readers.getRow(2).getCell(8).value, readers.getRow(2).getCell(9).value, readers.getRow(2).getCell(10).value]).toEqual(['yes', 'Eagles', 'Silver']);
-    expect([readers.getRow(3).getCell(8).value, readers.getRow(3).getCell(9).value]).toEqual(['no', '']);
-    expect(readers.getCell('I2').dataValidation).toMatchObject({ type: 'list' });
+    expect(readers.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth', 'Club', 'Club Group', 'Club Stage']);
+    expect([readers.getRow(2).getCell(9).value, readers.getRow(2).getCell(10).value, readers.getRow(2).getCell(11).value]).toEqual(['yes', 'Eagles', 'Silver']);
+    expect([readers.getRow(3).getCell(9).value, readers.getRow(3).getCell(10).value]).toEqual(['no', '']);
+    expect(readers.getCell('J2').dataValidation).toMatchObject({ type: 'list' });
 
     const ref = wb.getWorksheet('Club reference')!;
     expect(ref.getRow(2).getCell(1).value).toBe('Eagles');
@@ -84,6 +84,32 @@ describe('StudentsExcelService', () => {
     const parsed = await ctx.service.parseWorkbook((await wb.xlsx.writeBuffer()) as never);
     expect(parsed[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: 'Silver' });
     expect(parsed[1]).toMatchObject({ club: false, clubGroup: null });
+  });
+
+  it('parses the Date of Birth column (text or a real Excel date) and flags invalid / future dates', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Readers');
+    ws.addRow(['Code', 'Date of Birth']);
+    ws.addRow(['S1', '2014-05-06']);
+    ws.addRow(['S2', new Date(Date.UTC(2013, 0, 31))]);
+    ws.addRow(['S3', '31/12/2014']);
+    ws.addRow(['S4', '2999-01-01']);
+    ws.addRow(['S5', null]);
+    const rows = await ctx.service.parseWorkbook(Buffer.from(await wb.xlsx.writeBuffer()));
+    expect(rows[0].dateOfBirth).toBe('2014-05-06');
+    expect(rows[1].dateOfBirth).toBe('2013-01-31');
+    expect(rows[2]).toMatchObject({ dateOfBirth: null, dateOfBirthInvalid: true });
+    expect(rows[3].dateOfBirthInvalid).toBe(true);
+    expect(rows).toHaveLength(5);
+    expect(rows[4].dateOfBirth).toBeNull(); // blank cell: an existing reader keeps theirs
+  });
+
+  it('a row with an invalid date of birth is rejected by validation', async () => {
+    const report = await ctx.service.validateRows([
+      { row: 2, code: 'S9', name: 'X', email: 'x@y.test', className: null, externalId: null, department: null, dateOfBirth: null, dateOfBirthInvalid: true, isActive: null, club: null, clubGroup: null, clubStage: null },
+    ] as never);
+    expect(report.rows[0]).toMatchObject({ valid: false });
+    expect(report.rows[0].error).toMatch(/date of birth/i);
   });
 
   it('parses recognized columns case-insensitively and skips blank rows', async () => {

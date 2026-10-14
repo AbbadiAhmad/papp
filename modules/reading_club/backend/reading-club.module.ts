@@ -26,6 +26,8 @@ import { PERMISSION_CHECKER } from './permission-checker';
 import { READER_IMPORT_EXTENSION, ReaderImportService } from './reader-import.service';
 import { PresentsController } from './presents.controller';
 import { PresentsService } from './presents.service';
+import { StatisticsController } from './statistics.controller';
+import { StatisticsService } from './statistics.service';
 import { StageBookEntriesController } from './stage-book-entries.controller';
 import { StageBookEntriesService } from './stage-book-entries.service';
 import { StageCompletionsController } from './stage-completions.controller';
@@ -49,6 +51,7 @@ import { StageCompletionsService } from './stage-completions.service';
     DashboardController,
     EventSubscriptionsController,
     PresentsController,
+    StatisticsController,
   ],
   providers: [
     EpisodesService,
@@ -57,6 +60,7 @@ import { StageCompletionsService } from './stage-completions.service';
     StageCompletionsService,
     StageBookEntriesService,
     PresentsService,
+    StatisticsService,
     ClubEventsService,
     ReaderImportService,
     // Picked up lazily by library_circulation's readers import (ModuleRef, strict:false) — see its reader-import-extension.ts.

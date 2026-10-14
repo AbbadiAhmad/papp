@@ -24,6 +24,8 @@ export interface LibraryStudent {
   isActive: boolean;
   externalId: string | null;
   department: string | null;
+  /** YYYY-MM-DD or null. */
+  dateOfBirth?: string | null;
 }
 
 /** "Name (CODE)" — the one way every circulation screen identifies a reader. */
@@ -186,6 +188,8 @@ export interface CreateStudentInput {
   academicYearId?: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string;
 }
 
 export interface UpdateStudentInput {
@@ -196,6 +200,8 @@ export interface UpdateStudentInput {
   email?: string;
   externalId?: string;
   department?: string;
+  /** YYYY-MM-DD to set, null to clear. */
+  dateOfBirth?: string | null;
   isActive?: boolean;
   mustChangePassword?: boolean;
   /** Generates a new temporary password, returned once as `temporaryPassword`. */
@@ -212,6 +218,7 @@ export interface StudentImportRow {
   className: string | null;
   externalId: string | null;
   department: string | null;
+  dateOfBirth?: string | null;
   isActive: boolean | null;
   club: boolean | null;
   clubGroup: string | null;

@@ -4,13 +4,14 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import ExcelJS from 'exceljs';
 import { randomBytes } from 'node:crypto';
+import { normalizeDateOfBirth, toDateOnly } from './date-of-birth';
 import { READER_IMPORT_EXTENSION, ReaderImportExtension } from './reader-import-extension';
 import { StudentsService } from './students.service';
 
 const READER_ROLE_CODE = 'reader';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Field = 'code' | 'name' | 'email' | 'className' | 'externalId' | 'department' | 'isActive' | 'club' | 'clubGroup' | 'clubStage';
+type Field = 'code' | 'name' | 'email' | 'className' | 'externalId' | 'department' | 'dateOfBirth' | 'isActive' | 'club' | 'clubGroup' | 'clubStage';
 
 /** Header text (lower-cased, trimmed) -> field. English only; the export writes exactly these. */
 const HEADER_ALIASES: Record<string, Field> = {
@@ -24,6 +25,11 @@ const HEADER_ALIASES: Record<string, Field> = {
   'external id': 'externalId',
   externalid: 'externalId',
   department: 'department',
+  'date of birth': 'dateOfBirth',
+  dateofbirth: 'dateOfBirth',
+  dob: 'dateOfBirth',
+  birthdate: 'dateOfBirth',
+  'birth date': 'dateOfBirth',
   active: 'isActive',
   // Reading-club columns — only acted on when the reading_club module is installed.
   club: 'club',
@@ -43,6 +49,9 @@ export interface ParsedStudentRow {
   className: string | null;
   externalId: string | null;
   department: string | null;
+  /** `YYYY-MM-DD`; null = blank cell (an existing reader keeps theirs). */
+  dateOfBirth: string | null;
+  dateOfBirthInvalid?: boolean;
   /** null = column blank (unchanged on update, active on create). */
   isActive: boolean | null;
   /** Set when the Active cell held something that isn't yes/no — reported as the row's error. */
@@ -130,6 +139,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       { header: 'External ID', key: 'externalId', width: 18 },
       { header: 'Department', key: 'department', width: 20 },
       { header: 'Active', key: 'isActive', width: 10 },
+      { header: 'Date of Birth', key: 'dateOfBirth', width: 16 },
       ...(club
         ? [
             { header: 'Club', key: 'club', width: 10 },
@@ -149,6 +159,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
         externalId: r.externalId ?? '',
         department: r.department ?? '',
         isActive: r.isActive ? 'yes' : 'no',
+        dateOfBirth: r.dateOfBirth ?? '',
         ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
       });
     }
@@ -179,12 +190,12 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       const lastRow = Math.max(2, lines + 1);
       const lastReaderRow = rows.length + 1;
       for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
-        sheet.getCell(`H${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
+        sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
         if (club.groups.length) {
-          sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
+          sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
         }
         if (stageNames.length) {
-          sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
+          sheet.getCell(`K${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
         }
       }
     }
@@ -209,22 +220,27 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       if (field) columns.set(col, field);
     });
     if (!columns.size) {
-      throw new BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, and optionally Club, Club Group, Club Stage)');
+      throw new BadRequestException('No recognized columns found in the header row (expected: Code, Name, Email, Class, External ID, Department, Active, Date of Birth, and optionally Club, Club Group, Club Stage)');
     }
 
     const rows: ParsedStudentRow[] = [];
     for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
       const row = sheet.getRow(rowNumber);
       const parsed: ParsedStudentRow = {
-        row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, isActive: null,
+        row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, dateOfBirth: null, isActive: null,
         club: null, clubGroup: null, clubStage: null,
       };
       let any = false;
       for (const [col, field] of columns) {
-        const text = cellText(row.getCell(col).value);
+        const rawValue = row.getCell(col).value;
+        const text = field === 'dateOfBirth' && rawValue instanceof Date ? (Number.isNaN(rawValue.getTime()) ? 'invalid' : rawValue.toISOString().slice(0, 10)) : cellText(rawValue);
         if (!text) continue;
         any = true;
-        if (field === 'isActive') {
+        if (field === 'dateOfBirth') {
+          const normalized = normalizeDateOfBirth(text);
+          if (normalized) parsed.dateOfBirth = normalized;
+          else parsed.dateOfBirthInvalid = true;
+        } else if (field === 'isActive') {
           const flag = parseFlag(text);
           if (flag === undefined) parsed.isActiveInvalid = true;
           else parsed.isActive = flag;
@@ -263,6 +279,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       const fail = (error: string): StudentImportRowResult => ({ ...row, valid: false, error, action: null, matchedStudentId: null });
 
       if (row.isActiveInvalid) return fail('Active must be yes/no');
+      if (row.dateOfBirthInvalid) return fail('Invalid date of birth (use YYYY-MM-DD; not in the future)');
       if (row.email && !EMAIL_RE.test(row.email)) return fail(`Invalid email "${row.email}"`);
       if (!row.code && !row.email) return fail('Each row needs a Code or an Email');
 
@@ -341,6 +358,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
                 email: row.email ?? undefined,
                 externalId: row.externalId ?? undefined,
                 department: row.department ?? undefined,
+                dateOfBirth: row.dateOfBirth ? toDateOnly(row.dateOfBirth) : undefined,
                 isActive: row.isActive ?? undefined,
               };
               if (Object.values(userData).some((v) => v !== undefined)) {
@@ -358,6 +376,7 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
                   name: row.name!,
                   externalId: row.externalId ?? undefined,
                   department: row.department ?? undefined,
+                  dateOfBirth: row.dateOfBirth ? toDateOnly(row.dateOfBirth) : undefined,
                   isActive: row.isActive ?? true,
                   passwordHash: hashes[createIndex++],
                   mustChangePassword: true,

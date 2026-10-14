@@ -25,6 +25,8 @@ class UpdateStudentDto {
     email;
     externalId;
     department;
+    /** `YYYY-MM-DD` to set, `null` to clear, omitted = unchanged. */
+    dateOfBirth;
     isActive;
     mustChangePassword;
     /** Generates a new random temporary password (returned ONCE) and forces a change at next login. */
@@ -68,6 +70,11 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], UpdateStudentDto.prototype, "department", void 0);
+__decorate([
+    (0, class_validator_1.ValidateIf)((_object, value) => value !== undefined && value !== null),
+    (0, class_validator_1.Matches)(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be a date in YYYY-MM-DD format' }),
+    __metadata("design:type", Object)
+], UpdateStudentDto.prototype, "dateOfBirth", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
