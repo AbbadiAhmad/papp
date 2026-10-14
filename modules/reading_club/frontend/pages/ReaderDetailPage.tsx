@@ -52,13 +52,29 @@ export function ReaderDetailPage() {
   const [busy, setBusy] = useState(false);
   const [presentOpen, setPresentOpen] = useState(false);
   const [presentText, setPresentText] = useState('');
+  const [editingPresentId, setEditingPresentId] = useState<string | null>(null);
+
+  const handleDeletePresent = async (presentId: string) => {
+    if (!window.confirm(t('reading_club.readers.delete_present_confirm'))) return;
+    setBusy(true);
+    try {
+      await readingClubApi.deletePresent(presentId);
+      reload();
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleGivePresent = async () => {
     if (!studentId || !presentText.trim()) return;
     setBusy(true);
     try {
-      await readingClubApi.givePresent(studentId, presentText.trim());
+      if (editingPresentId) await readingClubApi.updatePresent(editingPresentId, presentText.trim());
+      else await readingClubApi.givePresent(studentId, presentText.trim());
       setPresentOpen(false);
+      setEditingPresentId(null);
       setPresentText('');
       reload();
     } catch (err) {
@@ -249,6 +265,7 @@ export function ReaderDetailPage() {
                     <Button
                       variant="outlined"
                       onClick={() => {
+                        setEditingPresentId(null);
                         setPresentText('');
                         setPresentOpen(true);
                       }}
@@ -273,6 +290,7 @@ export function ReaderDetailPage() {
                           <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
                           <TableCell>{t('reading_club.readers.present_given_at')}</TableCell>
                           <TableCell>{t('reading_club.readers.given_by')}</TableCell>
+                          <TableCell align="right">{t('core.common.actions')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -287,6 +305,24 @@ export function ReaderDetailPage() {
                             <TableCell>{present.context?.stageName ?? '—'}</TableCell>
                             <TableCell>{formatDateOnly(present.givenAt, language)}</TableCell>
                             <TableCell>{present.givenByName ?? '—'}</TableCell>
+                            <TableCell align="right">
+                              <Can permission="reading_club.presents.manage">
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setEditingPresentId(present.id);
+                                    setPresentText(present.description);
+                                    setPresentOpen(true);
+                                  }}
+                                  disabled={busy}
+                                >
+                                  {t('core.common.edit')}
+                                </Button>
+                                <Button size="small" color="error" onClick={() => handleDeletePresent(present.id)} disabled={busy}>
+                                  {t('core.common.delete')}
+                                </Button>
+                              </Can>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -364,7 +400,7 @@ export function ReaderDetailPage() {
       <AssignReaderDialog open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={reload} />
 
       <Dialog open={presentOpen} onClose={() => setPresentOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('reading_club.readers.give_present_title')}</DialogTitle>
+        <DialogTitle>{editingPresentId ? t('reading_club.readers.edit_present_title') : t('reading_club.readers.give_present_title')}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -381,7 +417,7 @@ export function ReaderDetailPage() {
         <DialogActions>
           <Button onClick={() => setPresentOpen(false)}>{t('core.common.cancel')}</Button>
           <Button variant="contained" onClick={handleGivePresent} disabled={busy || !presentText.trim()}>
-            {t('reading_club.readers.give_present_button')}
+            {editingPresentId ? t('core.common.save') : t('reading_club.readers.give_present_button')}
           </Button>
         </DialogActions>
       </Dialog>

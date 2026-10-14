@@ -6,7 +6,12 @@ function build(membership: unknown, current = true) {
   const prisma = {
     libraryStudent: { findUnique: jest.fn(async () => ({ id: 'st' })) },
     readingClubMembership: { findUnique: jest.fn(async () => membership) },
-    readingClubPresent: { create: jest.fn(async (args: unknown) => args) },
+    readingClubPresent: {
+      create: jest.fn(async (args: unknown) => args),
+      findUnique: jest.fn(async () => ({ id: 'p1', episodeId: 'ep-1' })),
+      update: jest.fn(async (args: unknown) => args),
+      delete: jest.fn(async () => ({})),
+    },
   };
   const episodes = {
     getEpisodeOrThrow: jest.fn(async () => ({ id: 'ep-1', name: 'Season 1' })),
@@ -45,5 +50,25 @@ describe('PresentsService', () => {
     const closed = build({ episodeId: 'ep-old' }, false);
     await expect(closed.service.give('st', { description: 'x' }, 'lib-1')).rejects.toThrow('closed');
     expect(closed.prisma.readingClubPresent.create).not.toHaveBeenCalled();
+  });
+
+  it('updates a present\'s text (trimmed) in the current episode', async () => {
+    await ctx.service.update('p1', { description: ' Fixed ' });
+    expect(ctx.prisma.readingClubPresent.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { description: 'Fixed' } });
+  });
+
+  it('deletes a present in the current episode', async () => {
+    await expect(ctx.service.remove('p1')).resolves.toEqual({ removed: true });
+    expect(ctx.prisma.readingClubPresent.delete).toHaveBeenCalledWith({ where: { id: 'p1' } });
+  });
+
+  it('rejects editing or deleting a present of a closed episode, and a missing one', async () => {
+    const closed = build(null, false);
+    await expect(closed.service.update('p1', { description: 'x' })).rejects.toThrow('closed');
+    await expect(closed.service.remove('p1')).rejects.toThrow('closed');
+    expect(closed.prisma.readingClubPresent.delete).not.toHaveBeenCalled();
+    const missing = build(null);
+    missing.prisma.readingClubPresent.findUnique.mockResolvedValue(null as never);
+    await expect(missing.service.remove('nope')).rejects.toThrow('not found');
   });
 });

@@ -307,6 +307,9 @@ export const readingClubApi = {
   getPendingRewards: (studentId: string) => apiClient.get<PendingReward[]>(`${BASE}/readers/${studentId}/pending-rewards`).then((r) => r.data),
   givePresent: (studentId: string, description: string) =>
     apiClient.post<ReadingClubPresent>(`${BASE}/readers/${studentId}/presents`, { description }).then((r) => r.data),
+  updatePresent: (presentId: string, description: string) =>
+    apiClient.patch<ReadingClubPresent>(`${BASE}/presents/${presentId}`, { description }).then((r) => r.data),
+  deletePresent: (presentId: string) => apiClient.delete(`${BASE}/presents/${presentId}`).then((r) => r.data),
   confirmReward: (completionId: string) =>
     apiClient.post<ReadingClubStageCompletion>(`${BASE}/stage-completions/${completionId}/confirm-reward`).then((r) => r.data),
 

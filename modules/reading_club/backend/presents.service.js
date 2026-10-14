@@ -60,6 +60,24 @@ let PresentsService = PresentsService_1 = class PresentsService {
         await this.events?.publish({ type: 'reward_given', studentId, details: description });
         return present;
     }
+    async getEditablePresent(presentId) {
+        const present = await this.prisma.readingClubPresent.findUnique({ where: { id: presentId } });
+        if (!present)
+            throw new common_1.NotFoundException('Present not found');
+        await this.episodes.assertEpisodeIsCurrent(present.episodeId);
+        return present;
+    }
+    /** Corrects the text of an additional present (READING_CLUB-D28). Only in the current episode. */
+    async update(presentId, dto) {
+        await this.getEditablePresent(presentId);
+        return this.prisma.readingClubPresent.update({ where: { id: presentId }, data: { description: dto.description.trim() } });
+    }
+    /** Removes an additional present recorded by mistake (READING_CLUB-D28). Only in the current episode. */
+    async remove(presentId) {
+        await this.getEditablePresent(presentId);
+        await this.prisma.readingClubPresent.delete({ where: { id: presentId } });
+        return { removed: true };
+    }
 };
 exports.PresentsService = PresentsService;
 exports.PresentsService = PresentsService = PresentsService_1 = __decorate([

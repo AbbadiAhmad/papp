@@ -150,5 +150,8 @@
   "reading_club.readers.additional_present": "Additional present",
   "reading_club.readers.present_type": "Type",
   "reading_club.readers.given_by": "Given by",
-  "reading_club.readers.delivered_by": "Delivered by"
+  "reading_club.readers.delivered_by": "Delivered by",
+  "reading_club.perm.presents.manage": "Edit and delete additional presents",
+  "reading_club.readers.edit_present_title": "Edit present",
+  "reading_club.readers.delete_present_confirm": "Delete this present?"
 }
