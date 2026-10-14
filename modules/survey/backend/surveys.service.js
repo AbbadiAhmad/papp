@@ -19,6 +19,16 @@ const survey_structure_dto_1 = require("./dto/survey-structure.dto");
  * connection pool against the same generated client is the robust,
  * precedented choice every module makes).
  */
+/** Normalised JSON stored in `survey_sections.navigation` ('{}' = just continue to the next section). */
+function navigationOf(section) {
+    const nav = section.navigation;
+    return {
+        ...(nav?.defaultTarget ? { defaultTarget: nav.defaultTarget } : {}),
+        ...(nav?.routes?.length
+            ? { routes: nav.routes.map((r) => ({ sourceQuestionId: r.sourceQuestionId, sourceOptionValue: r.sourceOptionValue, target: r.target })) }
+            : {}),
+    };
+}
 let SurveysService = SurveysService_1 = class SurveysService {
     logger = new common_1.Logger(SurveysService_1.name);
     prisma = new client_1.PrismaClient();
@@ -168,8 +178,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
             for (const section of dto.sections) {
                 await tx.surveySection.upsert({
                     where: { id: section.id },
-                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description },
-                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description },
+                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
+                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
                 });
                 for (const question of section.questions) {
                     await tx.surveyQuestion.upsert({
@@ -258,6 +268,37 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 }
             }
         }
+        // Section navigation: jumps only go FORWARD (so a survey can never loop),
+        // to a real later section or to 'submit'; a route's source is a choice
+        // question of the section being left.
+        const indexOfSection = new Map(dto.sections.map((s, i) => [s.id, i]));
+        dto.sections.forEach((section, index) => {
+            const nav = section.navigation;
+            if (!nav)
+                return;
+            const checkTarget = (target) => {
+                if (!target || target === 'submit')
+                    return;
+                const targetIndex = indexOfSection.get(target);
+                if (targetIndex === undefined) {
+                    throw new common_1.BadRequestException(`Section "${section.title}" navigates to an unknown section`);
+                }
+                if (targetIndex <= index) {
+                    throw new common_1.BadRequestException(`Section "${section.title}" can only go forward to a later section, or submit`);
+                }
+            };
+            checkTarget(nav.defaultTarget);
+            for (const route of nav.routes ?? []) {
+                checkTarget(route.target);
+                const source = section.questions.find((q) => q.id === route.sourceQuestionId);
+                if (!source || !survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(source.type)) {
+                    throw new common_1.BadRequestException(`Section "${section.title}": a "go to" condition must use a choice question from that same section`);
+                }
+                if (!(source.options ?? []).some((o) => o.value === route.sourceOptionValue)) {
+                    throw new common_1.BadRequestException(`Section "${section.title}": a "go to" condition uses an option that doesn't exist on "${source.title}"`);
+                }
+            }
+        });
         for (const rule of dto.logicRules ?? []) {
             const sourceQuestion = questionsById.get(rule.sourceQuestionId);
             if (!sourceQuestion) {

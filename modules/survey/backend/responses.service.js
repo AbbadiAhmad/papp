@@ -192,6 +192,9 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             requiresLogin: survey.requiresLogin,
             sections: survey.sections.map((s) => ({
                 id: s.id,
+                title: s.title,
+                description: s.description,
+                navigation: (s.navigation ?? {}),
                 questions: s.questions.map((q) => ({
                     id: q.id,
                     type: q.type,
@@ -231,7 +234,11 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
                 enumerationAnswers[questionId] = value;
             }
         }
-        const { visibleQuestionIds } = (0, logic_engine_1.resolveVisibility)(survey.sections.map((s) => ({ id: s.id, questions: s.questions.map((q) => ({ id: q.id })) })), survey.logicRules, enumerationAnswers);
+        const { visibleQuestionIds } = (0, logic_engine_1.resolveVisibility)(survey.sections.map((s) => ({
+            id: s.id,
+            questions: s.questions.map((q) => ({ id: q.id })),
+            navigation: s.navigation,
+        })), survey.logicRules, enumerationAnswers);
         const normalized = [];
         for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q]))) {
             if (!visibleQuestionIds.has(question.id))

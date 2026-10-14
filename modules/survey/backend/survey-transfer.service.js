@@ -122,6 +122,7 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                 orderIndex: s.orderIndex,
                 title: s.title,
                 description: s.description ?? undefined,
+                navigation: (s.navigation ?? {}),
                 questions: s.questions.map((q) => ({
                     id: q.id,
                     orderIndex: q.orderIndex,
@@ -209,6 +210,7 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                         orderIndex: section.orderIndex,
                         title: section.title,
                         description: section.description,
+                        navigation: this.remapNavigation(section.navigation, sectionIds, questionIds),
                     },
                 });
                 for (const question of section.questions) {
@@ -256,6 +258,22 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
             }
             return tx.surveySurvey.findUniqueOrThrow({ where: { id: newSurveyId } });
         }, { timeout: 120_000 });
+    }
+    /** Section ids / question ids inside the navigation JSON are rewritten to the freshly minted ones. */
+    remapNavigation(nav, sectionIds, questionIds) {
+        const mapTarget = (target) => (target === 'submit' ? target : (sectionIds.get(target) ?? target));
+        return {
+            ...(nav?.defaultTarget ? { defaultTarget: mapTarget(nav.defaultTarget) } : {}),
+            ...(nav?.routes?.length
+                ? {
+                    routes: nav.routes.map((r) => ({
+                        sourceQuestionId: questionIds.get(r.sourceQuestionId) ?? r.sourceQuestionId,
+                        sourceOptionValue: r.sourceOptionValue,
+                        target: mapTarget(r.target),
+                    })),
+                }
+                : {}),
+        };
     }
     async insertResponses(tx, surveyId, responses, questionIds) {
         for (let start = 0; start < responses.length; start += INSERT_BATCH) {

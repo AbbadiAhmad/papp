@@ -485,6 +485,8 @@ model SurveySection {
   orderIndex  Int     @map("order_index")
   title       String
   description String?
+  /// Where the respondent goes after this section — see migration 004.
+  navigation  Json    @default("{}")
 
   survey    SurveySurvey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   questions SurveyQuestion[]

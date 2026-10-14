@@ -55,6 +55,7 @@ export interface SurveySectionDto {
   orderIndex: number;
   title: string;
   description?: string | null;
+  navigation?: SectionNavigation;
   questions: SurveyQuestionDto[];
 }
 
@@ -115,13 +116,26 @@ export interface FillableQuestion {
   options: Array<{ value: string; label: string }>;
 }
 
+export interface SectionNavigationRoute {
+  sourceQuestionId: string;
+  sourceOptionValue: string;
+  /** 'submit' or a later section's id. */
+  target: string;
+}
+
+/** Where the respondent goes after a section. Empty/undefined = the next section. */
+export interface SectionNavigation {
+  defaultTarget?: string | null;
+  routes?: SectionNavigationRoute[];
+}
+
 export interface FillableSurvey {
   id: string;
   title: string;
   description: string | null;
   allowEditAfterSubmit: boolean;
   requiresLogin: boolean;
-  sections: Array<{ id: string; questions: FillableQuestion[] }>;
+  sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; questions: FillableQuestion[] }>;
   logicRules: SurveyLogicRuleDto[];
 }
 

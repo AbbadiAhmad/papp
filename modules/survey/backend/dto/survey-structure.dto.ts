@@ -110,6 +110,34 @@ export class QuestionInputDto {
   options?: QuestionOptionInputDto[];
 }
 
+export class SectionRouteInputDto {
+  @IsString()
+  @MinLength(1)
+  sourceQuestionId!: string;
+
+  @IsString()
+  @MinLength(1)
+  sourceOptionValue!: string;
+
+  /** 'submit' or the id of a LATER section in the same payload. */
+  @IsString()
+  @MinLength(1)
+  target!: string;
+}
+
+export class SectionNavigationInputDto {
+  /** null/undefined = continue to the next section; 'submit' = finish; or a later section id. */
+  @IsOptional()
+  @IsString()
+  defaultTarget?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SectionRouteInputDto)
+  routes?: SectionRouteInputDto[];
+}
+
 export class SectionInputDto {
   /**
    * Always present, client-generated (`crypto.randomUUID()`) for a
@@ -130,6 +158,12 @@ export class SectionInputDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SectionNavigationInputDto)
+  navigation?: SectionNavigationInputDto;
 
   @IsArray()
   @ValidateNested({ each: true })

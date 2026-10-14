@@ -26,6 +26,7 @@ import {
   SURVEY_QUESTION_TYPES,
   surveyApi,
   type SurveyDetail,
+  type SectionNavigation,
   type SurveyLogicRuleDto,
   type SurveyQuestionDto,
   type SurveyQuestionType,
@@ -50,6 +51,15 @@ function newSection(orderIndex: number): SurveySectionDto {
 
 function reindex<T extends { orderIndex: number }>(items: T[]): T[] {
   return items.map((item, index) => ({ ...item, orderIndex: index }));
+}
+
+/** Navigation with every reference to `sectionId` removed (default -> next section, routes dropped). */
+function withoutTarget(navigation: SectionNavigation | undefined, sectionId: string): SectionNavigation | undefined {
+  if (!navigation) return navigation;
+  return {
+    defaultTarget: navigation.defaultTarget === sectionId ? null : navigation.defaultTarget,
+    routes: (navigation.routes ?? []).filter((r) => r.target !== sectionId),
+  };
 }
 
 function move<T>(items: T[], from: number, to: number): T[] {
@@ -122,7 +132,13 @@ export function SurveyBuilderPage() {
   const removeSection = (sectionIndex: number) => {
     const removed = sections[sectionIndex];
     if (removed) dropRulesFor([removed.id, ...removed.questions.map((q) => q.id)]);
-    setSections((prev) => reindex(prev.filter((_, i) => i !== sectionIndex)));
+    // Navigation pointing at the removed section falls back to "next section".
+    setSections((prev) =>
+      reindex(prev.filter((_, i) => i !== sectionIndex)).map((s) => ({
+        ...s,
+        navigation: removed ? withoutTarget(s.navigation, removed.id) : s.navigation,
+      })),
+    );
   };
   const moveSection = (sectionIndex: number, direction: -1 | 1) =>
     setSections((prev) => reindex(move(prev, sectionIndex, sectionIndex + direction)));
@@ -201,6 +217,34 @@ export function SurveyBuilderPage() {
           (rule.targetType === 'question' && section.questions.some((q) => q.id === rule.targetId)),
       );
 
+  // --- section navigation ("after this section") --------------------------
+  // Default is "continue to the next section"; a route sends the respondent
+  // elsewhere for a given answer. Targets are always LATER sections or
+  // 'submit', so a survey can never loop.
+  const choiceQuestionsOf = (section: SurveySectionDto) =>
+    section.questions.filter((q) => ENUMERATION_QUESTION_TYPES.includes(q.type) && (q.options ?? []).some((o) => optionValueOf(o)));
+  const laterSections = (sectionIndex: number) => sections.slice(sectionIndex + 1);
+  const updateNavigation = (sectionIndex: number, patch: Partial<SectionNavigation>) =>
+    updateSection(sectionIndex, { navigation: { ...sections[sectionIndex].navigation, ...patch } });
+  const addRoute = (sectionIndex: number) => {
+    const section = sections[sectionIndex];
+    const source = choiceQuestionsOf(section)[0];
+    const option = source?.options?.find((o) => optionValueOf(o));
+    if (!source || !option) return;
+    updateNavigation(sectionIndex, {
+      routes: [
+        ...(section.navigation?.routes ?? []),
+        { sourceQuestionId: source.id, sourceOptionValue: optionValueOf(option), target: laterSections(sectionIndex)[0]?.id ?? 'submit' },
+      ],
+    });
+  };
+  const updateRoute = (sectionIndex: number, routeIndex: number, patch: Partial<NonNullable<SectionNavigation['routes']>[number]>) =>
+    updateNavigation(sectionIndex, {
+      routes: (sections[sectionIndex].navigation?.routes ?? []).map((r, i) => (i === routeIndex ? { ...r, ...patch } : r)),
+    });
+  const removeRoute = (sectionIndex: number, routeIndex: number) =>
+    updateNavigation(sectionIndex, { routes: (sections[sectionIndex].navigation?.routes ?? []).filter((_, i) => i !== routeIndex) });
+
   const addLogicRule = (section: SurveySectionDto) => {
     const source = sourceCandidates(section)[0];
     const firstOption = source?.options?.find((o) => optionValueOf(o));
@@ -243,6 +287,21 @@ export function SurveyBuilderPage() {
       }
       cleanSections.push({ ...section, questions });
     }
+    // Navigation: drop anything stale (moved/removed sections, changed options) instead of failing the save.
+    const sectionIndexById = new Map(cleanSections.map((s, i) => [s.id, i] as const));
+    cleanSections.forEach((section, index) => {
+      const validTarget = (target: string | null | undefined) =>
+        !target || target === 'submit' || (sectionIndexById.get(target) ?? -1) > index;
+      const nav = section.navigation;
+      const routes = (nav?.routes ?? []).filter((r) => {
+        const source = section.questions.find((q) => q.id === r.sourceQuestionId);
+        return validTarget(r.target) && source?.options?.some((o) => o.value === r.sourceOptionValue);
+      });
+      section.navigation = {
+        defaultTarget: validTarget(nav?.defaultTarget) ? (nav?.defaultTarget ?? null) : null,
+        routes,
+      };
+    });
     const questionsById = new Map(cleanSections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)));
     const sectionIds = new Set(cleanSections.map((s) => s.id));
     const cleanRules: SurveyLogicRuleDto[] = [];
@@ -605,6 +664,103 @@ export function SurveyBuilderPage() {
                     </Typography>
                   ) : null}
                 </Box>
+              </Stack>
+            </Box>
+
+            <Box sx={{ mt: 2, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+              <Typography variant="subtitle2">{t('survey.builder.navigation_title')}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                {t('survey.builder.navigation_hint')}
+              </Typography>
+              <Stack spacing={1.5}>
+                {(section.navigation?.routes ?? []).map((route, routeIndex) => {
+                  const routeSource = section.questions.find((q) => q.id === route.sourceQuestionId);
+                  return (
+                    <Stack key={routeIndex} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_source_question')}
+                        value={choiceQuestionsOf(section).some((q) => q.id === route.sourceQuestionId) ? route.sourceQuestionId : ''}
+                        onChange={(e) => {
+                          const first = section.questions.find((q) => q.id === e.target.value)?.options?.find((o) => optionValueOf(o));
+                          updateRoute(sectionIndex, routeIndex, { sourceQuestionId: e.target.value, sourceOptionValue: first ? optionValueOf(first) : '' });
+                        }}
+                        sx={{ minWidth: 180 }}
+                      >
+                        {choiceQuestionsOf(section).map((q) => (
+                          <MenuItem key={q.id} value={q.id}>
+                            {q.title || t('survey.builder.untitled_question')}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_option_value')}
+                        value={(routeSource?.options ?? []).some((o) => optionValueOf(o) === route.sourceOptionValue) ? route.sourceOptionValue : ''}
+                        onChange={(e) => updateRoute(sectionIndex, routeIndex, { sourceOptionValue: e.target.value })}
+                        sx={{ minWidth: 140 }}
+                      >
+                        {(routeSource?.options ?? [])
+                          .filter((o) => optionValueOf(o))
+                          .map((o) => (
+                            <MenuItem key={o.id} value={optionValueOf(o)}>
+                              {o.label || o.value}
+                            </MenuItem>
+                          ))}
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.builder.go_to')}
+                        value={route.target === 'submit' || laterSections(sectionIndex).some((s) => s.id === route.target) ? route.target : ''}
+                        onChange={(e) => updateRoute(sectionIndex, routeIndex, { target: e.target.value })}
+                        sx={{ minWidth: 200 }}
+                      >
+                        {laterSections(sectionIndex).map((s) => (
+                          <MenuItem key={s.id} value={s.id}>
+                            {s.title || t('survey.builder.untitled_section')}
+                          </MenuItem>
+                        ))}
+                        <MenuItem value="submit">{t('survey.builder.submit_survey')}</MenuItem>
+                      </TextField>
+                      <IconButton size="small" onClick={() => removeRoute(sectionIndex, routeIndex)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  );
+                })}
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                  <TextField
+                    select
+                    size="small"
+                    label={t('survey.builder.otherwise_go_to')}
+                    value={
+                      section.navigation?.defaultTarget === 'submit' || laterSections(sectionIndex).some((s) => s.id === section.navigation?.defaultTarget)
+                        ? (section.navigation?.defaultTarget as string)
+                        : 'next'
+                    }
+                    onChange={(e) => updateNavigation(sectionIndex, { defaultTarget: e.target.value === 'next' ? null : e.target.value })}
+                    sx={{ minWidth: 220 }}
+                  >
+                    <MenuItem value="next">{t('survey.builder.next_section')}</MenuItem>
+                    {laterSections(sectionIndex).map((s) => (
+                      <MenuItem key={s.id} value={s.id}>
+                        {s.title || t('survey.builder.untitled_section')}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="submit">{t('survey.builder.submit_survey')}</MenuItem>
+                  </TextField>
+                  <Button size="small" startIcon={<AddIcon />} onClick={() => addRoute(sectionIndex)} disabled={choiceQuestionsOf(section).length === 0}>
+                    {t('survey.builder.add_route')}
+                  </Button>
+                  {choiceQuestionsOf(section).length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {t('survey.builder.route_needs_choice')}
+                    </Typography>
+                  ) : null}
+                </Stack>
               </Stack>
             </Box>
           </Paper>

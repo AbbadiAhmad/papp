@@ -153,6 +153,7 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
         orderIndex: s.orderIndex,
         title: s.title,
         description: s.description ?? undefined,
+        navigation: (s.navigation ?? {}) as SurveyStructureDto['sections'][number]['navigation'],
         questions: s.questions.map((q) => ({
           id: q.id,
           orderIndex: q.orderIndex,
@@ -248,6 +249,7 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
               orderIndex: section.orderIndex,
               title: section.title,
               description: section.description,
+              navigation: this.remapNavigation(section.navigation, sectionIds, questionIds),
             },
           });
           for (const question of section.questions) {
@@ -300,6 +302,27 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
       },
       { timeout: 120_000 },
     );
+  }
+
+  /** Section ids / question ids inside the navigation JSON are rewritten to the freshly minted ones. */
+  private remapNavigation(
+    nav: SurveyStructureDto['sections'][number]['navigation'],
+    sectionIds: Map<string, string>,
+    questionIds: Map<string, string>,
+  ): Prisma.InputJsonValue {
+    const mapTarget = (target: string) => (target === 'submit' ? target : (sectionIds.get(target) ?? target));
+    return {
+      ...(nav?.defaultTarget ? { defaultTarget: mapTarget(nav.defaultTarget) } : {}),
+      ...(nav?.routes?.length
+        ? {
+            routes: nav.routes.map((r) => ({
+              sourceQuestionId: questionIds.get(r.sourceQuestionId) ?? r.sourceQuestionId,
+              sourceOptionValue: r.sourceOptionValue,
+              target: mapTarget(r.target),
+            })),
+          }
+        : {}),
+    };
   }
 
   private async insertResponses(

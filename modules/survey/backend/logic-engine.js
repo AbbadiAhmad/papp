@@ -25,9 +25,23 @@
  *  - Hiding a SECTION hides every question inside it, regardless of any
  *    question-level rule that might otherwise show one of them (a hidden
  *    section is fully hidden, not partially).
+ *
+ * Section navigation (sections are shown one page at a time):
+ *  - After a section the respondent goes to the NEXT visible section by
+ *    default. A section's `navigation` can override that: `routes` (first
+ *    matching answer wins — "if Q = A go to section X / submit") and a
+ *    `defaultTarget` (null = next section, 'submit' = finish, or a section id).
+ *  - Targets must be LATER sections (enforced when the structure is saved), so
+ *    navigation can never loop. A hidden target falls through to the next
+ *    visible section after it.
+ *  - Sections that are not on the path the answers lead through are treated as
+ *    not visible, so their questions are never required or stored.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.SUBMIT_TARGET = void 0;
 exports.resolveVisibility = resolveVisibility;
+exports.resolveNextSectionId = resolveNextSectionId;
+exports.SUBMIT_TARGET = 'submit';
 function ruleMatches(rule, answers) {
     const answer = answers[rule.sourceQuestionId];
     if (answer === undefined)
@@ -36,13 +50,7 @@ function ruleMatches(rule, answers) {
         return answer.includes(rule.sourceOptionValue);
     return answer === rule.sourceOptionValue;
 }
-/**
- * Resolves which sections and questions are currently visible, given the
- * survey's full structure and the respondent's answers so far (only
- * enumeration-type answers matter for evaluation — other answer types are
- * irrelevant to any rule and can be omitted from `answers`).
- */
-function resolveVisibility(sections, rules, answers) {
+function buildVisibilityTester(rules, answers) {
     const rulesByTarget = new Map();
     for (const rule of rules) {
         const key = `${rule.targetType}:${rule.targetId}`;
@@ -52,7 +60,7 @@ function resolveVisibility(sections, rules, answers) {
         else
             rulesByTarget.set(key, [rule]);
     }
-    function isTargetVisible(targetType, targetId) {
+    return function isTargetVisible(targetType, targetId) {
         const targetRules = rulesByTarget.get(`${targetType}:${targetId}`);
         if (!targetRules || targetRules.length === 0)
             return true; // no rules -> always visible
@@ -66,19 +74,65 @@ function resolveVisibility(sections, rules, answers) {
                 break; // a matching hide always wins, evaluated last-applied
         }
         return visible;
-    }
-    const visibleSectionIds = new Set();
-    const visibleQuestionIds = new Set();
-    for (const section of sections) {
-        const sectionVisible = isTargetVisible('section', section.id);
-        if (!sectionVisible)
-            continue; // a hidden section hides every question inside it
-        visibleSectionIds.add(section.id);
-        for (const question of section.questions) {
-            if (isTargetVisible('question', question.id)) {
-                visibleQuestionIds.add(question.id);
-            }
+    };
+}
+/** Index of the section after `fromIndex`, or null when the respondent has reached the end / chose to submit. */
+function nextSectionIndex(sections, fromIndex, answers, sectionVisible) {
+    const navigation = sections[fromIndex].navigation;
+    let target = navigation?.defaultTarget;
+    for (const route of navigation?.routes ?? []) {
+        if (ruleMatches(route, answers)) {
+            target = route.target;
+            break;
         }
     }
-    return { visibleSectionIds, visibleQuestionIds };
+    if (target === exports.SUBMIT_TARGET)
+        return null;
+    let wanted = fromIndex + 1;
+    if (target) {
+        const targetIndex = sections.findIndex((s) => s.id === target);
+        if (targetIndex > fromIndex)
+            wanted = targetIndex; // only forward jumps are honoured
+    }
+    for (let j = wanted; j < sections.length; j++) {
+        if (sectionVisible(sections[j].id))
+            return j;
+    }
+    return null;
+}
+/**
+ * Resolves the sections the respondent walks through (in order) and the
+ * questions visible within them, given the survey's full structure and the
+ * respondent's answers so far (only enumeration-type answers matter — other
+ * answer types can be omitted from `answers`).
+ */
+function resolveVisibility(sections, rules, answers) {
+    const isTargetVisible = buildVisibilityTester(rules, answers);
+    const sectionVisible = (id) => isTargetVisible('section', id);
+    const pathSectionIds = [];
+    const visibleSectionIds = new Set();
+    const visibleQuestionIds = new Set();
+    let index = sections.findIndex((s) => sectionVisible(s.id));
+    if (index === -1)
+        index = null;
+    while (index !== null) {
+        const section = sections[index];
+        pathSectionIds.push(section.id);
+        visibleSectionIds.add(section.id);
+        for (const question of section.questions) {
+            if (isTargetVisible('question', question.id))
+                visibleQuestionIds.add(question.id);
+        }
+        index = nextSectionIndex(sections, index, answers, sectionVisible);
+    }
+    return { visibleSectionIds, visibleQuestionIds, pathSectionIds };
+}
+/** The section that follows `currentSectionId` for these answers, or null when the survey is finished (submit). */
+function resolveNextSectionId(sections, rules, answers, currentSectionId) {
+    const fromIndex = sections.findIndex((s) => s.id === currentSectionId);
+    if (fromIndex === -1)
+        return null;
+    const isTargetVisible = buildVisibilityTester(rules, answers);
+    const next = nextSectionIndex(sections, fromIndex, answers, (id) => isTargetVisible('section', id));
+    return next === null ? null : sections[next].id;
 }
