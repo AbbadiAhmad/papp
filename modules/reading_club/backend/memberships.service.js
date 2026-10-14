@@ -168,12 +168,15 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
         // later deleted (READING_CLUB-D16; a live join would return null the
         // moment that happens, silently breaking the group/stage columns this
         // session's earlier commit just added).
+        // READING_CLUB-D24: the present comes from the snapshot taken at completion; rows from before migration 006 were backfilled by it.
         const completionRows = completions.map((completion) => ({
             ...completion,
+            rewardDescription: completion.rewardSnapshot?.description ?? null,
             groupName: completion.groupName,
             stageName: completion.stageName,
             stageOrder: completion.stageOrder,
         }));
+        const presents = await this.prisma.readingClubPresent.findMany({ where: { studentId }, orderBy: { givenAt: 'desc' } });
         return {
             studentId: student.id,
             studentCode: student.code,
@@ -185,6 +188,7 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
             progress,
             groupStages,
             completions: completionRows,
+            presents,
         };
     }
     /**

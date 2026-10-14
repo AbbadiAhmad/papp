@@ -65,6 +65,19 @@ Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`doc
 
 **When the platform gains automatic migration discovery/application** (root D47, tracked in `docs/DECISIONS.md` PLATFORM-GAP-001), this entire manual section becomes obsolete — migrations will auto-apply on app startup and module install, eliminating operator error and the need for documentation step-by-step instructions.
 
+## Module version bump (required on every module change — user rule)
+
+The module's `manifest.json` `version` is `major.minor.patch` (e.g. `1.2.3`). The admin only sees/gets the change after upgrading the module, which is driven by this version, so **always bump it**:
+
+- The change includes a **database change** (a new migration file) → increase the **middle** number and reset the last to 0 (`1.2.3` → `1.3.0`).
+- Any other change (frontend, backend logic, locales, docs) → increase the **last** number (`1.2.3` → `1.2.4`).
+
+Bump once per delivered change, in every module whose files changed.
+
+## Compiled backend output must be rebuilt and committed
+
+A module's `backend/*.js` is checked into git next to its `.ts` and is what the server actually runs. After ANY change to a module's `backend/**/*.ts`, run `npx tsc -p modules/<key>/tsconfig.json` (needs `apps/api` built first so the `dist` imports resolve) and commit the regenerated `.js`. Forgetting this ships the new frontend against the old backend (e.g. a response field missing → runtime `undefined` error).
+
 ## Known gotchas (learned the hard way — read before you hit them again)
 
 - **`ValidationPipe`'s global `whitelist: true` silently STRIPS any request-body property whose DTO field has NO `class-validator` decorator at all** — not just an unrecognized property, a *declared but undecorated* one too. A field typed loosely on purpose (`value: unknown`, because its real shape depends on something looked up later, e.g. a question's type) still needs a decorator to survive — `@IsDefined()` is the right minimal choice when you deliberately don't want to constrain the shape yet. This is invisible to `tsc` (the TS type is fine) and to a raw-Prisma smoke test (never goes through the real HTTP pipe) — only a real HTTP call (curl or a browser) through the real running app will show the property silently missing on the other side. Found via `docs/DECISIONS.md` root D67; if a submitted value "disappears" with no validation error at all, check this first.
