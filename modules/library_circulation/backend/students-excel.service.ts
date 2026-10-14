@@ -108,8 +108,18 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
 
   // --- export ---------------------------------------------------------------
 
+  /**
+   * With reading_club installed, three extra columns (Club / Club Group /
+   * Club Stage — the import's own columns, so the file round-trips) plus a
+   * "Club reference" sheet listing every valid group/stage; the group and
+   * stage cells get dropdowns from it, so a librarian never types a name
+   * (or an ID) by hand.
+   */
   async exportWorkbook(): Promise<Buffer> {
     const rows = await this.students.list();
+    const extension = this.clubExtension();
+    const club = extension ? await extension.exportData(rows.map((r) => r.id)) : null;
+
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Readers');
     sheet.columns = [
@@ -120,9 +130,17 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       { header: 'External ID', key: 'externalId', width: 18 },
       { header: 'Department', key: 'department', width: 20 },
       { header: 'Active', key: 'isActive', width: 10 },
+      ...(club
+        ? [
+            { header: 'Club', key: 'club', width: 10 },
+            { header: 'Club Group', key: 'clubGroup', width: 22 },
+            { header: 'Club Stage', key: 'clubStage', width: 22 },
+          ]
+        : []),
     ];
     sheet.getRow(1).font = { bold: true };
     for (const r of rows) {
+      const member = club?.members[r.id];
       sheet.addRow({
         code: r.code,
         name: r.name ?? '',
@@ -131,7 +149,44 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
         externalId: r.externalId ?? '',
         department: r.department ?? '',
         isActive: r.isActive ? 'yes' : 'no',
+        ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
       });
+    }
+
+    if (club) {
+      const ref = workbook.addWorksheet('Club reference');
+      ref.columns = [
+        { header: 'Group', key: 'group', width: 24 },
+        { header: 'Stage order', key: 'order', width: 12 },
+        { header: 'Stage', key: 'stage', width: 24 },
+        { header: '', key: 'gap', width: 4 },
+        { header: 'Groups (dropdown list)', key: 'groupList', width: 24 },
+        { header: 'Stages (dropdown list)', key: 'stageList', width: 24 },
+      ];
+      ref.getRow(1).font = { bold: true };
+      const stageNames = [...new Set(club.groups.flatMap((g) => g.stages.map((s) => s.name)))];
+      const lines = Math.max(
+        club.groups.reduce((n, g) => n + Math.max(1, g.stages.length), 0),
+        club.groups.length,
+        stageNames.length,
+      );
+      const table: Array<{ group: string; order: number | string; stage: string }> = club.groups.flatMap<{ group: string; order: number | string; stage: string }>((g) =>
+        g.stages.length ? g.stages.map((s) => ({ group: g.name, order: s.order, stage: s.name })) : [{ group: g.name, order: '', stage: '' }],
+      );
+      for (let i = 0; i < lines; i++) {
+        ref.addRow({ ...(table[i] ?? {}), groupList: club.groups[i]?.name ?? '', stageList: stageNames[i] ?? '' });
+      }
+      const lastRow = Math.max(2, lines + 1);
+      const lastReaderRow = rows.length + 1;
+      for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
+        sheet.getCell(`H${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
+        if (club.groups.length) {
+          sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
+        }
+        if (stageNames.length) {
+          sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
+        }
+      }
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }

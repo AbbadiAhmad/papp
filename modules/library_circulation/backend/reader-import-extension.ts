@@ -17,7 +17,17 @@ export interface ReaderImportClubRow {
   clubStage: string | null;
 }
 
+/** What the readers export needs from the extension: who is in the club now, and what can be typed in the club columns. */
+export interface ReaderExportClubData {
+  /** studentId -> current group/stage names (members of the current episode only). */
+  members: Record<string, { group: string | null; stage: string | null }>;
+  /** The groups (and their stage names) a file may use right now — the export's reference sheet and dropdowns. */
+  groups: Array<{ name: string; stages: Array<{ order: number; name: string }> }>;
+}
+
 export interface ReaderImportExtension {
+  /** Current club membership + the valid group/stage names, for the export. */
+  exportData(studentIds: string[]): Promise<ReaderExportClubData>;
   /** Read-only: one entry per row that cannot be applied. */
   validate(rows: ReaderImportClubRow[]): Promise<Array<{ row: number; error: string }>>;
   /** Applies already-validated rows, after the reader rows themselves were committed. */

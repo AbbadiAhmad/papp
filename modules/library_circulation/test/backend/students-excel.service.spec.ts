@@ -51,6 +51,41 @@ describe('StudentsExcelService', () => {
     expect(ws.getRow(2).getCell(7).value).toBe('yes');
   });
 
+  it('with reading_club installed, exports Club / Club Group / Club Stage plus a reference sheet and dropdowns', async () => {
+    ctx.students.list.mockResolvedValue([
+      { id: 'st1', code: 'S1', name: 'Aisha', email: 'a@b.test', className: '5A', externalId: null, department: null, isActive: true },
+      { id: 'st2', code: 'S2', name: 'Omar', email: 'o@b.test', className: '5A', externalId: null, department: null, isActive: true },
+    ] as never);
+    const extension = {
+      exportData: jest.fn(async () => ({
+        members: { st1: { group: 'Eagles', stage: 'Silver' } },
+        groups: [{ name: 'Eagles', stages: [{ order: 1, name: 'Bronze' }, { order: 2, name: 'Silver' }] }, { name: 'Owls', stages: [] }],
+      })),
+      validate: jest.fn(),
+      apply: jest.fn(),
+    };
+    (ctx.service as unknown as { moduleRef: unknown }).moduleRef = { get: () => extension };
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await ctx.service.exportWorkbook()) as never);
+    const readers = wb.getWorksheet('Readers')!;
+    expect(readers.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Club', 'Club Group', 'Club Stage']);
+    expect([readers.getRow(2).getCell(8).value, readers.getRow(2).getCell(9).value, readers.getRow(2).getCell(10).value]).toEqual(['yes', 'Eagles', 'Silver']);
+    expect([readers.getRow(3).getCell(8).value, readers.getRow(3).getCell(9).value]).toEqual(['no', '']);
+    expect(readers.getCell('I2').dataValidation).toMatchObject({ type: 'list' });
+
+    const ref = wb.getWorksheet('Club reference')!;
+    expect(ref.getRow(2).getCell(1).value).toBe('Eagles');
+    expect(ref.getRow(3).getCell(3).value).toBe('Silver');
+    expect(ref.getRow(4).getCell(1).value).toBe('Owls');
+    expect(ref.getRow(3).getCell(6).value).toBe('Silver'); // distinct stage-name dropdown list
+
+    // The exported file feeds straight back into the import parser.
+    const parsed = await ctx.service.parseWorkbook((await wb.xlsx.writeBuffer()) as never);
+    expect(parsed[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: 'Silver' });
+    expect(parsed[1]).toMatchObject({ club: false, clubGroup: null });
+  });
+
   it('parses recognized columns case-insensitively and skips blank rows', async () => {
     const rows = await ctx.service.parseWorkbook(await workbookBuffer(['CODE', 'name', 'E-mail?', 'Email'], [['S1', 'Aisha', 'x', 'a@b.test'], [null, null, null, null]]));
     expect(rows).toHaveLength(1);

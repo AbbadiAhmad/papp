@@ -72,6 +72,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 
 - **ID cards**: `/library-circulation/readers/print-cards` (permission `students.print_cards`) — filter, tick readers, print credit-card-size cards (85.6x54 mm, 2 per row on A4). Custom text = setting `library_circulation.reader_card` (edited on that page with `settings.update`). Data: `GET students/print-cards`.
 - **Readers import** also reads optional `Club` (yes/no), `Club Group`, `Club Stage` (current reading-club episode; needs the reading_club module — see its DOCUMENTATION/DECISIONS D30). Extension point: `backend/reader-import-extension.ts`.
+- **Readers export** adds `Club`/`Club Group`/`Club Stage` + a `Club reference` sheet with dropdowns when reading_club is installed (no IDs anywhere; names matched forgivingly on import — READING_CLUB-D31).
 - **Fines list** order: unpaid, partially paid, then the rest; newest first within each.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)

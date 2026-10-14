@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { ReaderImportService } from '../../backend/reader-import.service';
+import { ReaderImportService, normalizeName } from '../../backend/reader-import.service';
 
 const GROUP = { id: 'g1', name: 'Eagles', episodeId: 'ep1', isActive: true };
 const STAGES = [
@@ -11,7 +11,7 @@ function build(currentEpisode: { id: string } | null = { id: 'ep1' }) {
   const prisma = {
     readingClubGroup: { findMany: jest.fn(async () => [GROUP]) },
     readingClubStage: { findMany: jest.fn(async () => STAGES) },
-    readingClubMembership: { findUnique: jest.fn(async (): Promise<unknown> => null) },
+    readingClubMembership: { findUnique: jest.fn(async (): Promise<unknown> => null), findMany: jest.fn(async (): Promise<unknown[]> => []) },
   };
   const episodes = { findCurrentEpisodeOrNull: jest.fn(async () => currentEpisode) };
   const memberships = { assign: jest.fn(async () => undefined), moveStage: jest.fn(async () => undefined), removeMembership: jest.fn(async () => undefined) };
@@ -51,6 +51,50 @@ describe('ReaderImportService', () => {
         row({ row: 5, club: false, clubGroup: 'Eagles' }),
       ]);
       expect(errors.map((e) => e.row)).toEqual([2, 3, 4, 5]);
+    });
+  });
+
+  describe('name matching (librarians type names, never IDs)', () => {
+    it('ignores case, extra spaces, diacritics and common Arabic spelling variants', () => {
+      expect(normalizeName('  Eagles  ')).toBe(normalizeName('eagles'));
+      expect(normalizeName('الأَبطال')).toBe(normalizeName('الابطال'));
+      expect(normalizeName('مجموعة   النسور')).toBe(normalizeName('مجموعة النسور'));
+      expect(normalizeName('مدرسة')).toBe(normalizeName('مدرسه'));
+    });
+
+    it('accepts a padded / differently-cased group name', async () => {
+      expect(await ctx.service.validate([row({ clubGroup: '  EAGLES ', clubStage: ' silver' })])).toEqual([]);
+    });
+
+    it('an unknown name lists the valid ones in the error', async () => {
+      const [groupError] = await ctx.service.validate([row({ clubGroup: 'Hawks' })]);
+      expect(groupError.error).toMatch(/Available groups: Eagles/);
+      const [stageError] = await ctx.service.validate([row({ clubGroup: 'Eagles', clubStage: 'Gold' })]);
+      expect(stageError.error).toMatch(/Available stages: Bronze, Silver/);
+    });
+
+    it('rejects two groups sharing the same name as ambiguous', async () => {
+      ctx.prisma.readingClubGroup.findMany.mockResolvedValue([GROUP, { ...GROUP, id: 'g2' }]);
+      const [e] = await ctx.service.validate([row({ clubGroup: 'Eagles' })]);
+      expect(e.error).toMatch(/ambiguous/);
+    });
+  });
+
+  describe('exportData', () => {
+    it('returns current members with live group/stage names, and the valid groups with their stages', async () => {
+      ctx.prisma.readingClubGroup.findMany.mockResolvedValue([{ ...GROUP, stages: STAGES }] as never);
+      ctx.prisma.readingClubMembership.findMany.mockResolvedValue([
+        { studentId: 'st1', groupId: 'g1', currentStageId: 's2', groupName: 'old name', stageName: 'old' },
+        { studentId: 'st2', groupId: null, currentStageId: null, groupName: 'Deleted group', stageName: null },
+      ]);
+      const data = await ctx.service.exportData(['st1', 'st2', 'st3']);
+      expect(data.members).toEqual({ st1: { group: 'Eagles', stage: 'Silver' }, st2: { group: 'Deleted group', stage: null } });
+      expect(data.groups).toEqual([{ name: 'Eagles', stages: [{ order: 1, name: 'Bronze' }, { order: 2, name: 'Silver' }] }]);
+    });
+
+    it('is empty when there is no current episode', async () => {
+      const { service } = build(null);
+      expect(await service.exportData(['st1'])).toEqual({ members: {}, groups: [] });
     });
   });
 

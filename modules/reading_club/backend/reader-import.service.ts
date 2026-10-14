@@ -6,6 +6,19 @@ import { MembershipsService } from './memberships.service';
 /** Same string as library_circulation's `READER_IMPORT_EXTENSION` (plain string so neither module imports the other). */
 export const READER_IMPORT_EXTENSION = 'papp.library_circulation.reader_import_extension';
 
+/** Same rules as the import's matching: ignore case, extra spaces, Arabic diacritics/tatweel and alef/yaa/taa-marbuta spelling variants. */
+export function normalizeName(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 interface ClubRow {
   row: number;
   club: boolean | null;
@@ -41,17 +54,51 @@ export class ReaderImportService implements OnModuleInit, OnModuleDestroy {
 
   private async resolve(row: ClubRow, episodeId: string): Promise<{ error?: string; groupId?: string; stageId?: string | null }> {
     if (!row.clubGroup) return {};
-    const groups = await this.prisma.readingClubGroup.findMany({ where: { episodeId, isActive: true } });
-    const group = groups.find((g) => g.name.trim().toLowerCase() === row.clubGroup!.trim().toLowerCase());
-    if (!group) return { error: `Club group "${row.clubGroup}" not found in the current episode` };
+    const groups = await this.prisma.readingClubGroup.findMany({ where: { episodeId, isActive: true }, orderBy: { name: 'asc' } });
+    const wantedGroup = normalizeName(row.clubGroup);
+    const matches = groups.filter((g) => normalizeName(g.name) === wantedGroup);
+    if (matches.length === 0) {
+      return { error: `Club group "${row.clubGroup}" not found in the current episode. Available groups: ${groups.map((g) => g.name).join(', ') || '(none)'}` };
+    }
+    if (matches.length > 1) return { error: `Club group "${row.clubGroup}" is ambiguous — ${matches.length} groups share that name` };
+    const group = matches[0];
     if (!row.clubStage) return { groupId: group.id, stageId: null };
-    const stages = await this.prisma.readingClubStage.findMany({ where: { groupId: group.id } });
-    const wanted = row.clubStage.trim().toLowerCase();
-    const stage =
-      stages.find((s) => s.name.trim().toLowerCase() === wanted) ??
-      (/^\d+$/.test(wanted) ? stages.find((s) => s.stageOrder === Number(wanted)) : undefined);
-    if (!stage) return { error: `Club stage "${row.clubStage}" not found in group "${group.name}"` };
+    const stages = await this.prisma.readingClubStage.findMany({ where: { groupId: group.id }, orderBy: { stageOrder: 'asc' } });
+    const wanted = normalizeName(row.clubStage);
+    const stage = stages.find((s) => normalizeName(s.name) === wanted) ?? (/^\d+$/.test(wanted) ? stages.find((s) => s.stageOrder === Number(wanted)) : undefined);
+    if (!stage) {
+      return { error: `Club stage "${row.clubStage}" not found in group "${group.name}". Available stages: ${stages.map((s) => s.name).join(', ') || '(none)'}` };
+    }
     return { groupId: group.id, stageId: stage.id };
+  }
+
+  /** Current members + the valid group/stage names, for the readers export (see library_circulation's reader-import-extension.ts). */
+  async exportData(studentIds: string[]): Promise<{
+    members: Record<string, { group: string | null; stage: string | null }>;
+    groups: Array<{ name: string; stages: Array<{ order: number; name: string }> }>;
+  }> {
+    const episode = await this.episodes.findCurrentEpisodeOrNull();
+    if (!episode) return { members: {}, groups: [] };
+    const groups = await this.prisma.readingClubGroup.findMany({
+      where: { episodeId: episode.id, isActive: true },
+      orderBy: { name: 'asc' },
+      include: { stages: { orderBy: { stageOrder: 'asc' } } },
+    });
+    const memberships = studentIds.length
+      ? await this.prisma.readingClubMembership.findMany({ where: { episodeId: episode.id, studentId: { in: studentIds } } })
+      : [];
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    const members: Record<string, { group: string | null; stage: string | null }> = {};
+    for (const m of memberships) {
+      const group = m.groupId ? groupById.get(m.groupId) : undefined;
+      const stage = group?.stages.find((st) => st.id === m.currentStageId);
+      // Live names when the group/stage still exists, else the snapshot taken at assignment.
+      members[m.studentId] = { group: group?.name ?? m.groupName ?? null, stage: stage?.name ?? m.stageName ?? null };
+    }
+    return {
+      members,
+      groups: groups.map((g) => ({ name: g.name, stages: g.stages.map((st) => ({ order: st.stageOrder, name: st.name })) })),
+    };
   }
 
   async validate(rows: ClubRow[]): Promise<Array<{ row: number; error: string }>> {
