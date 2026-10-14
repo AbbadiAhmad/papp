@@ -60,6 +60,7 @@ import { ReaderAutocomplete } from './ReaderAutocomplete';
 import { PageHero, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 import { ReaderHistoryDialog } from './ReaderHistoryDialog';
+import { ConfirmClubStageDialog } from './ConfirmClubStageDialog';
 import { ReturnDialog } from './ReturnDialog';
 
 /** A book the librarian has scanned for borrowing but not yet borrowed. */
@@ -104,6 +105,7 @@ export function ScanPage() {
   const [readerCode, setReaderCode] = useState('');
   const [bookCode, setBookCode] = useState('');
   const [basket, setBasket] = useState<BasketItem[]>([]);
+  const [confirmStageOpen, setConfirmStageOpen] = useState(false);
   const [priorByCopy, setPriorByCopy] = useState<Record<string, BookCirculationHistoryEntry | null>>({});
   const [activeBorrowings, setActiveBorrowings] = useState<ActiveBorrowingForStudent[]>([]);
   const [readerFines, setReaderFines] = useState<LibraryFine[]>([]);
@@ -282,6 +284,7 @@ export function ScanPage() {
     const wasLast = !clubOverview?.groupStages.some((s) => s.stageOrder > (clubOverview.stage?.stageOrder ?? 0));
     try {
       await readingClubIntegration.completeStage(readerId);
+      setConfirmStageOpen(false);
       setMessage(
         wasLast
           ? t('library_circulation.scan.reading_club_all_done_message', { stage: finishedStage })
@@ -723,7 +726,7 @@ export function ScanPage() {
                               variant="contained"
                               color="success"
                               disabled={!clubOverview.progress.isComplete}
-                              onClick={completeReadingClubStage}
+                              onClick={() => setConfirmStageOpen(true)}
                               sx={{ alignSelf: 'flex-start' }}
                             >
                               {t('library_circulation.scan.reading_club_complete_stage_button')}
@@ -1012,6 +1015,17 @@ export function ScanPage() {
         onClose={() => setBorrowDialogOpen(false)}
         loading={busy}
       />
+
+      {readerId && clubOverview?.stage ? (
+        <ConfirmClubStageDialog
+          open={confirmStageOpen}
+          studentId={readerId}
+          stageName={clubOverview.stage.name}
+          busy={busy}
+          onConfirm={completeReadingClubStage}
+          onClose={() => setConfirmStageOpen(false)}
+        />
+      ) : null}
 
       <ReturnDialog
         open={returnTarget !== null}

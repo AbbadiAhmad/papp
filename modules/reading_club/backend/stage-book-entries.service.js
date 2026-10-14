@@ -41,9 +41,25 @@ let StageBookEntriesService = StageBookEntriesService_1 = class StageBookEntries
     /** Active + discarded entries for the reader's CURRENT stage window (their current membership's group/stage). */
     async listForReader(studentId) {
         const membership = await this.memberships.getMembershipOrThrow(studentId);
-        return this.prisma.readingClubStageBookEntry.findMany({
+        const entries = await this.prisma.readingClubStageBookEntry.findMany({
             where: { studentId, groupId: membership.groupId, stageId: membership.currentStageId },
             orderBy: { addedAt: 'desc' },
+        });
+        return this.withCatalogInfo(entries);
+    }
+    /**
+     * READING_CLUB-D29: adds the book's catalog `category` + `readingLevel` (read live — not snapshotted) for the
+     * "confirm stage" popup. Manual entries with no linked copy, or a since-deleted book, get nulls.
+     */
+    async withCatalogInfo(entries) {
+        const copyIds = [...new Set(entries.map((e) => e.bookCopyId).filter((id) => !!id))];
+        const copies = copyIds.length ? ((await this.prisma.libraryCatalogBookCopy.findMany({ where: { id: { in: copyIds } }, select: { id: true, bookId: true } })) ?? []) : [];
+        const bookIds = [...new Set(copies.map((c) => c.bookId))];
+        const books = bookIds.length ? ((await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: bookIds } }, select: { id: true, category: true, readingLevel: true } })) ?? []) : [];
+        const bookByCopy = new Map(copies.map((c) => [c.id, books.find((b) => b.id === c.bookId)]));
+        return entries.map((e) => {
+            const book = e.bookCopyId ? bookByCopy.get(e.bookCopyId) : undefined;
+            return { ...e, category: book?.category ?? null, readingLevel: book?.readingLevel ?? null };
         });
     }
     /** `groupName`/`stageName` are snapshotted from the membership's own current snapshot at add time (READING_CLUB-D16) — consistent with the auto-sync half in MembershipsService.syncStageBookEntries. */

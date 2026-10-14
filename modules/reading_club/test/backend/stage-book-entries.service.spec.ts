@@ -4,11 +4,15 @@ import { StageBookEntriesService } from '../../backend/stage-book-entries.servic
 
 interface MockPrisma {
   readingClubStageBookEntry: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
+  libraryCatalogBookCopy: { findMany: jest.Mock };
+  libraryCatalogBook: { findMany: jest.Mock };
 }
 
 function createMockPrisma(): MockPrisma {
   return {
     readingClubStageBookEntry: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    libraryCatalogBookCopy: { findMany: jest.fn(async () => []) },
+    libraryCatalogBook: { findMany: jest.fn(async () => []) },
   };
 }
 
@@ -153,6 +157,24 @@ describe('StageBookEntriesService', () => {
         where: { studentId: 'student-1', groupId: 'g1', stageId: 's1' },
         orderBy: { addedAt: 'desc' },
       });
+    });
+
+    it('adds the linked book\'s category and reading level (READING_CLUB-D29); manual entries get nulls', async () => {
+      const memberships: Partial<MembershipsService> = {
+        getMembershipOrThrow: jest.fn(async () => ({ groupId: 'g1', currentStageId: 's1' })) as unknown as MembershipsService['getMembershipOrThrow'],
+      };
+      const service = buildService(prisma, memberships);
+      prisma.readingClubStageBookEntry.findMany.mockResolvedValue([
+        { id: 'e1', bookCopyId: 'copy-1', bookTitle: 'A', pageCount: 100 },
+        { id: 'e2', bookCopyId: null, bookTitle: 'B', pageCount: 20 },
+      ]);
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'copy-1', bookId: 'book-1' }]);
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([{ id: 'book-1', category: 'Science', readingLevel: 'L2' }]);
+
+      const result = await service.listForReader('student-1');
+
+      expect(result[0]).toEqual(expect.objectContaining({ id: 'e1', category: 'Science', readingLevel: 'L2' }));
+      expect(result[1]).toEqual(expect.objectContaining({ id: 'e2', category: null, readingLevel: null }));
     });
   });
 });

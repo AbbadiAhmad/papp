@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
   scan: vi.fn(), getLoanPolicy: vi.fn(), getActiveBorrowingsForStudent: vi.fn(), listFines: vi.fn(), getCopyCirculationHistory: vi.fn(),
   getStudent: vi.fn(), searchStudents: vi.fn(), listFineTypes: vi.fn(), getStudentIncidents: vi.fn(), searchBookCopies: vi.fn(),
 }));
-const club = vi.hoisted(() => ({ getPendingRewards: vi.fn(), confirmReward: vi.fn(), getReaderOverview: vi.fn(), completeStage: vi.fn() }));
+const club = vi.hoisted(() => ({ getPendingRewards: vi.fn(), confirmReward: vi.fn(), getReaderOverview: vi.fn(), completeStage: vi.fn(), listBookEntries: vi.fn() }));
 
 vi.mock('../../frontend/api', () => ({ libraryCirculationApi: api }));
 vi.mock('../../frontend/readingClubIntegration', () => ({ readingClubIntegration: club }));
@@ -58,6 +58,7 @@ beforeEach(() => {
   api.searchBookCopies.mockResolvedValue([]);
   api.scan.mockResolvedValue(READER);
   club.getPendingRewards.mockResolvedValue([]);
+  club.listBookEntries.mockResolvedValue([{ id: 'e1', bookTitle: 'Moby', pageCount: 120, status: 'active', category: 'Fiction', readingLevel: 'L3' }]);
 });
 
 async function scanReader() {
@@ -85,6 +86,12 @@ describe('ScanPage Reading Club panel', () => {
     club.completeStage.mockResolvedValue({});
     await scanReader();
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm stage complete & move to next' }));
+    // The confirm popup lists the stage's books with category, pages and level before completing.
+    await screen.findByText('Moby');
+    expect(screen.getByText('Fiction')).toBeInTheDocument();
+    expect(screen.getByText('120')).toBeInTheDocument();
+    expect(screen.getByText('L3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm stage finished' }));
     await waitFor(() => expect(club.completeStage).toHaveBeenCalledWith('r1'));
     await screen.findByText('Current stage: Silver (0 / 5 books)');
     expect(screen.getByText('Completed stages: Bronze')).toBeInTheDocument();
@@ -97,6 +104,12 @@ describe('ScanPage Reading Club panel', () => {
     club.completeStage.mockResolvedValue({});
     await scanReader();
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm stage complete & move to next' }));
+    // The confirm popup lists the stage's books with category, pages and level before completing.
+    await screen.findByText('Moby');
+    expect(screen.getByText('Fiction')).toBeInTheDocument();
+    expect(screen.getByText('120')).toBeInTheDocument();
+    expect(screen.getByText('L3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm stage finished' }));
     await screen.findByText(/completed ALL stages/);
     await screen.findByText('This reader has completed all stages of the group.');
   });

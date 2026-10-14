@@ -153,5 +153,13 @@
   "reading_club.readers.delivered_by": "Delivered by",
   "reading_club.perm.presents.manage": "Edit and delete additional presents",
   "reading_club.readers.edit_present_title": "Edit present",
-  "reading_club.readers.delete_present_confirm": "Delete this present?"
+  "reading_club.readers.delete_present_confirm": "Delete this present?",
+  "reading_club.confirm_stage.title": "Confirm finishing stage: {{stage}}",
+  "reading_club.confirm_stage.no_books": "No books are recorded for this stage.",
+  "reading_club.confirm_stage.summary": "{{books}} books, {{pages}} pages",
+  "reading_club.confirm_stage.book": "Book",
+  "reading_club.confirm_stage.category": "Category",
+  "reading_club.confirm_stage.pages": "Pages",
+  "reading_club.confirm_stage.level": "Level",
+  "reading_club.confirm_stage.confirm_button": "Confirm stage finished"
 }

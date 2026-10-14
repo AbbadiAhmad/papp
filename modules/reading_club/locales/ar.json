@@ -153,5 +153,13 @@
   "reading_club.readers.delivered_by": "سلّم المكافأة",
   "reading_club.perm.presents.manage": "تعديل وحذف الهدايا الإضافية",
   "reading_club.readers.edit_present_title": "تعديل الهدية",
-  "reading_club.readers.delete_present_confirm": "حذف هذه الهدية؟"
+  "reading_club.readers.delete_present_confirm": "حذف هذه الهدية؟",
+  "reading_club.confirm_stage.title": "تأكيد إنهاء المرحلة: {{stage}}",
+  "reading_club.confirm_stage.no_books": "لا توجد كتب مسجّلة في هذه المرحلة.",
+  "reading_club.confirm_stage.summary": "{{books}} كتاب، {{pages}} صفحة",
+  "reading_club.confirm_stage.book": "الكتاب",
+  "reading_club.confirm_stage.category": "التصنيف",
+  "reading_club.confirm_stage.pages": "الصفحات",
+  "reading_club.confirm_stage.level": "المستوى",
+  "reading_club.confirm_stage.confirm_button": "تأكيد إنهاء المرحلة"
 }

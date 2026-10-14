@@ -27,7 +27,19 @@ export interface ReadingClubReaderOverview {
   completions: { id: string; stageName: string | null; stageOrder: number | null; completedAt: string; rewardStatus: 'pending' | 'delivered' }[];
 }
 
+/** A stage book entry as returned by reading_club's `GET /readers/:studentId/book-entries` (subset shown in the confirm-stage popup). */
+export interface ReadingClubBookEntry {
+  id: string;
+  bookTitle: string;
+  pageCount: number | null;
+  status: 'active' | 'discarded';
+  category?: string | null;
+  readingLevel?: string | null;
+}
+
 export const readingClubIntegration = {
+  listBookEntries: (studentId: string) =>
+    apiClient.get<ReadingClubBookEntry[]>(`/api/reading-club/readers/${studentId}/book-entries`).then((r) => r.data),
   getReaderOverview: (studentId: string) =>
     apiClient.get<ReadingClubReaderOverview>(`/api/reading-club/readers/${studentId}`).then((r) => r.data),
   completeStage: (studentId: string) => apiClient.post(`/api/reading-club/readers/${studentId}/complete-stage`).then((r) => r.data),

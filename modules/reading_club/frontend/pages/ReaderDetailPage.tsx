@@ -34,6 +34,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
+import { ConfirmStageDialog } from './ConfirmStageDialog';
 import { StageBookEntriesCard } from './StageBookEntriesCard';
 
 /** A reader's reading-club profile: current group/stage, live progress, action buttons, and the append-only stage-completion/reward history. */
@@ -50,6 +51,7 @@ export function ReaderDetailPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [confirmStageOpen, setConfirmStageOpen] = useState(false);
   const [presentOpen, setPresentOpen] = useState(false);
   const [presentText, setPresentText] = useState('');
   const [editingPresentId, setEditingPresentId] = useState<string | null>(null);
@@ -89,6 +91,7 @@ export function ReaderDetailPage() {
     setBusy(true);
     try {
       await readingClubApi.completeStage(studentId);
+      setConfirmStageOpen(false);
       reload();
     } catch (err) {
       setSnackbar(extractErrorMessage(err));
@@ -233,7 +236,7 @@ export function ReaderDetailPage() {
                       </Can>
                     ) : null}
                     <Can permission="reading_club.stage_completions.mark">
-                      <Button variant="contained" onClick={handleMarkComplete} disabled={busy}>
+                      <Button variant="contained" onClick={() => setConfirmStageOpen(true)} disabled={busy}>
                         {t('reading_club.readers.mark_complete_button')}
                       </Button>
                     </Can>
@@ -396,6 +399,17 @@ export function ReaderDetailPage() {
           </Stack>
         ) : null}
       </QueryStateGate>
+
+      {studentId && reader?.stage ? (
+        <ConfirmStageDialog
+          open={confirmStageOpen}
+          studentId={studentId}
+          stageName={reader.stage.name}
+          busy={busy}
+          onConfirm={handleMarkComplete}
+          onClose={() => setConfirmStageOpen(false)}
+        />
+      ) : null}
 
       <AssignReaderDialog open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={reload} />
 

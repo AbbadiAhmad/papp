@@ -161,6 +161,9 @@ export interface ReadingClubStageBookEntry {
   discardedAt: string | null;
   discardedBy: string | null;
   discardReason: string | null;
+  /** Live from the catalog (READING_CLUB-D29); null for a manual entry with no linked book. */
+  category?: string | null;
+  readingLevel?: string | null;
 }
 
 export interface AddBookEntryInput {
