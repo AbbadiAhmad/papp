@@ -317,7 +317,10 @@ function TabsNav() {
             icon={iconFor(tab.node) as ReactElement}
             iconPosition="start"
             label={labelOf(tab.node, language, t)}
-            onClick={() => navigate(tab.leaves[0].route)}
+            // Re-clicking the already-open group must not bounce the user back to its first page.
+            onClick={() => {
+              if (tab.node.id !== active?.node.id) navigate(tab.leaves[0].route);
+            }}
           />
         ))}
       </Tabs>

@@ -19,6 +19,16 @@ const survey_structure_dto_1 = require("./dto/survey-structure.dto");
  * connection pool against the same generated client is the robust,
  * precedented choice every module makes).
  */
+/** Normalised JSON stored in `survey_sections.navigation` ('{}' = just continue to the next section). */
+function navigationOf(section) {
+    const nav = section.navigation;
+    return {
+        ...(nav?.defaultTarget ? { defaultTarget: nav.defaultTarget } : {}),
+        ...(nav?.routes?.length
+            ? { routes: nav.routes.map((r) => ({ sourceQuestionId: r.sourceQuestionId, sourceOptionValue: r.sourceOptionValue, target: r.target })) }
+            : {}),
+    };
+}
 let SurveysService = SurveysService_1 = class SurveysService {
     logger = new common_1.Logger(SurveysService_1.name);
     prisma = new client_1.PrismaClient();
@@ -29,8 +39,9 @@ let SurveysService = SurveysService_1 = class SurveysService {
     async onModuleDestroy() {
         await this.prisma.$disconnect();
     }
-    async list() {
+    async list(archived = false) {
         const surveys = await this.prisma.surveySurvey.findMany({
+            where: { archivedAt: archived ? { not: null } : null },
             orderBy: { createdAt: 'desc' },
             include: { _count: { select: { responses: true } } },
         });
@@ -39,6 +50,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
             title: s.title,
             description: s.description,
             status: s.status,
+            archivedAt: s.archivedAt,
             requiresLogin: s.requiresLogin,
             responseCount: s._count.responses,
             createdAt: s.createdAt,
@@ -71,6 +83,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 notifyEmails: dto.notifyEmails,
                 opensAt: dto.opensAt,
                 closesAt: dto.closesAt,
+                closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
             },
         });
     }
@@ -82,6 +95,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
         const survey = await this.getSurveyOrThrow(id, {
             sections: { include: { questions: true } },
         });
+        this.assertNotArchived(survey);
         if (survey.status === 'published')
             return survey;
         if (survey.sections.length === 0 || survey.sections.every((s) => s.questions.length === 0)) {
@@ -95,6 +109,35 @@ let SurveysService = SurveysService_1 = class SurveysService {
             throw new common_1.ConflictException('Only a published survey can be closed');
         }
         return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'closed' } });
+    }
+    /** Moves a survey to the archive; a published one is closed first so it stops taking responses. */
+    async archive(id) {
+        const survey = await this.getSurveyOrThrow(id);
+        if (survey.archivedAt)
+            return survey;
+        return this.prisma.surveySurvey.update({
+            where: { id },
+            data: { archivedAt: new Date(), status: survey.status === 'published' ? 'closed' : survey.status },
+        });
+    }
+    /** Brings an archived survey back to the main list (its status is left as it was — a restored survey is never silently reopened). */
+    async unarchive(id) {
+        await this.getSurveyOrThrow(id);
+        return this.prisma.surveySurvey.update({ where: { id }, data: { archivedAt: null } });
+    }
+    assertNotArchived(survey) {
+        if (survey.archivedAt) {
+            throw new common_1.ConflictException('Restore this survey from the archive first');
+        }
+    }
+    /** closed -> published again (a closed survey was previously a dead end). */
+    async reopen(id) {
+        const survey = await this.getSurveyOrThrow(id);
+        this.assertNotArchived(survey);
+        if (survey.status !== 'closed') {
+            throw new common_1.ConflictException('Only a closed survey can be reopened');
+        }
+        return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'published' } });
     }
     /**
      * Whole-tree replace (docs/DECISIONS.md): upserts every section/question/
@@ -135,8 +178,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
             for (const section of dto.sections) {
                 await tx.surveySection.upsert({
                     where: { id: section.id },
-                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description },
-                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description },
+                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
+                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
                 });
                 for (const question of section.questions) {
                     await tx.surveyQuestion.upsert({
@@ -217,6 +260,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
     validateStructure(dto) {
         const questionsById = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, q])));
         const sectionIds = new Set(dto.sections.map((s) => s.id));
+        const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id])));
         for (const section of dto.sections) {
             for (const question of section.questions) {
                 if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
@@ -224,6 +268,37 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 }
             }
         }
+        // Section navigation: jumps only go FORWARD (so a survey can never loop),
+        // to a real later section or to 'submit'; a route's source is a choice
+        // question of the section being left.
+        const indexOfSection = new Map(dto.sections.map((s, i) => [s.id, i]));
+        dto.sections.forEach((section, index) => {
+            const nav = section.navigation;
+            if (!nav)
+                return;
+            const checkTarget = (target) => {
+                if (!target || target === 'submit')
+                    return;
+                const targetIndex = indexOfSection.get(target);
+                if (targetIndex === undefined) {
+                    throw new common_1.BadRequestException(`Section "${section.title}" navigates to an unknown section`);
+                }
+                if (targetIndex <= index) {
+                    throw new common_1.BadRequestException(`Section "${section.title}" can only go forward to a later section, or submit`);
+                }
+            };
+            checkTarget(nav.defaultTarget);
+            for (const route of nav.routes ?? []) {
+                checkTarget(route.target);
+                const source = section.questions.find((q) => q.id === route.sourceQuestionId);
+                if (!source || !survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(source.type)) {
+                    throw new common_1.BadRequestException(`Section "${section.title}": a "go to" condition must use a choice question from that same section`);
+                }
+                if (!(source.options ?? []).some((o) => o.value === route.sourceOptionValue)) {
+                    throw new common_1.BadRequestException(`Section "${section.title}": a "go to" condition uses an option that doesn't exist on "${source.title}"`);
+                }
+            }
+        });
         for (const rule of dto.logicRules ?? []) {
             const sourceQuestion = questionsById.get(rule.sourceQuestionId);
             if (!sourceQuestion) {
@@ -242,6 +317,11 @@ let SurveysService = SurveysService_1 = class SurveysService {
             }
             if (rule.targetId === rule.sourceQuestionId) {
                 throw new common_1.BadRequestException('A logic rule cannot target its own source question');
+            }
+            // A question can never show/hide the section it lives in (it could hide
+            // itself and become impossible to ever answer again).
+            if (rule.targetType === 'section' && sectionOfQuestion.get(rule.sourceQuestionId) === rule.targetId) {
+                throw new common_1.BadRequestException(`Question "${sourceQuestion.title}" cannot show or hide its own section`);
             }
         }
     }

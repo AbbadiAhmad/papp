@@ -102,6 +102,7 @@
 
   "core.common.save": "Save",
   "core.common.cancel": "Cancel",
+  "core.common.back": "Back",
   "core.common.close": "Close",
   "core.common.create": "Create",
   "core.common.edit": "Edit",

@@ -11,6 +11,7 @@ import { PublicSurveyController } from './public-survey.controller';
 import { ReportsService } from './reports.service';
 import { ResponsesController } from './responses.controller';
 import { ResponsesService } from './responses.service';
+import { SurveyTransferService } from './survey-transfer.service';
 import { SurveysController } from './surveys.controller';
 import { SurveysService } from './surveys.service';
 
@@ -23,6 +24,6 @@ import { SurveysService } from './surveys.service';
 @Module({
   imports: [NotificationsModule],
   controllers: [SurveysController, FillController, PublicSurveyController, ResponsesController],
-  providers: [SurveysService, ResponsesService, ReportsService],
+  providers: [SurveysService, SurveyTransferService, ResponsesService, ReportsService],
 })
 export class SurveyModule {}

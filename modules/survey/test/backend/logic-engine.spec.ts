@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { resolveVisibility, type SurveyLogicRuleLike } from '../../backend/logic-engine';
+import { resolveNextSectionId, resolveVisibility, type SurveyLogicRuleLike } from '../../backend/logic-engine';
 
 const SECTIONS = [
   { id: 'sec-1', questions: [{ id: 'q-color' }, { id: 'q-why-red' }] },
@@ -93,5 +93,42 @@ describe('resolveVisibility (survey conditional logic engine)', () => {
     const shownOnMatch = resolveVisibility(SECTIONS, rules, { 'q-color': 'red' });
     expect(shownOnMatch.visibleSectionIds.has('sec-2')).toBe(true);
     expect(shownOnMatch.visibleQuestionIds.has('q-followup')).toBe(true);
+  });
+});
+
+describe('section navigation (paged surveys)', () => {
+  const sections = (nav2?: object) => [
+    { id: 'a', questions: [{ id: 'qa' }], navigation: { routes: [{ sourceQuestionId: 'qa', sourceOptionValue: 'skip', target: 'c' }] } },
+    { id: 'b', questions: [{ id: 'qb' }], navigation: nav2 },
+    { id: 'c', questions: [{ id: 'qc' }] },
+  ];
+
+  it('goes to the next section by default', () => {
+    expect(resolveNextSectionId(sections(), [], { qa: 'other' }, 'a')).toBe('b');
+    expect(resolveVisibility(sections(), [], { qa: 'other' }).pathSectionIds).toEqual(['a', 'b', 'c']);
+  });
+
+  it('jumps over sections when an answer matches a go-to route, and skipped questions are not visible', () => {
+    expect(resolveNextSectionId(sections(), [], { qa: 'skip' }, 'a')).toBe('c');
+    const result = resolveVisibility(sections(), [], { qa: 'skip' });
+    expect(result.pathSectionIds).toEqual(['a', 'c']);
+    expect(result.visibleQuestionIds).toEqual(new Set(['qa', 'qc']));
+  });
+
+  it("'submit' ends the survey", () => {
+    expect(resolveNextSectionId(sections({ defaultTarget: 'submit' }), [], {}, 'b')).toBeNull();
+    expect(resolveVisibility(sections({ defaultTarget: 'submit' }), [], { qa: 'x' }).pathSectionIds).toEqual(['a', 'b']);
+  });
+
+  it('skips a hidden section on the way', () => {
+    const hideB: SurveyLogicRuleLike[] = [
+      { sourceQuestionId: 'qa', sourceOptionValue: 'x', action: 'hide', targetType: 'section', targetId: 'b', orderIndex: 0 },
+    ];
+    expect(resolveNextSectionId(sections(), hideB, { qa: 'x' }, 'a')).toBe('c');
+  });
+
+  it('ignores a backwards target (no loops)', () => {
+    const back = [{ id: 'a', questions: [], navigation: undefined }, { id: 'b', questions: [], navigation: { defaultTarget: 'a' } }, { id: 'c', questions: [] }];
+    expect(resolveNextSectionId(back, [], {}, 'b')).toBe('c');
   });
 });

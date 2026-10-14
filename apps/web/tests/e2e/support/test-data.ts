@@ -118,6 +118,8 @@ export const TEXT = {
     addQuestion: 'إضافة سؤال',
     addOption: 'إضافة خيار',
     addRule: 'إضافة قاعدة',
+    addSection: 'إضافة قسم',
+    next: 'التالي',
     singleChoiceType: 'اختيار واحد',
     publish: 'نشر',
     submit: 'إرسال',

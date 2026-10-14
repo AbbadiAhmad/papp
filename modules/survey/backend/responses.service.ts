@@ -15,10 +15,16 @@ import { AuditLogWriter } from '../../../apps/api/dist/core/audit/audit-log.writ
 import { NotificationEmailService } from '../../../apps/api/dist/core/notifications/notification-email.service';
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
-import { resolveVisibility, SurveyLogicRuleLike } from './logic-engine';
+import { resolveVisibility, SectionNavigation, SurveyLogicRuleLike } from './logic-engine';
 
 type SurveyWithStructure = SurveySurvey & {
-  sections: Array<{ id: string; questions: Array<SurveyQuestion & { options: SurveyQuestionOption[] }> }>;
+  sections: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    navigation: unknown;
+    questions: Array<SurveyQuestion & { options: SurveyQuestionOption[] }>;
+  }>;
   logicRules: SurveyLogicRuleLike[];
 };
 
@@ -192,8 +198,13 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     // Never distinguishes "doesn't exist" from "not published" to an
     // anonymous/authenticated respondent — same 404-not-403 rule
     // MODULE_SPEC.md §7.2 already applies to library_catalog's public route.
-    if (!survey || survey.status !== 'published') {
+    if (!survey || survey.status === 'draft' || survey.archivedAt) {
       throw new NotFoundException('Survey not found');
+    }
+    if (survey.status === 'closed') {
+      // A closed survey's link was already shared, so its state is no secret;
+      // the owner's custom message (if any) rides along on the 404 body.
+      throw new NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, closedMessage: survey.closedMessage ?? null });
     }
     return survey as SurveyWithStructure;
   }
@@ -210,6 +221,9 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       requiresLogin: survey.requiresLogin,
       sections: survey.sections.map((s) => ({
         id: s.id,
+        title: s.title,
+        description: s.description,
+        navigation: (s.navigation ?? {}) as unknown,
         questions: s.questions.map((q) => ({
           id: q.id,
           type: q.type,
@@ -254,7 +268,11 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     }
 
     const { visibleQuestionIds } = resolveVisibility(
-      survey.sections.map((s) => ({ id: s.id, questions: s.questions.map((q) => ({ id: q.id })) })),
+      survey.sections.map((s) => ({
+        id: s.id,
+        questions: s.questions.map((q) => ({ id: q.id })),
+        navigation: s.navigation as SectionNavigation | null,
+      })),
       survey.logicRules,
       enumerationAnswers,
     );

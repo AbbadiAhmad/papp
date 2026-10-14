@@ -1,4 +1,8 @@
 import AddIcon from '@mui/icons-material/Add';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import InventoryIcon from '@mui/icons-material/Inventory2';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -6,6 +10,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import ReplayIcon from '@mui/icons-material/Replay';
 import {
   Alert,
   Box,
@@ -40,6 +45,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { surveyApi, type SurveyStatus, type SurveySummary } from '../api';
+import { DuplicateSurveyDialog, ExportPackageButton, ImportSurveyDialog } from '../components/SurveyTransfer';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const STATUS_COLOR: Record<SurveyStatus, 'default' | 'success' | 'warning'> = {
@@ -111,9 +117,17 @@ export function SurveysListPage() {
   const { status, data: surveys, errorMessage, reload } = useGuardedQuery(() => surveyApi.list());
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState<SurveySummary | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SurveySummary | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [linkSnackbar, setLinkSnackbar] = useState<string | null>(null);
+  // `busyId` blocks a second click on the same row while a status call is in
+  // flight; `pendingStatus` makes close/reopen an explicit confirmed step so a
+  // double-click on the publish button (which turns into the close button in
+  // the same spot) can no longer close a survey straight after publishing it.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<{ survey: SurveySummary; action: 'close' | 'reopen' } | null>(null);
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
@@ -127,23 +141,29 @@ export function SurveysListPage() {
     }
   };
 
-  const handlePublish = async (survey: SurveySummary) => {
+  const runStatusChange = async (survey: SurveySummary, call: () => Promise<unknown>) => {
+    if (busyId) return;
+    setBusyId(survey.id);
     try {
-      await gated('survey.surveys.publish', () => surveyApi.publish(survey.id));
+      await gated('survey.surveys.publish', call);
       reload();
     } catch (error) {
       setSnackbar(extractErrorMessage(error));
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleClose = async (survey: SurveySummary) => {
-    try {
-      await gated('survey.surveys.publish', () => surveyApi.close(survey.id));
-      reload();
-    } catch (error) {
-      setSnackbar(extractErrorMessage(error));
-    }
+  const handlePublish = (survey: SurveySummary) => runStatusChange(survey, () => surveyApi.publish(survey.id));
+
+  const handleConfirmStatus = async () => {
+    if (!pendingStatus) return;
+    const { survey, action } = pendingStatus;
+    setPendingStatus(null);
+    await runStatusChange(survey, () => (action === 'close' ? surveyApi.close(survey.id) : surveyApi.reopen(survey.id)));
   };
+
+  const handleArchive = (survey: SurveySummary) => runStatusChange(survey, () => surveyApi.archive(survey.id));
 
   const copyShareLink = async (survey: SurveySummary) => {
     const url = `${window.location.origin}/survey/${survey.id}`;
@@ -159,11 +179,21 @@ export function SurveysListPage() {
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h5">{t('survey.menu.root')}</Typography>
-        <Can permission="survey.surveys.create">
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
-            {t('survey.list.create_button')}
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button startIcon={<InventoryIcon />} onClick={() => navigate('/survey/surveys/archived')}>
+            {t('survey.archive.open_page')}
           </Button>
-        </Can>
+          <Can permission="survey.surveys.import">
+            <Button startIcon={<FileUploadIcon />} onClick={() => setImportOpen(true)}>
+              {t('survey.transfer.import')}
+            </Button>
+          </Can>
+          <Can permission="survey.surveys.create">
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateOpen(true)}>
+              {t('survey.list.create_button')}
+            </Button>
+          </Can>
+        </Stack>
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
@@ -223,17 +253,46 @@ export function SurveysListPage() {
                     <Can permission="survey.surveys.publish">
                       {survey.status === 'published' ? (
                         <Tooltip title={t('survey.list.close')}>
-                          <IconButton size="small" onClick={() => handleClose(survey)}>
-                            <PauseCircleIcon fontSize="small" />
-                          </IconButton>
+                          <span>
+                            <IconButton size="small" disabled={busyId !== null} onClick={() => setPendingStatus({ survey, action: 'close' })}>
+                              <PauseCircleIcon fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
-                      ) : survey.status === 'draft' ? (
+                      ) : survey.status === 'closed' ? (
+                        <Tooltip title={t('survey.list.reopen')}>
+                          <span>
+                            <IconButton size="small" disabled={busyId !== null} onClick={() => setPendingStatus({ survey, action: 'reopen' })}>
+                              <ReplayIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : (
                         <Tooltip title={t('survey.list.publish')}>
-                          <IconButton size="small" onClick={() => handlePublish(survey)}>
-                            <PlayCircleIcon fontSize="small" />
-                          </IconButton>
+                          <span>
+                            <IconButton size="small" disabled={busyId !== null} onClick={() => handlePublish(survey)}>
+                              <PlayCircleIcon fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
-                      ) : null}
+                      )}
+                    </Can>
+                    <Can permission="survey.surveys.create">
+                      <Tooltip title={t('survey.transfer.duplicate')}>
+                        <IconButton size="small" onClick={() => setDuplicating(survey)} aria-label={t('survey.transfer.duplicate')}>
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Can>
+                    <ExportPackageButton survey={survey} onError={setSnackbar} />
+                    <Can permission="survey.surveys.archive">
+                      <Tooltip title={t('survey.archive.archive')}>
+                        <span>
+                          <IconButton size="small" disabled={busyId !== null} onClick={() => handleArchive(survey)} aria-label={t('survey.archive.archive')}>
+                            <ArchiveIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Can>
                     <Can permission="survey.surveys.delete">
                       <Tooltip title={t('core.common.delete')}>
@@ -254,6 +313,16 @@ export function SurveysListPage() {
 
       <CreateSurveyDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => navigate(`/survey/surveys/${id}/edit`)} />
 
+      {duplicating ? (
+        <DuplicateSurveyDialog
+          key={duplicating.id}
+          survey={duplicating}
+          onClose={() => setDuplicating(null)}
+          onDuplicated={(id) => navigate(`/survey/surveys/${id}/edit`)}
+        />
+      ) : null}
+      <ImportSurveyDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={(id) => navigate(`/survey/surveys/${id}/edit`)} />
+
       <ConfirmDialog
         open={pendingDelete !== null}
         title={t('survey.list.delete_title')}
@@ -262,6 +331,15 @@ export function SurveysListPage() {
         confirmColor="error"
         onCancel={() => setPendingDelete(null)}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={pendingStatus !== null}
+        title={pendingStatus?.action === 'reopen' ? t('survey.list.reopen_title') : t('survey.list.close_title')}
+        description={pendingStatus?.action === 'reopen' ? t('survey.list.reopen_confirm') : t('survey.list.close_confirm')}
+        confirmLabel={pendingStatus?.action === 'reopen' ? t('survey.list.reopen') : t('survey.list.close')}
+        onCancel={() => setPendingStatus(null)}
+        onConfirm={handleConfirmStatus}
       />
 
       <Snackbar open={snackbar !== null} autoHideDuration={5000} onClose={() => setSnackbar(null)}>

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SurveyStructureDto = exports.LogicRuleInputDto = exports.SectionInputDto = exports.QuestionInputDto = exports.QuestionOptionInputDto = exports.ENUMERATION_QUESTION_TYPES = exports.SURVEY_QUESTION_TYPES = void 0;
+exports.SurveyStructureDto = exports.LogicRuleInputDto = exports.SectionInputDto = exports.SectionNavigationInputDto = exports.SectionRouteInputDto = exports.QuestionInputDto = exports.QuestionOptionInputDto = exports.ENUMERATION_QUESTION_TYPES = exports.SURVEY_QUESTION_TYPES = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 /** v1 core set — file upload and question grids are explicitly deferred. */
@@ -132,6 +132,46 @@ __decorate([
     (0, class_transformer_1.Type)(() => QuestionOptionInputDto),
     __metadata("design:type", Array)
 ], QuestionInputDto.prototype, "options", void 0);
+class SectionRouteInputDto {
+    sourceQuestionId;
+    sourceOptionValue;
+    /** 'submit' or the id of a LATER section in the same payload. */
+    target;
+}
+exports.SectionRouteInputDto = SectionRouteInputDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], SectionRouteInputDto.prototype, "sourceQuestionId", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], SectionRouteInputDto.prototype, "sourceOptionValue", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], SectionRouteInputDto.prototype, "target", void 0);
+class SectionNavigationInputDto {
+    /** null/undefined = continue to the next section; 'submit' = finish; or a later section id. */
+    defaultTarget;
+    routes;
+}
+exports.SectionNavigationInputDto = SectionNavigationInputDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], SectionNavigationInputDto.prototype, "defaultTarget", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => SectionRouteInputDto),
+    __metadata("design:type", Array)
+], SectionNavigationInputDto.prototype, "routes", void 0);
 class SectionInputDto {
     /**
      * Always present, client-generated (`crypto.randomUUID()`) for a
@@ -143,6 +183,7 @@ class SectionInputDto {
     orderIndex;
     title;
     description;
+    navigation;
     questions;
 }
 exports.SectionInputDto = SectionInputDto;
@@ -164,6 +205,13 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], SectionInputDto.prototype, "description", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsObject)(),
+    (0, class_validator_1.ValidateNested)(),
+    (0, class_transformer_1.Type)(() => SectionNavigationInputDto),
+    __metadata("design:type", SectionNavigationInputDto)
+], SectionInputDto.prototype, "navigation", void 0);
 __decorate([
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.ValidateNested)({ each: true }),

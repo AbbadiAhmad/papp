@@ -14,11 +14,15 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveysController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const create_survey_dto_1 = require("./dto/create-survey.dto");
+const duplicate_survey_dto_1 = require("./dto/duplicate-survey.dto");
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
 const update_survey_dto_1 = require("./dto/update-survey.dto");
 const platform_1 = require("./platform");
+const survey_transfer_service_1 = require("./survey-transfer.service");
 const surveys_service_1 = require("./surveys.service");
+const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 const fetchSurveyState = (prisma, req) => prisma.surveySurvey.findUnique({ where: { id: req.params.id } });
 /**
  * The builder/admin surface (docs/DECISIONS.md — plain RBAC, no per-owner
@@ -30,11 +34,19 @@ const fetchSurveyState = (prisma, req) => prisma.surveySurvey.findUnique({ where
  */
 let SurveysController = class SurveysController {
     surveys;
-    constructor(surveys) {
+    transfer;
+    constructor(surveys, transfer) {
         this.surveys = surveys;
+        this.transfer = transfer;
     }
-    async list() {
-        return this.surveys.list();
+    async list(archived) {
+        return this.surveys.list(archived === 'true');
+    }
+    /** Declared before every `:id` route so `import` is never read as a survey id. */
+    async importPackage(file, includeResponses, user) {
+        if (!file)
+            throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
+        return this.transfer.importZip(file.buffer, user.userId, includeResponses === 'true');
     }
     async create(dto, user) {
         return this.surveys.create(dto, user.userId);
@@ -54,6 +66,34 @@ let SurveysController = class SurveysController {
     async close(id) {
         return this.surveys.close(id);
     }
+    async reopen(id) {
+        return this.surveys.reopen(id);
+    }
+    async archive(id) {
+        return this.surveys.archive(id);
+    }
+    async unarchive(id) {
+        return this.surveys.unarchive(id);
+    }
+    async duplicate(id, dto, user) {
+        return this.transfer.duplicate(id, user.userId, dto.title);
+    }
+    /** Survey definition only (sections, questions, rules, settings). */
+    async exportDefinition(id, res) {
+        await this.sendZip(res, id, false);
+    }
+    /** Definition plus every response — gated by the existing responses-export permission. */
+    async exportWithResponses(id, res) {
+        await this.sendZip(res, id, true);
+    }
+    async sendZip(res, id, includeResponses) {
+        const { buffer, filename } = await this.transfer.exportZip(id, includeResponses);
+        res.set({
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="survey.zip"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        });
+        res.send(buffer);
+    }
     async replaceStructure(id, dto) {
         return this.surveys.replaceStructure(id, dto);
     }
@@ -62,10 +102,24 @@ exports.SurveysController = SurveysController;
 __decorate([
     (0, common_1.Get)(),
     (0, platform_1.RequirePermission)('survey.surveys.view'),
+    __param(0, (0, common_1.Query)('archived')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], SurveysController.prototype, "list", null);
+__decorate([
+    (0, common_1.Post)('import'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
+    (0, platform_1.RequirePermission)('survey.surveys.import'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'import' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', { limits: { fileSize: MAX_IMPORT_BYTES } })),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Body)('includeResponses')),
+    __param(2, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, Object]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "importPackage", null);
 __decorate([
     (0, common_1.Post)(),
     (0, platform_1.RequirePermission)('survey.surveys.create'),
@@ -123,6 +177,62 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], SurveysController.prototype, "close", null);
 __decorate([
+    (0, common_1.Post)(':id/reopen'),
+    (0, platform_1.RequirePermission)('survey.surveys.publish'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'reopen', fetchState: fetchSurveyState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "reopen", null);
+__decorate([
+    (0, common_1.Post)(':id/archive'),
+    (0, platform_1.RequirePermission)('survey.surveys.archive'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'archive', fetchState: fetchSurveyState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "archive", null);
+__decorate([
+    (0, common_1.Post)(':id/unarchive'),
+    (0, platform_1.RequirePermission)('survey.surveys.archive'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'unarchive', fetchState: fetchSurveyState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "unarchive", null);
+__decorate([
+    (0, common_1.Post)(':id/duplicate'),
+    (0, platform_1.RequirePermission)('survey.surveys.create'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'duplicate' }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, duplicate_survey_dto_1.DuplicateSurveyDto, Object]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "duplicate", null);
+__decorate([
+    (0, common_1.Get)(':id/export'),
+    (0, platform_1.RequirePermission)('survey.surveys.export'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "exportDefinition", null);
+__decorate([
+    (0, common_1.Get)(':id/export-with-responses'),
+    (0, platform_1.RequirePermission)('survey.responses.export'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "exportWithResponses", null);
+__decorate([
     (0, common_1.Put)(':id/structure'),
     (0, platform_1.RequirePermission)('survey.surveys.update'),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' }),
@@ -135,5 +245,6 @@ __decorate([
 exports.SurveysController = SurveysController = __decorate([
     (0, common_1.Controller)('api/survey/surveys'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
-    __metadata("design:paramtypes", [surveys_service_1.SurveysService])
+    __metadata("design:paramtypes", [surveys_service_1.SurveysService,
+        survey_transfer_service_1.SurveyTransferService])
 ], SurveysController);

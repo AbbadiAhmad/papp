@@ -16,7 +16,7 @@ function isApiResponse(response: Response, pathMatcher: string | ((path: string)
  * Survey module smoke flow (mirrors library-catalog.spec.ts's shape, but
  * this module has no static seeded fixture to read — the builder itself
  * IS the feature under test): an admin builds a real survey with a
- * conditional show/hide rule, publishes it, an ANONYMOUS second browser
+ * conditional show/hide rule across two sections (= two pages, with Next navigation), publishes it, an ANONYMOUS second browser
  * context fills it out (the branch question only appears after picking the
  * matching option — this is `logic-engine.ts`'s live client-side evaluator,
  * not a mock), and the admin then sees the real response and its report.
@@ -57,7 +57,7 @@ test.describe('Survey smoke flow', () => {
 
     // --- build: one single_choice question (2 options) that reveals a
     // second question only when "Red" is picked ---
-    await page.getByLabel(TEXT.ar.sectionTitleField).fill('Section 1');
+    await page.getByLabel(TEXT.ar.sectionTitleField).first().fill('Section 1');
     await page.getByRole('button', { name: TEXT.ar.addQuestion }).click();
     await page.getByLabel(TEXT.ar.questionTitleField).first().fill('Pick a color');
     await page.getByLabel(TEXT.ar.questionTypeField).first().click();
@@ -69,10 +69,16 @@ test.describe('Survey smoke flow', () => {
     await page.getByLabel(TEXT.ar.optionValueField).nth(1).fill('blue');
     await page.getByLabel(TEXT.ar.optionLabelField).nth(1).fill('Blue');
 
-    await page.getByRole('button', { name: TEXT.ar.addQuestion }).click();
+    // Second section (= second page for the respondent) holding the follow-up
+    // question, shown only when "Red" was picked in section 1.
+    await page.getByRole('button', { name: TEXT.ar.addSection }).click();
+    await page.getByLabel(TEXT.ar.sectionTitleField).nth(1).fill('Section 2');
+    await page.getByRole('button', { name: TEXT.ar.addQuestion }).nth(1).click();
     await page.getByLabel(TEXT.ar.questionTitleField).nth(1).fill('Why red?');
 
-    await page.getByRole('button', { name: TEXT.ar.addRule }).click();
+    // A condition lives in the section it controls; its defaults are
+    // "if <first choice question of another section> = <its first option> then show this section".
+    await page.getByRole('button', { name: TEXT.ar.addRule }).last().click();
 
     const [structureResponse] = await Promise.all([
       page.waitForResponse((response) =>
@@ -97,6 +103,7 @@ test.describe('Survey smoke flow', () => {
     await expect(anonPage.getByText('Why red?')).toHaveCount(0);
 
     await anonPage.getByText('Red', { exact: true }).click();
+    await anonPage.getByRole('button', { name: TEXT.ar.next }).click();
     await expect(anonPage.getByText('Why red?')).toBeVisible();
     await anonPage.locator('textarea, input[type=text]').last().fill('Because it is bold.');
 

@@ -2,6 +2,7 @@ import type { ModuleRouteEntry } from '../../../apps/web/src/shared/modules/type
 import { SurveyBuilderPage } from './pages/SurveyBuilderPage';
 import { SurveyReportPage } from './pages/SurveyReportPage';
 import { SurveyResponsesPage } from './pages/SurveyResponsesPage';
+import { SurveysArchivedPage } from './pages/SurveysArchivedPage';
 import { SurveysListPage } from './pages/SurveysListPage';
 import { TakeSurveyPage } from './pages/TakeSurveyPage';
 
@@ -14,6 +15,7 @@ import { TakeSurveyPage } from './pages/TakeSurveyPage';
  */
 export const authenticatedRoutes: ModuleRouteEntry[] = [
   { path: '/survey/surveys', element: <SurveysListPage /> },
+  { path: '/survey/surveys/archived', element: <SurveysArchivedPage /> },
   { path: '/survey/surveys/:surveyId/edit', element: <SurveyBuilderPage /> },
   { path: '/survey/surveys/:surveyId/responses', element: <SurveyResponsesPage /> },
   { path: '/survey/surveys/:surveyId/report', element: <SurveyReportPage /> },

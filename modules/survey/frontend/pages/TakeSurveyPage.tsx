@@ -1,3 +1,4 @@
+import axios from 'axios';
 import {
   Alert,
   Box,
@@ -34,7 +35,7 @@ import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../..
 // browser (found via a live dev-server + Playwright check, root DECISIONS.md
 // D78 — `npm run build`'s Rollup-based resolution didn't surface it, only
 // `vite`'s dev-server did).
-import { resolveVisibility, type EnumerationAnswerValue } from '../../backend/logic-engine.ts';
+import { resolveNextSectionId, resolveVisibility, type EnumerationAnswerValue } from '../../backend/logic-engine.ts';
 import { surveyApi, type AnswerInput, type FillableQuestion, type FillableSurvey } from '../api';
 
 // 'not_found' also covers "exists but not published" — the backend never
@@ -173,6 +174,7 @@ export function TakeSurveyPage() {
 
   const [pageState, setPageState] = useState<PageState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [closedMessage, setClosedMessage] = useState<string | null>(null);
   const [survey, setSurvey] = useState<FillableSurvey | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -220,6 +222,8 @@ export function TakeSurveyPage() {
       .catch((error: unknown) => {
         if (cancelled) return;
         if (isNotFoundError(error)) {
+          const body = axios.isAxiosError(error) ? (error.response?.data as { closed?: boolean; closedMessage?: string | null } | undefined) : undefined;
+          setClosedMessage(body?.closed ? (body.closedMessage ?? null) : null);
           setPageState('not_found');
           return;
         }
@@ -251,9 +255,49 @@ export function TakeSurveyPage() {
   }, [survey, answers]);
 
   const visibility = useMemo(() => {
-    if (!survey) return { visibleSectionIds: new Set<string>(), visibleQuestionIds: new Set<string>() };
+    if (!survey) return { visibleSectionIds: new Set<string>(), visibleQuestionIds: new Set<string>(), pathSectionIds: [] as string[] };
     return resolveVisibility(survey.sections, survey.logicRules, enumerationAnswers);
   }, [survey, enumerationAnswers]);
+
+  // --- paged navigation ----------------------------------------------------
+  // `trail` is the sections the respondent has actually visited, so Back
+  // returns to exactly where they came from even after a "go to" jump.
+  const [trail, setTrail] = useState<string[]>([]);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const currentSectionId = trail[trail.length - 1] ?? visibility.pathSectionIds[0] ?? null;
+  const currentSection = survey?.sections.find((s) => s.id === currentSectionId) ?? null;
+  const nextSectionId =
+    survey && currentSectionId ? resolveNextSectionId(survey.sections, survey.logicRules, enumerationAnswers, currentSectionId) : null;
+  const pageNumber = Math.max(1, visibility.pathSectionIds.indexOf(currentSectionId ?? '') + 1);
+
+  const isEmptyAnswer = (value: unknown) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+
+  /** Required, currently visible questions of the open page that still have no answer. */
+  const findMissingOnPage = (): Set<string> => {
+    const result = new Set<string>();
+    for (const question of currentSection?.questions ?? []) {
+      if (visibility.visibleQuestionIds.has(question.id) && question.required && isEmptyAnswer(answers[question.id])) result.add(question.id);
+    }
+    return result;
+  };
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const handleNext = () => {
+    if (!currentSectionId || !nextSectionId) return;
+    const pending = findMissingOnPage();
+    setMissing(pending);
+    if (pending.size > 0) return;
+    setTrail([...(trail.length ? trail : [currentSectionId]), nextSectionId]);
+    scrollToTop();
+  };
+
+  const handleBack = () => {
+    if (trail.length < 2) return;
+    setMissing(new Set());
+    setTrail(trail.slice(0, -1));
+    scrollToTop();
+  };
 
   const handleAnswerChange = (questionId: string, value: unknown) => {
     setAnswers((prev) => {
@@ -265,6 +309,9 @@ export function TakeSurveyPage() {
 
   const handleSubmit = async () => {
     if (!survey || !surveyId) return;
+    const pending = findMissingOnPage();
+    setMissing(pending);
+    if (pending.size > 0) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -312,7 +359,7 @@ export function TakeSurveyPage() {
           </Stack>
         ) : null}
 
-        {pageState === 'not_found' ? <Alert severity="warning">{t('survey.take.not_found')}</Alert> : null}
+        {pageState === 'not_found' ? <Alert severity="warning">{closedMessage || t('survey.take.not_found')}</Alert> : null}
         {pageState === 'error' ? <Alert severity="error">{errorMessage ?? t('core.common.error')}</Alert> : null}
         {pageState === 'login_required' ? (
           <Stack spacing={2}>
@@ -347,40 +394,61 @@ export function TakeSurveyPage() {
 
             {submitError ? <Alert severity="error">{submitError}</Alert> : null}
 
-            {survey.sections
-              .filter((section) => visibility.visibleSectionIds.has(section.id))
-              .map((section) => (
-                <Stack key={section.id} spacing={2}>
-                  {section.questions
-                    .filter((question) => visibility.visibleQuestionIds.has(question.id))
-                    .map((question) => (
-                      <Box key={question.id}>
-                        <Typography variant="subtitle1">
-                          {question.title}
-                          {question.required ? ' *' : ''}
+            {currentSection ? (
+              <Stack spacing={2}>
+                {survey.sections.length > 1 ? (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      {t('survey.take.page_of', { current: pageNumber, total: Math.max(visibility.pathSectionIds.length, pageNumber) })}
+                    </Typography>
+                    <Typography variant="h6">{currentSection.title}</Typography>
+                    {currentSection.description ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {currentSection.description}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                ) : null}
+                {currentSection.questions
+                  .filter((question) => visibility.visibleQuestionIds.has(question.id))
+                  .map((question) => (
+                    <Box key={question.id}>
+                      <Typography variant="subtitle1">
+                        {question.title}
+                        {question.required ? ' *' : ''}
+                      </Typography>
+                      {question.description ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {question.description}
                         </Typography>
-                        {question.description ? (
-                          <Typography variant="body2" color="text.secondary">
-                            {question.description}
-                          </Typography>
-                        ) : null}
-                        <Box sx={{ mt: 1 }}>
-                          <QuestionInput
-                            question={question}
-                            value={answers[question.id]}
-                            onChange={(value) => handleAnswerChange(question.id, value)}
-                          />
-                        </Box>
+                      ) : null}
+                      <Box sx={{ mt: 1 }}>
+                        <QuestionInput question={question} value={answers[question.id]} onChange={(value) => handleAnswerChange(question.id, value)} />
                       </Box>
-                    ))}
-                </Stack>
-              ))}
+                      {missing.has(question.id) ? (
+                        <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                          {t('survey.take.required_field')}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  ))}
+              </Stack>
+            ) : null}
 
-            <Box>
-              <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
-                {t('survey.take.submit')}
+            <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+              <Button onClick={handleBack} disabled={trail.length < 2 || submitting}>
+                {t('survey.take.back')}
               </Button>
-            </Box>
+              {nextSectionId ? (
+                <Button variant="contained" onClick={handleNext}>
+                  {t('survey.take.next')}
+                </Button>
+              ) : (
+                <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
+                  {t('survey.take.submit')}
+                </Button>
+              )}
+            </Stack>
           </Stack>
         ) : null}
       </Paper>

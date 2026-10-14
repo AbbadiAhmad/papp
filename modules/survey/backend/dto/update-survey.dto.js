@@ -31,6 +31,8 @@ class UpdateSurveyDto {
     notifyEmails;
     opensAt;
     closesAt;
+    /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
+    closedMessage;
 }
 exports.UpdateSurveyDto = UpdateSurveyDto;
 __decorate([
@@ -80,3 +82,9 @@ __decorate([
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], UpdateSurveyDto.prototype, "closesAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(1000),
+    __metadata("design:type", String)
+], UpdateSurveyDto.prototype, "closedMessage", void 0);

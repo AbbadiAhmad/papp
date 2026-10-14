@@ -20,6 +20,7 @@ const public_survey_controller_1 = require("./public-survey.controller");
 const reports_service_1 = require("./reports.service");
 const responses_controller_1 = require("./responses.controller");
 const responses_service_1 = require("./responses.service");
+const survey_transfer_service_1 = require("./survey-transfer.service");
 const surveys_controller_1 = require("./surveys.controller");
 const surveys_service_1 = require("./surveys.service");
 /**
@@ -35,6 +36,6 @@ exports.SurveyModule = SurveyModule = __decorate([
     (0, common_1.Module)({
         imports: [notifications_module_1.NotificationsModule],
         controllers: [surveys_controller_1.SurveysController, fill_controller_1.FillController, public_survey_controller_1.PublicSurveyController, responses_controller_1.ResponsesController],
-        providers: [surveys_service_1.SurveysService, responses_service_1.ResponsesService, reports_service_1.ReportsService],
+        providers: [surveys_service_1.SurveysService, survey_transfer_service_1.SurveyTransferService, responses_service_1.ResponsesService, reports_service_1.ReportsService],
     })
 ], SurveyModule);

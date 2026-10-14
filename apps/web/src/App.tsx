@@ -1,7 +1,7 @@
 import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material';
 import { CacheProvider } from '@emotion/react';
-import { Box, CircularProgress } from '@mui/material';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, CircularProgress, Toolbar } from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, Route, BrowserRouter, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import { LanguageProvider, useLanguage } from './app/LanguageContext';
@@ -128,6 +128,21 @@ function useSetupNeeded(shouldCheck: boolean): { loading: boolean; setupNeeded: 
  * (`shared/modules/discovery.ts`). Adding or removing a module changes
  * NEITHER array's construction — only what ends up in them at runtime.
  */
+/**
+ * The TopBar is `position: fixed`; PageLayout supplies the matching spacer for
+ * authenticated pages, but a public route rendered without a session (or while
+ * a forced password change is pending) has no PageLayout — without this spacer
+ * the bar covered the top of e.g. a shared survey.
+ */
+function PublicRouteFrame({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <Toolbar data-app-shell="main-spacer" />
+      {children}
+    </>
+  );
+}
+
 function AppRoutes() {
   const { status, mustChangePassword } = useAuth();
   const moduleManifests = useModuleFrontendManifests(status === 'authenticated' && !mustChangePassword);
@@ -168,7 +183,7 @@ function AppRoutes() {
             page" — mounted here too so a shared link works for a visitor
             with no session at all, not just an authenticated one. */}
         {publicModuleRoutes.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
+          <Route key={route.path} path={route.path} element={<PublicRouteFrame>{route.element}</PublicRouteFrame>} />
         ))}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -180,7 +195,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/force-password-change" element={<ForcePasswordChangePage />} />
         {publicModuleRoutes.map((route) => (
-          <Route key={route.path} path={route.path} element={route.element} />
+          <Route key={route.path} path={route.path} element={<PublicRouteFrame>{route.element}</PublicRouteFrame>} />
         ))}
         <Route path="*" element={<Navigate to="/force-password-change" replace />} />
       </Routes>

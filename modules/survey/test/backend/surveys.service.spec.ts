@@ -94,12 +94,55 @@ describe('SurveysService.validateStructure', () => {
     expect(() => callValidateStructure(service, dto)).toThrow(BadRequestException);
   });
 
-  it('accepts a rule targeting a whole section, not just a question', () => {
+  it('accepts a rule targeting a different section than the source question lives in', () => {
+    const service = buildService();
+    const dto = baseStructure();
+    dto.sections.push({ id: 'sec-2', orderIndex: 1, title: 'Section 2', questions: [] } as never);
+    dto.logicRules![0].targetType = 'section';
+    dto.logicRules![0].targetId = 'sec-2';
+    expect(() => callValidateStructure(service, dto)).not.toThrow();
+  });
+
+  it('rejects a rule where a question shows/hides its own section', () => {
     const service = buildService();
     const dto = baseStructure();
     dto.logicRules![0].targetType = 'section';
-    dto.logicRules![0].targetId = 'sec-1';
-    // targeting its own section is fine — only "own SOURCE QUESTION" is rejected.
-    expect(() => callValidateStructure(service, dto)).not.toThrow();
+    dto.logicRules![0].targetId = 'sec-1'; // q-color lives in sec-1
+    expect(() => callValidateStructure(service, dto)).toThrow(BadRequestException);
+  });
+
+  describe('section navigation', () => {
+    function twoSections(): SurveyStructureDto {
+      const dto = baseStructure();
+      dto.logicRules = [];
+      dto.sections.push({ id: 'sec-2', orderIndex: 1, title: 'Section 2', questions: [] } as never);
+      return dto;
+    }
+
+    it('accepts a go-to route to a later section and a default of submit', () => {
+      const dto = twoSections();
+      (dto.sections[0] as { navigation?: unknown }).navigation = {
+        defaultTarget: 'submit',
+        routes: [{ sourceQuestionId: 'q-color', sourceOptionValue: 'red', target: 'sec-2' }],
+      };
+      expect(() => callValidateStructure(buildService(), dto)).not.toThrow();
+    });
+
+    it('rejects a backwards or unknown target', () => {
+      const back = twoSections();
+      (back.sections[1] as { navigation?: unknown }).navigation = { defaultTarget: 'sec-1' };
+      expect(() => callValidateStructure(buildService(), back)).toThrow(BadRequestException);
+      const unknown = twoSections();
+      (unknown.sections[0] as { navigation?: unknown }).navigation = { defaultTarget: 'nope' };
+      expect(() => callValidateStructure(buildService(), unknown)).toThrow(BadRequestException);
+    });
+
+    it("rejects a route whose source question is not from the section being left", () => {
+      const dto = twoSections();
+      (dto.sections[1] as { navigation?: unknown }).navigation = {
+        routes: [{ sourceQuestionId: 'q-color', sourceOptionValue: 'red', target: 'submit' }],
+      };
+      expect(() => callValidateStructure(buildService(), dto)).toThrow(BadRequestException);
+    });
   });
 });

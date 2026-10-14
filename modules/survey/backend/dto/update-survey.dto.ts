@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsDateString, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
  * Covers both the survey's descriptive fields and its sharing/access
@@ -48,4 +48,10 @@ export class UpdateSurveyDto {
   @IsOptional()
   @IsDateString()
   closesAt?: string;
+
+  /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  closedMessage?: string;
 }

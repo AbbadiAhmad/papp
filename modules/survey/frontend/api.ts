@@ -25,6 +25,7 @@ export interface SurveySummary {
   title: string;
   description: string | null;
   status: SurveyStatus;
+  archivedAt: string | null;
   requiresLogin: boolean;
   responseCount: number;
   createdAt: string;
@@ -54,6 +55,7 @@ export interface SurveySectionDto {
   orderIndex: number;
   title: string;
   description?: string | null;
+  navigation?: SectionNavigation;
   questions: SurveyQuestionDto[];
 }
 
@@ -74,6 +76,7 @@ export interface SurveyDetail extends SurveySummary {
   notifyEmails: string[];
   opensAt: string | null;
   closesAt: string | null;
+  closedMessage: string | null;
   sections: SurveySectionDto[];
   logicRules: SurveyLogicRuleDto[];
 }
@@ -93,6 +96,7 @@ export interface UpdateSurveyInput {
   notifyEmails?: string[];
   opensAt?: string | null;
   closesAt?: string | null;
+  closedMessage?: string;
 }
 
 export interface SurveyStructureInput {
@@ -112,13 +116,26 @@ export interface FillableQuestion {
   options: Array<{ value: string; label: string }>;
 }
 
+export interface SectionNavigationRoute {
+  sourceQuestionId: string;
+  sourceOptionValue: string;
+  /** 'submit' or a later section's id. */
+  target: string;
+}
+
+/** Where the respondent goes after a section. Empty/undefined = the next section. */
+export interface SectionNavigation {
+  defaultTarget?: string | null;
+  routes?: SectionNavigationRoute[];
+}
+
 export interface FillableSurvey {
   id: string;
   title: string;
   description: string | null;
   allowEditAfterSubmit: boolean;
   requiresLogin: boolean;
-  sections: Array<{ id: string; questions: FillableQuestion[] }>;
+  sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; questions: FillableQuestion[] }>;
   logicRules: SurveyLogicRuleDto[];
 }
 
@@ -172,13 +189,28 @@ export interface SurveyDataset {
 
 export const surveyApi = {
   // --- admin: survey definition ---
-  list: () => apiClient.get<SurveySummary[]>('/api/survey/surveys').then((r) => r.data),
+  list: (archived = false) =>
+    apiClient.get<SurveySummary[]>('/api/survey/surveys', { params: archived ? { archived: true } : undefined }).then((r) => r.data),
+  archive: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/archive`).then((r) => r.data),
+  unarchive: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/unarchive`).then((r) => r.data),
+  duplicate: (id: string, title?: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/duplicate`, { title }).then((r) => r.data),
+  exportPackage: (id: string, withResponses: boolean) =>
+    apiClient
+      .get<Blob>(`/api/survey/surveys/${id}/${withResponses ? 'export-with-responses' : 'export'}`, { responseType: 'blob' })
+      .then((r) => r.data),
+  importPackage: (file: File, includeResponses: boolean) => {
+    const form = new FormData();
+    form.append('includeResponses', String(includeResponses));
+    form.append('file', file);
+    return apiClient.post<SurveyDetail>('/api/survey/surveys/import', form).then((r) => r.data);
+  },
   get: (id: string) => apiClient.get<SurveyDetail>(`/api/survey/surveys/${id}`).then((r) => r.data),
   create: (dto: CreateSurveyInput) => apiClient.post<SurveyDetail>('/api/survey/surveys', dto).then((r) => r.data),
   update: (id: string, dto: UpdateSurveyInput) => apiClient.patch<SurveyDetail>(`/api/survey/surveys/${id}`, dto).then((r) => r.data),
   remove: (id: string) => apiClient.delete<void>(`/api/survey/surveys/${id}`).then((r) => r.data),
   publish: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/publish`).then((r) => r.data),
   close: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/close`).then((r) => r.data),
+  reopen: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/reopen`).then((r) => r.data),
   replaceStructure: (id: string, dto: SurveyStructureInput) =>
     apiClient.put<SurveyDetail>(`/api/survey/surveys/${id}/structure`, dto).then((r) => r.data),
 
