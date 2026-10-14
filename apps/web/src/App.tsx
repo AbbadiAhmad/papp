@@ -60,20 +60,32 @@ function FullScreenLoader() {
  * permission knowledge here.
  */
 function LandingPageRedirect() {
-  const { user } = useAuth();
-  const { status, data } = useGuardedQuery(() => usersApi.getMyLandingPageOptions());
-
-  if (!user?.defaultLandingPage) {
-    return <DashboardPage />;
-  }
+  // Server-resolved: user preference -> admin default -> null (Welcome page).
+  // Falls back to the Welcome page on any failure so `/` can never get stuck.
+  const { status, data } = useGuardedQuery(() => usersApi.getMyEffectiveLandingPage());
   if (status === 'loading') {
     return <FullScreenLoader />;
   }
-  const stillValid = status === 'ready' && (data ?? []).some((option) => option.value === user.defaultLandingPage);
-  if (!stillValid) {
-    return <DashboardPage />;
+  if (status === 'ready' && data) {
+    return <Navigate to={data} replace />;
   }
-  return <Navigate to={user.defaultLandingPage} replace />;
+  return <DashboardPage />;
+}
+
+/**
+ * Anonymous `/`: the admin-chosen public landing route (e.g. the website), or
+ * the login page by default / when its module is gone. Failure -> login.
+ */
+function AnonymousLanding() {
+  const [target, setTarget] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    authApi
+      .getLandingStatus()
+      .then(setTarget)
+      .catch(() => setTarget(null));
+  }, []);
+  if (target === undefined) return <FullScreenLoader />;
+  return <Navigate to={target ?? '/login'} replace />;
 }
 
 /**
@@ -172,6 +184,7 @@ function AppRoutes() {
     }
     return (
       <Routes>
+        <Route path="/" element={<AnonymousLanding />} />
         <Route path="/login" element={<LoginPage />} />
         {/* D41 follow-up: reachable regardless of the admin toggle — same
             "frontend never trusts its own status check" posture as

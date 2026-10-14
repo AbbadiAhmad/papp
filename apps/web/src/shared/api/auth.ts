@@ -58,3 +58,9 @@ export async function getRegistrationStatus(): Promise<RegistrationStatus> {
 export async function register(email: string, name: string, password: string): Promise<void> {
   await apiClient.post('/auth/register', { email, name, password });
 }
+
+/** GET /auth/landing-status — @Public(). Admin-chosen landing route for anonymous visitors, or null for the login page. */
+export async function getLandingStatus(): Promise<string | null> {
+  const response = await apiClient.get<{ landingPage: string | null }>('/auth/landing-status');
+  return response.data.landingPage;
+}

@@ -6,6 +6,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { PublicThrottlerGuard } from '../../common/guards/public-throttler.guard';
 import { AuditLogWriter } from '../audit/audit-log.writer';
 import { Audit } from '../../common/decorators/audit.decorator';
+import { LandingService } from '../settings/landing.service';
 import { AuthService, IssuedTokens, RegisteredUser } from './auth.service';
 import { ForcePasswordChangeDto } from './dto/force-password-change.dto';
 import { LoginDto } from './dto/login.dto';
@@ -35,6 +36,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly auditLogWriter: AuditLogWriter,
+    private readonly landing: LandingService,
   ) {}
 
   @Post('login')
@@ -158,6 +160,13 @@ export class AuthController {
    * itself re-checks the same setting independently, so this is never the
    * real enforcement point.
    */
+  @Get('landing-status')
+  @Public()
+  async getLandingStatus(): Promise<{ landingPage: string | null }> {
+    // Admin-chosen landing for anonymous visitors (null = login page). Re-validated against installed modules on every call.
+    return { landingPage: await this.landing.getEffectiveAnonymous() };
+  }
+
   @Get('registration-status')
   @Public()
   async getRegistrationStatus(): Promise<{ allowSelfRegistration: boolean }> {

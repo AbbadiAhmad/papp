@@ -1,17 +1,13 @@
 {
   "core.dashboard.welcome": "أهلاً، {{name}}",
   "core.dashboard.hint": "استخدم القائمة الجانبية للوصول إلى إدارة المستخدمين والأدوار والصلاحيات وغيرها.",
-
   "core.forbidden.title": "لا تملك صلاحية الوصول",
   "core.forbidden.body": "حاول النظام تنفيذ الطلب الفعلي وتم رفضه من الخادم. تواصل مع مدير النظام إذا كنت تعتقد أن هذا خطأ.",
   "core.not_found.body": "الصفحة المطلوبة غير موجودة.",
-
   "core.common.retry": "إعادة المحاولة",
   "core.common.action_forbidden": "لا تملك صلاحية تنفيذ هذا الإجراء ({{code}}).",
-
   "core.auth.confirm_password": "تأكيد كلمة المرور",
   "core.auth.passwords_do_not_match": "كلمتا المرور غير متطابقتين",
-
   "core.users.status": "الحالة",
   "core.users.active": "نشط",
   "core.users.inactive": "غير نشط",
@@ -40,7 +36,6 @@
   "core.users.import_committed": "تم استيراد {{valid}} مستخدم بنجاح.",
   "core.users.import_rejected": "فشل الاستيراد — الملف يحتوي على صفوف غير صالحة ولم يتم حفظ أي بيانات.",
   "core.users.import_back_to_list": "العودة إلى قائمة المستخدمين",
-
   "core.roles.code": "رمز الدور",
   "core.roles.code_help": "أحرف لاتينية صغيرة وأرقام وشرطة سفلية فقط، ولا يمكن تعديله لاحقاً.",
   "core.roles.name_i18n_key": "مفتاح الاسم (i18n)",
@@ -53,14 +48,12 @@
   "core.roles.assign_users": "إسناد المستخدمين",
   "core.roles.assign_title": "إسناد المستخدمين إلى دور \"{{role}}\"",
   "core.roles.assign_hint": "فعّل أو ألغِ تفعيل المربع لإسناد الدور أو سحبه من المستخدم فوراً.",
-
   "core.permissions.permission": "الصلاحية",
   "core.permissions.granted": "ممنوحة",
   "core.permissions.role_id": "معرّف الدور (Role ID)",
   "core.permissions.load_grants": "تحميل الصلاحيات",
   "core.permissions.degraded_reason": "هذا الحساب لا يملك صلاحية عرض قائمة الأدوار أو كتالوج الصلاحيات الكامل.",
   "core.permissions.degraded_notice": "تعذّر تحميل المصفوفة الكاملة (يتطلب صلاحيتي roles.view وpermissions.view). يمكنك إدارة صلاحيات دور محدد عبر معرّفه مباشرة أدناه — وهي نفس نقطة النهاية المحمية باستثناء D12.",
-
   "core.sessions.list_tab": "الجلسات",
   "core.sessions.purge_tab": "حذف الجلسات القديمة",
   "core.sessions.mine": "جلساتي النشطة",
@@ -84,7 +77,6 @@
   "core.sessions.purge_action": "حذف الجلسات القديمة",
   "core.sessions.purge_confirm": "هل تريد حذف جميع الجلسات المنتهية الصادرة قبل {{date}} نهائياً؟",
   "core.sessions.purge_success": "تم حذف {{count}} جلسة صادرة قبل {{date}}.",
-
   "core.audit.log_tab": "سجل الأحداث",
   "core.audit.purge_tab": "حذف السجلات القديمة",
   "core.audit.category": "الفئة",
@@ -98,9 +90,7 @@
   "core.audit.cutoff_help": "يجب أن يكون التاريخ أمس أو قبله (بتوقيت UTC).",
   "core.audit.purge_action": "حذف السجلات القديمة",
   "core.audit.purge_success": "تم حذف {{count}} سجل أقدم من {{date}}.",
-
   "core.settings.saved": "تم الحفظ بنجاح.",
-
   "core.myPreferences.landingPage": "الصفحة الافتراضية بعد تسجيل الدخول",
   "core.myPreferences.platformDefault": "الافتراضي في المنصة (لوحة التحكم)",
   "core.myPermissions.category": "الفئة",
@@ -116,7 +106,6 @@
   "core.settings.absolute_timeout_days": "المهلة القصوى للجلسة (أيام)",
   "core.settings.template_subject": "عنوان القالب",
   "core.settings.template_body": "نص القالب (Markdown)",
-
   "core.notifications.empty": "لا توجد إشعارات.",
   "core.notifications.view_all": "عرض جميع الإشعارات",
   "core.notifications.mark_read": "تحديد كمقروء",
@@ -133,7 +122,6 @@
   "core.notifications.user_id": "معرّف المستخدم",
   "core.notifications.send": "إرسال",
   "core.notifications.sent": "تم الإرسال إلى {{recipients}} مستلم.",
-
   "core.modules.key": "المفتاح",
   "core.modules.version": "الإصدار",
   "core.modules.status_label": "الحالة",
@@ -146,7 +134,6 @@
   "core.modules.deployment_note": "ملاحظة النشر: مجلد modules/ مربوط مباشرة (live-mounted) داخل حاوية api، لذا يظهر أي تعديل على manifest.json أو ملفات الخلفية داخلها فوراً — لكنه لا يصبح فعّالاً إلا بعد تنفيذ \"docker compose restart api\" (كود الوحدة يُحمَّل مرة واحدة فقط عند بدء التشغيل). أي تعديل في واجهة الوحدة (frontend) يتطلب إعادة بناء حقيقية عبر \"docker compose build web\" — حاوية web ليس لديها ربط مباشر؛ ملفاتها تُجمَّع وقت البناء. تثبيت أو ترقية وحدة من هذه الصفحة يعيد تشغيل حاوية api تلقائياً (تستغرق العملية بضع ثوانٍ وتُعرض أثناءها رسالة \"جارٍ إعادة التشغيل\") — لست بحاجة لتنفيذ تلك الخطوة يدوياً. أما إزالة وحدة فلا تعيد تشغيل الحاوية على الإطلاق.",
   "core.modules.restarting_notice": "يُعاد تشغيل خادم الـ api الآن لتحميل الوحدة — قد تستغرق العملية بضع ثوانٍ، يرجى الانتظار...",
   "core.modules.data_preserved_notice": "بيانات الوحدة ما زالت موجودة في قاعدة البيانات. يمكنك تثبيتها مجدداً لاستعادتها، أو إزالتها مع تفعيل \"حذف البيانات\" لحذفها نهائياً.",
-
   "core.backup.platformVersion": "إصدار المنصة",
   "core.backup.schemaFingerprint": "بصمة المخطط",
   "core.backup.backupConfigured": "النسخ الاحتياطي مُفعّل",
@@ -157,7 +144,6 @@
   "core.backup.exporting": "جارٍ التصدير...",
   "core.backup.restoreSection": "الاستعادة",
   "core.backup.restoreCliNotice": "الاستعادة غير متاحة من هذه الصفحة. فهي تتطلب قفلاً حصرياً لقاعدة البيانات قد يؤدي إلى تعليق التطبيق قيد التشغيل، لذا يجب تنفيذها من الخادم باستخدام هذا الأمر:",
-
   "core.appearance.themesTitle": "التصميم",
   "core.appearance.themesHint": "اختر مظهر التطبيق بالكامل. التصميم عبارة عن مجلد داخل themes/، انسخ template_theme لتصنع تصميمك.",
   "core.appearance.builtInName": "الافتراضي",
@@ -184,5 +170,11 @@
   "core.appearance.resetMenu": "إعادة إلى الافتراضي",
   "core.appearance.saved": "تم الحفظ.",
   "core.common.rows_per_page": "عدد الصفوف في الصفحة",
-  "core.common.displayed_rows": "{{from}}–{{to}} من {{count}}"
+  "core.common.displayed_rows": "{{from}}–{{to}} من {{count}}",
+  "core.settings.landing_pages": "الصفحات الافتراضية",
+  "core.settings.landing_pages.help": "اختر الصفحة التي تفتح أولاً. يمكن للمستخدم تغيير صفحته بعد الدخول من تفضيلاتي. إذا تم تعطيل الوحدة المختارة أو حذفها يعود الافتراضي الخاص بالمنصة.",
+  "core.settings.landing_pages.anonymous": "صفحة الزوار غير المسجلين",
+  "core.settings.landing_pages.anonymous_default": "الافتراضي في المنصة (صفحة تسجيل الدخول)",
+  "core.settings.landing_pages.authenticated": "الصفحة الافتراضية بعد تسجيل الدخول",
+  "core.settings.landing_pages.authenticated_default": "الافتراضي في المنصة (صفحة الترحيب)"
 }

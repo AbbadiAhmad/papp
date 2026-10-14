@@ -56,7 +56,7 @@ The one design question this module had to answer explicitly (root chat: "is Mar
 - `frontend/pages/SafeMarkdown.tsx` / `BlockRenderer.tsx` — the shared, safe-by-construction rendering path described above.
 - `frontend/pages/BlockEditor.tsx` — per-block-type admin form fields.
 - `frontend/pages/PagesListPage.tsx` / `PageEditorPage.tsx` / `MenuEditorPage.tsx` — admin screens.
-- `frontend/pages/PublicSitePage.tsx` + `SiteHeader.tsx` / `SiteFooter.tsx` — the visitor-facing `/site` and `/site/:slug` pages, resolving the header/footer menus and site config through the public read endpoints.
+- `frontend/pages/PublicSitePage.tsx` — the visitor-facing `/site` and `/site/:slug` pages. No own header/footer (WEBSITE-D7); missing/draft/unknown shows the platform 404.
 - `frontend/routes.tsx` — exports `authenticatedRoutes` (3 admin routes under `/site/admin/*`) and `publicRoutes` (`/site`, `/site/:slug`) — the fixed names every module's routes.tsx exports (root DECISIONS.md D78, `docs/MODULE_SPEC.md` §7.6); `App.tsx` discovers this generically, never by importing `website` by name.
 
 ## Known gotchas / deliberate v1 scope cuts (read before extending)

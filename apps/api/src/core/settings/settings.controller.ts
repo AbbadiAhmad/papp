@@ -7,6 +7,8 @@ import { assertValidTemplates, UpdateNotificationTemplatesDto } from './dto/upda
 import { UpdatePasswordPolicyDto } from './dto/update-password-policy.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
 import { UpdateSessionTimingDto } from './dto/update-session-timing.dto';
+import { LandingService } from './landing.service';
+import { UpdateLandingPagesDto } from './dto/update-landing-pages.dto';
 import { SettingsService } from './settings.service';
 import {
   ALLOW_SELF_REGISTRATION_KEY,
@@ -50,6 +52,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly rolesService: RolesService,
+    private readonly landing: LandingService,
   ) {}
 
   // --- Tab 1: Password Policy (D23) ---------------------------------------
@@ -156,5 +159,20 @@ export class SettingsController {
     }
     await this.settingsService.set(ALLOW_SELF_REGISTRATION_KEY, dto.allowSelfRegistration, user.userId);
     return this.getRegistration();
+  }
+
+  // --- Tab 5: Landing pages -------------------------------------------------
+
+  /** Audited by SettingsService.set() like every other tab (no @Audit here, see class docblock). */
+  @Get('landing-pages')
+  @RequirePermission('users.settings.view')
+  async getLandingPages() {
+    return this.landing.getAdminView();
+  }
+
+  @Put('landing-pages')
+  @RequirePermission('users.settings.update')
+  async updateLandingPages(@Body() dto: UpdateLandingPagesDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.landing.update(dto, user.userId);
   }
 }

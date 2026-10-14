@@ -8,6 +8,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { toPublicRole } from '../roles/role.presenter';
 import { RolesService } from '../roles/roles.service';
 import { SettingsService } from '../settings/settings.service';
+import { LANDING_AUTHENTICATED_KEY } from '../settings/settings.types';
 import {
   FORCE_PASSWORD_CHANGE_TEMPLATE_KEY,
   NotificationTemplate,
@@ -24,7 +25,7 @@ import { PublicUser, toPublicUser } from './user.presenter';
 interface LandingPageManifestSlice {
   key: string;
   name: string;
-  frontend?: { landingPage?: unknown };
+  frontend?: { landingPage?: unknown; publicLandingPage?: unknown; publicLandingLabelKey?: unknown };
   menu?: Array<{ route: string; labelKey: string; requiredPermission: string }>;
 }
 
@@ -270,8 +271,21 @@ export class UsersService {
 
     for (const row of installedModules) {
       const manifest = row.manifestSnapshot as unknown as LandingPageManifestSlice | null;
-      const landingPage = manifest?.frontend?.landingPage;
-      if (!manifest || typeof landingPage !== 'string') continue;
+      if (!manifest) continue;
+
+      // A public landing route needs no permission at all (anyone may open it).
+      const publicLanding = manifest.frontend?.publicLandingPage;
+      if (typeof publicLanding === 'string') {
+        const label = manifest.frontend?.publicLandingLabelKey;
+        options.push({
+          value: publicLanding,
+          labelKey: typeof label === 'string' ? label : `${manifest.key}.menu.root`,
+          moduleKey: manifest.key,
+        });
+      }
+
+      const landingPage = manifest.frontend?.landingPage;
+      if (typeof landingPage !== 'string' || options.some((o) => o.value === landingPage)) continue;
 
       const menuEntry = manifest.menu?.find((entry) => entry.route === landingPage);
       if (menuEntry && !permissionCodes.has(menuEntry.requiredPermission)) continue;
@@ -284,6 +298,23 @@ export class UsersService {
     }
 
     return options;
+  }
+
+  /**
+   * Where `/` should send this user: their own preference if it still
+   * resolves, else the admin-configured default if the user may open it, else
+   * null (= the Welcome page). Re-checked live, so an uninstalled module or a
+   * revoked permission falls back to the Welcome page.
+   */
+  async resolveLandingPage(userId: string): Promise<string | null> {
+    const [options, user] = await Promise.all([
+      this.listLandingPageOptions(userId),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { defaultLandingPage: true } }),
+    ]);
+    const allowed = (value: string | null | undefined) => !!value && options.some((o) => o.value === value);
+    if (allowed(user?.defaultLandingPage)) return user!.defaultLandingPage;
+    const adminDefault = await this.settings.get<string | null>(LANDING_AUTHENTICATED_KEY).catch(() => null);
+    return typeof adminDefault === 'string' && allowed(adminDefault) ? adminDefault : null;
   }
 
   /** `landingPage: null` resets to the platform default. Any other value must be one of `listLandingPageOptions()`'s own results — re-checked here, never trusted from the client. */

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { RolesModule } from '../roles/roles.module';
+import { LandingService } from './landing.service';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 
@@ -20,7 +21,7 @@ import { SettingsService } from './settings.service';
 @Module({
   imports: [RolesModule],
   controllers: [SettingsController],
-  providers: [SettingsService],
-  exports: [SettingsService],
+  providers: [SettingsService, LandingService],
+  exports: [SettingsService, LandingService],
 })
 export class SettingsModule {}

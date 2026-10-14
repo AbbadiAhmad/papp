@@ -108,6 +108,15 @@ const baseManifestSchema = z.object({
     basePath: z.string().min(1).regex(/^\//, 'basePath must start with "/"'),
     entry: z.string().min(1),
     landingPage: z.string().min(1),
+    /**
+     * Optional: a PUBLIC route (no login needed) an admin may choose as the
+     * platform's landing page — for visitors who aren't logged in, and as an
+     * alternative to the Welcome page for logged-in users. Must fall under
+     * `basePath`. `publicLandingLabelKey` is the locale key shown in the
+     * admin/preferences pickers (defaults to `<key>.menu.root`).
+     */
+    publicLandingPage: z.string().min(1).optional(),
+    publicLandingLabelKey: z.string().min(1).optional(),
   }),
 
   backend: z.object({
@@ -263,6 +272,15 @@ export const moduleManifestSchema = baseManifestSchema.superRefine((manifest, ct
       code: 'custom',
       path: ['frontend', 'landingPage'],
       message: `landingPage "${manifest.frontend.landingPage}" must fall under frontend.basePath "${manifest.frontend.basePath}"`,
+    });
+  }
+
+  const publicLanding = manifest.frontend.publicLandingPage;
+  if (publicLanding !== undefined && !isUnderBasePath(publicLanding, manifest.frontend.basePath)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['frontend', 'publicLandingPage'],
+      message: `publicLandingPage "${publicLanding}" must fall under frontend.basePath "${manifest.frontend.basePath}"`,
     });
   }
 });

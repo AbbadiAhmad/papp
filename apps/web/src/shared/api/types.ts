@@ -31,6 +31,19 @@ export interface LandingPageOption {
   moduleKey: string | null;
 }
 
+export interface LandingRouteOption {
+  value: string;
+  labelKey: string;
+  moduleKey: string;
+}
+
+export interface LandingPagesSettings {
+  anonymous: string | null;
+  authenticated: string | null;
+  anonymousOptions: LandingRouteOption[];
+  authenticatedOptions: LandingRouteOption[];
+}
+
 export interface PublicRole {
   id: string;
   code: string;

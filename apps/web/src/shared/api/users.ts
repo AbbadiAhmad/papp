@@ -25,6 +25,8 @@ export const usersApi = {
   /** The caller's own real effective permission codes — see AuthContext.tsx's docblock for how this replaces the old client-side "optimistic until a real 403" cache. */
   getMyPermissions: () => apiClient.get<string[]>('/users/me/permissions').then((r) => r.data),
   getMyLandingPageOptions: () => apiClient.get<LandingPageOption[]>('/users/me/landing-page-options').then((r) => r.data),
+  getMyEffectiveLandingPage: () =>
+    apiClient.get<{ landingPage: string | null }>('/users/me/effective-landing-page').then((r) => r.data.landingPage),
   setMyLandingPage: (landingPage: string | null) =>
     apiClient.patch<PublicUser>('/users/me/landing-page', { landingPage }).then((r) => r.data),
   list: () =>

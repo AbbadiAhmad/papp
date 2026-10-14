@@ -126,3 +126,33 @@ describe('UsersService — per-user default landing page', () => {
     });
   });
 });
+
+describe('UsersService.resolveLandingPage — admin default', () => {
+  const manifest = {
+    key: 'website',
+    frontend: { landingPage: '/site/admin/pages', publicLandingPage: '/site' },
+    menu: [{ route: '/site/admin/pages', labelKey: 'website.menu.pages', requiredPermission: 'website.pages.view' }],
+  };
+  function build(opts: { pref: string | null; adminDefault: unknown; perms: string[]; modules?: unknown[] }) {
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ defaultLandingPage: opts.pref }) },
+      moduleRegistryEntry: { findMany: jest.fn().mockResolvedValue(opts.modules ?? [{ manifestSnapshot: manifest }]) },
+    };
+    const settings = { get: jest.fn().mockResolvedValue(opts.adminDefault) };
+    const permissions = { getEffectivePermissionCodes: jest.fn().mockResolvedValue(new Set(opts.perms)) };
+    return new UsersService(prisma as never, settings as never, permissions as never, {} as never);
+  }
+
+  it('user preference wins over the admin default', async () => {
+    expect(await build({ pref: '/site/admin/pages', adminDefault: '/site', perms: ['website.pages.view'] }).resolveLandingPage('u')).toBe('/site/admin/pages');
+  });
+  it('uses the admin default when the user has no preference', async () => {
+    expect(await build({ pref: null, adminDefault: '/site', perms: [] }).resolveLandingPage('u')).toBe('/site');
+  });
+  it('falls back to the Welcome page (null) when the admin default needs a permission the user lacks', async () => {
+    expect(await build({ pref: null, adminDefault: '/site/admin/pages', perms: [] }).resolveLandingPage('u')).toBeNull();
+  });
+  it('falls back to null when the module is uninstalled', async () => {
+    expect(await build({ pref: null, adminDefault: '/site', perms: [], modules: [] }).resolveLandingPage('u')).toBeNull();
+  });
+});

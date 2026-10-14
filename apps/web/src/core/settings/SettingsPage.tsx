@@ -22,7 +22,7 @@ import { extractErrorMessage } from '../../shared/api/httpClient';
 import { rolesApi } from '../../shared/api/roles';
 import { settingsApi } from '../../shared/api/settings';
 import { useGatedCall } from '../../shared/permissions';
-import type { NotificationTemplate, PasswordPolicy, PublicRole, TokenLifetimes } from '../../shared/api/types';
+import type { LandingPagesSettings, NotificationTemplate, PasswordPolicy, PublicRole, TokenLifetimes } from '../../shared/api/types';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -38,11 +38,13 @@ export function SettingsPage() {
         <Tab label={t('core.settings.session_timing')} />
         <Tab label={t('core.settings.notification_templates')} />
         <Tab label={t('core.settings.registration')} />
+        <Tab label={t('core.settings.landing_pages')} />
       </Tabs>
       {tab === 0 ? <PasswordPolicyTab /> : null}
       {tab === 1 ? <SessionTimingTab /> : null}
       {tab === 2 ? <NotificationTemplatesTab /> : null}
       {tab === 3 ? <RegistrationTab /> : null}
+      {tab === 4 ? <LandingPagesTab /> : null}
     </Box>
   );
 }
@@ -354,6 +356,81 @@ function RegistrationForm({
           ))}
         </Select>
       </FormControl>
+      <Box>
+        <Button variant="contained" onClick={save}>
+          {t('core.common.save')}
+        </Button>
+      </Box>
+    </Stack>
+  );
+}
+
+const PLATFORM_DEFAULT = '__platform_default__';
+
+function LandingPagesTab() {
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => settingsApi.getLandingPages());
+  return (
+    <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+      {data ? <LandingPagesForm initial={data} /> : null}
+    </QueryStateGate>
+  );
+}
+
+function LandingPagesForm({ initial }: { initial: LandingPagesSettings }) {
+  const { t } = useTranslation();
+  const gated = useGatedCall();
+  const [anonymous, setAnonymous] = useState(initial.anonymous ?? PLATFORM_DEFAULT);
+  const [authenticated, setAuthenticated] = useState(initial.authenticated ?? PLATFORM_DEFAULT);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    try {
+      await gated('users.settings.update', () =>
+        settingsApi.updateLandingPages({
+          anonymous: anonymous === PLATFORM_DEFAULT ? null : anonymous,
+          authenticated: authenticated === PLATFORM_DEFAULT ? null : authenticated,
+        }),
+      );
+      setSaved(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  return (
+    <Stack spacing={2} sx={{ maxWidth: 480 }}>
+      <SavedBanner saved={saved} />
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Typography variant="body2">{t('core.settings.landing_pages.help')}</Typography>
+      <TextField
+        select
+        label={t('core.settings.landing_pages.anonymous')}
+        value={anonymous}
+        onChange={(e) => setAnonymous(e.target.value)}
+      >
+        <MenuItem value={PLATFORM_DEFAULT}>{t('core.settings.landing_pages.anonymous_default')}</MenuItem>
+        {initial.anonymousOptions.map((o) => (
+          <MenuItem key={o.value} value={o.value}>
+            {t(o.labelKey)}
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
+        select
+        label={t('core.settings.landing_pages.authenticated')}
+        value={authenticated}
+        onChange={(e) => setAuthenticated(e.target.value)}
+      >
+        <MenuItem value={PLATFORM_DEFAULT}>{t('core.settings.landing_pages.authenticated_default')}</MenuItem>
+        {initial.authenticatedOptions.map((o) => (
+          <MenuItem key={o.value} value={o.value}>
+            {t(o.labelKey)}
+          </MenuItem>
+        ))}
+      </TextField>
       <Box>
         <Button variant="contained" onClick={save}>
           {t('core.common.save')}
