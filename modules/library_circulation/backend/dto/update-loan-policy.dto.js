@@ -14,7 +14,12 @@ const class_validator_1 = require("class-validator");
 class UpdateLoanPolicyDto {
     maxBooksPerStudent;
     loanPeriodDays;
+    /** Late fine per unit (see `fineUnit`); decimals allowed, e.g. 0.5. 0 = no automatic late fine. */
     finePerDay;
+    /** What `finePerDay` is charged per: each day late, or each started week late. */
+    fineUnit;
+    /** Highest late fine for one borrowing; 0 = no limit. */
+    maxFine;
 }
 exports.UpdateLoanPolicyDto = UpdateLoanPolicyDto;
 __decorate([
@@ -28,7 +33,16 @@ __decorate([
     __metadata("design:type", Number)
 ], UpdateLoanPolicyDto.prototype, "loanPeriodDays", void 0);
 __decorate([
-    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 2 }),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], UpdateLoanPolicyDto.prototype, "finePerDay", void 0);
+__decorate([
+    (0, class_validator_1.IsIn)(['day', 'week']),
+    __metadata("design:type", String)
+], UpdateLoanPolicyDto.prototype, "fineUnit", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)({ maxDecimalPlaces: 2 }),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UpdateLoanPolicyDto.prototype, "maxFine", void 0);

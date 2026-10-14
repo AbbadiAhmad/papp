@@ -406,7 +406,11 @@ export type ScanResult = ScanStudentResult | ScanBookCopyResult | ScanNotFoundRe
 export interface LoanPolicy {
   maxBooksPerStudent: number;
   loanPeriodDays: number;
+  /** Late fine per `fineUnit`; decimals allowed. */
   finePerDay: number;
+  fineUnit: 'day' | 'week';
+  /** 0 = no limit. */
+  maxFine: number;
 }
 
 export interface LibraryFinancialTransaction {

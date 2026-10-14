@@ -1,7 +1,7 @@
 {
   "key": "library_circulation",
   "name": "Library Circulation & Finance",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_catalog"],
   "description": "Students, staff-performed borrow/return, fines, and the finance side (transactions/payments/receipts) built on top of library_catalog's books/copies (D44). Requirements captured in docs/LIBRARY_MODULE_REQUIREMENTS.md.",
@@ -109,7 +109,7 @@
     {
       "key": "library_circulation.loan_policy",
       "type": "json",
-      "default": { "maxBooksPerStudent": 5, "loanPeriodDays": 14, "finePerDay": 1 },
+      "default": { "maxBooksPerStudent": 5, "loanPeriodDays": 14, "finePerDay": 1, "fineUnit": "day", "maxFine": 0 },
       "labelKey": "library_circulation.settings.loan_policy_label",
       "requiredPermission": "library_circulation.settings.update"
     }

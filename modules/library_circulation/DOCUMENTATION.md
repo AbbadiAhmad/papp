@@ -49,7 +49,7 @@ library_receipts(id, payment_id UNIQUE, receipt_number UNIQUE, issued_at)       
 
 ## Settings
 
-`library_circulation.loan_policy` (`{ maxBooksPerStudent, loanPeriodDays, finePerDay }`) — read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet), never hardcoded. This is THE concrete case (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) that motivated building the module-`settings` manifest mechanism in the first place.
+`library_circulation.loan_policy` (`{ maxBooksPerStudent, loanPeriodDays, finePerDay, fineUnit: "day"|"week", maxFine }` — `finePerDay` keeps its old key but is a decimal rate per `fineUnit`; `maxFine` 0 = no cap; see `computeLateFine` in `settings.service.ts`) — read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet), never hardcoded. This is THE concrete case (`docs/LIBRARY_MODULE_REQUIREMENTS.md` §8) that motivated building the module-`settings` manifest mechanism in the first place.
 
 ## Key files
 
