@@ -8,7 +8,6 @@
   "core.common.action_forbidden": "لا تملك صلاحية تنفيذ هذا الإجراء ({{code}}).",
   "core.auth.confirm_password": "تأكيد كلمة المرور",
   "core.auth.passwords_do_not_match": "كلمتا المرور غير متطابقتين",
-
   "core.stats.no_data": "لا توجد بيانات",
   "core.stats.unspecified": "غير محدد",
   "core.users.status": "الحالة",
@@ -133,7 +132,6 @@
   "core.notifications.categories.auth.force_password_change": "مطلوب تغيير كلمة المرور",
   "core.notifications.send": "إرسال",
   "core.notifications.sent": "تم الإرسال إلى {{recipients}} مستلم.",
-
   "core.modules.update_available": "تحديث متاح: {{version}}",
   "core.modules.upgrade_to": "الترقية إلى {{version}}",
   "core.modules.key": "المفتاح",
@@ -195,5 +193,9 @@
   "core.appearance.brandingHint": "الاسم الظاهر في الشريط العلوي وتبويب المتصفح. اترك إحدى اللغتين فارغة لاستخدام الأخرى.",
   "core.appearance.titleAr": "العنوان (بالعربية)",
   "core.appearance.titleEn": "العنوان (بالإنجليزية)",
-  "core.appearance.brandingSection": "العنوان والصفحة الأولى"
+  "core.appearance.brandingSection": "العنوان والصفحة الأولى",
+  "core.changePassword.current": "كلمة المرور الحالية",
+  "core.changePassword.hint": "عند تغيير كلمة المرور سيتم تسجيل خروجك من جميع أجهزتك ومتصفحاتك الأخرى، وتبقى هذه الجلسة مفتوحة.",
+  "core.changePassword.success": "تم تغيير كلمة المرور.",
+  "core.changePassword.successOthers": "تم تغيير كلمة المرور وتسجيل الخروج من {{count}} جلسة أخرى."
 }

@@ -30,6 +30,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
+import KeyIcon from '@mui/icons-material/Key';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto';
@@ -541,6 +542,7 @@ export function TopBar() {
               {/* Personal pages live here, not in the side menu; each shows only with its own permission. */}
               {[
                 { route: '/my-preferences', label: 'core.menu.myPreferences', icon: <ManageAccountsIcon fontSize="small" />, permission: null },
+                { route: '/change-password', label: 'core.menu.changePassword', icon: <KeyIcon fontSize="small" />, permission: 'users.password.change_my' },
                 { route: '/my-permissions', label: 'core.menu.myPermissions', icon: <ShieldIcon fontSize="small" />, permission: 'permissions.view_my' },
                 { route: '/sessions', label: 'core.menu.sessions', icon: <LockPersonIcon fontSize="small" />, permission: 'sessions.view_my' },
               ]

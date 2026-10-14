@@ -2,12 +2,14 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards 
 import type { Request, Response } from 'express';
 import { AllowMustChangePassword } from '../../common/decorators/allow-must-change-password.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { PublicThrottlerGuard } from '../../common/guards/public-throttler.guard';
 import { AuditLogWriter } from '../audit/audit-log.writer';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { LandingService } from '../settings/landing.service';
 import { AuthService, IssuedTokens, RegisteredUser } from './auth.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForcePasswordChangeDto } from './dto/force-password-change.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -104,6 +106,38 @@ export class AuthController {
 
     res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, { path: '/auth' });
     return { success: true };
+  }
+
+  /**
+   * Voluntary password change from the Account menu. Gated by its own
+   * admin-revocable code (migration 0019). The audit row is written directly (no
+   * values: passwords/hashes are never audited); it records how many other
+   * sessions were signed out.
+   */
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('users.password.change_my')
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ChangePasswordDto,
+    @Req() req: Request,
+  ): Promise<{ otherSessionsRevoked: number }> {
+    const result = await this.authService.changePassword(user.userId, user.sessionId, body.currentPassword, body.newPassword);
+
+    const meta = extractRequestMeta(req);
+    await this.auditLogWriter.write({
+      actorType: 'user',
+      actorUserId: user.userId,
+      actorSessionId: user.sessionId,
+      category: 'core.auth',
+      entityType: 'User',
+      entityId: user.userId,
+      action: 'change_password',
+      newValue: { otherSessionsRevoked: result.otherSessionsRevoked },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+    return result;
   }
 
   @Post('force-password-change')

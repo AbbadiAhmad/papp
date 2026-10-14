@@ -22,6 +22,7 @@ import { ForbiddenPage } from './core/ForbiddenPage';
 import { NotFoundPage } from './core/NotFoundPage';
 import { UsersListPage } from './core/users/UsersListPage';
 import { UsersImportPage } from './core/users/UsersImportPage';
+import { ChangePasswordPage } from './core/users/ChangePasswordPage';
 import { MyPreferencesPage } from './core/users/MyPreferencesPage';
 import { useGuardedQuery } from './shared/hooks/useGuardedQuery';
 import { usersApi } from './shared/api/users';
@@ -260,6 +261,14 @@ function AppRoutes() {
           element={
             <RequirePermissionRoute code="sessions.view_my">
               <SessionsPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <RequirePermissionRoute code="users.password.change_my">
+              <ChangePasswordPage />
             </RequirePermissionRoute>
           }
         />

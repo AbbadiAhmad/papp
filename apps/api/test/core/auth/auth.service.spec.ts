@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, HttpException, HttpStatus, Inte
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as argon2 from 'argon2';
 import { createHash } from 'node:crypto';
-import { AuthService } from '../../../src/core/auth/auth.service';
+import { AuthService, REFRESH_REUSE_GRACE_MS } from '../../../src/core/auth/auth.service';
 import { getJwtSecret } from '../../../src/core/auth/jwt.constants';
 import { PASSWORD_POLICY_KEY, PasswordPolicy, TOKEN_LIFETIMES_KEY, TokenLifetimes } from '../../../src/core/settings/settings.types';
 
@@ -264,8 +264,17 @@ describe('AuthService', () => {
       expect(tokens.accessToken).toBe('signed-access-token');
     });
 
+    it('treats a token rotated moments ago as a race: rejects this request but does NOT revoke the other sessions', async () => {
+      prisma.userSession.findUnique.mockResolvedValue(activeSession({ revokedAt: new Date(Date.now() - 2_000) }));
+
+      await expect(service.refresh('raw-refresh-token', REQUEST_META)).rejects.toThrow(/just rotated/i);
+
+      expect(prisma.userSession.updateMany).not.toHaveBeenCalled();
+      expect(prisma.userSession.create).not.toHaveBeenCalled();
+    });
+
     it('detects reuse of an already-revoked refresh token and revokes every session for that user', async () => {
-      prisma.userSession.findUnique.mockResolvedValue(activeSession({ revokedAt: new Date() }));
+      prisma.userSession.findUnique.mockResolvedValue(activeSession({ revokedAt: new Date(Date.now() - REFRESH_REUSE_GRACE_MS - 1_000) }));
 
       await expect(service.refresh('raw-refresh-token', REQUEST_META)).rejects.toThrow(/reuse detected/i);
 
@@ -384,6 +393,73 @@ describe('AuthService', () => {
       expect(typeof call.data.passwordHash).toBe('string');
       expect(call.data.passwordHash).toMatch(/^\$argon2id\$/);
       expect(call.data.passwordHash).not.toBe('NewPassw0rd');
+    });
+  });
+
+  describe('changePassword', () => {
+    function userRow(overrides: Record<string, unknown> = {}) {
+      return { id: 'user-1', passwordHash: correctPasswordHash, failedLoginAttempts: 0, lockedUntil: null, ...overrides };
+    }
+
+    it('stores the new hash, resets the lockout counters and signs out every OTHER session (never the current one)', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow({ failedLoginAttempts: 2 }));
+      prisma.user.update.mockResolvedValue({});
+      prisma.userSession.updateMany.mockResolvedValue({ count: 3 });
+
+      const result = await service.changePassword('user-1', 'session-1', 'CorrectPass1', 'NewPassw0rd');
+
+      expect(result).toEqual({ otherSessionsRevoked: 3 });
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data.passwordHash).toMatch(/^\$argon2id\$/);
+      expect(data).toMatchObject({ mustChangePassword: false, failedLoginAttempts: 0, lockedUntil: null });
+      expect(prisma.userSession.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null, id: { not: 'session-1' } },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('rejects a wrong current password, counts it toward lockout, and changes nothing else', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow({ failedLoginAttempts: 1 }));
+      prisma.user.update.mockResolvedValue({});
+
+      await expect(service.changePassword('user-1', 'session-1', 'WrongPass1', 'NewPassw0rd')).rejects.toThrow(/current password is incorrect/i);
+
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ failedLoginAttempts: 2, lockedUntil: null });
+      expect(prisma.userSession.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('locks the account on the Nth wrong current password', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow({ failedLoginAttempts: POLICY.maxFailedAttempts - 1 }));
+      prisma.user.update.mockResolvedValue({});
+
+      await expect(service.changePassword('user-1', 'session-1', 'WrongPass1', 'NewPassw0rd')).rejects.toBeInstanceOf(BadRequestException);
+
+      const data = prisma.user.update.mock.calls[0][0].data;
+      expect(data.failedLoginAttempts).toBe(0);
+      expect(data.lockedUntil).toBeInstanceOf(Date);
+    });
+
+    it('refuses while the account is locked, without verifying anything', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow({ lockedUntil: new Date(Date.now() + MS_PER_MINUTE) }));
+
+      await expect(service.changePassword('user-1', 'session-1', 'CorrectPass1', 'NewPassw0rd')).rejects.toBeInstanceOf(HttpException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a new password equal to the current one', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow());
+
+      await expect(service.changePassword('user-1', 'session-1', 'CorrectPass1', 'CorrectPass1')).rejects.toThrow(/different/i);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a policy-violating new password before writing anything', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue(userRow());
+
+      await expect(service.changePassword('user-1', 'session-1', 'CorrectPass1', 'short')).rejects.toThrow(/policy/i);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.userSession.updateMany).not.toHaveBeenCalled();
     });
   });
 

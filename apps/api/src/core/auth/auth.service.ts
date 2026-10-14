@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -53,6 +53,8 @@ interface RequestMeta {
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
+/** See `refresh()`: a just-rotated token presented again inside this window is a race, not theft. */
+export const REFRESH_REUSE_GRACE_MS = 10_000;
 
 @Injectable()
 export class AuthService {
@@ -186,6 +188,14 @@ export class AuthService {
     }
 
     if (session.revokedAt) {
+      // Two tabs/requests of the SAME browser can legitimately present the same
+      // cookie within moments of each other (page restore with several tabs, a lost
+      // response retried): the loser sees the winner's rotation as "reuse". Inside a
+      // short window that is a race, not theft, so reject this one request WITHOUT
+      // revoking the user's other sessions (a real replay later still revokes all).
+      if (Date.now() - session.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
+        throw new UnauthorizedException('Refresh token was just rotated; retry with the current cookie');
+      }
       this.logger.warn(`Refresh token reuse detected for session ${session.id} (user ${session.userId}); revoking all sessions.`);
       await this.revokeAllSessionsForUser(session.userId);
       throw new UnauthorizedException('Refresh token reuse detected; all sessions have been revoked');
@@ -221,6 +231,55 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     // The logout audit row is written by AuthController (§8.2, no diff).
+  }
+
+  /**
+   * Voluntary password change for a logged-in user. The current password must be
+   * re-entered (a stolen access token alone cannot change it); a wrong one counts
+   * toward the same lockout as a wrong login. On success every OTHER session of the
+   * user is revoked (the current one stays), so a leaked password/session ends here.
+   * Returns how many other sessions were signed out.
+   */
+  async changePassword(userId: string, sessionId: string, currentPassword: string, newPassword: string): Promise<{ otherSessionsRevoked: number }> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const policy = await this.getPasswordPolicy();
+
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      throw new HttpException(
+        { statusCode: HttpStatus.LOCKED, message: 'Account is temporarily locked due to too many failed attempts. Try again later.' },
+        HttpStatus.LOCKED,
+      );
+    }
+
+    if (!(await argon2.verify(user.passwordHash, currentPassword))) {
+      const failedLoginAttempts = user.failedLoginAttempts + 1;
+      const lockedOut = failedLoginAttempts >= policy.maxFailedAttempts;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: lockedOut ? 0 : failedLoginAttempts,
+          lockedUntil: lockedOut ? new Date(Date.now() + policy.lockoutMinutes * MS_PER_MINUTE) : user.lockedUntil,
+        },
+      });
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    if (newPassword === currentPassword) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+    assertPasswordMeetsPolicy(newPassword, policy);
+
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, mustChangePassword: false, failedLoginAttempts: 0, lockedUntil: null },
+    });
+
+    const revoked = await this.prisma.userSession.updateMany({
+      where: { userId: user.id, revokedAt: null, id: { not: sessionId } },
+      data: { revokedAt: new Date() },
+    });
+    return { otherSessionsRevoked: revoked.count };
   }
 
   async forcePasswordChange(userId: string, newPassword: string): Promise<void> {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
 import { AuthController } from '../../../src/core/auth/auth.controller';
 import { IssuedTokens, RegisteredUser } from '../../../src/core/auth/auth.service';
+import { ChangePasswordDto } from '../../../src/core/auth/dto/change-password.dto';
 import { ForcePasswordChangeDto } from '../../../src/core/auth/dto/force-password-change.dto';
 import { LoginDto } from '../../../src/core/auth/dto/login.dto';
 import { RegisterDto } from '../../../src/core/auth/dto/register.dto';
@@ -25,6 +26,7 @@ interface MockAuthService {
   refresh: jest.Mock;
   logout: jest.Mock;
   forcePasswordChange: jest.Mock;
+  changePassword: jest.Mock;
   register: jest.Mock;
   isSetupNeeded: jest.Mock;
   setupCreateFirstAdmin: jest.Mock;
@@ -41,6 +43,7 @@ function createMockAuthService(): MockAuthService {
     refresh: jest.fn(),
     logout: jest.fn(),
     forcePasswordChange: jest.fn(),
+    changePassword: jest.fn(),
     register: jest.fn(),
     isSetupNeeded: jest.fn(),
     setupCreateFirstAdmin: jest.fn(),
@@ -224,6 +227,30 @@ describe('AuthController', () => {
       const dto = Object.assign(new ForcePasswordChangeDto(), { newPassword: 'short' });
 
       await expect(controller.forcePasswordChange(AUTH_USER, dto)).rejects.toThrow('password does not meet policy');
+    });
+  });
+
+  describe('changePassword', () => {
+    it('delegates with the current user and session, audits WITHOUT any password value, and returns the revoked count', async () => {
+      authService.changePassword.mockResolvedValue({ otherSessionsRevoked: 2 });
+      const dto = Object.assign(new ChangePasswordDto(), { currentPassword: 'OldPassw0rd', newPassword: 'NewPassw0rd' });
+
+      const result = await controller.changePassword(AUTH_USER, dto, createMockRequest());
+
+      expect(authService.changePassword).toHaveBeenCalledWith('user-1', 'session-1', 'OldPassw0rd', 'NewPassw0rd');
+      expect(result).toEqual({ otherSessionsRevoked: 2 });
+      expect(auditLogWriter.write).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'core.auth', entityType: 'User', entityId: 'user-1', action: 'change_password', newValue: { otherSessionsRevoked: 2 } }),
+      );
+      expect(JSON.stringify(auditLogWriter.write.mock.calls)).not.toMatch(/Passw0rd/);
+    });
+
+    it('writes no audit row when the change is rejected', async () => {
+      authService.changePassword.mockRejectedValue(new Error('Current password is incorrect'));
+      const dto = Object.assign(new ChangePasswordDto(), { currentPassword: 'x', newPassword: 'y' });
+
+      await expect(controller.changePassword(AUTH_USER, dto, createMockRequest())).rejects.toThrow('Current password is incorrect');
+      expect(auditLogWriter.write).not.toHaveBeenCalled();
     });
   });
 

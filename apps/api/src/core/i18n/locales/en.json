@@ -26,6 +26,7 @@
   "core.perm.sessions.view_my": "View my own active sessions",
   "core.perm.users.preferences.view_my": "View my own account preferences",
   "core.perm.users.preferences.update_my": "Update my own account preferences",
+  "core.perm.users.password.change_my": "Change my own password",
   "core.perm.audit.view": "View the audit log",
   "core.perm.audit.purge": "Purge old audit log entries",
   "core.perm.backup.export": "Export a database backup",
@@ -54,6 +55,7 @@
   "core.menu.modules": "Modules",
   "core.menu.myPreferences": "My Preferences",
   "core.menu.account": "Account",
+  "core.menu.changePassword": "Change password",
 
   "core.auth.login": "Log in",
   "core.auth.logout": "Log out",

@@ -8,7 +8,6 @@
   "core.common.action_forbidden": "You don't have permission to do this ({{code}}).",
   "core.auth.confirm_password": "Confirm password",
   "core.auth.passwords_do_not_match": "Passwords do not match",
-
   "core.stats.no_data": "No data",
   "core.stats.unspecified": "Not specified",
   "core.users.status": "Status",
@@ -133,7 +132,6 @@
   "core.notifications.categories.auth.force_password_change": "Password change required",
   "core.notifications.send": "Send",
   "core.notifications.sent": "Sent to {{recipients}} recipient(s).",
-
   "core.modules.update_available": "Update available: {{version}}",
   "core.modules.upgrade_to": "Upgrade to {{version}}",
   "core.modules.key": "Key",
@@ -195,5 +193,9 @@
   "core.appearance.brandingHint": "The name shown in the top bar and browser tab. Leave one language empty to reuse the other.",
   "core.appearance.titleAr": "Title (Arabic)",
   "core.appearance.titleEn": "Title (English)",
-  "core.appearance.brandingSection": "Title & start page"
+  "core.appearance.brandingSection": "Title & start page",
+  "core.changePassword.current": "Current password",
+  "core.changePassword.hint": "Changing your password signs you out of all your other devices and browsers. This one stays signed in.",
+  "core.changePassword.success": "Password changed.",
+  "core.changePassword.successOthers": "Password changed. {{count}} other session(s) were signed out."
 }
