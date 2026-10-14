@@ -44,7 +44,7 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { useColorMode } from '../../app/ColorModeContext';
@@ -54,7 +54,7 @@ import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
 import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
 import { resolveMenuIcon } from '../modules/menuIcons';
-import { useModuleFrontendManifests } from '../modules/useInstalledModules';
+import { useModuleFrontendManifests, usePublicModuleRoutes } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
 
@@ -369,6 +369,63 @@ function TabsNav() {
 }
 
 /**
+ * True on a module's PUBLIC page (e.g. the website) while logged in. Those
+ * pages render like a normal site — no sidebar/tabs — and the platform menu
+ * is reached from the top bar's menu button instead (`PlatformMenuButton`),
+ * because following a platform link there means leaving the site.
+ */
+function useOnPublicModulePage(): boolean {
+  const { pathname } = useLocation();
+  const publicRoutes = usePublicModuleRoutes();
+  return publicRoutes.some((route) => matchPath({ path: route.path, end: true }, pathname));
+}
+
+/**
+ * Top-bar menu button for a public page: a dropdown of the platform's TOP
+ * LEVELS only (the platform group and each module's group, with the admin's
+ * menu layout applied), each opening that group's first page the user may see.
+ * Same nodes and permission checks as the sidebar/tabs. Only mounted once
+ * authenticated, since the nodes come from the authenticated manifest.
+ */
+function PlatformMenuButton() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  const navigate = useNavigate();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
+  const entries = nodes
+    .map((node) => ({ node, first: (node.type === 'leaf' ? [node] : node.children).find(isVisible) }))
+    .filter((entry): entry is { node: ResolvedMenuNode; first: ResolvedMenuLeaf } => entry.first !== undefined);
+
+  return (
+    <>
+      <Tooltip title={t('core.common.menu')}>
+        <IconButton color="inherit" onClick={(e) => setAnchor(e.currentTarget)} aria-label={t('core.common.menu')} aria-haspopup="menu" aria-expanded={Boolean(anchor)}>
+          <MenuIcon />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+        {entries.map(({ node, first }) => (
+          <MenuItem
+            key={node.id}
+            onClick={() => {
+              setAnchor(null);
+              navigate(first.route);
+            }}
+          >
+            <ListItemIcon>{iconFor(node) as ReactElement}</ListItemIcon>
+            {labelOf(node, language, t)}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
+/**
  * Always mounted (App.tsx renders this at the root regardless of auth
  * status) — the brand bar, language switcher, and (once authenticated) the
  * notifications bell + user menu. Split out from the drawer/content area so
@@ -385,6 +442,7 @@ export function TopBar() {
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
   const tabsShell = useThemePack().pack?.shell === 'tabs';
   const { branding } = useBranding();
+  const onPublicPage = useOnPublicModulePage();
   const appTitle = language === 'ar' ? branding.titleAr : branding.titleEn;
   useEffect(() => {
     document.title = appTitle;
@@ -428,10 +486,12 @@ export function TopBar() {
         </Tooltip>
 
         {/* The platform menu, one click away beside the language switcher —
-            only for a logged-in user (that's the only time the menu exists). On
-            mobile it opens the overlay drawer; on desktop it folds/unfolds the
-            sidebar. Not shown for the tabs shell, which has no sidebar. */}
-        {status === 'authenticated' && !tabsShell ? (
+            only for a logged-in user. On a public (website) page it is a
+            dropdown of the platform's top levels; on a platform page it opens
+            the mobile overlay drawer, or folds the desktop sidebar. Not shown
+            for the tabs shell on platform pages, which has no sidebar. */}
+        {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
+        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
           <Tooltip title={t('core.common.menu')}>
             <IconButton
               color="inherit"
@@ -526,6 +586,16 @@ export function PageLayout({ children }: { children: ReactNode }) {
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen } = useMobileNav();
   const closeMobileNav = () => setMobileNavOpen(false);
   const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const onPublicPage = useOnPublicModulePage();
+
+  if (onPublicPage) {
+    return (
+      <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Toolbar data-app-shell="main-spacer" />
+        {children}
+      </Box>
+    );
+  }
 
   if (tabsShell) {
     return (

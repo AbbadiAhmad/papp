@@ -39,8 +39,11 @@ export function SiteMenu({ location }: { location: MenuLocation }) {
       aria-label={location}
       sx={{
         display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: location === 'header' ? 'flex-start' : 'center',
+        // Phone: one swipeable row instead of a tall wrapped block, so the page content stays near the top.
+        flexWrap: { xs: 'nowrap', sm: 'wrap' },
+        overflowX: { xs: 'auto', sm: 'visible' },
+        '& > *': { flexShrink: 0 },
+        justifyContent: { xs: 'flex-start', sm: location === 'header' ? 'flex-start' : 'center' },
         gap: 1,
         px: 2,
         py: 1,
