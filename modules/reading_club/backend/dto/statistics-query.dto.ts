@@ -24,14 +24,6 @@ export class StatisticsQueryDto {
   @Max(10)
   ageBandYears?: number;
 
-  /** A book needs at least this many ratings to appear in "highest rated". */
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  minRatings?: number;
-
   /** Length of the top-N lists. */
   @IsOptional()
   @Type(() => Number)

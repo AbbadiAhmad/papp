@@ -12,6 +12,8 @@
   "core.auth.confirm_password": "تأكيد كلمة المرور",
   "core.auth.passwords_do_not_match": "كلمتا المرور غير متطابقتين",
 
+  "core.stats.no_data": "لا توجد بيانات",
+  "core.stats.unspecified": "غير محدد",
   "core.users.status": "الحالة",
   "core.users.active": "نشط",
   "core.users.inactive": "غير نشط",

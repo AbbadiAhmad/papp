@@ -230,11 +230,9 @@ export interface DashboardStats {
 
 const BASE = '/api/reading-club';
 
-export interface StatsCount {
-  /** null = no category / level recorded. */
-  key: string | null;
-  count: number;
-}
+export type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
+import type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
+
 export interface StatsPerson {
   studentId: string;
   code: string;
@@ -266,46 +264,36 @@ export interface StatsGroup {
 }
 export interface StatsAgeBand {
   label: string | null;
-  readers: number;
-  borrowings: number;
+  members: number;
+  completions: number;
   categories: StatsCount[];
-  levels: StatsCount[];
-  topBooks: Array<{ title: string; count: number }>;
 }
 export interface ClubStatistics {
   period: { from: string | null; to: string | null };
-  readers: { total: number; active: number; withoutDateOfBirth: number };
-  library: {
-    borrowings: number;
-    returned: number;
-    borrowers: number;
-    overdueNow: number;
-    topReaders: Array<StatsPerson & { borrowings: number }>;
-    topBooks: Array<{ title: string; author: string | null; category: string | null; count: number }>;
-    categories: StatsCount[];
-    levels: StatsCount[];
-  };
-  topRated: Array<{ title: string; author: string | null; category: string | null; readingLevel: string | null; average: number; ratings: number }>;
-  club: {
-    episode: { id: string; name: string; isCurrent: boolean };
+  episode: { id: string; name: string; isCurrent: boolean } | null;
+  participation: {
+    activeReaders: number;
     members: number;
-    completions: number;
-    pendingRewards: number;
-    presents: number;
-    completionsByMonth: Array<{ month: string; count: number }>;
-    topReaders: Array<StatsPerson & { groupName: string | null; completions: number; booksRead: number }>;
-    categories: StatsCount[];
-    levels: StatsCount[];
-    groups: StatsGroup[];
-  } | null;
+    participationPct: number | null;
+    finishedAllStages: number;
+    borrowingsPerMember: number | null;
+    borrowingsPerNonMember: number | null;
+  };
+  achievements: { completions: number; presents: number; completionsByMonth: Array<{ month: string; count: number }> };
+  rewards: { pending: number; oldestPendingDays: number | null; avgDaysToDeliver: number | null };
+  topReaders: Array<StatsPerson & { groupName: string | null; completions: number; booksRead: number }>;
+  stalled: Array<StatsPerson & { groupName: string | null; stageName: string | null; daysInStage: number; progressPct: number | null }>;
+  categories: StatsCount[];
+  levels: StatsCount[];
+  groups: StatsGroup[];
   byAge: { bandYears: number; bands: StatsAgeBand[] };
+  episodes: Array<{ id: string; name: string; isCurrent: boolean; groups: number; completions: number; readersWithCompletion: number }>;
 }
 export interface StatisticsQuery {
   episodeId?: string;
   from?: string;
   to?: string;
   ageBandYears?: number;
-  minRatings?: number;
 }
 
 export const readingClubApi = {

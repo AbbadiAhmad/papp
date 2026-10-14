@@ -92,9 +92,9 @@ Users holding `reading_club.notifications.subscribe` (default: admin, library_as
 
 `backend/reader-import.service.ts` implements library_circulation's optional readers-import extension (plain-string token, no cross-module import). The Excel columns `Club`, `Club Group`, `Club Stage` add/move/remove readers in the CURRENT episode; blank stage = first stage, same group keeps progress.
 
-## Statistics (READING_CLUB-D32)
+## Statistics (READING_CLUB-D32, D33)
 
-`/reading-club/statistics` (`reading_club.statistics.view`) → `GET /api/reading-club/statistics?episodeId&from&to&ageBandYears&minRatings&top`. Backend: `backend/statistics.service.ts` (pure helpers `tally`, `ageInYears` + the aggregation), frontend: `frontend/pages/StatisticsPage.tsx` (tabs: Overview, Groups & stages, Books, Age groups). Needs `users.date_of_birth` (core migration 0016) for the age tab.
+`/reading-club/statistics` (`reading_club.statistics.view`) → `GET /api/reading-club/statistics?episodeId&from&to&ageBandYears&top`. Club-only (library figures are on library_circulation's own statistics page, LIBRARY_CIRCULATION-D57). Backend: `backend/statistics.service.ts` (pure helpers `tally`, `ageInYears` + the aggregation), frontend: `frontend/pages/StatisticsPage.tsx` (tabs: Overview, Groups & stages, Readers, Club books, Age & seasons). Needs `users.date_of_birth` (core migration 0016) for the age tab.
 
 ## Routes
 

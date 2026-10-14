@@ -12,6 +12,8 @@
   "core.auth.confirm_password": "Confirm password",
   "core.auth.passwords_do_not_match": "Passwords do not match",
 
+  "core.stats.no_data": "No data",
+  "core.stats.unspecified": "Not specified",
   "core.users.status": "Status",
   "core.users.active": "Active",
   "core.users.inactive": "Inactive",

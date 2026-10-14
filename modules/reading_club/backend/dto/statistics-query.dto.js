@@ -20,8 +20,6 @@ class StatisticsQueryDto {
     to;
     /** Width of one age group in years (2 -> 6-7, 8-9, ...). */
     ageBandYears;
-    /** A book needs at least this many ratings to appear in "highest rated". */
-    minRatings;
     /** Length of the top-N lists. */
     top;
 }
@@ -49,14 +47,6 @@ __decorate([
     (0, class_validator_1.Max)(10),
     __metadata("design:type", Number)
 ], StatisticsQueryDto.prototype, "ageBandYears", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_transformer_1.Type)(() => Number),
-    (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.Min)(1),
-    (0, class_validator_1.Max)(100),
-    __metadata("design:type", Number)
-], StatisticsQueryDto.prototype, "minRatings", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_transformer_1.Type)(() => Number),

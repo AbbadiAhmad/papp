@@ -1,5 +1,6 @@
 // Same-repo Vite import — see modules/template/frontend/api.ts's own docblock.
 import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import type { StatsCount } from '../../../apps/web/src/shared/components/StatsBlocks';
 
 export type BorrowingStatus = 'active' | 'returned' | 'overdue' | 'lost' | 'cancelled';
 export type FineStatus = 'unpaid' | 'partially_paid' | 'paid' | 'waived' | 'cancelled';
@@ -226,6 +227,74 @@ export interface StudentImportRow {
   valid: boolean;
   error: string | null;
   action: 'create' | 'update' | null;
+}
+
+export interface LibStatsPerson {
+  studentId: string;
+  code: string;
+  name: string;
+  className: string | null;
+}
+export interface LibStatsBook {
+  title: string;
+  author: string | null;
+  category: string | null;
+}
+export interface LibraryStatisticsData {
+  period: { from: string | null; to: string | null };
+  readers: { total: number; active: number; withoutDateOfBirth: number; newInPeriod: number };
+  collection: {
+    titles: number;
+    copies: number;
+    copiesByStatus: StatsCount[];
+    newTitles: number;
+    neverBorrowed: { count: number; sample: Array<LibStatsBook & { copies: number }> };
+  };
+  activity: {
+    borrowings: number;
+    returns: number;
+    onLoanNow: number;
+    overdueNow: number;
+    borrowers: number;
+    borrowerRatePct: number | null;
+    avgLoanDays: number | null;
+    onTimeRatePct: number | null;
+    avgDaysLate: number | null;
+    byMonth: Array<{ month: string; count: number }>;
+    byWeekday: Array<{ weekday: number; count: number }>;
+  };
+  overdue: { buckets: StatsCount[]; readers: Array<LibStatsPerson & { books: number; maxDaysLate: number }> };
+  returnConditions: StatsCount[];
+  readersActivity: {
+    topReaders: Array<LibStatsPerson & { borrowings: number }>;
+    inactive: { count: number; sample: LibStatsPerson[] };
+    byClass: Array<{ className: string | null; readers: number; borrowings: number; perReader: number }>;
+  };
+  books: {
+    topBooks: Array<LibStatsBook & { count: number }>;
+    topRated: Array<LibStatsBook & { readingLevel: string | null; average: number; ratings: number }>;
+    categories: StatsCount[];
+    levels: StatsCount[];
+    highDemand: Array<LibStatsBook & { borrowings: number; copies: number; perCopy: number }>;
+  };
+  fines: {
+    issuedCount: number;
+    issuedAmount: number;
+    paidAmount: number;
+    outstandingAmount: number;
+    byStatus: StatsCount[];
+    byType: Array<{ name: string; count: number; amount: number }>;
+  };
+  byAge: {
+    bandYears: number;
+    bands: Array<{ label: string | null; readers: number; borrowings: number; categories: StatsCount[]; levels: StatsCount[]; topBooks: Array<{ title: string; count: number }> }>;
+  };
+}
+export interface LibraryStatisticsQuery {
+  from?: string;
+  to?: string;
+  ageBandYears?: number;
+  minRatings?: number;
 }
 
 export type MessageRecipientMode = 'all' | 'individual' | 'unpaid_fines' | 'overdue';
@@ -594,6 +663,9 @@ export const libraryCirculationApi = {
   getDashboardStats: () => apiClient.get<DashboardStats>(`${BASE}/dashboard`).then((r) => r.data),
   getOverdueBorrowings: (params: OverdueQuery) =>
     apiClient.get<OverdueResult>(`${BASE}/dashboard/overdue`, { params }).then((r) => r.data),
+
+  // Statistics
+  getStatistics: (query: LibraryStatisticsQuery) => apiClient.get<LibraryStatisticsData>(`${BASE}/statistics`, { params: query }).then((r) => r.data),
 
   // Messages to readers
   listMessageTemplates: () => apiClient.get<MessageTemplate[]>(`${BASE}/messages/templates`).then((r) => r.data),
