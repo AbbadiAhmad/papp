@@ -248,7 +248,7 @@ function ThemeCard(props: {
   name: string;
   description?: string;
   colors: string[];
-  shell: 'sidebar' | 'tabs';
+  shell: 'sidebar' | 'tabs' | 'header';
   active: boolean;
   canManage: boolean;
   busy: boolean;
@@ -275,7 +275,7 @@ function ThemeCard(props: {
           </Typography>
         ) : null}
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          {t(props.shell === 'tabs' ? 'core.appearance.shellTabs' : 'core.appearance.shellSidebar')}
+          {t(props.shell === 'tabs' ? 'core.appearance.shellTabs' : props.shell === 'header' ? 'core.appearance.shellHeader' : 'core.appearance.shellSidebar')}
         </Typography>
         {props.canManage && !props.active ? (
           <Button sx={{ mt: 1.5 }} variant="contained" size="small" disabled={props.busy} onClick={() => props.onActivate(props.themeKey)}>

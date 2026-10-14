@@ -164,6 +164,7 @@
   "core.appearance.activate": "استخدم هذا التصميم",
   "core.appearance.shellTabs": "القائمة: تبويبات علوية",
   "core.appearance.shellSidebar": "القائمة: شريط جانبي",
+  "core.appearance.shellHeader": "القائمة: في الترويسة مع قوائم منسدلة",
   "core.appearance.menuTitle": "ترتيب القائمة",
   "core.appearance.menuHint": "جمّع الصفحات ورتّبها وغيّر أسماءها أو أخفِها. إخفاء الصفحة يزيلها من القائمة فقط، أما من يستطيع فتحها فتحدده الصلاحيات. الوحدات الجديدة تظهر بعد مجموعاتك إلى أن تضعها.",
   "core.appearance.groupNameAr": "اسم المجموعة (عربي)",

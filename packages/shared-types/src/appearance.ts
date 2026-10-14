@@ -36,8 +36,8 @@ export const themePackSchema = z.object({
   version: z.string().min(1).max(20),
   name: localizedText,
   description: localizedText.optional(),
-  /** `sidebar`: today's permanent drawer. `tabs`: top tab bar of menu groups, pages of the active group in a second row. */
-  shell: z.enum(['sidebar', 'tabs']),
+  /** `sidebar`: permanent drawer. `tabs`: top tab bar of menu groups, pages of the active group in a second row. `header`: menu groups as a bar in the header, each opening a dropdown of its pages (a nested drawer on small screens). */
+  shell: z.enum(['sidebar', 'tabs', 'header']),
   radius: z.number().int().min(0).max(32),
   /** Optional header background picture: a file inside the theme's own folder (svg/png/jpg/webp), served by `GET /appearance/themes/:key/assets/:file`. Never a URL. */
   headerImage: z

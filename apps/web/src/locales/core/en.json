@@ -164,6 +164,7 @@
   "core.appearance.activate": "Use this theme",
   "core.appearance.shellTabs": "Menu: top tabs",
   "core.appearance.shellSidebar": "Menu: side bar",
+  "core.appearance.shellHeader": "Menu: header with dropdowns",
   "core.appearance.menuTitle": "Menu layout",
   "core.appearance.menuHint": "Group, order, rename or hide pages. Hiding a page only removes it from the menu; who can open it is still decided by permissions. New modules appear after your groups until you place them.",
   "core.appearance.groupNameAr": "Group name (Arabic)",

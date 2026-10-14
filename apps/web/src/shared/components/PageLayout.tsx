@@ -2,6 +2,7 @@ import {
   AppBar,
   Avatar,
   Box,
+  Button,
   Chip,
   Collapse,
   Divider,
@@ -21,7 +22,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -59,6 +60,8 @@ import { resolveMenuIcon } from '../modules/menuIcons';
 import { useModuleFrontendManifests, usePublicModuleRoutes } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
+/** Height of the second header row of the `header` shell. */
+const HEADER_NAV_HEIGHT = 48;
 
 /**
  * Shared open/close state for the mobile (below `sm`) overlay drawer.
@@ -369,6 +372,90 @@ function TabsNav() {
 }
 
 /**
+ * The `header` shell (theme packs): the menu's top levels as a bar inside the
+ * header, each group opening a dropdown of its pages (a single-page entry is a
+ * plain link). Same nodes, permission checks and labels as the sidebar/tabs.
+ * Desktop only: below `md` the header shows a menu button that opens the nested
+ * (collapsible) drawer instead, which suits narrow screens better than dropdowns.
+ */
+function HeaderNav() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  const { pathname } = useLocation();
+  const theme = useTheme();
+  const [openMenu, setOpenMenu] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+
+  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
+  const entries = nodes
+    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
+    .filter((entry) => entry.leaves.length > 0);
+  // Anchor/transform on the reading-start edge so the dropdown lines up with its button in LTR and RTL.
+  const edge = theme.direction === 'rtl' ? 'right' : 'left';
+  const openEntry = entries.find((entry) => entry.node.id === openMenu?.id);
+
+  return (
+    <Toolbar
+      component="nav"
+      variant="dense"
+      aria-label={t('core.common.menu')}
+      sx={{
+        minHeight: `${HEADER_NAV_HEIGHT}px !important`,
+        gap: 0.5,
+        overflowX: 'auto',
+        backgroundColor: alpha('#000', 0.22),
+        borderTop: `1px solid ${alpha('#fff', 0.12)}`,
+      }}
+    >
+      {entries.map(({ node, leaves }) => {
+        const active = leaves.some((leaf) => leaf.route === pathname);
+        const single = leaves.length === 1;
+        return (
+          <Button
+            key={node.id}
+            color="inherit"
+            {...(single ? { component: RouterLink, to: leaves[0].route } : {})}
+            onClick={single ? undefined : (e: React.MouseEvent<HTMLElement>) => setOpenMenu({ id: node.id, anchor: e.currentTarget })}
+            aria-haspopup={single ? undefined : 'menu'}
+            aria-expanded={single ? undefined : openMenu?.id === node.id}
+            aria-current={active && single ? 'page' : undefined}
+            startIcon={iconFor(node) as ReactElement}
+            endIcon={single ? undefined : <ExpandMoreIcon fontSize="small" />}
+            sx={{
+              flexShrink: 0,
+              height: HEADER_NAV_HEIGHT - 8,
+              px: 1.5,
+              borderRadius: 1,
+              fontWeight: active ? 700 : 500,
+              backgroundColor: active ? alpha('#fff', 0.14) : 'transparent',
+              boxShadow: active ? `inset 0 -3px 0 ${theme.palette.primary.light}` : 'none',
+              '&:hover': { backgroundColor: alpha('#fff', 0.2) },
+            }}
+          >
+            {labelOf(node, language, t)}
+          </Button>
+        );
+      })}
+      <Menu
+        anchorEl={openMenu?.anchor}
+        open={Boolean(openEntry)}
+        onClose={() => setOpenMenu(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: edge }}
+        transformOrigin={{ vertical: 'top', horizontal: edge }}
+        slotProps={{ paper: { sx: { minWidth: 220, mt: 0.5 } } }}
+      >
+        {openEntry?.leaves.map((leaf) => (
+          <MenuItem key={leaf.id} component={RouterLink} to={leaf.route} selected={leaf.route === pathname} onClick={() => setOpenMenu(null)}>
+            {labelOf(leaf, language, t)}
+          </MenuItem>
+        ))}
+      </Menu>
+    </Toolbar>
+  );
+}
+
+/**
  * True on a module's PUBLIC page (e.g. the website) while logged in. Those
  * pages render like a normal site — no sidebar/tabs — and the platform menu
  * is reached from the top bar's menu button instead (`PlatformMenuButton`),
@@ -435,12 +522,15 @@ function PlatformMenuButton() {
 export function TopBar() {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const { status, user, logout, hasPermission } = useAuth();
+  const { status, user, logout, hasPermission, mustChangePassword } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
-  const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const shell = useThemePack().pack?.shell;
+  const tabsShell = shell === 'tabs';
+  const headerShell = shell === 'header';
+  // The header shell switches to the drawer below `md` (a dropdown bar needs the width); other shells below `sm`.
+  const isMobile = useMediaQuery(theme.breakpoints.down(headerShell ? 'md' : 'sm'));
   const { branding } = useBranding();
   const onPublicPage = useOnPublicModulePage();
   const appTitle = language === 'ar' ? branding.titleAr : branding.titleEn;
@@ -466,7 +556,7 @@ export function TopBar() {
             the mobile overlay drawer, or folds the desktop sidebar. Not shown
             for the tabs shell on platform pages, which has no sidebar. */}
         {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
-        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
+        {status === 'authenticated' && !onPublicPage && !tabsShell && (!headerShell || isMobile) ? (
           <Tooltip title={t('core.common.menu')}>
             <IconButton
               color="inherit"
@@ -570,6 +660,7 @@ export function TopBar() {
           </>
         ) : null}
       </Toolbar>
+      {headerShell && !isMobile && status === 'authenticated' && !mustChangePassword && !onPublicPage ? <HeaderNav /> : null}
     </AppBar>
   );
 }
@@ -596,7 +687,9 @@ export function TopBar() {
 export function PageLayout({ children }: { children: ReactNode }) {
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen } = useMobileNav();
   const closeMobileNav = () => setMobileNavOpen(false);
-  const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const shell = useThemePack().pack?.shell;
+  const tabsShell = shell === 'tabs';
+  const headerShell = shell === 'header';
   const onPublicPage = useOnPublicModulePage();
 
   if (onPublicPage) {
@@ -605,6 +698,33 @@ export function PageLayout({ children }: { children: ReactNode }) {
         <Toolbar data-app-shell="main-spacer" />
         {children}
       </Box>
+    );
+  }
+
+  if (headerShell) {
+    return (
+      <>
+        {/* Below `md` the header has no dropdown bar: its menu button opens this
+            nested (collapsible) drawer, the usual pattern for narrow screens. */}
+        <Drawer
+          variant="temporary"
+          anchor="left"
+          open={mobileNavOpen}
+          onClose={closeMobileNav}
+          ModalProps={{ keepMounted: true }}
+          slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
+          sx={{ display: { xs: 'block', md: 'none' }, [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' } }}
+        >
+          <Toolbar />
+          <NavList onNavigate={closeMobileNav} />
+        </Drawer>
+        <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
+          <Toolbar data-app-shell="main-spacer" />
+          {/* Room for the header's second row (dropdown bar), which only exists from `md` up. */}
+          <Box data-app-shell="main-spacer" sx={{ display: { xs: 'none', md: 'block' }, height: `${HEADER_NAV_HEIGHT}px` }} />
+          {children}
+        </Box>
+      </>
     );
   }
 

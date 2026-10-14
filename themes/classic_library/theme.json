@@ -6,47 +6,47 @@
     "en": "Classic Library"
   },
   "description": {
-    "ar": "مظهر هادئ ورسمي لمكتبات الكبار والمكتبات الجامعية.",
-    "en": "A calm, formal look for adult and academic libraries."
+    "ar": "مظهر مهني هادئ: رمادي فحمي وأزرق هادئ وخط IBM Plex.",
+    "en": "A calm professional look: graphite, steady blue, IBM Plex type."
   },
-  "shell": "sidebar",
+  "shell": "header",
   "radius": 6,
   "fonts": {
-    "ar": "\"Thmanyah Sans\", \"Segoe UI\", \"Noto Kufi Arabic\", Tahoma, Arial, sans-serif",
-    "en": "\"Inter\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
+    "ar": "\"IBM Plex Sans Arabic\", \"Segoe UI\", Tahoma, Arial, sans-serif",
+    "en": "\"IBM Plex Sans Arabic\", \"Segoe UI\", Roboto, Arial, sans-serif"
   },
   "light": {
-    "primary": "#1F3A5F",
+    "primary": "#2A5CAA",
     "primaryContrast": "#ffffff",
-    "secondary": "#9A6B1F",
-    "background": "#F4F5F7",
+    "secondary": "#0F766E",
+    "background": "#F6F7F9",
     "surface": "#ffffff",
-    "text": "#1A2230",
-    "textMuted": "#566070",
-    "border": "#DCE0E6",
-    "hero": "#E8ECF2",
-    "headerBg": "#14283F",
+    "text": "#111827",
+    "textMuted": "#4B5563",
+    "border": "#E2E5EA",
+    "hero": "#EEF2F8",
+    "headerBg": "#1B222C",
     "headerText": "#ffffff",
-    "success": "#2B6E3F",
+    "success": "#1E7B45",
     "warning": "#8A5A00",
-    "error": "#B3261E",
-    "info": "#1F5F99"
+    "error": "#B42318",
+    "info": "#2A5CAA"
   },
   "dark": {
-    "primary": "#8FB1DE",
-    "primaryContrast": "#0C1624",
-    "secondary": "#D6A85C",
-    "background": "#0F141B",
-    "surface": "#171E28",
-    "text": "#E7EBF1",
-    "textMuted": "#9AA6B8",
-    "border": "#283241",
-    "hero": "#1C2736",
-    "headerBg": "#0C1A2B",
+    "primary": "#7FA6E0",
+    "primaryContrast": "#0B1220",
+    "secondary": "#5EC4B6",
+    "background": "#0E1116",
+    "surface": "#161B22",
+    "text": "#E6EAF0",
+    "textMuted": "#9AA4B2",
+    "border": "#262D38",
+    "hero": "#1A2230",
+    "headerBg": "#0A0D12",
     "headerText": "#ffffff",
-    "success": "#7CCB96",
+    "success": "#6FCB92",
     "warning": "#E8C36E",
-    "error": "#F2908B",
-    "info": "#8DBBEA"
+    "error": "#F28B82",
+    "info": "#8DB4EA"
   }
 }
