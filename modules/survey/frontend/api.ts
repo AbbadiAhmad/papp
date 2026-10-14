@@ -74,6 +74,7 @@ export interface SurveyDetail extends SurveySummary {
   notifyEmails: string[];
   opensAt: string | null;
   closesAt: string | null;
+  closedMessage: string | null;
   sections: SurveySectionDto[];
   logicRules: SurveyLogicRuleDto[];
 }
@@ -93,6 +94,7 @@ export interface UpdateSurveyInput {
   notifyEmails?: string[];
   opensAt?: string | null;
   closesAt?: string | null;
+  closedMessage?: string;
 }
 
 export interface SurveyStructureInput {
@@ -179,6 +181,7 @@ export const surveyApi = {
   remove: (id: string) => apiClient.delete<void>(`/api/survey/surveys/${id}`).then((r) => r.data),
   publish: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/publish`).then((r) => r.data),
   close: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/close`).then((r) => r.data),
+  reopen: (id: string) => apiClient.post<SurveyDetail>(`/api/survey/surveys/${id}/reopen`).then((r) => r.data),
   replaceStructure: (id: string, dto: SurveyStructureInput) =>
     apiClient.put<SurveyDetail>(`/api/survey/surveys/${id}/structure`, dto).then((r) => r.data),
 

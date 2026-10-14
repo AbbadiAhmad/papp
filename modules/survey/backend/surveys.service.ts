@@ -71,6 +71,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
         notifyEmails: dto.notifyEmails as unknown as Prisma.InputJsonValue,
         opensAt: dto.opensAt,
         closesAt: dto.closesAt,
+        closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
       },
     });
   }
@@ -97,6 +98,15 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException('Only a published survey can be closed');
     }
     return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'closed' } });
+  }
+
+  /** closed -> published again (a closed survey was previously a dead end). */
+  async reopen(id: string) {
+    const survey = await this.getSurveyOrThrow(id);
+    if (survey.status !== 'closed') {
+      throw new ConflictException('Only a closed survey can be reopened');
+    }
+    return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'published' } });
   }
 
   /**
@@ -230,6 +240,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
   private validateStructure(dto: SurveyStructureDto): void {
     const questionsById = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)));
     const sectionIds = new Set(dto.sections.map((s) => s.id));
+    const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id] as const)));
 
     for (const section of dto.sections) {
       for (const question of section.questions) {
@@ -261,6 +272,11 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       }
       if (rule.targetId === rule.sourceQuestionId) {
         throw new BadRequestException('A logic rule cannot target its own source question');
+      }
+      // A question can never show/hide the section it lives in (it could hide
+      // itself and become impossible to ever answer again).
+      if (rule.targetType === 'section' && sectionOfQuestion.get(rule.sourceQuestionId) === rule.targetId) {
+        throw new BadRequestException(`Question "${sourceQuestion.title}" cannot show or hide its own section`);
       }
     }
   }

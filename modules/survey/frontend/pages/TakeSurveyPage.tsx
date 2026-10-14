@@ -1,3 +1,4 @@
+import axios from 'axios';
 import {
   Alert,
   Box,
@@ -173,6 +174,7 @@ export function TakeSurveyPage() {
 
   const [pageState, setPageState] = useState<PageState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [closedMessage, setClosedMessage] = useState<string | null>(null);
   const [survey, setSurvey] = useState<FillableSurvey | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -220,6 +222,8 @@ export function TakeSurveyPage() {
       .catch((error: unknown) => {
         if (cancelled) return;
         if (isNotFoundError(error)) {
+          const body = axios.isAxiosError(error) ? (error.response?.data as { closed?: boolean; closedMessage?: string | null } | undefined) : undefined;
+          setClosedMessage(body?.closed ? (body.closedMessage ?? null) : null);
           setPageState('not_found');
           return;
         }
@@ -312,7 +316,7 @@ export function TakeSurveyPage() {
           </Stack>
         ) : null}
 
-        {pageState === 'not_found' ? <Alert severity="warning">{t('survey.take.not_found')}</Alert> : null}
+        {pageState === 'not_found' ? <Alert severity="warning">{closedMessage || t('survey.take.not_found')}</Alert> : null}
         {pageState === 'error' ? <Alert severity="error">{errorMessage ?? t('core.common.error')}</Alert> : null}
         {pageState === 'login_required' ? (
           <Stack spacing={2}>

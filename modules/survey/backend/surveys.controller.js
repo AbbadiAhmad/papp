@@ -54,6 +54,9 @@ let SurveysController = class SurveysController {
     async close(id) {
         return this.surveys.close(id);
     }
+    async reopen(id) {
+        return this.surveys.reopen(id);
+    }
     async replaceStructure(id, dto) {
         return this.surveys.replaceStructure(id, dto);
     }
@@ -122,6 +125,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], SurveysController.prototype, "close", null);
+__decorate([
+    (0, common_1.Post)(':id/reopen'),
+    (0, platform_1.RequirePermission)('survey.surveys.publish'),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'reopen', fetchState: fetchSurveyState }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "reopen", null);
 __decorate([
     (0, common_1.Put)(':id/structure'),
     (0, platform_1.RequirePermission)('survey.surveys.update'),

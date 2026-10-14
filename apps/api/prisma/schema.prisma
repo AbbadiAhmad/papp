@@ -463,6 +463,8 @@ model SurveySurvey {
   notifyEmails             Json         @default("[]") @map("notify_emails")
   opensAt                  DateTime?    @map("opens_at")
   closesAt                 DateTime?    @map("closes_at")
+  /// Optional per-survey text shown to respondents once the survey is closed.
+  closedMessage            String?      @map("closed_message")
   createdAt                DateTime     @default(now()) @map("created_at")
   updatedAt                DateTime     @updatedAt @map("updated_at")
 

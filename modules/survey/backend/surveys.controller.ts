@@ -71,6 +71,13 @@ export class SurveysController {
     return this.surveys.close(id);
   }
 
+  @Post(':id/reopen')
+  @RequirePermission('survey.surveys.publish')
+  @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'reopen', fetchState: fetchSurveyState })
+  async reopen(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.surveys.reopen(id);
+  }
+
   @Put(':id/structure')
   @RequirePermission('survey.surveys.update')
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' })

@@ -9,6 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var ResponsesService_1;
+var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ResponsesService = void 0;
 const common_1 = require("@nestjs/common");
@@ -169,8 +170,13 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
         // Never distinguishes "doesn't exist" from "not published" to an
         // anonymous/authenticated respondent — same 404-not-403 rule
         // MODULE_SPEC.md §7.2 already applies to library_catalog's public route.
-        if (!survey || survey.status !== 'published') {
+        if (!survey || survey.status === 'draft') {
             throw new common_1.NotFoundException('Survey not found');
+        }
+        if (survey.status === 'closed') {
+            // A closed survey's link was already shared, so its state is no secret;
+            // the owner's custom message (if any) rides along on the 404 body.
+            throw new common_1.NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, closedMessage: survey.closedMessage ?? null });
         }
         return survey;
     }
@@ -401,9 +407,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
 exports.ResponsesService = ResponsesService;
 exports.ResponsesService = ResponsesService = ResponsesService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [audit_log_writer_1.AuditLogWriter,
-        notifications_service_1.NotificationsService,
-        notification_email_service_1.NotificationEmailService])
+    __metadata("design:paramtypes", [typeof (_a = typeof audit_log_writer_1.AuditLogWriter !== "undefined" && audit_log_writer_1.AuditLogWriter) === "function" ? _a : Object, typeof (_b = typeof notifications_service_1.NotificationsService !== "undefined" && notifications_service_1.NotificationsService) === "function" ? _b : Object, typeof (_c = typeof notification_email_service_1.NotificationEmailService !== "undefined" && notification_email_service_1.NotificationEmailService) === "function" ? _c : Object])
 ], ResponsesService);
 function escapeHtml(value) {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

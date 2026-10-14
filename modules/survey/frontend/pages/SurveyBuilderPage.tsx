@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Divider,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -100,7 +99,6 @@ export function SurveyBuilderPage() {
   if (!survey) return null;
 
   const allQuestions = sections.flatMap((s) => s.questions);
-  const enumerationQuestions = allQuestions.filter((q) => ENUMERATION_QUESTION_TYPES.includes(q.type));
 
   const updateSurveySettings = (patch: Partial<SurveyDetail>) => setSurvey({ ...survey, ...patch });
 
@@ -117,8 +115,15 @@ export function SurveyBuilderPage() {
   };
 
   const addSection = () => setSections((prev) => [...prev, newSection(prev.length)]);
-  const removeSection = (sectionIndex: number) =>
+  // Rules pointing at a removed section/question are dropped with it — a
+  // dangling rule is what made the structure save fail with a 400.
+  const dropRulesFor = (ids: string[]) =>
+    setLogicRules((prev) => reindex(prev.filter((r) => !ids.includes(r.sourceQuestionId) && !ids.includes(r.targetId))));
+  const removeSection = (sectionIndex: number) => {
+    const removed = sections[sectionIndex];
+    if (removed) dropRulesFor([removed.id, ...removed.questions.map((q) => q.id)]);
     setSections((prev) => reindex(prev.filter((_, i) => i !== sectionIndex)));
+  };
   const moveSection = (sectionIndex: number, direction: -1 | 1) =>
     setSections((prev) => reindex(move(prev, sectionIndex, sectionIndex + direction)));
 
@@ -126,10 +131,13 @@ export function SurveyBuilderPage() {
     setSections((prev) =>
       prev.map((s, i) => (i === sectionIndex ? { ...s, questions: [...s.questions, newQuestion(s.questions.length)] } : s)),
     );
-  const removeQuestion = (sectionIndex: number, questionIndex: number) =>
+  const removeQuestion = (sectionIndex: number, questionIndex: number) => {
+    const removed = sections[sectionIndex]?.questions[questionIndex];
+    if (removed) dropRulesFor([removed.id]);
     setSections((prev) =>
       prev.map((s, i) => (i === sectionIndex ? { ...s, questions: reindex(s.questions.filter((_, j) => j !== questionIndex)) } : s)),
     );
+  };
   const moveQuestion = (sectionIndex: number, questionIndex: number, direction: -1 | 1) =>
     setSections((prev) =>
       prev.map((s, i) => (i === sectionIndex ? { ...s, questions: reindex(move(s.questions, questionIndex, questionIndex + direction)) } : s)),
@@ -173,19 +181,38 @@ export function SurveyBuilderPage() {
       ),
     );
 
-  const addLogicRule = () => {
-    const source = enumerationQuestions[0];
-    if (!source) return;
-    const firstOption = source.options?.[0];
-    const targetQuestion = allQuestions.find((q) => q.id !== source.id);
+  // --- conditional logic (rendered inside each section) ------------------
+  // A condition lives in the section it controls: its target is either that
+  // whole section or one of that section's questions. Its source can be any
+  // choice question in a DIFFERENT section — a question can never show/hide
+  // its own section (the API rejects that too).
+  const optionValueOf = (o: { value: string; label: string }) => o.value.trim() || o.label.trim();
+  const sourceCandidates = (section: SurveySectionDto) =>
+    sections
+      .filter((other) => other.id !== section.id)
+      .flatMap((other) => other.questions)
+      .filter((q) => ENUMERATION_QUESTION_TYPES.includes(q.type) && (q.options ?? []).some((o) => optionValueOf(o)));
+  const rulesOfSection = (section: SurveySectionDto) =>
+    logicRules
+      .map((rule, index) => ({ rule, index }))
+      .filter(
+        ({ rule }) =>
+          (rule.targetType === 'section' && rule.targetId === section.id) ||
+          (rule.targetType === 'question' && section.questions.some((q) => q.id === rule.targetId)),
+      );
+
+  const addLogicRule = (section: SurveySectionDto) => {
+    const source = sourceCandidates(section)[0];
+    const firstOption = source?.options?.find((o) => optionValueOf(o));
+    if (!source || !firstOption) return;
     setLogicRules((prev) => [
       ...prev,
       {
         sourceQuestionId: source.id,
-        sourceOptionValue: firstOption?.value ?? '',
+        sourceOptionValue: optionValueOf(firstOption),
         action: 'show',
-        targetType: 'question',
-        targetId: targetQuestion?.id ?? sections[0]?.id ?? '',
+        targetType: 'section',
+        targetId: section.id,
         orderIndex: prev.length,
       },
     ]);
@@ -193,10 +220,52 @@ export function SurveyBuilderPage() {
   const updateLogicRule = (index: number, patch: Partial<SurveyLogicRuleDto>) =>
     setLogicRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   const removeLogicRule = (index: number) => setLogicRules((prev) => reindex(prev.filter((_, i) => i !== index)));
+  const changeRuleSource = (index: number, questionId: string) => {
+    const first = allQuestions.find((q) => q.id === questionId)?.options?.find((o) => optionValueOf(o));
+    updateLogicRule(index, { sourceQuestionId: questionId, sourceOptionValue: first ? optionValueOf(first) : '' });
+  };
+
+  /** Returns the cleaned payload, or an i18n key describing what is incomplete. */
+  const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string } => {
+    const cleanSections: SurveySectionDto[] = [];
+    for (const section of sections) {
+      if (!section.title.trim()) return { errorKey: 'survey.builder.error_section_title' };
+      const questions: SurveyQuestionDto[] = [];
+      for (const question of section.questions) {
+        if (!question.title.trim()) return { errorKey: 'survey.builder.error_question_title' };
+        let options = question.options ?? [];
+        if (ENUMERATION_QUESTION_TYPES.includes(question.type)) {
+          if (options.length === 0) return { errorKey: 'survey.builder.error_no_options' };
+          if (options.some((o) => !optionValueOf(o))) return { errorKey: 'survey.builder.error_option_empty' };
+          options = options.map((o) => ({ ...o, value: optionValueOf(o), label: o.label.trim() || optionValueOf(o) }));
+        }
+        questions.push({ ...question, options });
+      }
+      cleanSections.push({ ...section, questions });
+    }
+    const questionsById = new Map(cleanSections.flatMap((s) => s.questions.map((q) => [q.id, q] as const)));
+    const sectionIds = new Set(cleanSections.map((s) => s.id));
+    const cleanRules: SurveyLogicRuleDto[] = [];
+    for (const rule of logicRules) {
+      const source = questionsById.get(rule.sourceQuestionId);
+      const targetExists = rule.targetType === 'section' ? sectionIds.has(rule.targetId) : questionsById.has(rule.targetId);
+      // A rule whose source/target no longer exists is stale — drop it quietly.
+      if (!source || !targetExists) continue;
+      if (!(source.options ?? []).some((o) => o.value === rule.sourceOptionValue)) return { errorKey: 'survey.builder.error_rule_incomplete' };
+      cleanRules.push({ ...rule, orderIndex: cleanRules.length });
+    }
+    return { sections: cleanSections, logicRules: cleanRules };
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
+    const payload = buildPayload();
+    if ('errorKey' in payload) {
+      setSaveError(t(payload.errorKey));
+      setSaving(false);
+      return;
+    }
     try {
       await gated('survey.surveys.update', () =>
         surveyApi.update(surveyId, {
@@ -209,9 +278,10 @@ export function SurveyBuilderPage() {
           notifyEmails: survey.notifyEmails,
           opensAt: survey.opensAt,
           closesAt: survey.closesAt,
+          closedMessage: survey.closedMessage ?? '',
         }),
       );
-      const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, { sections, logicRules }));
+      const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, payload));
       setSurvey(updated);
       setSections(updated.sections);
       setLogicRules(updated.logicRules);
@@ -281,6 +351,15 @@ export function SurveyBuilderPage() {
               label={t('survey.fields.notify_owner_on_submit')}
             />
           </Stack>
+          <TextField
+            label={t('survey.fields.closed_message')}
+            helperText={t('survey.builder.closed_message_hint')}
+            value={survey.closedMessage ?? ''}
+            onChange={(e) => updateSurveySettings({ closedMessage: e.target.value })}
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
+          />
           <TextField
             label={t('survey.fields.notify_emails')}
             helperText={t('survey.builder.notify_emails_hint')}
@@ -438,6 +517,96 @@ export function SurveyBuilderPage() {
                 </Button>
               </Box>
             </Stack>
+
+            <Box sx={{ mt: 2, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+              <Typography variant="subtitle2">{t('survey.builder.logic_rules')}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                {t('survey.builder.logic_rules_hint')}
+              </Typography>
+              <Stack spacing={1.5}>
+                {rulesOfSection(section).map(({ rule, index }) => {
+                  const sourceQuestion = allQuestions.find((q) => q.id === rule.sourceQuestionId);
+                  const sources = sourceCandidates(section);
+                  const targetKey = `${rule.targetType}:${rule.targetId}`;
+                  return (
+                    <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_source_question')}
+                        value={sources.some((q) => q.id === rule.sourceQuestionId) ? rule.sourceQuestionId : ''}
+                        onChange={(e) => changeRuleSource(index, e.target.value)}
+                        sx={{ minWidth: 180 }}
+                      >
+                        {sources.map((q) => (
+                          <MenuItem key={q.id} value={q.id}>
+                            {q.title || t('survey.builder.untitled_question')}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_option_value')}
+                        value={(sourceQuestion?.options ?? []).some((o) => optionValueOf(o) === rule.sourceOptionValue) ? rule.sourceOptionValue : ''}
+                        onChange={(e) => updateLogicRule(index, { sourceOptionValue: e.target.value })}
+                        sx={{ minWidth: 140 }}
+                      >
+                        {(sourceQuestion?.options ?? [])
+                          .filter((o) => optionValueOf(o))
+                          .map((o) => (
+                            <MenuItem key={o.id} value={optionValueOf(o)}>
+                              {o.label || o.value}
+                            </MenuItem>
+                          ))}
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_action')}
+                        value={rule.action}
+                        onChange={(e) => updateLogicRule(index, { action: e.target.value as 'show' | 'hide' })}
+                        sx={{ minWidth: 110 }}
+                      >
+                        <MenuItem value="show">{t('survey.builder.action_show')}</MenuItem>
+                        <MenuItem value="hide">{t('survey.builder.action_hide')}</MenuItem>
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label={t('survey.fields.logic_target')}
+                        value={targetKey}
+                        onChange={(e) => {
+                          const [targetType, ...rest] = e.target.value.split(':');
+                          updateLogicRule(index, { targetType: targetType as 'section' | 'question', targetId: rest.join(':') });
+                        }}
+                        sx={{ minWidth: 200 }}
+                      >
+                        <MenuItem value={`section:${section.id}`}>{t('survey.builder.target_this_section')}</MenuItem>
+                        {section.questions.map((q) => (
+                          <MenuItem key={q.id} value={`question:${q.id}`}>
+                            {q.title || t('survey.builder.untitled_question')}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <IconButton size="small" onClick={() => removeLogicRule(index)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  );
+                })}
+                <Box>
+                  <Button size="small" startIcon={<AddIcon />} onClick={() => addLogicRule(section)} disabled={sourceCandidates(section).length === 0}>
+                    {t('survey.builder.add_logic_rule')}
+                  </Button>
+                  {sourceCandidates(section).length === 0 ? (
+                    <Typography variant="caption" color="text.secondary" sx={{ marginInlineStart: 1 }}>
+                      {t('survey.builder.logic_needs_source')}
+                    </Typography>
+                  ) : null}
+                </Box>
+              </Stack>
+            </Box>
           </Paper>
         ))}
         <Box>
@@ -446,100 +615,6 @@ export function SurveyBuilderPage() {
           </Button>
         </Box>
       </Stack>
-
-      <Divider sx={{ my: 3 }} />
-
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="subtitle1" sx={{ mb: 1 }}>
-          {t('survey.builder.logic_rules')}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t('survey.builder.logic_rules_hint')}
-        </Typography>
-        <Stack spacing={2}>
-          {logicRules.map((rule, index) => {
-            const sourceQuestion = allQuestions.find((q) => q.id === rule.sourceQuestionId);
-            return (
-              <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                <TextField
-                  select
-                  size="small"
-                  label={t('survey.fields.logic_source_question')}
-                  value={rule.sourceQuestionId}
-                  onChange={(e) => updateLogicRule(index, { sourceQuestionId: e.target.value, sourceOptionValue: '' })}
-                  sx={{ minWidth: 180 }}
-                >
-                  {enumerationQuestions.map((q) => (
-                    <MenuItem key={q.id} value={q.id}>
-                      {q.title || t('survey.builder.untitled_question')}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label={t('survey.fields.logic_option_value')}
-                  value={rule.sourceOptionValue}
-                  onChange={(e) => updateLogicRule(index, { sourceOptionValue: e.target.value })}
-                  sx={{ minWidth: 140 }}
-                >
-                  {(sourceQuestion?.options ?? []).map((o) => (
-                    <MenuItem key={o.id} value={o.value}>
-                      {o.label || o.value}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label={t('survey.fields.logic_action')}
-                  value={rule.action}
-                  onChange={(e) => updateLogicRule(index, { action: e.target.value as 'show' | 'hide' })}
-                  sx={{ minWidth: 120 }}
-                >
-                  <MenuItem value="show">{t('survey.builder.action_show')}</MenuItem>
-                  <MenuItem value="hide">{t('survey.builder.action_hide')}</MenuItem>
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label={t('survey.fields.logic_target_type')}
-                  value={rule.targetType}
-                  onChange={(e) => updateLogicRule(index, { targetType: e.target.value as 'section' | 'question', targetId: '' })}
-                  sx={{ minWidth: 120 }}
-                >
-                  <MenuItem value="section">{t('survey.builder.target_section')}</MenuItem>
-                  <MenuItem value="question">{t('survey.builder.target_question')}</MenuItem>
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label={t('survey.fields.logic_target')}
-                  value={rule.targetId}
-                  onChange={(e) => updateLogicRule(index, { targetId: e.target.value })}
-                  sx={{ minWidth: 180 }}
-                >
-                  {(rule.targetType === 'section' ? sections : allQuestions)
-                    .filter((entry) => entry.id !== rule.sourceQuestionId)
-                    .map((entry) => (
-                      <MenuItem key={entry.id} value={entry.id}>
-                        {entry.title || t('survey.builder.untitled_question')}
-                      </MenuItem>
-                    ))}
-                </TextField>
-                <IconButton size="small" onClick={() => removeLogicRule(index)}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Stack>
-            );
-          })}
-          <Box>
-            <Button size="small" startIcon={<AddIcon />} onClick={addLogicRule} disabled={enumerationQuestions.length === 0}>
-              {t('survey.builder.add_logic_rule')}
-            </Button>
-          </Box>
-        </Stack>
-      </Paper>
 
       <Snackbar open={snackbar !== null} autoHideDuration={3000} onClose={() => setSnackbar(null)} message={snackbar} />
     </Box>

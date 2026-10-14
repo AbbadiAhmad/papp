@@ -11,7 +11,7 @@ Google-Forms-style survey builder: sections/questions with conditional show/hide
 ```
 survey_surveys(id, title, description, status(draft|published|closed),
   owner_user_id, requires_login, allow_edit_after_submit,
-  one_response_per_respondent, notify_owner_on_submit, notify_emails jsonb,
+  one_response_per_respondent, notify_owner_on_submit, notify_emails jsonb, closed_message text (migration 002),
   opens_at, closes_at, created_at, updated_at)
 survey_sections(id, survey_id, order_index, title, description)
 survey_questions(id, section_id, order_index, type, title, description,

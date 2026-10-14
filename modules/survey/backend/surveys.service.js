@@ -71,6 +71,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 notifyEmails: dto.notifyEmails,
                 opensAt: dto.opensAt,
                 closesAt: dto.closesAt,
+                closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
             },
         });
     }
@@ -95,6 +96,14 @@ let SurveysService = SurveysService_1 = class SurveysService {
             throw new common_1.ConflictException('Only a published survey can be closed');
         }
         return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'closed' } });
+    }
+    /** closed -> published again (a closed survey was previously a dead end). */
+    async reopen(id) {
+        const survey = await this.getSurveyOrThrow(id);
+        if (survey.status !== 'closed') {
+            throw new common_1.ConflictException('Only a closed survey can be reopened');
+        }
+        return this.prisma.surveySurvey.update({ where: { id }, data: { status: 'published' } });
     }
     /**
      * Whole-tree replace (docs/DECISIONS.md): upserts every section/question/
@@ -217,6 +226,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
     validateStructure(dto) {
         const questionsById = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, q])));
         const sectionIds = new Set(dto.sections.map((s) => s.id));
+        const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id])));
         for (const section of dto.sections) {
             for (const question of section.questions) {
                 if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
@@ -242,6 +252,11 @@ let SurveysService = SurveysService_1 = class SurveysService {
             }
             if (rule.targetId === rule.sourceQuestionId) {
                 throw new common_1.BadRequestException('A logic rule cannot target its own source question');
+            }
+            // A question can never show/hide the section it lives in (it could hide
+            // itself and become impossible to ever answer again).
+            if (rule.targetType === 'section' && sectionOfQuestion.get(rule.sourceQuestionId) === rule.targetId) {
+                throw new common_1.BadRequestException(`Question "${sourceQuestion.title}" cannot show or hide its own section`);
             }
         }
     }

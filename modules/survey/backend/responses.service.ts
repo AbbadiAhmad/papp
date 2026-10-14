@@ -192,8 +192,13 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     // Never distinguishes "doesn't exist" from "not published" to an
     // anonymous/authenticated respondent — same 404-not-403 rule
     // MODULE_SPEC.md §7.2 already applies to library_catalog's public route.
-    if (!survey || survey.status !== 'published') {
+    if (!survey || survey.status === 'draft') {
       throw new NotFoundException('Survey not found');
+    }
+    if (survey.status === 'closed') {
+      // A closed survey's link was already shared, so its state is no secret;
+      // the owner's custom message (if any) rides along on the 404 body.
+      throw new NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, closedMessage: survey.closedMessage ?? null });
     }
     return survey as SurveyWithStructure;
   }
