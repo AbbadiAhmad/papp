@@ -34,6 +34,7 @@ import { libraryCirculationApi, type BookInfo, type BorrowingStatus, type Librar
 import { ExtendLoanDialog } from './ExtendLoanDialog';
 import { StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { QrCodeImage } from './QrCodeImage';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
 
@@ -162,6 +163,8 @@ export function ReaderDetailPage() {
                       {t('core.common.no_data')}
                     </Typography>
                   ) : (
+                    <Paginated items={student.activeBorrowings}>
+                    {(pageRows) => (
                     <TableContainer>
                       <Table size="small">
                         <TableHead>
@@ -174,7 +177,7 @@ export function ReaderDetailPage() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {student.activeBorrowings.map((b) => (
+                          {pageRows.map((b) => (
                             <TableRow key={b.id}>
                               <TableCell>{b.bookTitle ?? b.qrCode ?? '—'}</TableCell>
                               <TableCell>{formatDateOnly(b.borrowedAt, language)}</TableCell>
@@ -194,6 +197,8 @@ export function ReaderDetailPage() {
                         </TableBody>
                       </Table>
                     </TableContainer>
+                    )}
+                    </Paginated>
                   )}
                 </Box>
               )}
@@ -209,6 +214,8 @@ export function ReaderDetailPage() {
                       {t('core.common.no_data')}
                     </Typography>
                   ) : (
+                    <Paginated items={student.openFines}>
+                    {(pageRows) => (
                     <TableContainer>
                       <Table size="small">
                         <TableHead>
@@ -219,7 +226,7 @@ export function ReaderDetailPage() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {student.openFines.map((f) => (
+                          {pageRows.map((f) => (
                             <TableRow key={f.id}>
                               <TableCell>{f.amount}</TableCell>
                               <TableCell>{f.amountPaid}</TableCell>
@@ -231,6 +238,8 @@ export function ReaderDetailPage() {
                         </TableBody>
                       </Table>
                     </TableContainer>
+                    )}
+                    </Paginated>
                   )}
                 </Box>
               )}
@@ -247,6 +256,8 @@ export function ReaderDetailPage() {
                       {t('core.common.no_data')}
                     </Typography>
                   ) : (
+                    <Paginated items={actionHistory}>
+                    {(pageRows) => (
                     <TableContainer>
                       <Table size="small">
                         <TableHead>
@@ -258,7 +269,7 @@ export function ReaderDetailPage() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {actionHistory.map((entry) => (
+                          {pageRows.map((entry) => (
                             <TableRow key={entry.id}>
                               <TableCell>{formatDateTime(entry.occurredAt, language)}</TableCell>
                               <TableCell>{entry.actorName ?? t('library_circulation.students.action_by_system')}</TableCell>
@@ -275,6 +286,8 @@ export function ReaderDetailPage() {
                         </TableBody>
                       </Table>
                     </TableContainer>
+                    )}
+                    </Paginated>
                   )}
                 </Box>
               )}

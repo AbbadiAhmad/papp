@@ -6,6 +6,7 @@ import type { NotificationsSender } from '../../backend/notifications-sender';
 
 interface MockPrisma {
   readingClubGroup: { findUnique: jest.Mock };
+  readingClubEpisode: { findUnique: jest.Mock };
   readingClubStage: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
   readingClubStageCompletion: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock; count: jest.Mock };
   readingClubMembership: { update: jest.Mock };
@@ -17,6 +18,7 @@ interface MockPrisma {
 function createMockPrisma(): MockPrisma {
   return {
     readingClubGroup: { findUnique: jest.fn() },
+    readingClubEpisode: { findUnique: jest.fn(() => Promise.resolve({ id: 'ep-1', name: 'Season 1' })) },
     readingClubStage: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(() => Promise.resolve([])) },
     readingClubStageCompletion: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     readingClubMembership: { update: jest.fn() },
@@ -62,6 +64,19 @@ describe('StageCompletionsService', () => {
       expect(prisma.readingClubStageCompletion.create).not.toHaveBeenCalled();
     });
 
+    it('rejects finishing a stage whose goal has not been reached', async () => {
+      const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date(), manualProgressAmount: 0 };
+      const memberships: Partial<MembershipsService> = {
+        getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+        computeStageProgress: jest.fn(async () => ({ targetType: 'books', targetAmount: 4, progressAmount: 3, isComplete: false })) as unknown as MembershipsService['computeStageProgress'],
+      };
+      const service = buildService(prisma, memberships);
+      prisma.readingClubStage.findUnique.mockResolvedValue({ id: 's1', groupId: 'g1', stageOrder: 1, name: 'Stage 1', targetAmount: 4 });
+
+      await expect(service.markComplete('student-1', 'librarian-1')).rejects.toThrow('goal has not been reached');
+      expect(prisma.readingClubStageCompletion.create).not.toHaveBeenCalled();
+    });
+
     it('creates a pending completion snapshot and advances the membership to the next stage', async () => {
       const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date('2026-01-01'), manualProgressAmount: 0 };
       const stage = { id: 's1', groupId: 'g1', stageOrder: 1, name: 'Stage 1', targetAmount: 5, rewardDescription: 'Sticker pack' };
@@ -92,6 +107,7 @@ describe('StageCompletionsService', () => {
           targetAmountAtCompletion: 5,
           progressAmountAtCompletion: 5,
           markedBy: 'librarian-1',
+          rewardSnapshot: { description: 'Sticker pack', episodeName: 'Season 1', groupName: 'Grade 3 Readers', stageName: 'Stage 1', stageOrder: 1 },
           rewardStatus: 'pending',
         }),
       });

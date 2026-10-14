@@ -182,5 +182,7 @@
   "core.appearance.alwaysVisible": "لا يمكن إخفاء هذه الصفحة لتتمكن من العودة إليها دائماً.",
   "core.appearance.addGroup": "إضافة مجموعة",
   "core.appearance.resetMenu": "إعادة إلى الافتراضي",
-  "core.appearance.saved": "تم الحفظ."
+  "core.appearance.saved": "تم الحفظ.",
+  "core.common.rows_per_page": "عدد الصفوف في الصفحة",
+  "core.common.displayed_rows": "{{from}}–{{to}} من {{count}}"
 }

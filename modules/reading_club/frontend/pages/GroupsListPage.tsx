@@ -31,6 +31,7 @@ import { EpisodeSwitcher } from './EpisodeSwitcher';
 import { GroupFormDialog } from './GroupFormDialog';
 import { StagesManagerDialog } from './StagesManagerDialog';
 import { TypeToConfirmDialog } from './TypeToConfirmDialog';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** "The librarian can create multiple groups, each group contains multiple stages" — this page is the configuration surface for both (docs/DOCUMENTATION.md explains why this is plain entity CRUD, not the manifest's `settings[]` blob). */
 export function GroupsListPage() {
@@ -117,6 +118,8 @@ export function GroupsListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(groups ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -129,7 +132,7 @@ export function GroupsListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(groups ?? []).map((group) => (
+              {pageRows.map((group) => (
                 <TableRow key={group.id} hover>
                   <TableCell>{group.name}</TableCell>
                   <TableCell>{group.description ?? '—'}</TableCell>
@@ -172,6 +175,8 @@ export function GroupsListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <GroupFormDialog open={formOpen} group={editingGroup} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />

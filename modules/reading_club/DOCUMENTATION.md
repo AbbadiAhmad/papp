@@ -188,6 +188,16 @@ Adds `reading_club_event_subscriptions(id, user_id -> users ON DELETE CASCADE, e
    (sha256 of the file contents; recompute if the file is ever edited.)
 3. `npx prisma generate` from `apps/api/` for the new `ReadingClubEventSubscription` model. `down/005_add_event_subscriptions.sql` drops the table.
 
+### 006 — present snapshot + presents given
+
+Adds `reading_club_stage_completions.reward_snapshot` (JSONB, backfilled from existing rows' stages) and the `reading_club_presents` table (librarian-given presents with free text + JSONB context). New permission `reading_club.presents.give` (admin, library_assistant); endpoint `POST /api/reading-club/readers/:studentId/presents`. **REQUIRES MANUAL MIGRATION** (PLATFORM-GAP-001). See READING_CLUB-D24/D25.
+
+1. Apply the SQL: `psql $DATABASE_URL -f modules/reading_club/migrations/006_add_reward_snapshot_and_presents.sql`
+2. Register it:
+   `INSERT INTO module_migrations (module_key, filename, checksum) VALUES ('reading_club', '006_add_reward_snapshot_and_presents.sql', '9a2ba8513fd4e3ea58cb96fadfbd02c98da5d0467444764eb62d1190a8e42fbb');`
+   (sha256 of the file contents; recompute if the file is ever edited.)
+3. `npx prisma generate` from `apps/api/`. `down/006_add_reward_snapshot_and_presents.sql` drops the table and the column.
+
 ### Down migrations (root D48 / D86)
 
 `migrations/down/001_create_reading_club_tables.sql`, `down/002_add_episodes.sql`, `down/003_snapshot_names_and_allow_delete.sql`, `down/004_add_page_count_to_book_entries.sql` now exist — the structural inverse of each same-numbered up-migration, applied in descending filename order (`004` → `003` → `002` → `001`) by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. `004`'s down drops the `page_count` column it added, no caveats. `003`'s down restores the original (blocking) FK actions/NOT NULL constraints that migration relaxed and drops its snapshot columns (`groupName`/`stageName`/`stageOrder`) — note this step will fail loud if any live row currently has a NULL `groupId`/`stageId` from a post-003 group/stage deletion (READING_CLUB-D16's orphaned-membership case), since there is no group/stage to backfill NOT NULL against; this is only a real concern if this file is ever run outside a full `--drop-data` uninstall, since `down/001` drops these same tables entirely right after. `002`'s down drops `reading_club_stage_book_entries`, the `episodeId` columns/indexes on groups/memberships/completions, and `reading_club_episodes` itself — no TRUNCATE-style caveat needed here (dropping is always safe, unlike restoring NOT NULL). `001`'s down drops the four original tables (completions → memberships → stages → groups). Before this, `--drop-data` on this module silently left every table in place. See root D86 for the platform-level dependency guard added alongside this: uninstalling `library_circulation` while this module is still installed is now rejected outright (this module's own `dependsOn: ["library_circulation"]` is exactly what the guard reads).

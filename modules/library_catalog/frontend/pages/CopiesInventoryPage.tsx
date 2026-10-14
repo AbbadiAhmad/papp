@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, libraryCatalogApi, type BookCopyStatus, type CopyForInventory } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const COPY_STATUSES: BookCopyStatus[] = ['available', 'borrowed', 'lost', 'damaged', 'maintenance', 'reserved'];
 
@@ -170,6 +171,8 @@ export function CopiesInventoryPage() {
         </CardContent>
       </Card>
 
+      <Paginated items={copies}>
+      {(pageRows) => (
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
@@ -182,7 +185,7 @@ export function CopiesInventoryPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {copies.map((copy) => (
+            {pageRows.map((copy) => (
               <TableRow key={copy.id} hover>
                 <TableCell>{copy.bookTitle}</TableCell>
                 <TableCell>{copy.qrCode}</TableCell>
@@ -196,6 +199,8 @@ export function CopiesInventoryPage() {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
+      </Paginated>
     </Box>
   );
 }

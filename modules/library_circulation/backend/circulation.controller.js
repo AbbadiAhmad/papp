@@ -74,9 +74,9 @@ let CirculationController = class CirculationController {
         return this.circulation.getCirculationHistory(copyId, undefined, limitNumber);
     }
     /** §2.1 (docs/LIBRARY_IMPROVEMENTS.md) — every reader who ever borrowed any copy of this book. */
-    async getBookCirculationHistory(bookId, limit) {
+    async getBookCirculationHistory(bookId, limit, studentId) {
         const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
-        return this.circulation.getBookCirculationHistory(bookId, limitNumber);
+        return this.circulation.getBookCirculationHistory(bookId, limitNumber, studentId || undefined);
     }
     async borrow(dto, user) {
         const expectedReturnDate = dto.expectedReturnDate ? new Date(dto.expectedReturnDate) : undefined;
@@ -179,8 +179,9 @@ __decorate([
     (0, platform_1.RequirePermission)('library_circulation.borrow'),
     __param(0, (0, common_1.Param)('bookId')),
     __param(1, (0, common_1.Query)('limit')),
+    __param(2, (0, common_1.Query)('studentId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [String, String, String]),
     __metadata("design:returntype", Promise)
 ], CirculationController.prototype, "getBookCirculationHistory", null);
 __decorate([

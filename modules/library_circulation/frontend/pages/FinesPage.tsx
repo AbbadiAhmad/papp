@@ -60,6 +60,7 @@ import {
 import { PageHero, StatusPill, type Tone } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 import { ReaderAutocomplete } from './ReaderAutocomplete';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer'];
 const FINE_STATUSES: FineStatus[] = ['unpaid', 'partially_paid', 'paid', 'waived', 'cancelled'];
@@ -305,6 +306,8 @@ export function FinesPage() {
       </Card>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(data?.fines ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -320,7 +323,7 @@ export function FinesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(data?.fines ?? []).map((fine) => (
+              {pageRows.map((fine) => (
                 <TableRow key={fine.id} hover>
                   <TableCell>
                     <Link component="button" onClick={() => setDetailFineId(fine.id)}>
@@ -358,6 +361,8 @@ export function FinesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       {data ? (

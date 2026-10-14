@@ -30,6 +30,7 @@ import { useGatedCall, Can } from '../../shared/permissions';
 import type { PublicRole } from '../../shared/api/types';
 import { RoleFormDialog } from './RoleFormDialog';
 import { RoleAssignDialog } from './RoleAssignDialog';
+import { Paginated } from '../../shared/components/Paginated';
 
 export function RolesListPage() {
   const { t } = useTranslation();
@@ -84,6 +85,8 @@ export function RolesListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(roles ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -95,7 +98,7 @@ export function RolesListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(roles ?? []).map((role) => (
+              {pageRows.map((role) => (
                 <TableRow key={role.id} hover>
                   <TableCell>{role.code}</TableCell>
                   <TableCell>{t(role.nameI18nKey)}</TableCell>
@@ -131,6 +134,8 @@ export function RolesListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <RoleFormDialog open={formOpen} role={editingRole} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />

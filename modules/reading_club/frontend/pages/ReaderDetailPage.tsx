@@ -34,7 +34,9 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
+import { ConfirmStageDialog } from './ConfirmStageDialog';
 import { StageBookEntriesCard } from './StageBookEntriesCard';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** A reader's reading-club profile: current group/stage, live progress, action buttons, and the append-only stage-completion/reward history. */
 export function ReaderDetailPage() {
@@ -50,12 +52,47 @@ export function ReaderDetailPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [confirmStageOpen, setConfirmStageOpen] = useState(false);
+  const [presentOpen, setPresentOpen] = useState(false);
+  const [presentText, setPresentText] = useState('');
+  const [editingPresentId, setEditingPresentId] = useState<string | null>(null);
+
+  const handleDeletePresent = async (presentId: string) => {
+    if (!window.confirm(t('reading_club.readers.delete_present_confirm'))) return;
+    setBusy(true);
+    try {
+      await readingClubApi.deletePresent(presentId);
+      reload();
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGivePresent = async () => {
+    if (!studentId || !presentText.trim()) return;
+    setBusy(true);
+    try {
+      if (editingPresentId) await readingClubApi.updatePresent(editingPresentId, presentText.trim());
+      else await readingClubApi.givePresent(studentId, presentText.trim());
+      setPresentOpen(false);
+      setEditingPresentId(null);
+      setPresentText('');
+      reload();
+    } catch (err) {
+      setSnackbar(extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleMarkComplete = async () => {
     if (!studentId) return;
     setBusy(true);
     try {
       await readingClubApi.completeStage(studentId);
+      setConfirmStageOpen(false);
       reload();
     } catch (err) {
       setSnackbar(extractErrorMessage(err));
@@ -200,7 +237,7 @@ export function ReaderDetailPage() {
                       </Can>
                     ) : null}
                     <Can permission="reading_club.stage_completions.mark">
-                      <Button variant="contained" onClick={handleMarkComplete} disabled={busy}>
+                      <Button variant="contained" onClick={() => setConfirmStageOpen(true)} disabled={busy}>
                         {t('reading_club.readers.mark_complete_button')}
                       </Button>
                     </Can>
@@ -226,6 +263,85 @@ export function ReaderDetailPage() {
 
             <Paper>
               <Box sx={{ p: 2 }}>
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="h6">{t('reading_club.readers.presents_heading')}</Typography>
+                  <Can permission="reading_club.presents.give">
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setEditingPresentId(null);
+                        setPresentText('');
+                        setPresentOpen(true);
+                      }}
+                    >
+                      {t('reading_club.readers.give_present_button')}
+                    </Button>
+                  </Can>
+                </Stack>
+                {reader.presents.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t('core.common.no_data')}
+                  </Typography>
+                ) : (
+                  <Paginated items={reader.presents}>
+                  {(pageRows) => (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>{t('reading_club.readers.present')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_type')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_episode')}</TableCell>
+                          <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
+                          <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present_given_at')}</TableCell>
+                          <TableCell>{t('reading_club.readers.given_by')}</TableCell>
+                          <TableCell align="right">{t('core.common.actions')}</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {pageRows.map((present) => (
+                          <TableRow key={present.id}>
+                            <TableCell>{present.description}</TableCell>
+                            <TableCell>
+                              <Chip size="small" color="info" label={t('reading_club.readers.additional_present')} />
+                            </TableCell>
+                            <TableCell>{present.context?.episodeName ?? '—'}</TableCell>
+                            <TableCell>{present.context?.groupName ?? '—'}</TableCell>
+                            <TableCell>{present.context?.stageName ?? '—'}</TableCell>
+                            <TableCell>{formatDateOnly(present.givenAt, language)}</TableCell>
+                            <TableCell>{present.givenByName ?? '—'}</TableCell>
+                            <TableCell align="right">
+                              <Can permission="reading_club.presents.manage">
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setEditingPresentId(present.id);
+                                    setPresentText(present.description);
+                                    setPresentOpen(true);
+                                  }}
+                                  disabled={busy}
+                                >
+                                  {t('core.common.edit')}
+                                </Button>
+                                <Button size="small" color="error" onClick={() => handleDeletePresent(present.id)} disabled={busy}>
+                                  {t('core.common.delete')}
+                                </Button>
+                              </Can>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  )}
+                  </Paginated>
+                )}
+              </Box>
+            </Paper>
+
+            <Paper>
+              <Box sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   {t('reading_club.readers.history_heading')}
                 </Typography>
@@ -234,6 +350,8 @@ export function ReaderDetailPage() {
                     {t('core.common.no_data')}
                   </Typography>
                 ) : (
+                  <Paginated items={reader.completions}>
+                  {(pageRows) => (
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -241,12 +359,14 @@ export function ReaderDetailPage() {
                           <TableCell>{t('reading_club.readers.completion_group')}</TableCell>
                           <TableCell>{t('reading_club.readers.completion_stage')}</TableCell>
                           <TableCell>{t('reading_club.readers.completed_at')}</TableCell>
+                          <TableCell>{t('reading_club.readers.present')}</TableCell>
                           <TableCell>{t('reading_club.readers.reward_status')}</TableCell>
+                          <TableCell>{t('reading_club.readers.delivered_by')}</TableCell>
                           <TableCell align="right">{t('core.common.actions')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {reader.completions.map((completion) => (
+                        {pageRows.map((completion) => (
                           <TableRow key={completion.id}>
                             <TableCell>{completion.groupName ?? '—'}</TableCell>
                             <TableCell>
@@ -257,6 +377,7 @@ export function ReaderDetailPage() {
                                 : '—'}
                             </TableCell>
                             <TableCell>{formatDateOnly(completion.completedAt, language)}</TableCell>
+                            <TableCell>{completion.rewardDescription ?? '—'}</TableCell>
                             <TableCell>
                               <Chip
                                 size="small"
@@ -264,6 +385,7 @@ export function ReaderDetailPage() {
                                 color={completion.rewardStatus === 'delivered' ? 'success' : 'warning'}
                               />
                             </TableCell>
+                            <TableCell>{completion.rewardDeliveredByName ?? '—'}</TableCell>
                             <TableCell align="right">
                               {completion.rewardStatus === 'pending' ? (
                                 <Can permission="reading_club.stage_completions.confirm_reward">
@@ -278,6 +400,8 @@ export function ReaderDetailPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  )}
+                  </Paginated>
                 )}
               </Box>
             </Paper>
@@ -285,7 +409,41 @@ export function ReaderDetailPage() {
         ) : null}
       </QueryStateGate>
 
+      {studentId && reader?.stage ? (
+        <ConfirmStageDialog
+          open={confirmStageOpen}
+          studentId={studentId}
+          stageName={reader.stage.name}
+          busy={busy}
+          onConfirm={handleMarkComplete}
+          onClose={() => setConfirmStageOpen(false)}
+        />
+      ) : null}
+
       <AssignReaderDialog open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={reload} />
+
+      <Dialog open={presentOpen} onClose={() => setPresentOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingPresentId ? t('reading_club.readers.edit_present_title') : t('reading_club.readers.give_present_title')}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={2}
+            label={t('reading_club.readers.present_text')}
+            value={presentText}
+            onChange={(e) => setPresentText(e.target.value)}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPresentOpen(false)}>{t('core.common.cancel')}</Button>
+          <Button variant="contained" onClick={handleGivePresent} disabled={busy || !presentText.trim()}>
+            {editingPresentId ? t('core.common.save') : t('reading_club.readers.give_present_button')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={moveStageOpen} onClose={() => setMoveStageOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('reading_club.readers.move_stage_button')}</DialogTitle>

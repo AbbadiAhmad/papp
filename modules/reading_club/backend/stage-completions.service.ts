@@ -43,6 +43,12 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     if (!stage) throw new NotFoundException('Current stage not found');
 
     const progress = await this.memberships.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
+    // READING_CLUB-D22: a stage can only be finished once its books/pages goal is reached.
+    if (!progress.isComplete) {
+      throw new ConflictException(
+        `The stage goal has not been reached yet (${progress.progressAmount}/${progress.targetAmount} ${progress.targetType})`,
+      );
+    }
     // A membership with a live `currentStageId` (guaranteed by
     // getMembershipOrThrow) always has a live `groupId` too — a stage
     // cannot outlive its own group (removeGroup deletes its stages first,
@@ -55,6 +61,7 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
     });
 
     const group = await this.prisma.readingClubGroup.findUnique({ where: { id: membership.groupId! } });
+    const episode = await this.prisma.readingClubEpisode.findUnique({ where: { id: membership.episodeId } });
 
     const [completion] = await this.prisma.$transaction([
       this.prisma.readingClubStageCompletion.create({
@@ -69,6 +76,14 @@ export class StageCompletionsService implements OnModuleInit, OnModuleDestroy {
           targetAmountAtCompletion: stage.targetAmount,
           progressAmountAtCompletion: progress.progressAmount,
           markedBy,
+          // READING_CLUB-D24: the present as it was when the stage was finished.
+          rewardSnapshot: {
+            description: stage.rewardDescription ?? null,
+            episodeName: episode?.name ?? null,
+            groupName: group?.name ?? membership.groupName ?? null,
+            stageName: stage.name,
+            stageOrder: stage.stageOrder,
+          },
           rewardStatus: 'pending',
         },
       }),

@@ -108,7 +108,18 @@ export interface ReadingClubStageCompletion {
 }
 
 /** A reader's own completion history row — same shape as `ReadingClubStageCompletion` now that groupName/stageName/stageOrder live on the base type itself (READING_CLUB-D16); kept as a distinct alias since call sites already reference it by this name. */
-export type ReaderCompletionRow = ReadingClubStageCompletion;
+export type ReaderCompletionRow = ReadingClubStageCompletion & { rewardDescription?: string | null; markedByName?: string | null; rewardDeliveredByName?: string | null };
+
+export interface ReadingClubPresent {
+  id: string;
+  studentId: string;
+  episodeId: string;
+  description: string;
+  context: { episodeName?: string | null; groupName?: string | null; stageName?: string | null } | null;
+  givenBy: string;
+  givenByName?: string | null;
+  givenAt: string;
+}
 
 export interface ReadingClubEpisode {
   id: string;
@@ -150,6 +161,9 @@ export interface ReadingClubStageBookEntry {
   discardedAt: string | null;
   discardedBy: string | null;
   discardReason: string | null;
+  /** Live from the catalog (READING_CLUB-D29); null for a manual entry with no linked book. */
+  category?: string | null;
+  readingLevel?: string | null;
 }
 
 export interface AddBookEntryInput {
@@ -171,6 +185,7 @@ export interface ReaderDetail {
   stage: ReadingClubStage | null;
   progress: StageProgress | null;
   completions: ReaderCompletionRow[];
+  presents: ReadingClubPresent[];
 }
 
 export interface PendingReward {
@@ -293,6 +308,11 @@ export const readingClubApi = {
   completeStage: (studentId: string) =>
     apiClient.post<ReadingClubStageCompletion>(`${BASE}/readers/${studentId}/complete-stage`).then((r) => r.data),
   getPendingRewards: (studentId: string) => apiClient.get<PendingReward[]>(`${BASE}/readers/${studentId}/pending-rewards`).then((r) => r.data),
+  givePresent: (studentId: string, description: string) =>
+    apiClient.post<ReadingClubPresent>(`${BASE}/readers/${studentId}/presents`, { description }).then((r) => r.data),
+  updatePresent: (presentId: string, description: string) =>
+    apiClient.patch<ReadingClubPresent>(`${BASE}/presents/${presentId}`, { description }).then((r) => r.data),
+  deletePresent: (presentId: string) => apiClient.delete(`${BASE}/presents/${presentId}`).then((r) => r.data),
   confirmReward: (completionId: string) =>
     apiClient.post<ReadingClubStageCompletion>(`${BASE}/stage-completions/${completionId}/confirm-reward`).then((r) => r.data),
 

@@ -297,5 +297,14 @@
   "library_circulation.return.fine_left_unpaid": "The fine is recorded as unpaid — it can be paid later from Fines.",
   "library_circulation.scan.fine_paid_receipt": "Fine {{amount}} paid (receipt {{receipt}}).",
   "library_circulation.scan.fine_recorded_unpaid": "Fine {{amount}} recorded as unpaid.",
-  "library_circulation.scan.fine_payment_failed": "The return and the fine were saved, but the payment was not recorded: {{reason}}. Record it from Fines."
+  "library_circulation.scan.fine_payment_failed": "The return and the fine were saved, but the payment was not recorded: {{reason}}. Record it from Fines.",
+  "library_circulation.scan.borrowed_before_chip": "Borrowed before by this reader ({{date}})",
+  "library_circulation.scan.confirm_stage.title": "Confirm finishing stage: {{stage}}",
+  "library_circulation.scan.confirm_stage.no_books": "No books are recorded for this stage.",
+  "library_circulation.scan.confirm_stage.summary": "{{books}} books, {{pages}} pages",
+  "library_circulation.scan.confirm_stage.book": "Book",
+  "library_circulation.scan.confirm_stage.category": "Category",
+  "library_circulation.scan.confirm_stage.pages": "Pages",
+  "library_circulation.scan.confirm_stage.level": "Level",
+  "library_circulation.scan.confirm_stage.confirm_button": "Confirm stage finished"
 }

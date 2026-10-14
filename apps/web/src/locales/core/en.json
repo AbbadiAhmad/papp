@@ -182,5 +182,7 @@
   "core.appearance.alwaysVisible": "This page can't be hidden, so you can always return here.",
   "core.appearance.addGroup": "Add group",
   "core.appearance.resetMenu": "Reset to default",
-  "core.appearance.saved": "Saved."
+  "core.appearance.saved": "Saved.",
+  "core.common.rows_per_page": "Rows per page",
+  "core.common.displayed_rows": "{{from}}–{{to}} of {{count}}"
 }

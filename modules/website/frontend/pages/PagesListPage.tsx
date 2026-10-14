@@ -34,6 +34,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { websiteApi, type PageStatus, type WebsitePage } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const STATUS_COLOR: Record<PageStatus, 'success' | 'default'> = { published: 'success', draft: 'default' };
 
@@ -95,6 +96,8 @@ export function PagesListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(pages ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -107,7 +110,7 @@ export function PagesListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(pages ?? []).map((page) => (
+              {pageRows.map((page) => (
                 <TableRow key={page.id} hover>
                   <TableCell>
                     <RouterLink to={`/site/admin/pages/${page.id}`}>{page.title}</RouterLink>
@@ -151,6 +154,8 @@ export function PagesListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <CreatePageDialog

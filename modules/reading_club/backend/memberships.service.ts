@@ -175,11 +175,31 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     // later deleted (READING_CLUB-D16; a live join would return null the
     // moment that happens, silently breaking the group/stage columns this
     // session's earlier commit just added).
+    // READING_CLUB-D24: the present comes from the snapshot taken at completion; rows from before migration 006 were backfilled by it.
     const completionRows = completions.map((completion) => ({
       ...completion,
+      rewardDescription: (completion.rewardSnapshot as { description?: string | null } | null)?.description ?? null,
       groupName: completion.groupName,
       stageName: completion.stageName,
       stageOrder: completion.stageOrder,
+    }));
+
+    const presentRows = await this.prisma.readingClubPresent.findMany({ where: { studentId }, orderBy: { givenAt: 'desc' } });
+
+    // READING_CLUB-D27: resolve who gave each present — the additional-present giver, and for stage rewards who confirmed delivery / who marked the stage finished.
+    const actorIds = [
+      ...new Set([
+        ...presentRows.map((p) => p.givenBy),
+        ...completionRows.flatMap((c) => [c.markedBy, c.rewardDeliveredBy]),
+      ].filter((id): id is string => !!id)),
+    ];
+    const actors = actorIds.length ? ((await this.prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })) ?? []) : [];
+    const actorName = (id: string | null) => (id ? (actors.find((a) => a.id === id)?.name ?? null) : null);
+    const presents = presentRows.map((p) => ({ ...p, givenByName: actorName(p.givenBy) }));
+    const completionsWithActors = completionRows.map((c) => ({
+      ...c,
+      markedByName: actorName(c.markedBy),
+      rewardDeliveredByName: actorName(c.rewardDeliveredBy),
     }));
 
     return {
@@ -192,7 +212,8 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       stage,
       progress,
       groupStages,
-      completions: completionRows,
+      completions: completionsWithActors,
+      presents,
     };
   }
 

@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { libraryCirculationApi, type StudentImportReport } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** Preview first (writes nothing), then commit — the same two-step, all-or-nothing flow as core's Users import (D42). */
 export function ReadersImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
@@ -98,6 +99,8 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
                     : t('library_circulation.students.import_has_errors', { invalid: report.invalidCount, valid: report.validCount })}
               </Alert>
               {committed ? <Alert severity="info">{t('library_circulation.students.import_passwords_note')}</Alert> : null}
+              <Paginated items={report.rows}>
+              {(pageRows) => (
               <TableContainer sx={{ maxHeight: 360 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
@@ -111,7 +114,7 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {report.rows.map((row) => (
+                    {pageRows.map((row) => (
                       <TableRow key={row.row}>
                         <TableCell>{row.row}</TableCell>
                         <TableCell>{row.code ?? (row.action === 'create' ? t('library_circulation.students.import_auto_code') : '—')}</TableCell>
@@ -130,6 +133,8 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
                   </TableBody>
                 </Table>
               </TableContainer>
+              )}
+              </Paginated>
             </>
           ) : null}
         </Stack>

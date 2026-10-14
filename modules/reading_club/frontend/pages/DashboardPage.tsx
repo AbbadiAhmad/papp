@@ -7,6 +7,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { readingClubApi } from '../api';
 import { EpisodeSwitcher } from './EpisodeSwitcher';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** "The dashboard shows the groups and stages statistics. When clicking it goes to the details." — clicking a group/stage navigates to the readers list, pre-filtered. */
 export function DashboardPage() {
@@ -155,6 +156,8 @@ export function DashboardPage() {
             {t('core.common.no_data')}
           </Typography>
         ) : (
+          <Paginated items={(data?.pendingRewards ?? [])}>
+          {(pageRows) => (
           <TableContainer component={Paper}>
             <Table size="small">
               <TableHead>
@@ -167,7 +170,7 @@ export function DashboardPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(data?.pendingRewards ?? []).map((reward) => (
+                {pageRows.map((reward) => (
                   <TableRow key={reward.id} hover>
                     <TableCell>
                       <RouterLink to={`/reading-club/readers/${reward.studentId}`}>
@@ -183,6 +186,8 @@ export function DashboardPage() {
               </TableBody>
             </Table>
           </TableContainer>
+          )}
+          </Paginated>
         )}
       </QueryStateGate>
     </Box>

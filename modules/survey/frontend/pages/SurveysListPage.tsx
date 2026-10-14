@@ -40,6 +40,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { surveyApi, type SurveyStatus, type SurveySummary } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const STATUS_COLOR: Record<SurveyStatus, 'default' | 'success' | 'warning'> = {
   draft: 'default',
@@ -166,6 +167,8 @@ export function SurveysListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(surveys ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -179,7 +182,7 @@ export function SurveysListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(surveys ?? []).map((survey) => (
+              {pageRows.map((survey) => (
                 <TableRow key={survey.id} hover>
                   <TableCell>
                     <RouterLink to={`/survey/surveys/${survey.id}/edit`}>{survey.title}</RouterLink>
@@ -245,6 +248,8 @@ export function SurveysListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <CreateSurveyDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => navigate(`/survey/surveys/${id}/edit`)} />

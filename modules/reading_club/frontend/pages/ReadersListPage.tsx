@@ -24,6 +24,7 @@ import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
 import { EpisodeSwitcher } from './EpisodeSwitcher';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** "The librarian can search a specific reader or see readers in a specific group or stage (filters) and an indicator how far the reader is from finishing the stage." */
 export function ReadersListPage() {
@@ -130,6 +131,8 @@ export function ReadersListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(readers ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -142,7 +145,7 @@ export function ReadersListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(readers ?? []).map((reader) => (
+              {pageRows.map((reader) => (
                 <TableRow key={reader.studentId} hover>
                   <TableCell>
                     <RouterLink to={`/reading-club/readers/${reader.studentId}`}>{reader.studentCode ?? '—'}</RouterLink>
@@ -180,6 +183,8 @@ export function ReadersListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <AssignReaderDialog open={assignOpen} onClose={() => setAssignOpen(false)} onAssigned={reload} />

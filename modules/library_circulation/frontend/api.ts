@@ -471,8 +471,8 @@ export const libraryCirculationApi = {
   // History (§2.1/§2.2, docs/LIBRARY_IMPROVEMENTS.md)
   getCopyCirculationHistory: (copyId: string, limit = 10) =>
     apiClient.get<CopyCirculationHistoryEntry[]>(`${BASE}/copies/${copyId}/circulation-history`, { params: { limit } }).then((r) => r.data),
-  getBookCirculationHistory: (bookId: string, limit = 10) =>
-    apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit } }).then((r) => r.data),
+  getBookCirculationHistory: (bookId: string, limit = 10, studentId?: string) =>
+    apiClient.get<BookCirculationHistoryEntry[]>(`${BASE}/books/${bookId}/circulation-history`, { params: { limit, studentId } }).then((r) => r.data),
 
   // Students
   searchBookCopies: (q: string) =>

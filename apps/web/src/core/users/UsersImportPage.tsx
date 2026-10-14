@@ -21,6 +21,7 @@ import { extractErrorMessage } from '../../shared/api/httpClient';
 import { usersApi } from '../../shared/api/users';
 import { useGatedCall } from '../../shared/permissions';
 import type { ImportReport } from '../../shared/api/types';
+import { Paginated } from '../../shared/components/Paginated';
 
 /**
  * D42 (docs/DECISIONS.md) / excel-import.controller.ts: preview NEVER
@@ -117,6 +118,8 @@ export function UsersImportPage() {
       ) : null}
 
       {activeReport ? (
+        <Paginated items={activeReport.rows}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -131,7 +134,7 @@ export function UsersImportPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {activeReport.rows.map((row) => (
+              {pageRows.map((row) => (
                 <TableRow
                   key={row.row}
                   sx={row.valid ? undefined : (theme) => ({ backgroundColor: theme.palette.error.light })}
@@ -154,6 +157,8 @@ export function UsersImportPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       ) : null}
 
       {preview && !commitResult ? (

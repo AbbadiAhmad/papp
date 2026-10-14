@@ -544,7 +544,7 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
    * else — see this class's own docblock) and then queries borrowings
    * across all of them.
    */
-  async getBookCirculationHistory(bookId: string, limit: number = 10) {
+  async getBookCirculationHistory(bookId: string, limit: number = 10, studentId?: string) {
     const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, select: { id: true, qrCode: true } });
     if (copies.length === 0) {
       return [];
@@ -552,7 +552,8 @@ export class CirculationService implements OnModuleInit, OnModuleDestroy {
     const qrCodeByCopyId = new Map(copies.map((c) => [c.id, c.qrCode]));
 
     const borrowings = await this.prisma.libraryBorrowing.findMany({
-      where: { bookCopyId: { in: copies.map((c) => c.id) } },
+      // LIBRARY_CIRCULATION-D50: optional per-reader filter (scan page "borrowed before by this reader" tag).
+      where: { bookCopyId: { in: copies.map((c) => c.id) }, ...(studentId ? { studentId } : {}) },
       orderBy: { borrowedAt: 'desc' },
       take: limit,
       include: { student: true },

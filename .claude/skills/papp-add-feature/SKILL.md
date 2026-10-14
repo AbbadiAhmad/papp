@@ -40,6 +40,7 @@ Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`doc
 - [ ] Copy goes through `t('module_key.namespace.key')`, never hardcoded strings, in **both** `locales/ar.json` and `locales/en.json` (or the full confirmed language set — check `docs/CHECKLIST.md` item 4 for the current answer) at the same time. A key added to one language file without the other fails the locale-completeness lint.
 - [ ] Uses MUI components / logical CSS properties only — no `margin-left`/`text-align: left` literals that would break under RTL. Sanity-check the page renders correctly in both `ar` (RTL) and `en` (LTR) before calling it done.
 - [ ] Dates and numbers go through the shared `formatDate`/`formatNumber` utilities (pinned Gregorian calendar, Latin/Western digits per D6/D7) — never a raw `toLocaleDateString()`/`toLocaleString()` call.
+- [ ] Every list/table renders through `<Paginated items={...}>` (`apps/web/src/shared/components/Paginated.tsx`, root D103) — never an unbounded table — unless the endpoint is already server-side paged (then use `TablePagination` like `library_circulation`'s readers list) or the whole set must be visible (matrices, small dialogs).
 - [ ] Gates its actions with `usePermission('<code>')`/`<Can permission="...">`, matching exactly the backend permission code for that action — this is a UX nicety, the backend guard is what actually enforces it, but they must never drift apart.
 
 ## Every new/changed module manifest
@@ -64,6 +65,19 @@ Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`doc
 - [ ] **Test the feature manually** against a real Postgres database where you've applied the migration by hand. Don't just run unit tests (which mock Prisma) — verify the actual schema change works end-to-end.
 
 **When the platform gains automatic migration discovery/application** (root D47, tracked in `docs/DECISIONS.md` PLATFORM-GAP-001), this entire manual section becomes obsolete — migrations will auto-apply on app startup and module install, eliminating operator error and the need for documentation step-by-step instructions.
+
+## Module version bump (required on every module change — user rule)
+
+The module's `manifest.json` `version` is `major.minor.patch` (e.g. `1.2.3`). The admin only sees/gets the change after upgrading the module, which is driven by this version, so **always bump it**:
+
+- The change includes a **database change** (a new migration file) → increase the **middle** number and reset the last to 0 (`1.2.3` → `1.3.0`).
+- Any other change (frontend, backend logic, locales, docs) → increase the **last** number (`1.2.3` → `1.2.4`).
+
+Bump once per delivered change, in every module whose files changed.
+
+## Compiled backend output must be rebuilt and committed
+
+A module's `backend/*.js` is checked into git next to its `.ts` and is what the server actually runs. After ANY change to a module's `backend/**/*.ts`, run `npx tsc -p modules/<key>/tsconfig.json` (needs `apps/api` built first so the `dist` imports resolve) and commit the regenerated `.js`. Forgetting this ships the new frontend against the old backend (e.g. a response field missing → runtime `undefined` error).
 
 ## Known gotchas (learned the hard way — read before you hit them again)
 

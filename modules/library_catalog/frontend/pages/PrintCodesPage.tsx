@@ -25,6 +25,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, libraryCatalogApi, type CopyForPrint } from '../api';
 import { QrCodeImage } from './QrCodeImage';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
  * "filter the books entered last period ... export the book names,
@@ -182,6 +183,8 @@ export function PrintCodesPage() {
         </Typography>
 
         {/* Preview table — book title shown for validation only, never printed on the sticker (see this page's own docblock). */}
+        <Paginated items={copies}>
+          {(pageRows) => (
         <TableContainer component={Card} sx={{ mb: 3 }}>
           <Table size="small">
             <TableHead>
@@ -202,7 +205,7 @@ export function PrintCodesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                copies.map((copy) => (
+                pageRows.map((copy) => (
                   <TableRow key={copy.id}>
                     <TableCell>{copy.bookTitle}</TableCell>
                     <TableCell>{copy.qrCode}</TableCell>
@@ -214,6 +217,8 @@ export function PrintCodesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+          )}
+        </Paginated>
       </Box>
 
       {/* The actual sticker sheet — present at all times (so Ctrl+P / browser
@@ -230,14 +235,13 @@ export function PrintCodesPage() {
       <Box className="print-codes-sheet">
         {copies.map((copy) => (
           <Box key={copy.id} className="print-codes-sticker">
-            {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
-            {/* Shrunk alongside the sticker itself (63.5mm -> 45mm, see the
-                print stylesheet's own comment) — 60px leaves real room for
-                the header/code/location text stacked below it in a 30mm-
-                tall sticker without forcing any of them to wrap. */}
-            <QrCodeImage value={copy.qrCode} size={60} />
+            {/* Left: header + location. Middle: QR. Right: code printed vertically (LIBRARY_CATALOG-D23). */}
+            <Box className="print-codes-sticker-side">
+              {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
+              {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
+            </Box>
+            <QrCodeImage value={copy.qrCode} size={110} />
             <Typography className="print-codes-sticker-code">{copy.qrCode}</Typography>
-            {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
           </Box>
         ))}
       </Box>
@@ -273,30 +277,27 @@ export function PrintCodesPage() {
           .print-codes-controls { display: none; }
           .print-codes-sheet {
             display: grid;
-            grid-template-columns: repeat(4, 45mm);
-            gap: 2mm;
+            grid-template-columns: repeat(3, 62mm);
+            gap: 3mm;
           }
           .print-codes-sticker {
             box-sizing: border-box;
             border: 1px solid #000;
-            padding: 1.5mm 2mm;
-            width: 45mm;
-            height: 30mm;
+            padding: 2mm;
+            width: 62mm;
+            height: 40mm;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            /* flex-start (not center): stickers without a location must
-               still put header/QR/code at the same height as the others. */
-            justify-content: flex-start;
-            gap: 0.5mm;
-            text-align: center;
+            flex-direction: row;
+            align-items: stretch;
+            gap: 2mm;
             overflow: hidden;
             break-inside: avoid;
           }
-          .print-codes-sticker img { width: 15mm !important; height: 15mm !important; flex: none; }
-          .print-codes-sticker-header { font-size: 7pt; line-height: 3mm; height: 3mm; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex: none; }
-          .print-codes-sticker-code { font-size: 8pt; line-height: 3.5mm; height: 3.5mm; margin: 0; white-space: nowrap; flex: none; }
-          .print-codes-sticker-location { font-size: 6pt; line-height: 2.5mm; height: 2.5mm; color: #333; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex: none; }
+          .print-codes-sticker-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; }
+          .print-codes-sticker img { width: 28mm !important; height: 28mm !important; flex: none; align-self: center; }
+          .print-codes-sticker-header { font-size: 8pt; line-height: 1.2; font-weight: bold; margin: 0; overflow: hidden; word-break: break-word; }
+          .print-codes-sticker-location { font-size: 9pt; line-height: 1.2; color: #000; margin: 0; overflow: hidden; word-break: break-word; }
+          .print-codes-sticker-code { writing-mode: vertical-rl; font-size: 12pt; font-weight: bold; margin: 0; white-space: nowrap; flex: none; align-self: center; letter-spacing: 0.5pt; }
         }
       `}</style>
     </Box>

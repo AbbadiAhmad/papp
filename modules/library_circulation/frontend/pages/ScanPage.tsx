@@ -37,7 +37,7 @@ import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import {
   libraryCirculationApi,
   type ActiveBorrowingForStudent,
-  type CopyCirculationHistoryEntry,
+  type BookCirculationHistoryEntry,
   type LibraryBorrowing,
   type LibraryFine,
   type EnrichedFine,
@@ -60,6 +60,7 @@ import { ReaderAutocomplete } from './ReaderAutocomplete';
 import { PageHero, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
 import { ReaderHistoryDialog } from './ReaderHistoryDialog';
+import { ConfirmClubStageDialog } from './ConfirmClubStageDialog';
 import { ReturnDialog } from './ReturnDialog';
 
 /** A book the librarian has scanned for borrowing but not yet borrowed. */
@@ -104,7 +105,8 @@ export function ScanPage() {
   const [readerCode, setReaderCode] = useState('');
   const [bookCode, setBookCode] = useState('');
   const [basket, setBasket] = useState<BasketItem[]>([]);
-  const [priorByCopy, setPriorByCopy] = useState<Record<string, CopyCirculationHistoryEntry | null>>({});
+  const [confirmStageOpen, setConfirmStageOpen] = useState(false);
+  const [priorByCopy, setPriorByCopy] = useState<Record<string, BookCirculationHistoryEntry | null>>({});
   const [activeBorrowings, setActiveBorrowings] = useState<ActiveBorrowingForStudent[]>([]);
   const [readerFines, setReaderFines] = useState<LibraryFine[]>([]);
   const [allFines, setAllFines] = useState<EnrichedFine[]>([]);
@@ -219,10 +221,11 @@ export function ScanPage() {
     let cancelled = false;
     for (const item of basket) {
       libraryCirculationApi
-        .getCopyCirculationHistory(item.copyId, 20)
+        .getBookCirculationHistory(item.bookId, 1, readerId)
         .then((history) => {
           if (cancelled) return;
-          const prior = history.find((e) => e.studentId === readerId && e.status === 'returned') ?? null;
+          // Book-level (any copy of this title), this reader only — most recent first.
+          const prior = history[0] ?? null;
           setPriorByCopy((current) => ({ ...current, [`${readerId}:${item.copyId}`]: prior }));
         })
         .catch(() => undefined);
@@ -281,6 +284,7 @@ export function ScanPage() {
     const wasLast = !clubOverview?.groupStages.some((s) => s.stageOrder > (clubOverview.stage?.stageOrder ?? 0));
     try {
       await readingClubIntegration.completeStage(readerId);
+      setConfirmStageOpen(false);
       setMessage(
         wasLast
           ? t('library_circulation.scan.reading_club_all_done_message', { stage: finishedStage })
@@ -502,6 +506,8 @@ export function ScanPage() {
       if (reader) {
         await refreshActive(reader.student.id);
         await refreshFinesAndIncidents(reader.student.id);
+        // The returned book may complete the reader's reading-club stage goal — refresh the club card.
+        if (canSeeRewards) await loadClubOverview(reader.student.id);
       }
       focusBookInput();
     } catch (err) {
@@ -718,8 +724,9 @@ export function ScanPage() {
                             <Button
                               size="small"
                               variant="contained"
-                              color={clubOverview.progress.isComplete ? 'success' : 'inherit'}
-                              onClick={completeReadingClubStage}
+                              color="success"
+                              disabled={!clubOverview.progress.isComplete}
+                              onClick={() => setConfirmStageOpen(true)}
                               sx={{ alignSelf: 'flex-start' }}
                             >
                               {t('library_circulation.scan.reading_club_complete_stage_button')}
@@ -865,16 +872,20 @@ export function ScanPage() {
                             }
                           >
                             <ListItemText
-                              primary={item.title}
-                              secondary={
-                                item.error ??
-                                (prior
-                                  ? `${item.qrCode} · ${t('library_circulation.scan.previous_borrow_returned', {
-                                      date: formatDateOnly(prior.returnedAt ?? prior.borrowedAt, language),
-                                      status: t(`library_circulation.borrowing_status.${prior.status}`, prior.status),
-                                    })}`
-                                  : item.qrCode)
+                              primary={
+                                <>
+                                  {item.title}
+                                  {prior ? (
+                                    <Chip
+                                      size="small"
+                                      color="warning"
+                                      sx={{ marginInlineStart: 1 }}
+                                      label={t('library_circulation.scan.borrowed_before_chip', { date: formatDateOnly(prior.borrowedAt, language) })}
+                                    />
+                                  ) : null}
+                                </>
                               }
+                              secondary={item.error ?? item.qrCode}
                               slotProps={{ secondary: { color: item.error ? 'error' : 'text.secondary' } }}
                               sx={{ pr: 16 }}
                             />
@@ -1004,6 +1015,17 @@ export function ScanPage() {
         onClose={() => setBorrowDialogOpen(false)}
         loading={busy}
       />
+
+      {readerId && clubOverview?.stage ? (
+        <ConfirmClubStageDialog
+          open={confirmStageOpen}
+          studentId={readerId}
+          stageName={clubOverview.stage.name}
+          busy={busy}
+          onConfirm={completeReadingClubStage}
+          onClose={() => setConfirmStageOpen(false)}
+        />
+      ) : null}
 
       <ReturnDialog
         open={returnTarget !== null}

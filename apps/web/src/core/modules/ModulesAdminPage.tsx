@@ -29,6 +29,7 @@ import { extractErrorMessage } from '../../shared/api/httpClient';
 import { modulesApi } from '../../shared/api/modules';
 import { useGatedCall, Can } from '../../shared/permissions';
 import type { AvailableModuleEntry, ModuleStatus, PublicModuleEntry } from '../../shared/api/types';
+import { Paginated } from '../../shared/components/Paginated';
 
 const RESTART_POLL_INTERVAL_MS = 500;
 const RESTART_POLL_TIMEOUT_MS = 20_000;
@@ -186,6 +187,8 @@ export function ModulesAdminPage() {
       ) : null}
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(modules ?? []).filter((entry) => !(entry.status === 'disabled' && entry.dataDropped))}>
+          {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -202,9 +205,7 @@ export function ModulesAdminPage() {
                   module never installed at all, and still reachable via the
                   install dropdown above (listAvailableToInstall includes any
                   non-active-status row) if the librarian wants it back. */}
-              {(modules ?? [])
-                .filter((entry) => !(entry.status === 'disabled' && entry.dataDropped))
-                .map((entry) => (
+              {pageRows.map((entry) => (
                   <TableRow key={entry.key} hover>
                     <TableCell>{entry.key}</TableCell>
                     <TableCell>{entry.version}</TableCell>
@@ -249,6 +250,8 @@ export function ModulesAdminPage() {
             </TableBody>
           </Table>
         </TableContainer>
+          )}
+        </Paginated>
       </QueryStateGate>
 
       {uninstallTarget ? (

@@ -388,6 +388,17 @@ describe('CirculationService', () => {
       ]);
     });
 
+    it('filters by reader when a studentId is given (LIBRARY_CIRCULATION-D50)', async () => {
+      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([{ id: 'copy-1', qrCode: 'BOOK-001' }]);
+      prisma.libraryBorrowing.findMany.mockResolvedValue([]);
+
+      await service.getBookCirculationHistory('book-1', 1, 'student-1');
+
+      expect(prisma.libraryBorrowing.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { bookCopyId: { in: ['copy-1'] }, studentId: 'student-1' }, take: 1 }),
+      );
+    });
+
     it('returns an empty array without querying borrowings when the book has no copies', async () => {
       prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([]);
 

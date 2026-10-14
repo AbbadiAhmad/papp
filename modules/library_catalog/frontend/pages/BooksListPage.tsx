@@ -42,6 +42,7 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 import { BookCard, CardGrid, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const VIEW_STORAGE_KEY = 'papp:books-view';
 type BooksView = 'cards' | 'table';
@@ -327,6 +328,8 @@ export function BooksListPage() {
             </CardGrid>
           )
         ) : (
+        <Paginated items={books ?? []}>
+          {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -350,7 +353,7 @@ export function BooksListPage() {
                   </TableCell>
                 </TableRow>
               ) : null}
-              {(books ?? []).map((book) => (
+              {pageRows.map((book) => (
                 <TableRow key={book.id} hover>
                   <TableCell>
                     <RouterLink to={`/library/books/${book.id}`}>{book.title}</RouterLink>
@@ -412,6 +415,8 @@ export function BooksListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+          )}
+        </Paginated>
         )}
       </QueryStateGate>
 

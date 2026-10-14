@@ -119,6 +119,7 @@ describe('StageCompletionsService events', () => {
     const prisma = {
       readingClubStage: { findUnique: jest.fn(async () => stage), findFirst: jest.fn(async () => null) },
       readingClubGroup: { findUnique: jest.fn(async () => ({ name: 'Group A' })) },
+      readingClubEpisode: { findUnique: jest.fn(async () => ({ name: 'S' })) },
       readingClubStageCompletion: {
         create: jest.fn(async () => ({ id: 'c1' })),
         findUnique: jest.fn(async () => ({ id: 'c1', studentId: 'st', rewardStatus: 'pending', groupName: 'Group A', stageName: 'Stage 1' })),
@@ -130,7 +131,7 @@ describe('StageCompletionsService events', () => {
     };
     const memberships = {
       getMembershipOrThrow: async () => ({ episodeId: 'ep', currentStageId: 's1', groupId: 'g1', groupName: 'Group A', stageStartedAt: new Date(), manualProgressAmount: 0 }),
-      computeStageProgress: async () => ({ progressAmount: 3 }),
+      computeStageProgress: async () => ({ progressAmount: 3, targetAmount: 3, targetType: 'books', isComplete: true }),
     } as unknown as MembershipsService;
     const service = withPrisma(new StageCompletionsService(memberships, currentEpisode, { send: jest.fn(async () => undefined) }, events), prisma);
 

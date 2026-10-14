@@ -34,6 +34,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi, type ReadingClubEpisode } from '../api';
 import { TypeToConfirmDialog } from './TypeToConfirmDialog';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** Episodes (seasons/years) — the top-level scope groups/stages/readers now live under. Lists every episode, highlights the current one, and lets a permitted user start a new one (which closes whatever was current). */
 interface DeletePreview {
@@ -154,6 +155,8 @@ export function EpisodesPage() {
       ) : null}
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(episodes ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -166,7 +169,7 @@ export function EpisodesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(episodes ?? []).map((episode) => (
+              {pageRows.map((episode) => (
                 <TableRow key={episode.id} hover>
                   <TableCell>{episode.name}</TableCell>
                   <TableCell>
@@ -201,6 +204,8 @@ export function EpisodesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>

@@ -484,14 +484,15 @@ let CirculationService = CirculationService_1 = class CirculationService {
      * else — see this class's own docblock) and then queries borrowings
      * across all of them.
      */
-    async getBookCirculationHistory(bookId, limit = 10) {
+    async getBookCirculationHistory(bookId, limit = 10, studentId) {
         const copies = await this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, select: { id: true, qrCode: true } });
         if (copies.length === 0) {
             return [];
         }
         const qrCodeByCopyId = new Map(copies.map((c) => [c.id, c.qrCode]));
         const borrowings = await this.prisma.libraryBorrowing.findMany({
-            where: { bookCopyId: { in: copies.map((c) => c.id) } },
+            // LIBRARY_CIRCULATION-D50: optional per-reader filter (scan page "borrowed before by this reader" tag).
+            where: { bookCopyId: { in: copies.map((c) => c.id) }, ...(studentId ? { studentId } : {}) },
             orderBy: { borrowedAt: 'desc' },
             take: limit,
             include: { student: true },

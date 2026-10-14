@@ -11,6 +11,7 @@ import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
 export interface CirculationStudent {
   id: string;
   code: string;
+  name?: string | null;
   className: string | null;
 }
 

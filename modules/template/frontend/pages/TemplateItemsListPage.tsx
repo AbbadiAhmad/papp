@@ -33,6 +33,7 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { templateApi, type CreateItemInput, type TemplateItem, type TemplateItemStatus, type UpdateItemInput } from '../api';
 import { TemplateItemFormDialog } from './TemplateItemFormDialog';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const STATUS_COLOR: Record<TemplateItemStatus, 'success' | 'default'> = { active: 'success', archived: 'default' };
 
@@ -161,6 +162,8 @@ export function TemplateItemsListPage() {
       <DefaultsPanel />
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(items ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -172,7 +175,7 @@ export function TemplateItemsListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(items ?? []).map((item) => (
+              {pageRows.map((item) => (
                 <TableRow key={item.id} hover>
                   <TableCell>{item.title}</TableCell>
                   <TableCell>
@@ -201,6 +204,8 @@ export function TemplateItemsListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <TemplateItemFormDialog open={formOpen} item={editingItem} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
