@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { QueryStateGate } from '../../shared/components/QueryStateGate';
 import { useGuardedQuery } from '../../shared/hooks/useGuardedQuery';
 import { permissionsApi } from '../../shared/api/permissions';
+import { Paginated } from '../../shared/components/Paginated';
 
 /**
  * The reduced, self-scoped counterpart to `PermissionsMatrixPage`: shows
@@ -36,6 +37,8 @@ export function MyPermissionsPage() {
       </Typography>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(permissions ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -45,7 +48,7 @@ export function MyPermissionsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(permissions ?? []).map((permission) => (
+              {pageRows.map((permission) => (
                 <TableRow key={permission.id} hover>
                   <TableCell>{t(permission.descriptionI18nKey)}</TableCell>
                   <TableCell>{permission.category}</TableCell>
@@ -59,6 +62,8 @@ export function MyPermissionsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
     </Box>
   );

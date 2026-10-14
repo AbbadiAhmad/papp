@@ -1,7 +1,7 @@
 {
   "key": "template",
   "name": "Template",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "A real, installable module that exercises every manifest.json option — copy this directory as the starting point for a new module (docs/MODULE_SPEC.md §10). Its own entity (Items) is deliberately simple; the plumbing around it is what's on display.",

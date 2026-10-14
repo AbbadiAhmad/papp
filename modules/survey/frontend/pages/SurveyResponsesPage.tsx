@@ -31,6 +31,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, surveyApi, type ResponseDetail, type ResponseListItem } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 function AnswerValue({ value }: { value: unknown }) {
   if (Array.isArray(value)) return <>{value.join(', ')}</>;
@@ -152,6 +153,8 @@ export function SurveyResponsesPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(responses ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -163,7 +166,7 @@ export function SurveyResponsesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(responses ?? []).map((response) => (
+              {pageRows.map((response) => (
                 <TableRow key={response.id} hover>
                   <TableCell>{response.respondentEmail ?? t('survey.responses.anonymous')}</TableCell>
                   <TableCell>{formatDateTime(response.submittedAt, language)}</TableCell>
@@ -183,6 +186,8 @@ export function SurveyResponsesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       {viewing ? (

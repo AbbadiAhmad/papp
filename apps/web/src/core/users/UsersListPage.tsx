@@ -33,6 +33,7 @@ import { downloadBlob, usersApi, type CreateUserInput, type UpdateUserInput } fr
 import { useGatedCall, Can } from '../../shared/permissions';
 import type { PublicUser } from '../../shared/api/types';
 import { UserFormDialog } from './UserFormDialog';
+import { Paginated } from '../../shared/components/Paginated';
 
 export function UsersListPage() {
   const { t } = useTranslation();
@@ -110,6 +111,8 @@ export function UsersListPage() {
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(users ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -124,7 +127,7 @@ export function UsersListPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(users ?? []).map((user) => (
+              {pageRows.map((user) => (
                 <TableRow key={user.id} hover>
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.email}</TableCell>
@@ -166,6 +169,8 @@ export function UsersListPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       <UserFormDialog

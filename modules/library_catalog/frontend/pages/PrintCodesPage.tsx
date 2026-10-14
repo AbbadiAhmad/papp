@@ -25,6 +25,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, libraryCatalogApi, type CopyForPrint } from '../api';
 import { QrCodeImage } from './QrCodeImage';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
  * "filter the books entered last period ... export the book names,
@@ -182,6 +183,8 @@ export function PrintCodesPage() {
         </Typography>
 
         {/* Preview table — book title shown for validation only, never printed on the sticker (see this page's own docblock). */}
+        <Paginated items={copies}>
+          {(pageRows) => (
         <TableContainer component={Card} sx={{ mb: 3 }}>
           <Table size="small">
             <TableHead>
@@ -202,7 +205,7 @@ export function PrintCodesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                copies.map((copy) => (
+                pageRows.map((copy) => (
                   <TableRow key={copy.id}>
                     <TableCell>{copy.bookTitle}</TableCell>
                     <TableCell>{copy.qrCode}</TableCell>
@@ -214,6 +217,8 @@ export function PrintCodesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+          )}
+        </Paginated>
       </Box>
 
       {/* The actual sticker sheet — present at all times (so Ctrl+P / browser

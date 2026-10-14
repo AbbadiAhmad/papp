@@ -40,6 +40,7 @@ Per `docs/TESTING_STRATEGY.md` §0: while the base platform is being built (`doc
 - [ ] Copy goes through `t('module_key.namespace.key')`, never hardcoded strings, in **both** `locales/ar.json` and `locales/en.json` (or the full confirmed language set — check `docs/CHECKLIST.md` item 4 for the current answer) at the same time. A key added to one language file without the other fails the locale-completeness lint.
 - [ ] Uses MUI components / logical CSS properties only — no `margin-left`/`text-align: left` literals that would break under RTL. Sanity-check the page renders correctly in both `ar` (RTL) and `en` (LTR) before calling it done.
 - [ ] Dates and numbers go through the shared `formatDate`/`formatNumber` utilities (pinned Gregorian calendar, Latin/Western digits per D6/D7) — never a raw `toLocaleDateString()`/`toLocaleString()` call.
+- [ ] Every list/table renders through `<Paginated items={...}>` (`apps/web/src/shared/components/Paginated.tsx`, root D103) — never an unbounded table — unless the endpoint is already server-side paged (then use `TablePagination` like `library_circulation`'s readers list) or the whole set must be visible (matrices, small dialogs).
 - [ ] Gates its actions with `usePermission('<code>')`/`<Can permission="...">`, matching exactly the backend permission code for that action — this is a UX nicety, the backend guard is what actually enforces it, but they must never drift apart.
 
 ## Every new/changed module manifest

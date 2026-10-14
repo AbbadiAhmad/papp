@@ -33,6 +33,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi, type ReadingClubStageBookEntry } from '../api';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
  * "Books read this stage" (item D) — lists auto-synced (from returned
@@ -133,6 +134,8 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
             {t('reading_club.book_entries.empty')}
           </Typography>
         ) : (
+          <Paginated items={(entries ?? [])}>
+          {(pageRows) => (
           <TableContainer>
             <Table size="small">
               <TableHead>
@@ -145,7 +148,7 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(entries ?? []).map((entry) => (
+                {pageRows.map((entry) => (
                   <TableRow key={entry.id} sx={entry.status === 'discarded' ? { opacity: 0.55 } : undefined}>
                     <TableCell>
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -186,6 +189,8 @@ export function StageBookEntriesCard({ studentId }: { studentId: string }) {
               </TableBody>
             </Table>
           </TableContainer>
+          )}
+          </Paginated>
         )}
       </CardContent>
 

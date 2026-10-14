@@ -31,6 +31,7 @@ import { extractErrorMessage } from '../../shared/api/httpClient';
 import { sessionsApi } from '../../shared/api/sessions';
 import { useGatedCall } from '../../shared/permissions';
 import type { PublicSession, PurgeResult } from '../../shared/api/types';
+import { Paginated } from '../../shared/components/Paginated';
 
 /** 3 days before today (UTC) as YYYY-MM-DD — mirrors SessionsService.purge's cap. */
 function maxPurgeCutoffUtcIso(): string {
@@ -117,6 +118,8 @@ export function SessionsPage() {
   };
 
   const renderTable = (sessions: PublicSession[]) => (
+    <Paginated items={sessions}>
+    {(pageRows) => (
     <TableContainer component={Paper} sx={{ mb: 3 }}>
       <Table size="small">
         <TableHead>
@@ -132,7 +135,7 @@ export function SessionsPage() {
           </TableRow>
         </TableHead>
         <TableBody>
-          {sessions.map((session) => {
+          {pageRows.map((session) => {
             const isCurrent = session.id === user?.id; // best-effort marker; session id != user id, kept simple
             const revoked = session.revokedAt !== null;
             return (
@@ -166,6 +169,8 @@ export function SessionsPage() {
         </TableBody>
       </Table>
     </TableContainer>
+    )}
+    </Paginated>
   );
 
   return (

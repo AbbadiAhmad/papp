@@ -42,6 +42,7 @@ import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import {
   libraryCatalogApi,
   type BookCopyStatus,
@@ -351,6 +352,8 @@ export function BookDetailPage() {
             </Paper>
 
             <Typography variant="h6">{t('library_catalog.copies.title')}</Typography>
+            <Paginated items={(book.copies ?? [])}>
+            {(pageRows) => (
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
@@ -364,7 +367,7 @@ export function BookDetailPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(book.copies ?? []).map((copy) => (
+                  {pageRows.map((copy) => (
                     <TableRow
                       key={copy.id}
                       hover
@@ -399,6 +402,8 @@ export function BookDetailPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            )}
+            </Paginated>
           </Stack>
         ) : null}
       </QueryStateGate>

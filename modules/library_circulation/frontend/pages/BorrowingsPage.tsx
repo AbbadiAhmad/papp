@@ -27,6 +27,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { libraryCirculationApi, type BorrowingFilterInput, type BorrowingStatus } from '../api';
 import { PageHero, StatusPill, type Tone } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 const BORROWING_STATUSES: BorrowingStatus[] = ['active', 'returned', 'overdue', 'lost', 'cancelled'];
 
@@ -169,6 +170,8 @@ export function BorrowingsPage() {
       </Card>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(data ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -182,7 +185,7 @@ export function BorrowingsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(data ?? []).map((row) => (
+              {pageRows.map((row) => (
                 <TableRow key={row.id} hover>
                   <TableCell>{row.bookTitle ?? row.qrCode ?? '—'}</TableCell>
                   <TableCell><ReaderLink readerId={row.studentId} name={row.studentName} code={row.studentCode} /></TableCell>
@@ -203,6 +206,8 @@ export function BorrowingsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
     </Box>
   );

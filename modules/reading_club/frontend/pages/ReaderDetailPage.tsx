@@ -36,6 +36,7 @@ import { readingClubApi } from '../api';
 import { AssignReaderDialog } from './AssignReaderDialog';
 import { ConfirmStageDialog } from './ConfirmStageDialog';
 import { StageBookEntriesCard } from './StageBookEntriesCard';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** A reader's reading-club profile: current group/stage, live progress, action buttons, and the append-only stage-completion/reward history. */
 export function ReaderDetailPage() {
@@ -282,6 +283,8 @@ export function ReaderDetailPage() {
                     {t('core.common.no_data')}
                   </Typography>
                 ) : (
+                  <Paginated items={reader.presents}>
+                  {(pageRows) => (
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -297,7 +300,7 @@ export function ReaderDetailPage() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {reader.presents.map((present) => (
+                        {pageRows.map((present) => (
                           <TableRow key={present.id}>
                             <TableCell>{present.description}</TableCell>
                             <TableCell>
@@ -331,6 +334,8 @@ export function ReaderDetailPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  )}
+                  </Paginated>
                 )}
               </Box>
             </Paper>
@@ -345,6 +350,8 @@ export function ReaderDetailPage() {
                     {t('core.common.no_data')}
                   </Typography>
                 ) : (
+                  <Paginated items={reader.completions}>
+                  {(pageRows) => (
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -359,7 +366,7 @@ export function ReaderDetailPage() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {reader.completions.map((completion) => (
+                        {pageRows.map((completion) => (
                           <TableRow key={completion.id}>
                             <TableCell>{completion.groupName ?? '—'}</TableCell>
                             <TableCell>
@@ -393,6 +400,8 @@ export function ReaderDetailPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  )}
+                  </Paginated>
                 )}
               </Box>
             </Paper>

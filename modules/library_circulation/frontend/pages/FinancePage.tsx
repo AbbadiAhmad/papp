@@ -28,6 +28,7 @@ import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuarde
 import { downloadBlob, libraryCirculationApi, type PaymentFilterInput } from '../api';
 import { PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderLink } from './ReaderLink';
+import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /** §12-13: the finance side's own read views over transactions/payments. Deep reporting/analytics is a documented follow-up (DECISIONS.md). */
 export function FinancePage() {
@@ -57,6 +58,8 @@ function TransactionsTab() {
   );
   return (
     <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+      <Paginated items={(data ?? [])}>
+      {(pageRows) => (
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
@@ -67,7 +70,7 @@ function TransactionsTab() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {(data ?? []).map((tx) => (
+            {pageRows.map((tx) => (
               <TableRow key={tx.id}>
                 <TableCell>{tx.transactionNumber}</TableCell>
                 <TableCell>{tx.amount}</TableCell>
@@ -77,6 +80,8 @@ function TransactionsTab() {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
+      </Paginated>
     </QueryStateGate>
   );
 }
@@ -186,6 +191,8 @@ function PaymentsTab() {
       ) : null}
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        <Paginated items={(data?.payments ?? [])}>
+        {(pageRows) => (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
@@ -201,7 +208,7 @@ function PaymentsTab() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(data?.payments ?? []).map((payment) => (
+              {pageRows.map((payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>{payment.paymentNumber}</TableCell>
                   <TableCell>{payment.fineNumber}</TableCell>
@@ -216,6 +223,8 @@ function PaymentsTab() {
             </TableBody>
           </Table>
         </TableContainer>
+        )}
+        </Paginated>
       </QueryStateGate>
 
       {data ? (
