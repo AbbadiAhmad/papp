@@ -119,8 +119,9 @@ const ALWAYS_ALLOWED = '__always__';
  * consistency, even though core has no manifest-driven parent/child
  * structure of its own to derive one from.
  */
+const HOME_LEAF: ResolvedMenuLeaf = { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED };
+
 const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
-  { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED },
   { type: 'leaf', id: 'users', labelKey: 'core.menu.users', iconName: undefined, route: '/users', requiredPermission: 'users.view' },
   { type: 'leaf', id: 'roles', labelKey: 'core.menu.roles', iconName: undefined, route: '/roles', requiredPermission: 'roles.view' },
   { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: 'permissions.view' },
@@ -174,14 +175,15 @@ export function useNavNodes(): ResolvedMenuNode[] {
     [],
   );
 
-  return useMemo<ResolvedMenuNode[]>(() => applyMenuLayout([platformGroup, ...moduleNodes], layout), [platformGroup, moduleNodes, layout]);
+  // Convention: Home first, the day-to-day work (modules) next, administration last.
+  return useMemo<ResolvedMenuNode[]>(() => applyMenuLayout([HOME_LEAF, ...moduleNodes, platformGroup], layout), [platformGroup, moduleNodes, layout]);
 }
 
 /** Every default (un-customised) node — what the Appearance page's menu editor starts from. */
 export function useDefaultNavNodes(): ResolvedMenuNode[] {
   const moduleManifests = useModuleFrontendManifests(true);
   return useMemo<ResolvedMenuNode[]>(
-    () => [{ type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }, ...buildModuleMenuEntries(moduleManifests ?? [])],
+    () => [HOME_LEAF, ...buildModuleMenuEntries(moduleManifests ?? []), { type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }],
     [moduleManifests],
   );
 }
@@ -460,6 +462,25 @@ export function TopBar() {
   return (
     <AppBar position="fixed" data-app-shell="topbar" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar sx={{ gap: 2 }}>
+        {/* The platform menu, at the leading edge, before the brand (the usual place) —
+            only for a logged-in user. On a public (website) page it is a
+            dropdown of the platform's top levels; on a platform page it opens
+            the mobile overlay drawer, or folds the desktop sidebar. Not shown
+            for the tabs shell on platform pages, which has no sidebar. */}
+        {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
+        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
+          <Tooltip title={t('core.common.menu')}>
+            <IconButton
+              color="inherit"
+              onClick={() => (isMobile ? setMobileNavOpen(!mobileNavOpen) : setSidebarOpen(!sidebarOpen))}
+              aria-label={t('core.common.menu')}
+              aria-expanded={isMobile ? mobileNavOpen : sidebarOpen}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Tooltip>
+        ) : null}
+
         {/* Clicking the brand goes to "/", which redirects to the user's landing page. */}
         <Box
           component={RouterLink}
@@ -484,25 +505,6 @@ export function TopBar() {
             {colorMode === 'dark' ? <DarkModeIcon /> : colorMode === 'light' ? <LightModeIcon /> : <BrightnessAutoIcon />}
           </IconButton>
         </Tooltip>
-
-        {/* The platform menu, one click away beside the language switcher —
-            only for a logged-in user. On a public (website) page it is a
-            dropdown of the platform's top levels; on a platform page it opens
-            the mobile overlay drawer, or folds the desktop sidebar. Not shown
-            for the tabs shell on platform pages, which has no sidebar. */}
-        {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
-        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
-          <Tooltip title={t('core.common.menu')}>
-            <IconButton
-              color="inherit"
-              onClick={() => (isMobile ? setMobileNavOpen(!mobileNavOpen) : setSidebarOpen(!sidebarOpen))}
-              aria-label={t('core.common.menu')}
-              aria-expanded={isMobile ? mobileNavOpen : sidebarOpen}
-            >
-              <MenuIcon />
-            </IconButton>
-          </Tooltip>
-        ) : null}
 
         <Tooltip title={t('core.common.language')}>
           <IconButton color="inherit" onClick={(e) => setLangMenuAnchor(e.currentTarget)} aria-label={t('core.common.language')}>

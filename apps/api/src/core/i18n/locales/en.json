@@ -39,7 +39,7 @@
   "core.perm.modules.upgrade": "Upgrade modules",
   "core.perm.modules.uninstall": "Uninstall modules",
 
-  "core.menu.platform": "Platform",
+  "core.menu.platform": "Administration",
   "core.menu.dashboard": "Dashboard",
   "core.menu.users": "Users",
   "core.menu.roles": "Roles",

@@ -1,0 +1,52 @@
+{
+  "key": "classic_library",
+  "version": "1.0.0",
+  "name": {
+    "ar": "المكتبة الكلاسيكية",
+    "en": "Classic Library"
+  },
+  "description": {
+    "ar": "مظهر هادئ ورسمي للمكتبات العامة والجامعية ومكتبات الكبار: أزرق بحري مع لمسة ذهبية وقائمة جانبية دائمة.",
+    "en": "A calm, formal look for public, academic and adult libraries: deep navy with a brass accent and a permanent side menu."
+  },
+  "shell": "sidebar",
+  "radius": 6,
+  "fonts": {
+    "ar": "\"Thmanyah Sans\", \"Segoe UI\", \"Noto Kufi Arabic\", Tahoma, Arial, sans-serif",
+    "en": "\"Inter\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
+  },
+  "light": {
+    "primary": "#1F3A5F",
+    "primaryContrast": "#ffffff",
+    "secondary": "#9A6B1F",
+    "background": "#F4F5F7",
+    "surface": "#ffffff",
+    "text": "#1A2230",
+    "textMuted": "#566070",
+    "border": "#DCE0E6",
+    "hero": "#E8ECF2",
+    "headerBg": "#14283F",
+    "headerText": "#ffffff",
+    "success": "#2B6E3F",
+    "warning": "#8A5A00",
+    "error": "#B3261E",
+    "info": "#1F5F99"
+  },
+  "dark": {
+    "primary": "#8FB1DE",
+    "primaryContrast": "#0C1624",
+    "secondary": "#D6A85C",
+    "background": "#0F141B",
+    "surface": "#171E28",
+    "text": "#E7EBF1",
+    "textMuted": "#9AA6B8",
+    "border": "#283241",
+    "hero": "#1C2736",
+    "headerBg": "#0C1A2B",
+    "headerText": "#ffffff",
+    "success": "#7CCB96",
+    "warning": "#E8C36E",
+    "error": "#F2908B",
+    "info": "#8DBBEA"
+  }
+}

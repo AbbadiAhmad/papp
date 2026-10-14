@@ -1,14 +1,18 @@
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import EventIcon from '@mui/icons-material/Event';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
+import InventoryIcon from '@mui/icons-material/Inventory';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import PaidIcon from '@mui/icons-material/Paid';
 import PollIcon from '@mui/icons-material/Poll';
 import PublicIcon from '@mui/icons-material/Public';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
@@ -31,16 +35,20 @@ import type { ReactNode } from 'react';
  */
 const KNOWN_ICONS: Record<string, ReactNode> = {
   AssignmentInd: <AssignmentIndIcon />,
+  AutoStories: <AutoStoriesIcon />,
   Dashboard: <DashboardIcon />,
+  Event: <EventIcon />,
   Extension: <ExtensionIcon />,
   Group: <GroupIcon />,
   History: <HistoryIcon />,
+  Inventory: <InventoryIcon />,
   LockPerson: <LockPersonIcon />,
   MenuBook: <MenuBookIcon />,
   Notifications: <NotificationsIcon />,
   Paid: <PaidIcon />,
   Poll: <PollIcon />,
   Public: <PublicIcon />,
+  QrCode2: <QrCode2Icon />,
   QrCodeScanner: <QrCodeScannerIcon />,
   Settings: <SettingsIcon />,
   Shield: <ShieldIcon />,

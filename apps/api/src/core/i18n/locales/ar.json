@@ -39,7 +39,7 @@
   "core.perm.modules.upgrade": "ترقية الوحدات",
   "core.perm.modules.uninstall": "إزالة الوحدات",
 
-  "core.menu.platform": "المنصة",
+  "core.menu.platform": "الإدارة",
   "core.menu.dashboard": "لوحة التحكم",
   "core.menu.users": "المستخدمون",
   "core.menu.roles": "الأدوار",
