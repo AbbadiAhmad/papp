@@ -2,13 +2,18 @@ import { Alert, Box, CircularProgress, Stack } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import { NotFoundPage } from '../../../../apps/web/src/core/NotFoundPage';
 import { isNotFoundError, extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { websiteApi, type WebsitePageDetail } from '../api';
 import { BlockRenderer } from './BlockRenderer';
-import { SiteFooter } from './SiteFooter';
-import { SiteHeader } from './SiteHeader';
+import { SiteMenu } from './SiteMenu';
 
 /**
+ * No site title/logo bar here on purpose: the platform's own top bar/theme
+ * provides the chrome (WEBSITE-D7). The header/footer MENUS render as plain link
+ * rows above/below the page (SiteMenu, WEBSITE-D9). No homepage configured, a draft page or an
+ * unknown slug all show the platform's standard 404 page.
+ *
  * The module's one visitor-facing page (manifest routes `/site` and
  * `/site/:slug`, both `access: "public"` — see MODULE_SPEC.md §7): no
  * login, no permission gate, reachable from every App.tsx auth-status
@@ -55,7 +60,7 @@ export function PublicSitePage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <SiteHeader />
+      <SiteMenu location="header" />
 
       <Box sx={{ flex: 1 }}>
         {status === 'loading' ? (
@@ -64,11 +69,7 @@ export function PublicSitePage() {
           </Stack>
         ) : null}
 
-        {status === 'not_found' ? (
-          <Box sx={{ p: 4 }}>
-            <Alert severity="warning">{t('website.public.not_found')}</Alert>
-          </Box>
-        ) : null}
+        {status === 'not_found' ? <NotFoundPage /> : null}
 
         {status === 'error' ? (
           <Box sx={{ p: 4 }}>
@@ -79,7 +80,7 @@ export function PublicSitePage() {
         {status === 'ready' && page ? page.blocks.map((block) => <BlockRenderer key={block.id} block={block} />) : null}
       </Box>
 
-      <SiteFooter />
+      <SiteMenu location="footer" />
     </Box>
   );
 }

@@ -1,14 +1,11 @@
 {
   "core.dashboard.welcome": "Welcome, {{name}}",
   "core.dashboard.hint": "Use the sidebar to manage users, roles, permissions, and more.",
-
   "core.forbidden.title": "You don't have access",
   "core.forbidden.body": "The app tried the real request and the server rejected it. Contact a platform admin if you believe this is a mistake.",
   "core.not_found.body": "The requested page does not exist.",
-
   "core.common.retry": "Retry",
   "core.common.action_forbidden": "You don't have permission to do this ({{code}}).",
-
   "core.auth.confirm_password": "Confirm password",
   "core.auth.passwords_do_not_match": "Passwords do not match",
 
@@ -43,7 +40,6 @@
   "core.users.import_committed": "Successfully imported {{valid}} user(s).",
   "core.users.import_rejected": "Import rejected — the file contained invalid rows and nothing was saved.",
   "core.users.import_back_to_list": "Back to users list",
-
   "core.roles.code": "Role code",
   "core.roles.code_help": "Lowercase letters, digits and underscores only; cannot be changed later.",
   "core.roles.name_i18n_key": "Display name key (i18n)",
@@ -56,14 +52,12 @@
   "core.roles.assign_users": "Assign users",
   "core.roles.assign_title": "Assign users to \"{{role}}\"",
   "core.roles.assign_hint": "Toggle the checkbox to assign or unassign the role immediately.",
-
   "core.permissions.permission": "Permission",
   "core.permissions.granted": "Granted",
   "core.permissions.role_id": "Role ID",
   "core.permissions.load_grants": "Load grants",
   "core.permissions.degraded_reason": "This account cannot list all roles or the full permission catalog.",
   "core.permissions.degraded_notice": "Could not load the full matrix (requires both roles.view and permissions.view). You can still manage a specific role's grants by ID below — the exact same D12-protected endpoint.",
-
   "core.sessions.list_tab": "Sessions",
   "core.sessions.purge_tab": "Delete old sessions",
   "core.sessions.mine": "My active sessions",
@@ -87,7 +81,6 @@
   "core.sessions.purge_action": "Delete old sessions",
   "core.sessions.purge_confirm": "Permanently delete all ended sessions issued before {{date}}?",
   "core.sessions.purge_success": "Deleted {{count}} session(s) issued before {{date}}.",
-
   "core.audit.log_tab": "Log",
   "core.audit.purge_tab": "Purge old entries",
   "core.audit.category": "Category",
@@ -101,9 +94,7 @@
   "core.audit.cutoff_help": "Must be yesterday (UTC) or earlier.",
   "core.audit.purge_action": "Purge old entries",
   "core.audit.purge_success": "Deleted {{count}} row(s) older than {{date}}.",
-
   "core.settings.saved": "Saved successfully.",
-
   "core.myPreferences.landingPage": "Landing page after login",
   "core.myPreferences.platformDefault": "Platform default (Dashboard)",
   "core.myPermissions.category": "Category",
@@ -119,7 +110,6 @@
   "core.settings.absolute_timeout_days": "Absolute session timeout (days)",
   "core.settings.template_subject": "Template subject",
   "core.settings.template_body": "Template body (Markdown)",
-
   "core.notifications.empty": "No notifications.",
   "core.notifications.view_all": "View all notifications",
   "core.notifications.mark_read": "Mark as read",
@@ -158,7 +148,6 @@
   "core.modules.deployment_note": "Deployment note: modules/ is live-mounted into the api container, so an edited manifest.json or backend file appears inside it immediately — but it only takes effect after \"docker compose restart api\" (module code loads once at startup). A frontend module change needs a real \"docker compose build web\" instead — the web container has no live mount; its files are bundled at build time. Installing or upgrading a module through this page restarts the api container automatically (takes a few seconds; a \"restarting\" notice shows while it happens) — you never need to do that step yourself. Uninstalling a module never restarts the container at all.",
   "core.modules.restarting_notice": "The api server is restarting to load the module — this may take a few seconds, please wait...",
   "core.modules.data_preserved_notice": "This module's data is still in the database. Install it again to restore it, or uninstall with \"delete data\" checked to remove it permanently.",
-
   "core.backup.platformVersion": "Platform version",
   "core.backup.schemaFingerprint": "Schema fingerprint",
   "core.backup.backupConfigured": "Backup configured",
@@ -169,7 +158,6 @@
   "core.backup.exporting": "Exporting...",
   "core.backup.restoreSection": "Restore",
   "core.backup.restoreCliNotice": "Restore is not available from this page. It requires an exclusive database lock that would otherwise hang the running app, so it must be run from the server using this command:",
-
   "core.appearance.themesTitle": "Theme",
   "core.appearance.themesHint": "Choose the look of the whole app. A theme is a folder in themes/ — copy template_theme to make your own.",
   "core.appearance.builtInName": "Default",
@@ -196,5 +184,16 @@
   "core.appearance.resetMenu": "Reset to default",
   "core.appearance.saved": "Saved.",
   "core.common.rows_per_page": "Rows per page",
-  "core.common.displayed_rows": "{{from}}–{{to}} of {{count}}"
+  "core.common.displayed_rows": "{{from}}–{{to}} of {{count}}",
+  "core.appearance.landing.help": "Choose which page opens first. Users can override the logged-in page in My Preferences. If the chosen module is deactivated or removed, the platform default applies again.",
+  "core.appearance.landing.anonymousDefault": "Platform default (Login page)",
+  "core.appearance.landing.authenticatedDefault": "Platform default (Welcome page)",
+  "core.appearance.landing.anonymous": "Page for visitors who are not logged in",
+  "core.appearance.landing.authenticated": "Default page after login",
+  "core.appearance.landing.title": "Start page",
+  "core.appearance.brandingTitle": "Title",
+  "core.appearance.brandingHint": "The name shown in the top bar and browser tab. Leave one language empty to reuse the other.",
+  "core.appearance.titleAr": "Title (Arabic)",
+  "core.appearance.titleEn": "Title (English)",
+  "core.appearance.brandingSection": "Title & start page"
 }

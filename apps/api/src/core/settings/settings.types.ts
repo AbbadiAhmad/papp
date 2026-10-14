@@ -81,3 +81,12 @@ export const PUBLIC_ENDPOINT_RATE_LIMIT_KEY = 'security.public_endpoint_rate_lim
 export const NOTIFICATION_TEMPLATE_KEY_PREFIX = 'notifications.templates.';
 export const PASSWORD_RESET_TEMPLATE_KEY = 'notifications.templates.password_reset';
 export const FORCE_PASSWORD_CHANGE_TEMPLATE_KEY = 'notifications.templates.force_password_change';
+
+/**
+ * system_settings keys: "platform.landing.anonymous" / "platform.landing.authenticated"
+ * (seeded by 0016). JSON null = platform default (login page / Welcome page);
+ * otherwise a module route that must still resolve against the installed modules
+ * at read time — see LandingService.
+ */
+export const LANDING_ANONYMOUS_KEY = 'platform.landing.anonymous';
+export const LANDING_AUTHENTICATED_KEY = 'platform.landing.authenticated';

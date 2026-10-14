@@ -42,19 +42,19 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ShieldIcon from '@mui/icons-material/Shield';
 import TranslateIcon from '@mui/icons-material/Translate';
-import { createContext, useContext, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { useColorMode } from '../../app/ColorModeContext';
-import { useMenuLayout, useThemePack } from '../../app/AppearanceContext';
+import { useBranding, useMenuLayout, useThemePack } from '../../app/AppearanceContext';
 import { applyMenuLayout, labelOf } from '../modules/applyMenuLayout';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
 import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
 import { resolveMenuIcon } from '../modules/menuIcons';
-import { useModuleFrontendManifests } from '../modules/useInstalledModules';
+import { useModuleFrontendManifests, usePublicModuleRoutes } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
 
@@ -67,11 +67,36 @@ const DRAWER_WIDTH = 260;
  * context colocated with the two components it connects is simpler here
  * than reaching for prop-drilling through `App.tsx` or a whole new file.
  */
-const MobileNavContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null);
+const MobileNavContext = createContext<{
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  /** Desktop (`sm`+) sidebar visibility, remembered per browser. */
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+} | null>(null);
+
+const SIDEBAR_STORAGE_KEY = 'papp.sidebarOpen';
+
+function readSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
 
 export function MobileNavProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const value = useMemo(() => ({ open, setOpen }), [open]);
+  const [sidebarOpen, setSidebarOpenState] = useState(readSidebarOpen);
+  const setSidebarOpen = useCallback((next: boolean) => {
+    setSidebarOpenState(next);
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+    } catch {
+      /* storage unavailable: the choice just isn't remembered */
+    }
+  }, []);
+  const value = useMemo(() => ({ open, setOpen, sidebarOpen, setSidebarOpen }), [open, sidebarOpen, setSidebarOpen]);
   return <MobileNavContext.Provider value={value}>{children}</MobileNavContext.Provider>;
 }
 
@@ -344,6 +369,63 @@ function TabsNav() {
 }
 
 /**
+ * True on a module's PUBLIC page (e.g. the website) while logged in. Those
+ * pages render like a normal site — no sidebar/tabs — and the platform menu
+ * is reached from the top bar's menu button instead (`PlatformMenuButton`),
+ * because following a platform link there means leaving the site.
+ */
+function useOnPublicModulePage(): boolean {
+  const { pathname } = useLocation();
+  const publicRoutes = usePublicModuleRoutes();
+  return publicRoutes.some((route) => matchPath({ path: route.path, end: true }, pathname));
+}
+
+/**
+ * Top-bar menu button for a public page: a dropdown of the platform's TOP
+ * LEVELS only (the platform group and each module's group, with the admin's
+ * menu layout applied), each opening that group's first page the user may see.
+ * Same nodes and permission checks as the sidebar/tabs. Only mounted once
+ * authenticated, since the nodes come from the authenticated manifest.
+ */
+function PlatformMenuButton() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  const navigate = useNavigate();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
+  const entries = nodes
+    .map((node) => ({ node, first: (node.type === 'leaf' ? [node] : node.children).find(isVisible) }))
+    .filter((entry): entry is { node: ResolvedMenuNode; first: ResolvedMenuLeaf } => entry.first !== undefined);
+
+  return (
+    <>
+      <Tooltip title={t('core.common.menu')}>
+        <IconButton color="inherit" onClick={(e) => setAnchor(e.currentTarget)} aria-label={t('core.common.menu')} aria-haspopup="menu" aria-expanded={Boolean(anchor)}>
+          <MenuIcon />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+        {entries.map(({ node, first }) => (
+          <MenuItem
+            key={node.id}
+            onClick={() => {
+              setAnchor(null);
+              navigate(first.route);
+            }}
+          >
+            <ListItemIcon>{iconFor(node) as ReactElement}</ListItemIcon>
+            {labelOf(node, language, t)}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
+/**
  * Always mounted (App.tsx renders this at the root regardless of auth
  * status) — the brand bar, language switcher, and (once authenticated) the
  * notifications bell + user menu. Split out from the drawer/content area so
@@ -357,8 +439,14 @@ export function TopBar() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
+  const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
   const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const { branding } = useBranding();
+  const onPublicPage = useOnPublicModulePage();
+  const appTitle = language === 'ar' ? branding.titleAr : branding.titleEn;
+  useEffect(() => {
+    document.title = appTitle;
+  }, [appTitle]);
   const { preference: colorMode, cycle: cycleColorMode } = useColorMode();
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [langMenuAnchor, setLangMenuAnchor] = useState<HTMLElement | null>(null);
@@ -372,19 +460,6 @@ export function TopBar() {
   return (
     <AppBar position="fixed" data-app-shell="topbar" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar sx={{ gap: 2 }}>
-        {/* Hamburger only once authenticated (that's the only time PageLayout's
-            drawer exists) and only on mobile — desktop keeps the always-visible
-            permanent sidebar, no toggle needed. */}
-        {status === 'authenticated' && isMobile && !tabsShell ? (
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={() => setMobileNavOpen(!mobileNavOpen)}
-            aria-label={t('core.common.menu')}
-          >
-            <MenuIcon />
-          </IconButton>
-        ) : null}
         {/* Clicking the brand goes to "/", which redirects to the user's landing page. */}
         <Box
           component={RouterLink}
@@ -398,7 +473,7 @@ export function TopBar() {
             <LocalLibraryIcon />
           </Box>
           <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, textShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
-            Annur Apps
+            {appTitle}
           </Typography>
         </Box>
 
@@ -409,6 +484,25 @@ export function TopBar() {
             {colorMode === 'dark' ? <DarkModeIcon /> : colorMode === 'light' ? <LightModeIcon /> : <BrightnessAutoIcon />}
           </IconButton>
         </Tooltip>
+
+        {/* The platform menu, one click away beside the language switcher —
+            only for a logged-in user. On a public (website) page it is a
+            dropdown of the platform's top levels; on a platform page it opens
+            the mobile overlay drawer, or folds the desktop sidebar. Not shown
+            for the tabs shell on platform pages, which has no sidebar. */}
+        {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
+        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
+          <Tooltip title={t('core.common.menu')}>
+            <IconButton
+              color="inherit"
+              onClick={() => (isMobile ? setMobileNavOpen(!mobileNavOpen) : setSidebarOpen(!sidebarOpen))}
+              aria-label={t('core.common.menu')}
+              aria-expanded={isMobile ? mobileNavOpen : sidebarOpen}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Tooltip>
+        ) : null}
 
         <Tooltip title={t('core.common.language')}>
           <IconButton color="inherit" onClick={(e) => setLangMenuAnchor(e.currentTarget)} aria-label={t('core.common.language')}>
@@ -489,9 +583,19 @@ export function TopBar() {
  * RTL plugin alone correctly renders on the physical right in RTL mode.
  */
 export function PageLayout({ children }: { children: ReactNode }) {
-  const { open: mobileNavOpen, setOpen: setMobileNavOpen } = useMobileNav();
+  const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen } = useMobileNav();
   const closeMobileNav = () => setMobileNavOpen(false);
   const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const onPublicPage = useOnPublicModulePage();
+
+  if (onPublicPage) {
+    return (
+      <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Toolbar data-app-shell="main-spacer" />
+        {children}
+      </Box>
+    );
+  }
 
   if (tabsShell) {
     return (
@@ -529,9 +633,10 @@ export function PageLayout({ children }: { children: ReactNode }) {
         <NavList onNavigate={closeMobileNav} />
       </Drawer>
 
-      {/* Desktop (`sm` and up): today's always-visible permanent sidebar, unchanged. */}
+      {/* Desktop (`sm` and up): the sidebar, folded/unfolded by the TopBar menu button (remembered per browser). */}
       <Drawer
-        variant="permanent"
+        variant="persistent"
+        open={sidebarOpen}
         anchor="left"
         // The Drawer ROOT reserves DRAWER_WIDTH of flex space even when its
         // Paper is hidden for print — tag it too so the global print rule
@@ -539,8 +644,9 @@ export function PageLayout({ children }: { children: ReactNode }) {
         data-app-shell="drawer-root"
         slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
         sx={{
-          width: DRAWER_WIDTH,
+          width: sidebarOpen ? DRAWER_WIDTH : 0,
           flexShrink: 0,
+          transition: (theme) => theme.transitions.create('width'),
           display: { xs: 'none', sm: 'block' },
           [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' },
         }}

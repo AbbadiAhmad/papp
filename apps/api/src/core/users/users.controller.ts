@@ -94,6 +94,13 @@ export class UsersController {
     return this.usersService.listLandingPageOptions(user.userId);
   }
 
+  /** Resolved landing route for `/` (user preference -> admin default -> null = Welcome). Self-scoped, same gating as the options list. */
+  @Get('me/effective-landing-page')
+  @RequirePermission('users.preferences.view_my')
+  async getMyEffectiveLandingPage(@CurrentUser() user: AuthenticatedUser): Promise<{ landingPage: string | null }> {
+    return { landingPage: await this.usersService.resolveLandingPage(user.userId) };
+  }
+
   @Patch('me/landing-page')
   @RequirePermission('users.preferences.update_my')
   @Audit({ category: 'core.users', entityType: 'User', action: 'update', fetchState: fetchOwnUserState })

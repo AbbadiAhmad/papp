@@ -33,7 +33,7 @@ describe('ThemesService + AppearanceController', () => {
     settingsStore.set('appearance.active_theme', 'default');
     settingsStore.set('appearance.menu_layout', { groups: [], hidden: [], labels: {} });
     settings.set.mockClear();
-    controller = new AppearanceController(settings as never, new ThemesService());
+    controller = new AppearanceController(settings as never, new ThemesService(), {} as never);
   });
   afterEach(async () => {
     delete process.env.THEMES_DIR;
@@ -127,5 +127,36 @@ describe('ThemesService + AppearanceController', () => {
     await install('ok_flag', pack('ok_flag', { playful: true }));
     const { themes } = await controller.listThemes();
     expect(themes.map((t) => t.key)).toEqual(['ok_flag']);
+  });
+});
+
+describe('AppearanceController — branding & landing pages', () => {
+  const store = new Map<string, unknown>();
+  const settings = {
+    get: jest.fn(async (k: string) => {
+      if (!store.has(k)) throw new Error('missing');
+      return store.get(k);
+    }),
+    set: jest.fn(async (k: string, v: unknown) => void store.set(k, v)),
+  };
+  const landing = { getAdminView: jest.fn(), update: jest.fn() };
+  const controller = new AppearanceController(settings as never, new ThemesService(), landing as never);
+  const user = { userId: 'u1' } as never;
+
+  it('falls back to the built-in title when nothing is stored', async () => {
+    expect(await controller.getBranding()).toEqual({ titleAr: 'Annur Apps', titleEn: 'Annur Apps' });
+  });
+
+  it('saves trimmed titles and lets an empty language reuse the other', async () => {
+    const saved = await controller.setBranding({ titleAr: '  النور ', titleEn: '' }, user);
+    expect(saved).toEqual({ titleAr: 'النور', titleEn: 'النور' });
+    expect(settings.set).toHaveBeenCalledWith('appearance.branding', saved, 'u1');
+    expect(await controller.getBranding()).toEqual(saved);
+  });
+
+  it('delegates landing pages to LandingService with the caller id', async () => {
+    landing.update.mockResolvedValue({ ok: true } as never);
+    await controller.setLandingPages({ anonymous: '/site' }, user);
+    expect(landing.update).toHaveBeenCalledWith({ anonymous: '/site' }, 'u1');
   });
 });

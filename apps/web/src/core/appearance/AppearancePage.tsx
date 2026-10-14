@@ -1,4 +1,5 @@
 import type { MenuLayout, ThemePack } from '@papp/shared-types';
+import type { LandingPagesSettings } from '../../shared/api/types';
 import {
   Alert,
   Box,
@@ -20,7 +21,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../app/LanguageContext';
-import { useMenuLayout, useThemePack } from '../../app/AppearanceContext';
+import { useBranding, useMenuLayout, useThemePack } from '../../app/AppearanceContext';
 import { appearanceApi } from '../../shared/api/appearance';
 import { extractErrorMessage } from '../../shared/api/httpClient';
 import { QueryStateGate } from '../../shared/components/QueryStateGate';
@@ -41,10 +42,137 @@ export function AppearancePage() {
         {t('core.menu.appearance')}
       </Typography>
       <Stack spacing={4}>
+        <BrandingSection />
+        <LandingPagesSection />
         <ThemesSection />
         <MenuEditorSection />
       </Stack>
     </Box>
+  );
+}
+
+function BrandingSection() {
+  const { t } = useTranslation();
+  const { branding, reload } = useBranding();
+  const canManage = usePermission('appearance.manage');
+  const [titleAr, setTitleAr] = useState(branding.titleAr);
+  const [titleEn, setTitleEn] = useState(branding.titleEn);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    try {
+      const updated = await appearanceApi.setBranding({ titleAr, titleEn });
+      setTitleAr(updated.titleAr);
+      setTitleEn(updated.titleEn);
+      reload();
+      setSaved(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  return (
+    <Box component="section" aria-labelledby="branding-heading">
+      <Typography id="branding-heading" variant="h6" component="h3">
+        {t('core.appearance.brandingTitle')}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {t('core.appearance.brandingHint')}
+      </Typography>
+      <Stack spacing={2} sx={{ maxWidth: 480 }}>
+        {saved ? <Alert severity="success">{t('core.appearance.saved')}</Alert> : null}
+        {error ? <Alert severity="error">{error}</Alert> : null}
+        <TextField label={t('core.appearance.titleAr')} value={titleAr} onChange={(e) => setTitleAr(e.target.value)} disabled={!canManage} slotProps={{ htmlInput: { maxLength: 60 } }} />
+        <TextField label={t('core.appearance.titleEn')} value={titleEn} onChange={(e) => setTitleEn(e.target.value)} disabled={!canManage} slotProps={{ htmlInput: { maxLength: 60 } }} />
+        <Box>
+          <Button variant="contained" onClick={save} disabled={!canManage}>
+            {t('core.common.save')}
+          </Button>
+        </Box>
+      </Stack>
+    </Box>
+  );
+}
+
+const PLATFORM_DEFAULT = '__platform_default__';
+
+function LandingPagesSection() {
+  const { t } = useTranslation();
+  const { status, data, errorMessage, reload } = useGuardedQuery(() => appearanceApi.getLandingPages());
+  return (
+    <Box component="section" aria-labelledby="landing-heading">
+      <Typography id="landing-heading" variant="h6" component="h3" gutterBottom>
+        {t('core.appearance.landing.title')}
+      </Typography>
+      <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
+        {data ? <LandingPagesForm initial={data} /> : null}
+      </QueryStateGate>
+    </Box>
+  );
+}
+
+function LandingPagesForm({ initial }: { initial: LandingPagesSettings }) {
+  const { t } = useTranslation();
+  const canManage = usePermission('appearance.manage');
+  const [anonymous, setAnonymous] = useState(initial.anonymous ?? PLATFORM_DEFAULT);
+  const [authenticated, setAuthenticated] = useState(initial.authenticated ?? PLATFORM_DEFAULT);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    try {
+      await appearanceApi.updateLandingPages({
+        anonymous: anonymous === PLATFORM_DEFAULT ? null : anonymous,
+        authenticated: authenticated === PLATFORM_DEFAULT ? null : authenticated,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  return (
+    <Stack spacing={2} sx={{ maxWidth: 480 }}>
+      {saved ? <Alert severity="success">{t('core.appearance.saved')}</Alert> : null}
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Typography variant="body2">{t('core.appearance.landing.help')}</Typography>
+      <TextField
+        select
+        label={t('core.appearance.landing.anonymous')}
+        value={anonymous}
+        onChange={(e) => setAnonymous(e.target.value)}
+      >
+        <MenuItem value={PLATFORM_DEFAULT}>{t('core.appearance.landing.anonymousDefault')}</MenuItem>
+        {initial.anonymousOptions.map((o) => (
+          <MenuItem key={o.value} value={o.value}>
+            {t(o.labelKey)}
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
+        select
+        label={t('core.appearance.landing.authenticated')}
+        value={authenticated}
+        onChange={(e) => setAuthenticated(e.target.value)}
+      >
+        <MenuItem value={PLATFORM_DEFAULT}>{t('core.appearance.landing.authenticatedDefault')}</MenuItem>
+        {initial.authenticatedOptions.map((o) => (
+          <MenuItem key={o.value} value={o.value}>
+            {t(o.labelKey)}
+          </MenuItem>
+        ))}
+      </TextField>
+      <Box>
+        <Button variant="contained" onClick={save} disabled={!canManage}>
+          {t('core.common.save')}
+        </Button>
+      </Box>
+    </Stack>
   );
 }
 
