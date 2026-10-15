@@ -27,7 +27,9 @@
  * answers as strings keeps working.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.VALIDATION_KINDS = exports.MAX_LABEL_LENGTH = exports.MAX_PLACEHOLDER_LENGTH = exports.MAX_MESSAGE_LENGTH = exports.MAX_OTHER_LENGTH = exports.MAX_TEXT_LENGTH = exports.OTHER_PREFIX = exports.OTHER_OPTION_VALUE = void 0;
+exports.VALIDATION_KINDS = exports.MAX_LABEL_LENGTH = exports.MAX_PLACEHOLDER_LENGTH = exports.MAX_MESSAGE_LENGTH = exports.MAX_OTHER_LENGTH = exports.MAX_TEXT_LENGTH = exports.OTHER_PREFIX = exports.OTHER_OPTION_VALUE = exports.MAX_IMAGE_BYTES = exports.MAX_ALT_LENGTH = void 0;
+exports.isUuid = isUuid;
+exports.parseImageRef = parseImageRef;
 exports.describeProblem = describeProblem;
 exports.encodeOther = encodeOther;
 exports.isOtherAnswer = isOtherAnswer;
@@ -40,6 +42,31 @@ exports.validateAnswer = validateAnswer;
 exports.isEmptyAnswer = isEmptyAnswer;
 exports.summarizeChoiceAnswers = summarizeChoiceAnswers;
 exports.answerForDisplay = answerForDisplay;
+// --- pictures (phase D) --------------------------------------------------------
+// Lives here (not in media-rules.ts) because the builder imports this file with an explicit `.ts`
+// extension (SURVEY-D8); a second shared file importing a sibling would hit the dual-ship hazard.
+exports.MAX_ALT_LENGTH = 200;
+exports.MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(value) {
+    return typeof value === 'string' && UUID_RE.test(value);
+}
+/** `null` = no image; throws-free: returns the cleaned ref, or an error string. */
+function parseImageRef(input) {
+    if (input === undefined || input === null)
+        return { ref: null };
+    if (typeof input !== 'object' || Array.isArray(input))
+        return { error: 'The image is not valid' };
+    const raw = input;
+    if (!isUuid(raw.mediaId))
+        return { error: 'The image is not valid' };
+    const alt = typeof raw.alt === 'string' ? raw.alt.trim() : '';
+    if (!alt)
+        return { error: 'Describe the image (alternative text) so everyone can understand it' };
+    if (alt.length > exports.MAX_ALT_LENGTH)
+        return { error: `The image description is too long (at most ${exports.MAX_ALT_LENGTH} characters)` };
+    return { ref: { mediaId: raw.mediaId.toLowerCase(), alt } };
+}
 exports.OTHER_OPTION_VALUE = '__other__';
 exports.OTHER_PREFIX = '__other__:';
 /** Hard ceiling for any text answer, even without a configured limit (protects the database). */
@@ -61,6 +88,7 @@ const ENGLISH = {
     below_min: 'must be at least {min}',
     above_max: 'must be at most {max}',
     bad_email: 'must be a valid email address',
+    bad_image: '{detail}',
     bad_url: 'must be a valid web address starting with http:// or https://',
     bad_date: 'must be a valid date',
     bad_time: 'must be a valid time',
@@ -149,6 +177,11 @@ function validateQuestionConfig(type, config, optionValues = []) {
         return { code: 'config_not_allowed', params: { key: 'validation' } };
     if (config.placeholder !== undefined && !TEXT_TYPES.includes(type))
         return { code: 'config_not_allowed', params: { key: 'placeholder' } };
+    if (config.image !== undefined && config.image !== null) {
+        const parsed = parseImageRef(config.image);
+        if ('error' in parsed)
+            return { code: 'bad_image', params: { detail: parsed.error } };
+    }
     if (typeof config.placeholder === 'string' && config.placeholder.length > exports.MAX_PLACEHOLDER_LENGTH) {
         return { code: 'text_too_long_config', params: { key: 'placeholder', max: exports.MAX_PLACEHOLDER_LENGTH } };
     }

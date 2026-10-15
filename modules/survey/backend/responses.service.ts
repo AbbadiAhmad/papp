@@ -27,6 +27,7 @@ type SurveyWithStructure = SurveySurvey & {
     title: string;
     description: string | null;
     navigation: unknown;
+    image?: unknown;
     questions: Array<SurveyQuestion & { options: SurveyQuestionOption[] }>;
   }>;
   logicRules: SurveyLogicRuleLike[];
@@ -237,6 +238,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       // and whether the response cap is reached (so the page can say so up front instead of at Submit).
       thankYouMessage: normalizeSettings(survey.settings).thankYouMessage ?? null,
       showProgressBar: normalizeSettings(survey.settings).showProgressBar === true,
+      headerImage: normalizeSettings(survey.settings).headerImage ?? null,
       isFull: computeAvailability(survey, survey._count.responses) === 'full',
       closedMessage: survey.closedMessage ?? null,
       sections: survey.sections.map((s) => ({
@@ -244,6 +246,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
         title: s.title,
         description: s.description,
         navigation: (s.navigation ?? {}) as unknown,
+        image: s.image ?? null,
         questions: s.questions.map((q) => ({
           id: q.id,
           type: q.type,

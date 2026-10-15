@@ -7,6 +7,8 @@ import { Module } from '@nestjs/common';
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsModule } from '../../../apps/api/dist/core/notifications/notifications.module';
 import { FillController } from './fill.controller';
+import { SurveyMediaController } from './media.controller';
+import { SurveyMediaService } from './media.service';
 import { PublicSurveyController } from './public-survey.controller';
 import { ReportsService } from './reports.service';
 import { ResponsesController } from './responses.controller';
@@ -23,7 +25,7 @@ import { SurveysService } from './surveys.service';
  */
 @Module({
   imports: [NotificationsModule],
-  controllers: [SurveysController, FillController, PublicSurveyController, ResponsesController],
-  providers: [SurveysService, SurveyTransferService, ResponsesService, ReportsService],
+  controllers: [SurveysController, SurveyMediaController, FillController, PublicSurveyController, ResponsesController],
+  providers: [SurveyMediaService, SurveysService, SurveyTransferService, ResponsesService, ReportsService],
 })
 export class SurveyModule {}

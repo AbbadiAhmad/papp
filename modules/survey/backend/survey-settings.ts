@@ -5,6 +5,8 @@
  * the `.ts` source (explicit extension, SURVEY-D8), so the rules cannot drift.
  */
 
+import { ImageRef, parseImageRef } from './question-rules';
+
 export const MAX_THANK_YOU_LENGTH = 4000;
 export const MAX_RESPONSE_LIMIT = 1_000_000;
 
@@ -14,6 +16,8 @@ export interface SurveySettings {
   thankYouMessage?: string;
   /** Show "page 2 of 4" progress on surveys with more than one section. */
   showProgressBar?: boolean;
+  /** Picture shown at the top of the survey (phase D). */
+  headerImage?: ImageRef;
 }
 
 /** Returns a clean settings object (known keys only, trimmed, empty values removed). Never throws. */
@@ -24,6 +28,8 @@ export function normalizeSettings(input: unknown): SurveySettings {
     result.thankYouMessage = raw.thankYouMessage.trim().slice(0, MAX_THANK_YOU_LENGTH);
   }
   if (raw.showProgressBar === true) result.showProgressBar = true;
+  const image = parseImageRef(raw.headerImage);
+  if ('ref' in image && image.ref) result.headerImage = image.ref;
   return result;
 }
 

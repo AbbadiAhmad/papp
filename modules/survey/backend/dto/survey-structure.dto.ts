@@ -165,6 +165,11 @@ export class SectionInputDto {
   @Type(() => SectionNavigationInputDto)
   navigation?: SectionNavigationInputDto;
 
+  /** Picture under the section title: `{ mediaId, alt }` or null. Checked in SurveysService.validateStructure. */
+  @IsOptional()
+  @IsObject()
+  image?: { mediaId: string; alt: string } | null;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => QuestionInputDto)

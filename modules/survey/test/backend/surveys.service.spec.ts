@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from '@jest/globals';
+import { SurveyMediaService } from '../../backend/media.service';
 import { SurveysService } from '../../backend/surveys.service';
 import type { SurveyStructureDto } from '../../backend/dto/survey-structure.dto';
 
@@ -10,7 +11,7 @@ import type { SurveyStructureDto } from '../../backend/dto/survey-structure.dto'
  * pass that runs entirely off the payload, no DB access at all.
  */
 function buildService(): SurveysService {
-  return new SurveysService();
+  return new SurveysService(new SurveyMediaService());
 }
 
 function callValidateStructure(service: SurveysService, dto: SurveyStructureDto): void {

@@ -26,6 +26,37 @@
  * answers as strings keeps working.
  */
 
+// --- pictures (phase D) --------------------------------------------------------
+// Lives here (not in media-rules.ts) because the builder imports this file with an explicit `.ts`
+// extension (SURVEY-D8); a second shared file importing a sibling would hit the dual-ship hazard.
+
+export const MAX_ALT_LENGTH = 200;
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+export interface ImageRef {
+  mediaId: string;
+  /** Text read out to screen-reader users; required so every picture is accessible. */
+  alt: string;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+/** `null` = no image; throws-free: returns the cleaned ref, or an error string. */
+export function parseImageRef(input: unknown): { ref: ImageRef | null } | { error: string } {
+  if (input === undefined || input === null) return { ref: null };
+  if (typeof input !== 'object' || Array.isArray(input)) return { error: 'The image is not valid' };
+  const raw = input as Record<string, unknown>;
+  if (!isUuid(raw.mediaId)) return { error: 'The image is not valid' };
+  const alt = typeof raw.alt === 'string' ? raw.alt.trim() : '';
+  if (!alt) return { error: 'Describe the image (alternative text) so everyone can understand it' };
+  if (alt.length > MAX_ALT_LENGTH) return { error: `The image description is too long (at most ${MAX_ALT_LENGTH} characters)` };
+  return { ref: { mediaId: raw.mediaId.toLowerCase(), alt } };
+}
+
 export type QuestionTypeName =
   | 'short_text'
   | 'paragraph'
@@ -69,6 +100,7 @@ const ENGLISH: Record<string, string> = {
   below_min: 'must be at least {min}',
   above_max: 'must be at most {max}',
   bad_email: 'must be a valid email address',
+  bad_image: '{detail}',
   bad_url: 'must be a valid web address starting with http:// or https://',
   bad_date: 'must be a valid date',
   bad_time: 'must be a valid time',
@@ -168,6 +200,10 @@ export function validateQuestionConfig(type: QuestionTypeName, config: unknown, 
   if (config.validation !== undefined && !TEXT_TYPES.includes(type)) return { code: 'config_not_allowed', params: { key: 'validation' } };
   if (config.placeholder !== undefined && !TEXT_TYPES.includes(type)) return { code: 'config_not_allowed', params: { key: 'placeholder' } };
 
+  if (config.image !== undefined && config.image !== null) {
+    const parsed = parseImageRef(config.image);
+    if ('error' in parsed) return { code: 'bad_image', params: { detail: parsed.error } };
+  }
   if (typeof config.placeholder === 'string' && config.placeholder.length > MAX_PLACEHOLDER_LENGTH) {
     return { code: 'text_too_long_config', params: { key: 'placeholder', max: MAX_PLACEHOLDER_LENGTH } };
   }

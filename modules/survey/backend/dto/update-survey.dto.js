@@ -40,6 +40,8 @@ class UpdateSurveyDto {
     thankYouMessage;
     /** Show page progress on surveys with more than one section. Stored in `settings`. */
     showProgressBar;
+    /** Picture at the top of the survey: `{ mediaId, alt }`; null removes it. Checked in SurveysService. */
+    headerImage;
     /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
     closedMessage;
 }
@@ -109,6 +111,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], UpdateSurveyDto.prototype, "showProgressBar", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsObject)(),
+    __metadata("design:type", Object)
+], UpdateSurveyDto.prototype, "headerImage", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

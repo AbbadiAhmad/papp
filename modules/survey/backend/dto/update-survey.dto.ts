@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsDateString, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEmail, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { MAX_RESPONSE_LIMIT, MAX_THANK_YOU_LENGTH } from '../survey-settings';
 
 /**
@@ -69,6 +69,11 @@ export class UpdateSurveyDto {
   @IsOptional()
   @IsBoolean()
   showProgressBar?: boolean;
+
+  /** Picture at the top of the survey: `{ mediaId, alt }`; null removes it. Checked in SurveysService. */
+  @IsOptional()
+  @IsObject()
+  headerImage?: { mediaId: string; alt: string } | null;
 
   /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
   @IsOptional()

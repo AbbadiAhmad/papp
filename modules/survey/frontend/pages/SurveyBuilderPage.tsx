@@ -25,6 +25,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
+import { ImageField } from '../components/ImageField';
 import { QuestionSettings } from '../components/QuestionSettings';
 import { SharePanel } from '../components/SharePanel';
 import { SurveyPreviewDialog } from '../components/SurveyPreviewDialog';
@@ -36,6 +37,7 @@ import {
   SURVEY_QUESTION_TYPES,
   surveyApi,
   type SurveyDetail,
+  type SurveyImage,
   type SectionNavigation,
   type SurveyLogicRuleDto,
   type SurveyQuestionDto,
@@ -345,11 +347,15 @@ export function SurveyBuilderPage() {
   /** Returns the cleaned payload, or an i18n key describing what is incomplete. */
   const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string; params?: Record<string, unknown> } => {
     const cleanSections: SurveySectionDto[] = [];
+    if (survey.settings?.headerImage && !survey.settings.headerImage.alt.trim()) return { errorKey: 'survey.image.alt_required' };
     for (const section of sections) {
       if (!section.title.trim()) return { errorKey: 'survey.builder.error_section_title' };
+      if (section.image && !section.image.alt.trim()) return { errorKey: 'survey.image.alt_required' };
       const questions: SurveyQuestionDto[] = [];
       for (const question of section.questions) {
         if (!question.title.trim()) return { errorKey: 'survey.builder.error_question_title' };
+        const questionImage = question.config?.image as SurveyImage | undefined;
+        if (questionImage && !questionImage.alt?.trim()) return { errorKey: 'survey.image.alt_required' };
         let options = question.options ?? [];
         if (ENUMERATION_QUESTION_TYPES.includes(question.type)) {
           if (options.length === 0) return { errorKey: 'survey.builder.error_no_options' };
@@ -430,6 +436,7 @@ export function SurveyBuilderPage() {
           responseLimit: survey.responseLimit,
           thankYouMessage: survey.settings?.thankYouMessage ?? '',
           showProgressBar: survey.settings?.showProgressBar === true,
+          headerImage: survey.settings?.headerImage ?? null,
         }),
       );
       const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, payload));
@@ -567,6 +574,15 @@ export function SurveyBuilderPage() {
           <Typography variant="caption" color="text.secondary" sx={{ mt: '-8px !important' }}>
             {t('survey.builder.availability_hint')}
           </Typography>
+          <ImageField
+            surveyId={surveyId}
+            label={t('survey.image.header')}
+            value={survey.settings?.headerImage}
+            onChange={(image) => {
+              const { headerImage: _old, ...rest } = survey.settings ?? {};
+              updateSurveySettings({ settings: image ? { ...rest, headerImage: image } : rest });
+            }}
+          />
           <TextField
             label={t('survey.fields.thank_you_message')}
             helperText={t('survey.builder.thank_you_hint')}
@@ -636,6 +652,12 @@ export function SurveyBuilderPage() {
               slotProps={{ htmlInput: { maxLength: 2000 } }}
               sx={{ mb: 1.5 }}
             />
+            <ImageField
+              surveyId={surveyId}
+              label={t('survey.image.section')}
+              value={section.image}
+              onChange={(image) => updateSection(sectionIndex, { image })}
+            />
 
             <Stack spacing={2} sx={{ pl: 2, borderInlineStart: '2px solid', borderColor: 'divider' }}>
               {section.questions.map((question, questionIndex) => (
@@ -653,7 +675,7 @@ export function SurveyBuilderPage() {
                       label={t('survey.fields.question_type')}
                       value={question.type}
                       onChange={(e) =>
-                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [], config: {} })
+                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [], config: question.config?.image ? { image: question.config.image } : {} })
                       }
                       sx={{ minWidth: 160 }}
                     >
@@ -707,6 +729,17 @@ export function SurveyBuilderPage() {
                     sx={{ pl: 2, mt: 1 }}
                     slotProps={{ htmlInput: { maxLength: 2000 } }}
                   />
+                  <Box sx={{ pl: 2 }}>
+                    <ImageField
+                      surveyId={surveyId}
+                      label={t('survey.image.question')}
+                      value={question.config?.image as SurveyImage | undefined}
+                      onChange={(image) => {
+                        const { image: _old, ...rest } = question.config ?? {};
+                        updateQuestion(sectionIndex, questionIndex, { config: image ? { ...rest, image } : rest });
+                      }}
+                    />
+                  </Box>
 
                   {question.type === 'linear_scale' ? (
                     <Stack direction="row" spacing={1} sx={{ pl: 2, mt: 1 }}>

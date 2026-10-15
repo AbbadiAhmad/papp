@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from '@jest/globals';
 import JSZip from 'jszip';
 import { SurveyTransferService, SURVEY_PACKAGE_FORMAT, SURVEY_PACKAGE_VERSION } from '../../backend/survey-transfer.service';
+import { SurveyMediaService } from '../../backend/media.service';
 import { SurveysService } from '../../backend/surveys.service';
 
 const S1 = '11111111-1111-4111-8111-111111111111';
@@ -23,7 +24,8 @@ function pkg(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const service = new SurveyTransferService(new SurveysService());
+const media = new SurveyMediaService();
+const service = new SurveyTransferService(new SurveysService(media), media);
 const validate = (value: unknown) => (service as unknown as { validatePackage: (v: unknown) => unknown }).validatePackage(value);
 
 describe('SurveyTransferService package validation', () => {

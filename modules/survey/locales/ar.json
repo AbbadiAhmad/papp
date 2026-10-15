@@ -267,5 +267,18 @@
   "survey.take.not_open_yet": "هذا الاستبيان لم يُفتح بعد.",
   "survey.take.not_open_yet_on": "يُفتح هذا الاستبيان في {{date}}.",
   "survey.take.full": "بلغ هذا الاستبيان الحد الأقصى من الردود.",
-  "survey.take.progress": "تقدم الاستبيان"
+  "survey.take.progress": "تقدم الاستبيان",
+  "survey.image.add": "إضافة صورة",
+  "survey.image.replace": "استبدال الصورة",
+  "survey.image.remove": "إزالة الصورة",
+  "survey.image.alt": "صف الصورة (لقارئات الشاشة)",
+  "survey.image.alt_required": "صف كل صورة تضيفها (حقل الوصف أسفلها) ليفهمها الجميع.",
+  "survey.image.too_large": "حجم هذه الصورة أكبر من 2 ميغابايت. اختر صورة أصغر.",
+  "survey.image.bad_type": "الصور المقبولة هي PNG وJPEG وWebP فقط.",
+  "survey.image.upload_failed": "تعذّر رفع الصورة.",
+  "survey.image.uploading": "جارٍ الرفع…",
+  "survey.image.header": "صورة في أعلى الاستبيان",
+  "survey.image.section": "صورة لهذا القسم",
+  "survey.image.question": "صورة لهذا السؤال",
+  "survey.config_rules.bad_image": "{{detail}}"
 }

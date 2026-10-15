@@ -267,5 +267,18 @@
   "survey.take.not_open_yet": "This survey is not open yet.",
   "survey.take.not_open_yet_on": "This survey opens on {{date}}.",
   "survey.take.full": "This survey has reached its maximum number of responses.",
-  "survey.take.progress": "Survey progress"
+  "survey.take.progress": "Survey progress",
+  "survey.image.add": "Add picture",
+  "survey.image.replace": "Replace picture",
+  "survey.image.remove": "Remove picture",
+  "survey.image.alt": "Describe the picture (for screen readers)",
+  "survey.image.alt_required": "Describe every picture you add (the description field under it) so everyone can understand it.",
+  "survey.image.too_large": "This picture is larger than 2 MB. Choose a smaller one.",
+  "survey.image.bad_type": "Only PNG, JPEG or WebP pictures are accepted.",
+  "survey.image.upload_failed": "The picture could not be uploaded.",
+  "survey.image.uploading": "Uploading…",
+  "survey.image.header": "Picture at the top of the survey",
+  "survey.image.section": "Picture for this section",
+  "survey.image.question": "Picture for this question",
+  "survey.config_rules.bad_image": "{{detail}}"
 }

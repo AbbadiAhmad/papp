@@ -482,10 +482,25 @@ model SurveySurvey {
   sections    SurveySection[]
   logicRules  SurveyLogicRule[]
   responses   SurveyResponse[]
+  media       SurveyMedia[]
 
   @@index([ownerUserId])
   @@index([status])
   @@map("survey_surveys")
+}
+
+model SurveyMedia {
+  id        String   @id @default(uuid()) @db.Uuid
+  surveyId  String   @map("survey_id") @db.Uuid
+  mime      String
+  sizeBytes Int      @map("size_bytes")
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  survey SurveySurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId])
+  @@map("survey_media")
 }
 
 model SurveySection {
@@ -496,6 +511,8 @@ model SurveySection {
   description String?
   /// Where the respondent goes after this section — see migration 004.
   navigation  Json    @default("{}")
+  /// { mediaId, alt } or null — see migration 006.
+  image       Json?
 
   survey    SurveySurvey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   questions SurveyQuestion[]

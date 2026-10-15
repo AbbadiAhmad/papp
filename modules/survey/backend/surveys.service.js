@@ -5,13 +5,19 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 var SurveysService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveysService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
+const media_service_1 = require("./media.service");
+const media_rules_1 = require("./media-rules");
 const question_rules_1 = require("./question-rules");
+const question_rules_2 = require("./question-rules");
 const survey_settings_1 = require("./survey-settings");
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
@@ -31,9 +37,18 @@ function navigationOf(section) {
             : {}),
     };
 }
+/** The section picture as stored (`null` = none); shape was already checked by validateStructure. */
+function imageOf(section) {
+    const parsed = (0, question_rules_1.parseImageRef)(section.image);
+    return 'ref' in parsed && parsed.ref ? parsed.ref : client_1.Prisma.DbNull;
+}
 let SurveysService = SurveysService_1 = class SurveysService {
+    media;
     logger = new common_1.Logger(SurveysService_1.name);
     prisma = new client_1.PrismaClient();
+    constructor(media) {
+        this.media = media;
+    }
     async onModuleInit() {
         await this.prisma.$connect();
         this.logger.log('survey Prisma client connected');
@@ -87,14 +102,23 @@ let SurveysService = SurveysService_1 = class SurveysService {
             throw new common_1.BadRequestException(problem);
         // Survey-level options live in one JSONB column; merge the incoming keys into what is stored.
         let settings;
-        if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined) {
+        let headerImage = (0, survey_settings_1.normalizeSettings)(current.settings).headerImage;
+        if (dto.headerImage !== undefined) {
+            const parsed = (0, question_rules_1.parseImageRef)(dto.headerImage);
+            if ('error' in parsed)
+                throw new common_1.BadRequestException(parsed.error);
+            await this.media.assertOwned(id, parsed.ref ? [parsed.ref.mediaId] : []);
+            headerImage = parsed.ref ?? undefined;
+        }
+        if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined) {
             settings = (0, survey_settings_1.normalizeSettings)({
                 ...(0, survey_settings_1.normalizeSettings)(current.settings),
                 ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
                 ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+                headerImage: headerImage,
             });
         }
-        return this.prisma.surveySurvey.update({
+        const updated = await this.prisma.surveySurvey.update({
             where: { id },
             data: {
                 title: dto.title,
@@ -111,10 +135,15 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
             },
         });
+        if (dto.headerImage !== undefined)
+            await this.media.collectGarbage(id);
+        return updated;
     }
     async remove(id) {
         await this.getSurveyOrThrow(id);
+        const pictures = await this.media.listFor(id);
         await this.prisma.surveySurvey.delete({ where: { id } });
+        await this.media.removeFiles(pictures);
     }
     async publish(id) {
         const survey = await this.getSurveyOrThrow(id, {
@@ -175,7 +204,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
     async replaceStructure(surveyId, dto) {
         await this.getSurveyOrThrow(surveyId);
         this.validateStructure(dto);
-        return this.prisma.$transaction(async (tx) => {
+        await this.media.assertOwned(surveyId, (0, media_rules_1.collectMediaIds)({ sections: dto.sections }));
+        const saved = await this.prisma.$transaction(async (tx) => {
             const keepSectionIds = dto.sections.map((s) => s.id);
             const keepQuestionIds = dto.sections.flatMap((s) => s.questions.map((q) => q.id));
             const keepOptionIds = dto.sections.flatMap((s) => s.questions.flatMap((q) => (q.options ?? []).map((o) => o.id)));
@@ -203,8 +233,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
             for (const section of dto.sections) {
                 await tx.surveySection.upsert({
                     where: { id: section.id },
-                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
-                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
+                    create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section), image: imageOf(section) },
+                    update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section), image: imageOf(section) },
                 });
                 for (const question of section.questions) {
                     await tx.surveyQuestion.upsert({
@@ -263,6 +293,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 },
             });
         });
+        await this.media.collectGarbage(surveyId);
+        return saved;
     }
     // --- internals -------------------------------------------------------
     async getSurveyOrThrow(id, include) {
@@ -287,6 +319,9 @@ let SurveysService = SurveysService_1 = class SurveysService {
         const sectionIds = new Set(dto.sections.map((s) => s.id));
         const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id])));
         for (const section of dto.sections) {
+            const sectionImage = (0, question_rules_1.parseImageRef)(section.image);
+            if ('error' in sectionImage)
+                throw new common_1.BadRequestException(`Section "${section.title}": ${sectionImage.error}`);
             for (const question of section.questions) {
                 if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
                     throw new common_1.BadRequestException(`Question "${question.title}" (${question.type}) needs at least one option`);
@@ -294,10 +329,10 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 // Option values must be unique and not collide with the reserved "Other" encoding; the
                 // question's settings (validation, selection limits, "Other", scale...) must fit its type.
                 const optionValues = (question.options ?? []).map((o) => o.value);
-                const problem = (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) ? (0, question_rules_1.validateOptionValues)(optionValues) : null) ??
-                    (0, question_rules_1.validateQuestionConfig)(question.type, question.config, optionValues);
+                const problem = (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) ? (0, question_rules_2.validateOptionValues)(optionValues) : null) ??
+                    (0, question_rules_2.validateQuestionConfig)(question.type, question.config, optionValues);
                 if (problem) {
-                    throw new common_1.BadRequestException(`Question "${question.title}": ${(0, question_rules_1.describeProblem)(problem)}`);
+                    throw new common_1.BadRequestException(`Question "${question.title}": ${(0, question_rules_2.describeProblem)(problem)}`);
                 }
             }
         }
@@ -361,5 +396,6 @@ let SurveysService = SurveysService_1 = class SurveysService {
 };
 exports.SurveysService = SurveysService;
 exports.SurveysService = SurveysService = SurveysService_1 = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [media_service_1.SurveyMediaService])
 ], SurveysService);

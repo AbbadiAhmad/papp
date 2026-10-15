@@ -16,7 +16,8 @@ survey_surveys(id, title, description, status(draft|published|closed),
   one_response_per_respondent, notify_owner_on_submit, notify_emails jsonb, closed_message text (migration 002), archived_at timestamptz (migration 003),
   opens_at, closes_at (editable and ENFORCED since 1.3.0), response_limit int NULL (migration 005), settings jsonb (migration 005: thankYouMessage, showProgressBar),
   created_at, updated_at)
-survey_sections(id, survey_id, order_index, title, description)
+survey_sections(id, survey_id, order_index, title, description, navigation jsonb (004), image jsonb NULL (006: {mediaId, alt}))
+survey_media(id, survey_id, mime, size_bytes, created_by, created_at)   -- migration 006; the file bytes are on disk, see Pictures below
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
                              --       multi_choice|dropdown|linear_scale|
@@ -85,6 +86,14 @@ Frontend (`basePath: /survey`):
 - `frontend/pages/TakeSurveyPage.tsx` — the respondent UI: live visibility via `logic-engine.ts`, `localStorage` draft + submitted-answer/edit-token persistence, the `requiresLogin` upfront gate.
 - `frontend/pages/SurveyReportPage.tsx` — per-question `recharts` charts + the bespoke rows/columns/aggregation pivot table (not a pivot-table library).
 
+## Pictures (1.4.0)
+
+- A picture can be set on the survey (top), on each section and on each question; every picture needs a description (alt text). Upload is `POST /api/survey/surveys/:id/media` (`survey.surveys.update`); respondents load them from the public `GET /api/survey/media/:mediaId`.
+- **Files are stored on disk, not in the database**: directory `SURVEY_MEDIA_DIR` (docker-compose mounts the named volume `papp_survey_media` at `/data/survey-media`; without the variable the api uses `<working dir>/data/survey-media`). **Back this volume up together with the database** — the core backup does not include it, and restoring a database without it leaves broken pictures. Uninstalling the module with "drop data" removes the tables but leaves the files.
+- Limits: PNG/JPEG/WebP only (checked from the file's bytes), 2 MB, 100 per survey. Pictures no survey part references are deleted on the next save (after one hour of grace); deleting a survey deletes its files.
+- Export includes the pictures (`media/` in the zip); import and duplicate copy them into the new survey.
+- Behind a reverse proxy, allow request bodies of at least 3 MB on `/api/survey/` (the bundled nginx allows 55 MB).
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.
@@ -106,6 +115,7 @@ Frontend (`basePath: /survey`):
 - `test/frontend/builder.test.tsx` (duplicate/move/unsaved/preview/share on the real builder page), `share-panel.test.tsx`, `unsaved-guard.test.tsx`, `preview-survey.test.ts`.
 - `test/backend/survey-settings.spec.ts` (settings, validation, availability boundaries), `test/frontend/take-survey-states.test.tsx` (not-open / ended / full states, thank-you text, progress bar), `schedule.test.ts`.
 - `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, schedule + response cap (including a concurrent-submission race) + settings + duplicate/export/import round trip, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
+- `test/backend/media-rules.spec.ts` (type detection, reference parsing), `test/frontend/images.test.tsx` (upload/describe/remove, respondent rendering); the e2e suite's "images (phase D)" block covers upload/serve headers, rejected files, permissions, ownership, clean-up, duplicate and export/import with pictures.
 - Browser smoke: `apps/web/tests/e2e/survey.spec.ts`.
 
 ## How to extend

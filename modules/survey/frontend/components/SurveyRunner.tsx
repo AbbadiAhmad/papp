@@ -1,5 +1,6 @@
 import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { useMemo, useState } from 'react';
+import { mediaUrl, type SurveyImage } from '../api';
 import { useTranslation } from 'react-i18next';
 // Raw .ts imports with explicit extensions: see TakeSurveyPage's history (SURVEY-D8) — the backend's compiled `.js`
 // siblings live next to these files and Vite would otherwise resolve to them.
@@ -225,6 +226,12 @@ export interface SurveyRunnerProps {
   submitError?: string | null;
 }
 
+/** A picture from the survey. Lazy-loaded, with the author's description as its alt text. */
+function Picture({ image }: { image: SurveyImage | null | undefined }) {
+  if (!image) return null;
+  return <Box component="img" src={mediaUrl(image.mediaId)} alt={image.alt} loading="lazy" sx={{ display: 'block', maxWidth: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 1, my: 1 }} />;
+}
+
 /**
  * The respondent experience for one survey: title, one page (section) at a time with Next/Back and "go to"
  * routing, live conditional logic, required/format checks next to the field, selection hints. Used by the real
@@ -341,6 +348,7 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
   return (
     <Stack spacing={3}>
       <Box>
+        <Picture image={survey.headerImage} />
         <Typography variant="h5">{survey.title}</Typography>
         {survey.description ? (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -367,6 +375,17 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
                 {t('survey.take.page_of', { current: pageNumber, total: Math.max(visibility.pathSectionIds.length, pageNumber) })}
               </Typography>
               <Typography variant="h6">{currentSection.title}</Typography>
+              <Picture image={currentSection.image} />
+              {currentSection.description ? (
+                <Typography variant="body2" color="text.secondary">
+                  {currentSection.description}
+                </Typography>
+              ) : null}
+            </Box>
+          ) : currentSection.image || currentSection.description ? (
+            // A single-section survey has no page heading, but a picture or text the owner added still shows.
+            <Box>
+              <Picture image={currentSection.image} />
               {currentSection.description ? (
                 <Typography variant="body2" color="text.secondary">
                   {currentSection.description}
@@ -387,6 +406,7 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
                     {question.description}
                   </Typography>
                 ) : null}
+                <Picture image={question.config?.image as SurveyImage | undefined} />
                 <Box sx={{ mt: 1 }}>
                   <QuestionInput
                     question={question}

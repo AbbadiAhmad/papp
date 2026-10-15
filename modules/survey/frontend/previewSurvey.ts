@@ -1,4 +1,4 @@
-import type { FillableSurvey, SurveyLogicRuleDto, SurveySectionDto } from './api';
+import type { FillableSurvey, SurveyImage, SurveyLogicRuleDto, SurveySectionDto } from './api';
 
 /**
  * Turns the builder's in-memory (possibly unsaved) structure into the exact
@@ -6,7 +6,7 @@ import type { FillableSurvey, SurveyLogicRuleDto, SurveySectionDto } from './api
  * real `SurveyRunner` on it. Pure and side-effect free.
  */
 export function toFillableSurvey(
-  survey: { id: string; title: string; description?: string | null; allowEditAfterSubmit?: boolean; requiresLogin?: boolean },
+  survey: { id: string; title: string; description?: string | null; allowEditAfterSubmit?: boolean; requiresLogin?: boolean; settings?: { headerImage?: SurveyImage } },
   sections: SurveySectionDto[],
   logicRules: SurveyLogicRuleDto[],
 ): FillableSurvey {
@@ -16,11 +16,13 @@ export function toFillableSurvey(
     description: survey.description?.trim() ? survey.description : null,
     allowEditAfterSubmit: Boolean(survey.allowEditAfterSubmit),
     requiresLogin: Boolean(survey.requiresLogin),
+    headerImage: survey.settings?.headerImage ?? null,
     sections: sections.map((section) => ({
       id: section.id,
       title: section.title,
       description: section.description?.trim() ? section.description : null,
       navigation: section.navigation ?? {},
+      image: section.image ?? null,
       questions: section.questions.map((question) => ({
         id: question.id,
         type: question.type,

@@ -205,6 +205,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             // and whether the response cap is reached (so the page can say so up front instead of at Submit).
             thankYouMessage: (0, survey_settings_1.normalizeSettings)(survey.settings).thankYouMessage ?? null,
             showProgressBar: (0, survey_settings_1.normalizeSettings)(survey.settings).showProgressBar === true,
+            headerImage: (0, survey_settings_1.normalizeSettings)(survey.settings).headerImage ?? null,
             isFull: (0, survey_settings_1.computeAvailability)(survey, survey._count.responses) === 'full',
             closedMessage: survey.closedMessage ?? null,
             sections: survey.sections.map((s) => ({
@@ -212,6 +213,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
                 title: s.title,
                 description: s.description,
                 navigation: (s.navigation ?? {}),
+                image: s.image ?? null,
                 questions: s.questions.map((q) => ({
                     id: q.id,
                     type: q.type,

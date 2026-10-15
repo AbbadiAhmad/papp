@@ -10,6 +10,7 @@ exports.MAX_RESPONSE_LIMIT = exports.MAX_THANK_YOU_LENGTH = void 0;
 exports.normalizeSettings = normalizeSettings;
 exports.validateSurveyOptions = validateSurveyOptions;
 exports.computeAvailability = computeAvailability;
+const question_rules_1 = require("./question-rules");
 exports.MAX_THANK_YOU_LENGTH = 4000;
 exports.MAX_RESPONSE_LIMIT = 1_000_000;
 /** Returns a clean settings object (known keys only, trimmed, empty values removed). Never throws. */
@@ -21,6 +22,9 @@ function normalizeSettings(input) {
     }
     if (raw.showProgressBar === true)
         result.showProgressBar = true;
+    const image = (0, question_rules_1.parseImageRef)(raw.headerImage);
+    if ('ref' in image && image.ref)
+        result.headerImage = image.ref;
     return result;
 }
 /** English text of the first problem with an incoming settings/schedule change, or null. */

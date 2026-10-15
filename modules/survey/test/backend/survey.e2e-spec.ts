@@ -2,10 +2,12 @@ import { DynamicModule, ForwardReference, INestApplication, Module, Type } from 
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
+import JSZip from 'jszip';
 import request from 'supertest';
 import { AppModule } from '../../../../apps/api/src/app.module';
 import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
@@ -113,7 +115,10 @@ describe('survey module (e2e, real install + real HTTP)', () => {
   const http = () => app!.getHttpServer();
   const admin = () => ({ Authorization: `Bearer ${adminToken}` });
 
+  const mediaDir = mkdtempSync(join(tmpdir(), 'survey-media-'));
+
   beforeAll(async () => {
+    process.env.SURVEY_MEDIA_DIR = mediaDir;
     container = await startPostgresTestContainer();
     app = await createAppWithSurveyInstalled();
     await Promise.all(ALL_ROLE_CODES.map((role) => fixtureForRole(app!, role)));
@@ -127,6 +132,7 @@ describe('survey module (e2e, real install + real HTTP)', () => {
   afterAll(async () => {
     await app?.close();
     await stopPostgresTestContainer(container);
+    rmSync(mediaDir, { recursive: true, force: true });
   });
 
   describe('permission matrix', () => {
@@ -371,6 +377,205 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect(imported.status).toBe(201);
       const importedDetail = await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin());
       expect(importedDetail.body).toMatchObject({ responseLimit: 7, settings: { thankYouMessage: 'Cheers', showProgressBar: true } });
+    });
+  });
+
+  describe('images (phase D)', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8]);
+    let n = 0;
+    const files = () => readdirSync(mediaDir);
+    const newSurvey = async () => {
+      const res = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Images ${++n}` });
+      return res.body.id as string;
+    };
+    const upload = (id: string, bytes: Buffer = PNG, name = 'pic.png', type = 'image/png', headers: Record<string, string> = admin()) =>
+      request(http()).post(`/api/survey/surveys/${id}/media`).set(headers).attach('file', bytes, { filename: name, contentType: type });
+    const save = (id: string, section: Record<string, unknown>, question: Record<string, unknown> = {}) =>
+      request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({
+          sections: [
+            {
+              id: uuid(700 + n * 2),
+              orderIndex: 0,
+              title: 'S',
+              ...section,
+              questions: [{ id: uuid(701 + n * 2), orderIndex: 0, type: 'short_text', title: 'Q', ...question }],
+            },
+          ],
+          logicRules: [],
+        });
+
+    it('stores a picture on disk and serves it publicly with safe headers', async () => {
+      const id = await newSurvey();
+      const up = await upload(id);
+      expect(up.status).toBe(201);
+      expect(up.body).toMatchObject({ mime: 'image/png', sizeBytes: PNG.length });
+      expect(files()).toContain(`${up.body.mediaId}.png`);
+
+      const res = await request(http()).get(`/api/survey/media/${up.body.mediaId}`); // no Authorization header
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/png');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      expect(res.headers['cache-control']).toContain('immutable');
+      expect(Buffer.compare(res.body as Buffer, PNG)).toBe(0);
+    });
+
+    it('rejects SVG, disguised files, GIF, empty and oversize uploads', async () => {
+      const id = await newSurvey();
+      const before = files().length;
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+      expect((await upload(id, svg, 'x.svg', 'image/svg+xml')).status).toBe(400);
+      expect((await upload(id, svg, 'x.png', 'image/png')).status).toBe(400); // lying about the type
+      expect((await upload(id, Buffer.from('<html></html>'), 'x.png')).status).toBe(400);
+      expect((await upload(id, Buffer.from('GIF89a......'), 'x.gif', 'image/gif')).status).toBe(400);
+      const big = Buffer.concat([PNG, Buffer.alloc(2 * 1024 * 1024)]);
+      expect((await upload(id, big)).status).toBe(413); // multer's own size limit
+      expect((await request(http()).post(`/api/survey/surveys/${id}/media`).set(admin())).status).toBe(400);
+      expect(files()).toHaveLength(before);
+    });
+
+    it('needs the survey-edit permission: anonymous 401, other roles 403, unknown survey 404', async () => {
+      const id = await newSurvey();
+      expect((await upload(id, PNG, 'p.png', 'image/png', {})).status).toBe(401);
+      for (const role of ['reader', 'finance'] as const) {
+        const token = (await fixtureForRole(app!, role)).token;
+        expect((await upload(id, PNG, 'p.png', 'image/png', { Authorization: `Bearer ${token}` })).status).toBe(403);
+      }
+      expect((await upload(uuid(999999))).status).toBe(404);
+      expect((await request(http()).get(`/api/survey/media/${uuid(999998)}`)).status).toBe(404);
+      expect((await request(http()).get('/api/survey/media/not-a-uuid')).status).toBe(400);
+    });
+
+    it('is audited without the picture bytes', async () => {
+      const id = await newSurvey();
+      const up = await upload(id);
+      const logs = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE action = 'upload_image' AND entity_type = 'SurveyMedia'`);
+      expect(Number(logs[0].n)).toBeGreaterThan(0);
+      const leak = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE new_value::text LIKE '%PNG%'`);
+      expect(Number(leak[0].n)).toBe(0);
+      expect(up.status).toBe(201);
+    });
+
+    it('a save may only use pictures of its own survey, with a description', async () => {
+      const a = await newSurvey();
+      const b = await newSurvey();
+      const mine = (await upload(a)).body.mediaId as string;
+      const theirs = (await upload(b)).body.mediaId as string;
+
+      expect((await save(a, { image: { mediaId: theirs, alt: 'x' } })).status).toBe(400); // another survey's picture
+      expect((await save(a, { image: { mediaId: uuid(555555), alt: 'x' } })).status).toBe(400); // never uploaded
+      expect((await save(a, { image: { mediaId: mine, alt: '' } })).status).toBe(400); // no description
+      expect((await save(a, {}, { config: { image: { mediaId: mine, alt: '' } } })).status).toBe(400);
+      expect((await save(a, { image: { mediaId: '../../etc/passwd', alt: 'x' } })).status).toBe(400);
+      expect((await request(http()).patch(`/api/survey/surveys/${a}`).set(admin()).send({ headerImage: { mediaId: theirs, alt: 'x' } })).status).toBe(400);
+
+      expect((await save(a, { image: { mediaId: mine, alt: 'A shelf' } })).status).toBe(200);
+    });
+
+    it('header, section and question pictures reach the respondent', async () => {
+      const id = await newSurvey();
+      const [h, s, q] = [(await upload(id)).body.mediaId, (await upload(id)).body.mediaId, (await upload(id)).body.mediaId] as string[];
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: { mediaId: h, alt: 'Logo' } })).status).toBe(200);
+      expect((await save(id, { image: { mediaId: s, alt: 'Reading room' } }, { config: { image: { mediaId: q, alt: 'Cover' } } })).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin())).status);
+
+      const pub = await request(http()).get(`/api/survey/public/${id}`);
+      expect(pub.status).toBe(200);
+      expect(pub.body.survey.headerImage).toEqual({ mediaId: h, alt: 'Logo' });
+      expect(pub.body.survey.sections[0].image).toEqual({ mediaId: s, alt: 'Reading room' });
+      expect(pub.body.survey.sections[0].questions[0].config.image).toEqual({ mediaId: q, alt: 'Cover' });
+
+      // removing the header picture clears the reference
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: null })).status).toBe(200);
+      const after = await request(http()).get(`/api/survey/public/${id}`);
+      expect(after.body.survey.headerImage).toBeNull();
+    });
+
+    it('cleans up pictures nothing uses any more, but keeps new uploads and used ones', async () => {
+      const id = await newSurvey();
+      const used = (await upload(id)).body.mediaId as string;
+      const stale = (await upload(id)).body.mediaId as string;
+      const fresh = (await upload(id)).body.mediaId as string;
+      const prisma = app!.get(PrismaService);
+      await prisma.$executeRawUnsafe(`UPDATE survey_media SET created_at = now() - interval '3 hours' WHERE id IN ('${used}','${stale}')`);
+
+      expect((await save(id, { image: { mediaId: used, alt: 'Kept' } })).status).toBe(200);
+      expect(files()).toContain(`${used}.png`);
+      expect(files()).toContain(`${fresh}.png`); // uploaded a moment ago: the owner may not have clicked Save yet
+      expect(files()).not.toContain(`${stale}.png`);
+      expect((await request(http()).get(`/api/survey/media/${stale}`)).status).toBe(404);
+    });
+
+    it('deleting a survey deletes its picture files', async () => {
+      const id = await newSurvey();
+      const a = (await upload(id)).body.mediaId as string;
+      expect(files()).toContain(`${a}.png`);
+      expect((await request(http()).delete(`/api/survey/surveys/${id}`).set(admin())).status).toBeLessThan(300);
+      expect(files()).not.toContain(`${a}.png`);
+      expect((await request(http()).get(`/api/survey/media/${a}`)).status).toBe(404);
+    });
+
+    it('duplicate copies the pictures; export/import carries them in the zip', async () => {
+      const id = await newSurvey();
+      const [h, s, q] = [(await upload(id)).body.mediaId, (await upload(id)).body.mediaId, (await upload(id)).body.mediaId] as string[];
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: { mediaId: h, alt: 'Logo' } });
+      await save(id, { image: { mediaId: s, alt: 'Room' } }, { config: { image: { mediaId: q, alt: 'Cover' } } });
+
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      const copied = [detail.settings.headerImage.mediaId, detail.sections[0].image.mediaId, detail.sections[0].questions[0].config.image.mediaId] as string[];
+      expect(copied).not.toContain(h);
+      expect(copied).not.toContain(s);
+      expect(copied).not.toContain(q);
+      for (const mediaId of copied) expect((await request(http()).get(`/api/survey/media/${mediaId}`)).status).toBe(200);
+      expect(detail.settings.headerImage.alt).toBe('Logo');
+
+      const zipRes = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const zip = await JSZip.loadAsync(zipRes.body as Buffer);
+      expect(Object.keys(zip.files).filter((f) => f.startsWith('media/') && f.endsWith('.png'))).toHaveLength(3);
+
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', zipRes.body as Buffer, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const importedDetail = (await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin())).body;
+      const importedId = importedDetail.sections[0].image.mediaId as string;
+      expect(importedId).not.toBe(s);
+      const served = await request(http()).get(`/api/survey/media/${importedId}`);
+      expect(served.status).toBe(200);
+      expect(Buffer.compare(served.body as Buffer, PNG)).toBe(0);
+    });
+
+    it('an imported file that references a picture it does not contain simply loses that reference', async () => {
+      const id = await newSurvey();
+      const s = (await upload(id)).body.mediaId as string;
+      await save(id, { image: { mediaId: s, alt: 'Room' } });
+      const zipRes = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const zip = await JSZip.loadAsync(zipRes.body as Buffer);
+      for (const f of Object.keys(zip.files).filter((x) => x.startsWith('media/'))) zip.remove(f);
+      const stripped = await zip.generateAsync({ type: 'nodebuffer' });
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', stripped, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin())).body;
+      expect(detail.sections[0].image).toBeNull();
     });
   });
 });
