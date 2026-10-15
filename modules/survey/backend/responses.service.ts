@@ -16,6 +16,7 @@ import { NotificationEmailService } from '../../../apps/api/dist/core/notificati
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
 import { resolveVisibility, SectionNavigation, SurveyLogicRuleLike } from './logic-engine';
+import { describeProblem, formatAnswerForDisplay, isEmptyAnswer, validateAnswer, type QuestionTypeName } from './question-rules';
 
 type SurveyWithStructure = SurveySurvey & {
   sections: Array<{
@@ -281,7 +282,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q] as const))) {
       if (!visibleQuestionIds.has(question.id)) continue; // never visible -> never counted, regardless of what was sent
       const value = answerByQuestionId.get(question.id);
-      if (value === undefined || value === null || value === '') {
+      if (isEmptyAnswer(value)) {
         if (question.required) {
           throw new BadRequestException(`Question "${question.title}" is required`);
         }
@@ -294,38 +295,16 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
+  /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
   private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown): void {
-    switch (question.type) {
-      case 'single_choice':
-      case 'dropdown': {
-        const valid = new Set(question.options.map((o) => o.value));
-        if (typeof value !== 'string' || !valid.has(value)) {
-          throw new BadRequestException(`Invalid option for question "${question.title}"`);
-        }
-        return;
-      }
-      case 'multi_choice': {
-        const valid = new Set(question.options.map((o) => o.value));
-        if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || !valid.has(v))) {
-          throw new BadRequestException(`Invalid option(s) for question "${question.title}"`);
-        }
-        return;
-      }
-      case 'linear_scale':
-      case 'rating': {
-        if (typeof value !== 'number' || !Number.isFinite(value)) {
-          throw new BadRequestException(`Question "${question.title}" expects a number`);
-        }
-        return;
-      }
-      case 'short_text':
-      case 'paragraph':
-      case 'date':
-      case 'time':
-        if (typeof value !== 'string') {
-          throw new BadRequestException(`Question "${question.title}" expects text`);
-        }
-        return;
+    const problem = validateAnswer(
+      question.type as QuestionTypeName,
+      question.config,
+      question.options.map((o) => o.value),
+      value,
+    );
+    if (problem) {
+      throw new BadRequestException(`Question "${question.title}": ${describeProblem(problem)}`);
     }
   }
 
@@ -462,7 +441,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     answers: Array<{ question: SurveyQuestion; value: unknown }>,
     respondentLabel: string,
   ): { markdown: string; html: string; text: string } {
-    const formatValue = (value: unknown): string => (Array.isArray(value) ? value.join(', ') : String(value));
+    const formatValue = (value: unknown): string => formatAnswerForDisplay(value);
     const rows = answers.map((a) => ({ title: a.question.title, value: formatValue(a.value) }));
 
     const markdown = [

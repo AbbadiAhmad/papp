@@ -11,6 +11,7 @@ exports.SurveysService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
+const question_rules_1 = require("./question-rules");
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
  * books.service.ts's own docblock in modules/library_catalog for the full
@@ -265,6 +266,14 @@ let SurveysService = SurveysService_1 = class SurveysService {
             for (const question of section.questions) {
                 if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
                     throw new common_1.BadRequestException(`Question "${question.title}" (${question.type}) needs at least one option`);
+                }
+                // Option values must be unique and not collide with the reserved "Other" encoding; the
+                // question's settings (validation, selection limits, "Other", scale...) must fit its type.
+                const optionValues = (question.options ?? []).map((o) => o.value);
+                const problem = (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) ? (0, question_rules_1.validateOptionValues)(optionValues) : null) ??
+                    (0, question_rules_1.validateQuestionConfig)(question.type, question.config, optionValues);
+                if (problem) {
+                    throw new common_1.BadRequestException(`Question "${question.title}": ${(0, question_rules_1.describeProblem)(problem)}`);
                 }
             }
         }

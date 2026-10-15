@@ -172,6 +172,8 @@ export interface QuestionSummary {
   type: SurveyQuestionType;
   totalAnswered: number;
   optionCounts?: Array<{ value: string; label: string; count: number }>;
+  /** Texts typed into an "Other" choice (capped). */
+  otherAnswers?: string[];
   numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }> };
   sampleAnswers?: string[];
 }

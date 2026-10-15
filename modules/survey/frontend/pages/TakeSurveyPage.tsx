@@ -36,6 +36,18 @@ import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../..
 // D78 — `npm run build`'s Rollup-based resolution didn't surface it, only
 // `vite`'s dev-server did).
 import { resolveNextSectionId, resolveVisibility, type EnumerationAnswerValue } from '../../backend/logic-engine.ts';
+import {
+  encodeOther,
+  isEmptyAnswer,
+  isOtherAnswer,
+  otherText,
+  OTHER_OPTION_VALUE,
+  MAX_OTHER_LENGTH,
+  scaleBounds,
+  validateAnswer,
+  type QuestionTypeName,
+  type RuleProblem,
+} from '../../backend/question-rules.ts';
 import { surveyApi, type AnswerInput, type FillableQuestion, type FillableSurvey } from '../api';
 
 // 'not_found' also covers "exists but not published" — the backend never
@@ -78,65 +90,187 @@ function removeKey(key: string): void {
   }
 }
 
-function QuestionInput({ question, value, onChange }: { question: FillableQuestion; value: unknown; onChange: (value: unknown) => void }) {
+type ConfigObject = Record<string, unknown>;
+
+function configOf(question: FillableQuestion): ConfigObject {
+  return (question.config ?? {}) as ConfigObject;
+}
+
+/** The selection-limit hint shown under a multiple-choice question ("Choose 2 to 3."), or null when there is no limit. */
+function selectionHint(config: ConfigObject, t: (key: string, params?: Record<string, unknown>) => string): string | null {
+  const min = typeof config.minSelections === 'number' && config.minSelections > 0 ? config.minSelections : null;
+  const max = typeof config.maxSelections === 'number' && config.maxSelections > 0 ? config.maxSelections : null;
+  if (min !== null && max !== null) return min === max ? t('survey.take.select_exactly', { count: min }) : t('survey.take.select_between', { min, max });
+  if (min !== null) return t('survey.take.select_at_least', { min });
+  if (max !== null) return t('survey.take.select_at_most', { max });
+  return null;
+}
+
+function QuestionInput({
+  question,
+  value,
+  onChange,
+  onBlur,
+  error,
+}: {
+  question: FillableQuestion;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  onBlur: () => void;
+  error: string | null;
+}) {
   const { t } = useTranslation();
+  const config = configOf(question);
+  const allowOther = config.allowOther === true;
+  const otherLabel = typeof config.otherLabel === 'string' && config.otherLabel.trim() ? config.otherLabel.trim() : t('survey.take.other_default_label');
+  const placeholder = typeof config.placeholder === 'string' ? config.placeholder : undefined;
+  const validation = typeof config.validation === 'object' && config.validation !== null ? (config.validation as ConfigObject) : null;
+  const maxLength = validation && typeof validation.maxLength === 'number' ? validation.maxLength : undefined;
+  const textValue = typeof value === 'string' ? value : '';
+  const kind = validation?.kind;
+  const inputMode = kind === 'number' ? 'decimal' : kind === 'email' ? 'email' : kind === 'url' ? 'url' : undefined;
+
+  const otherInput = (current: string, onText: (text: string) => void) => (
+    <TextField
+      size="small"
+      fullWidth
+      sx={{ mt: 0.5 }}
+      value={current}
+      placeholder={t('survey.take.other_placeholder')}
+      onChange={(e) => onText(e.target.value)}
+      onBlur={onBlur}
+      error={Boolean(error)}
+      slotProps={{ htmlInput: { maxLength: MAX_OTHER_LENGTH, 'aria-label': otherLabel } }}
+    />
+  );
 
   switch (question.type) {
     case 'short_text':
-      return <TextField fullWidth value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />;
     case 'paragraph':
-      return <TextField fullWidth multiline minRows={3} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />;
+      return (
+        <TextField
+          fullWidth
+          multiline={question.type === 'paragraph'}
+          minRows={question.type === 'paragraph' ? 3 : undefined}
+          value={textValue}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          error={Boolean(error)}
+          helperText={maxLength ? `${textValue.length}/${maxLength}` : undefined}
+          slotProps={{ htmlInput: { maxLength, inputMode, 'aria-label': question.title } }}
+        />
+      );
     case 'date':
       return (
-        <TextField type="date" slotProps={{ inputLabel: { shrink: true } }} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+        <TextField type="date" slotProps={{ inputLabel: { shrink: true }, htmlInput: { 'aria-label': question.title } }} value={textValue} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} error={Boolean(error)} />
       );
     case 'time':
       return (
-        <TextField type="time" slotProps={{ inputLabel: { shrink: true } }} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)} />
+        <TextField type="time" slotProps={{ inputLabel: { shrink: true }, htmlInput: { 'aria-label': question.title } }} value={textValue} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} error={Boolean(error)} />
       );
-    case 'single_choice':
+    case 'single_choice': {
+      const otherSelected = isOtherAnswer(value);
       return (
-        <RadioGroup value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
-          {question.options.map((option) => (
-            <FormControlLabel key={option.value} value={option.value} control={<Radio />} label={option.label} />
-          ))}
-        </RadioGroup>
+        <>
+          <RadioGroup
+            value={otherSelected ? OTHER_OPTION_VALUE : textValue}
+            onChange={(e) => onChange(e.target.value === OTHER_OPTION_VALUE ? encodeOther('') : e.target.value)}
+          >
+            {question.options.map((option) => (
+              <FormControlLabel key={option.value} value={option.value} control={<Radio />} label={option.label} />
+            ))}
+            {allowOther ? <FormControlLabel value={OTHER_OPTION_VALUE} control={<Radio />} label={otherLabel} /> : null}
+          </RadioGroup>
+          {otherSelected ? otherInput(otherText(value as string), (text) => onChange(encodeOther(text))) : null}
+        </>
       );
-    case 'dropdown':
+    }
+    case 'dropdown': {
+      const otherSelected = isOtherAnswer(value);
       return (
-        <TextField select fullWidth value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
-          {question.options.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
+        <>
+          <TextField
+            select
+            fullWidth
+            value={otherSelected ? OTHER_OPTION_VALUE : textValue}
+            onChange={(e) => onChange(e.target.value === OTHER_OPTION_VALUE ? encodeOther('') : e.target.value)}
+            onBlur={onBlur}
+            slotProps={{ htmlInput: { 'aria-label': question.title } }}
+          >
+            {question.options.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+            {allowOther ? <MenuItem value={OTHER_OPTION_VALUE}>{otherLabel}</MenuItem> : null}
+          </TextField>
+          {otherSelected ? otherInput(otherText(value as string), (text) => onChange(encodeOther(text))) : null}
+        </>
       );
+    }
     case 'multi_choice': {
       const selected = Array.isArray(value) ? (value as string[]) : [];
+      const otherEntry = selected.find(isOtherAnswer);
+      const exclusive = typeof config.exclusiveOptionValue === 'string' && config.exclusiveOptionValue ? config.exclusiveOptionValue : null;
+      const max = typeof config.maxSelections === 'number' && config.maxSelections > 0 ? config.maxSelections : null;
+      const hint = selectionHint(config, t);
+      // The exclusive choice stands alone: picking it clears the others, picking another clears it.
+      const toggle = (optionValue: string, checked: boolean) => {
+        if (!checked) return onChange(selected.filter((v) => v !== optionValue));
+        if (optionValue === exclusive) return onChange([optionValue]);
+        return onChange([...selected.filter((v) => v !== exclusive), optionValue]);
+      };
+      const countedSelections = selected.filter((v) => v !== exclusive).length;
+      const atMax = max !== null && countedSelections >= max;
       return (
-        <FormGroup>
-          {question.options.map((option) => (
-            <FormControlLabel
-              key={option.value}
-              control={
-                <Checkbox
-                  checked={selected.includes(option.value)}
-                  onChange={(e) =>
-                    onChange(e.target.checked ? [...selected, option.value] : selected.filter((v) => v !== option.value))
+        <>
+          {hint ? (
+            <Typography variant="caption" color={error ? 'error' : 'text.secondary'} sx={{ display: 'block' }} aria-live="polite">
+              {hint} {countedSelections > 0 ? `(${t('survey.take.selected_count', { count: selected.length })})` : ''}
+            </Typography>
+          ) : null}
+          <FormGroup>
+            {question.options.map((option) => {
+              const checked = selected.includes(option.value);
+              return (
+                <FormControlLabel
+                  key={option.value}
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      disabled={!checked && atMax && option.value !== exclusive}
+                      onChange={(e) => toggle(option.value, e.target.checked)}
+                    />
                   }
+                  label={option.label}
                 />
-              }
-              label={option.label}
-            />
-          ))}
-        </FormGroup>
+              );
+            })}
+            {allowOther ? (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={Boolean(otherEntry)}
+                    disabled={!otherEntry && atMax}
+                    onChange={(e) =>
+                      onChange(e.target.checked ? [...selected.filter((v) => v !== exclusive), encodeOther('')] : selected.filter((v) => !isOtherAnswer(v)))
+                    }
+                  />
+                }
+                label={otherLabel}
+              />
+            ) : null}
+          </FormGroup>
+          {otherEntry !== undefined
+            ? otherInput(otherText(otherEntry), (text) => onChange(selected.map((v) => (isOtherAnswer(v) ? encodeOther(text) : v))))
+            : null}
+        </>
       );
     }
     case 'linear_scale':
     case 'rating': {
-      const min = question.type === 'linear_scale' ? (Number(question.config?.min) || 1) : 1;
-      const max = Number(question.config?.max) || 5;
+      const { min, max } = scaleBounds(question.type as QuestionTypeName, config);
       const options = Array.from({ length: max - min + 1 }, (_, i) => min + i);
       return (
         <ToggleButtonGroup exclusive value={value ?? null} onChange={(_, next) => next !== null && onChange(next)}>
@@ -264,13 +398,13 @@ export function TakeSurveyPage() {
   // returns to exactly where they came from even after a "go to" jump.
   const [trail, setTrail] = useState<string[]>([]);
   const [missing, setMissing] = useState<Set<string>>(new Set());
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [attempted, setAttempted] = useState(false);
   const currentSectionId = trail[trail.length - 1] ?? visibility.pathSectionIds[0] ?? null;
   const currentSection = survey?.sections.find((s) => s.id === currentSectionId) ?? null;
   const nextSectionId =
     survey && currentSectionId ? resolveNextSectionId(survey.sections, survey.logicRules, enumerationAnswers, currentSectionId) : null;
   const pageNumber = Math.max(1, visibility.pathSectionIds.indexOf(currentSectionId ?? '') + 1);
-
-  const isEmptyAnswer = (value: unknown) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
 
   /** Required, currently visible questions of the open page that still have no answer. */
   const findMissingOnPage = (): Set<string> => {
@@ -281,13 +415,40 @@ export function TakeSurveyPage() {
     return result;
   };
 
+  /** Rule problems (format, length, selection limits, "Other"...) of the answered, visible questions on the open page. */
+  const problemsOnPage = useMemo(() => {
+    const result = new Map<string, RuleProblem>();
+    for (const question of currentSection?.questions ?? []) {
+      if (!visibility.visibleQuestionIds.has(question.id)) continue;
+      const value = answers[question.id];
+      if (isEmptyAnswer(value)) continue;
+      const problem = validateAnswer(question.type as QuestionTypeName, question.config, question.options.map((o) => o.value), value);
+      if (problem) result.set(question.id, problem);
+    }
+    return result;
+  }, [currentSection, visibility, answers]);
+
+  const problemText = (problem: RuleProblem): string => problem.message ?? t(`survey.rules.${problem.code}`, problem.params);
+  // While the respondent is still choosing, "choose at least N" / an empty "Other" text are hints, not errors.
+  const WAIT_UNTIL_ATTEMPT = ['too_few_selected', 'other_empty'];
+  const errorFor = (questionId: string): string | null => {
+    const problem = problemsOnPage.get(questionId);
+    if (!problem) return null;
+    if (attempted || (touched.has(questionId) && !WAIT_UNTIL_ATTEMPT.includes(problem.code))) return problemText(problem);
+    return null;
+  };
+  const markTouched = (questionId: string) => setTouched((prev) => (prev.has(questionId) ? prev : new Set(prev).add(questionId)));
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const handleNext = () => {
     if (!currentSectionId || !nextSectionId) return;
     const pending = findMissingOnPage();
     setMissing(pending);
-    if (pending.size > 0) return;
+    setAttempted(true);
+    if (pending.size > 0 || problemsOnPage.size > 0) return;
+    setAttempted(false);
+    setTouched(new Set());
     setTrail([...(trail.length ? trail : [currentSectionId]), nextSectionId]);
     scrollToTop();
   };
@@ -295,11 +456,14 @@ export function TakeSurveyPage() {
   const handleBack = () => {
     if (trail.length < 2) return;
     setMissing(new Set());
+    setAttempted(false);
     setTrail(trail.slice(0, -1));
     scrollToTop();
   };
 
-  const handleAnswerChange = (questionId: string, value: unknown) => {
+  const handleAnswerChange = (questionId: string, value: unknown, type?: string) => {
+    // Choice answers are deliberate clicks, so their errors may show at once; text waits for the field to lose focus.
+    if (type && type !== 'short_text' && type !== 'paragraph' && type !== 'date' && type !== 'time') markTouched(questionId);
     setAnswers((prev) => {
       const next = { ...prev, [questionId]: value };
       if (!canUseAuthenticatedFlow && !editContext) writeJson(draftKey, next);
@@ -311,7 +475,8 @@ export function TakeSurveyPage() {
     if (!survey || !surveyId) return;
     const pending = findMissingOnPage();
     setMissing(pending);
-    if (pending.size > 0) return;
+    setAttempted(true);
+    if (pending.size > 0 || problemsOnPage.size > 0) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -423,11 +588,22 @@ export function TakeSurveyPage() {
                         </Typography>
                       ) : null}
                       <Box sx={{ mt: 1 }}>
-                        <QuestionInput question={question} value={answers[question.id]} onChange={(value) => handleAnswerChange(question.id, value)} />
+                        <QuestionInput
+                          question={question}
+                          value={answers[question.id]}
+                          onChange={(value) => handleAnswerChange(question.id, value, question.type)}
+                          onBlur={() => markTouched(question.id)}
+                          error={errorFor(question.id)}
+                        />
                       </Box>
-                      {missing.has(question.id) ? (
-                        <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                      {missing.has(question.id) && isEmptyAnswer(answers[question.id]) ? (
+                        <Typography variant="body2" color="error" sx={{ mt: 0.5 }} role="alert">
                           {t('survey.take.required_field')}
+                        </Typography>
+                      ) : null}
+                      {errorFor(question.id) ? (
+                        <Typography variant="body2" color="error" sx={{ mt: 0.5 }} role="alert">
+                          {errorFor(question.id)}
                         </Typography>
                       ) : null}
                     </Box>

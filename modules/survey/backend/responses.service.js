@@ -9,7 +9,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var ResponsesService_1;
-var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ResponsesService = void 0;
 const common_1 = require("@nestjs/common");
@@ -30,6 +29,7 @@ const notification_email_service_1 = require("../../../apps/api/dist/core/notifi
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const logic_engine_1 = require("./logic-engine");
+const question_rules_1 = require("./question-rules");
 /**
  * The respondent-facing flow — shared by BOTH the authenticated fill
  * controller and the public/anonymous one (docs/DECISIONS.md's two-endpoint
@@ -244,7 +244,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             if (!visibleQuestionIds.has(question.id))
                 continue; // never visible -> never counted, regardless of what was sent
             const value = answerByQuestionId.get(question.id);
-            if (value === undefined || value === null || value === '') {
+            if ((0, question_rules_1.isEmptyAnswer)(value)) {
                 if (question.required) {
                     throw new common_1.BadRequestException(`Question "${question.title}" is required`);
                 }
@@ -256,38 +256,11 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
         }
         return normalized;
     }
+    /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
     validateAnswerShape(question, value) {
-        switch (question.type) {
-            case 'single_choice':
-            case 'dropdown': {
-                const valid = new Set(question.options.map((o) => o.value));
-                if (typeof value !== 'string' || !valid.has(value)) {
-                    throw new common_1.BadRequestException(`Invalid option for question "${question.title}"`);
-                }
-                return;
-            }
-            case 'multi_choice': {
-                const valid = new Set(question.options.map((o) => o.value));
-                if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || !valid.has(v))) {
-                    throw new common_1.BadRequestException(`Invalid option(s) for question "${question.title}"`);
-                }
-                return;
-            }
-            case 'linear_scale':
-            case 'rating': {
-                if (typeof value !== 'number' || !Number.isFinite(value)) {
-                    throw new common_1.BadRequestException(`Question "${question.title}" expects a number`);
-                }
-                return;
-            }
-            case 'short_text':
-            case 'paragraph':
-            case 'date':
-            case 'time':
-                if (typeof value !== 'string') {
-                    throw new common_1.BadRequestException(`Question "${question.title}" expects text`);
-                }
-                return;
+        const problem = (0, question_rules_1.validateAnswer)(question.type, question.config, question.options.map((o) => o.value), value);
+        if (problem) {
+            throw new common_1.BadRequestException(`Question "${question.title}": ${(0, question_rules_1.describeProblem)(problem)}`);
         }
     }
     async writeResponse(survey, rawAnswers, opts) {
@@ -394,7 +367,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
         }
     }
     buildResponseSummary(survey, answers, respondentLabel) {
-        const formatValue = (value) => (Array.isArray(value) ? value.join(', ') : String(value));
+        const formatValue = (value) => (0, question_rules_1.formatAnswerForDisplay)(value);
         const rows = answers.map((a) => ({ title: a.question.title, value: formatValue(a.value) }));
         const markdown = [
             `New response to **${survey.title}** (respondent: ${respondentLabel})`,
@@ -414,7 +387,9 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
 exports.ResponsesService = ResponsesService;
 exports.ResponsesService = ResponsesService = ResponsesService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeof (_a = typeof audit_log_writer_1.AuditLogWriter !== "undefined" && audit_log_writer_1.AuditLogWriter) === "function" ? _a : Object, typeof (_b = typeof notifications_service_1.NotificationsService !== "undefined" && notifications_service_1.NotificationsService) === "function" ? _b : Object, typeof (_c = typeof notification_email_service_1.NotificationEmailService !== "undefined" && notification_email_service_1.NotificationEmailService) === "function" ? _c : Object])
+    __metadata("design:paramtypes", [audit_log_writer_1.AuditLogWriter,
+        notifications_service_1.NotificationsService,
+        notification_email_service_1.NotificationEmailService])
 ], ResponsesService);
 function escapeHtml(value) {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

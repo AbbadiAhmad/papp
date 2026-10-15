@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { ENUMERATION_QUESTION_TYPES, SurveyStructureDto } from './dto/survey-structure.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
+import { describeProblem, validateOptionValues, validateQuestionConfig } from './question-rules';
 
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
@@ -283,6 +284,15 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       for (const question of section.questions) {
         if (ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
           throw new BadRequestException(`Question "${question.title}" (${question.type}) needs at least one option`);
+        }
+        // Option values must be unique and not collide with the reserved "Other" encoding; the
+        // question's settings (validation, selection limits, "Other", scale...) must fit its type.
+        const optionValues = (question.options ?? []).map((o) => o.value);
+        const problem =
+          (ENUMERATION_QUESTION_TYPES.includes(question.type) ? validateOptionValues(optionValues) : null) ??
+          validateQuestionConfig(question.type, question.config, optionValues);
+        if (problem) {
+          throw new BadRequestException(`Question "${question.title}": ${describeProblem(problem)}`);
         }
       }
     }

@@ -21,6 +21,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
+import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
+import { QuestionSettings } from '../components/QuestionSettings';
 import {
   ENUMERATION_QUESTION_TYPES,
   SURVEY_QUESTION_TYPES,
@@ -270,7 +272,7 @@ export function SurveyBuilderPage() {
   };
 
   /** Returns the cleaned payload, or an i18n key describing what is incomplete. */
-  const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string } => {
+  const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string; params?: Record<string, unknown> } => {
     const cleanSections: SurveySectionDto[] = [];
     for (const section of sections) {
       if (!section.title.trim()) return { errorKey: 'survey.builder.error_section_title' };
@@ -283,7 +285,18 @@ export function SurveyBuilderPage() {
           if (options.some((o) => !optionValueOf(o))) return { errorKey: 'survey.builder.error_option_empty' };
           options = options.map((o) => ({ ...o, value: optionValueOf(o), label: o.label.trim() || optionValueOf(o) }));
         }
-        questions.push({ ...question, options });
+        // Drop settings that went stale (an "exclusive" option that was renamed or removed), then
+        // check the rest with the same rules the server applies, so the owner gets a translated hint.
+        const optionValues = options.map((o) => o.value);
+        let config = { ...(question.config ?? {}) };
+        if (typeof config.exclusiveOptionValue === 'string' && !optionValues.includes(config.exclusiveOptionValue)) delete config.exclusiveOptionValue;
+        const problem =
+          (ENUMERATION_QUESTION_TYPES.includes(question.type) ? validateOptionValues(optionValues) : null) ??
+          validateQuestionConfig(question.type as QuestionTypeName, config, optionValues);
+        if (problem) {
+          return { errorKey: `survey.config_rules.${problem.code}`, params: { ...problem.params, title: question.title } };
+        }
+        questions.push({ ...question, options, config });
       }
       cleanSections.push({ ...section, questions });
     }
@@ -321,7 +334,7 @@ export function SurveyBuilderPage() {
     setSaveError(null);
     const payload = buildPayload();
     if ('errorKey' in payload) {
-      setSaveError(t(payload.errorKey));
+      setSaveError(t(payload.errorKey, payload.params));
       setSaving(false);
       return;
     }
@@ -456,6 +469,17 @@ export function SurveyBuilderPage() {
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Stack>
+            <TextField
+              label={t('survey.fields.section_description')}
+              value={section.description ?? ''}
+              onChange={(e) => updateSection(sectionIndex, { description: e.target.value })}
+              fullWidth
+              multiline
+              minRows={1}
+              size="small"
+              slotProps={{ htmlInput: { maxLength: 2000 } }}
+              sx={{ mb: 1.5 }}
+            />
 
             <Stack spacing={2} sx={{ pl: 2, borderInlineStart: '2px solid', borderColor: 'divider' }}>
               {section.questions.map((question, questionIndex) => (
@@ -473,7 +497,7 @@ export function SurveyBuilderPage() {
                       label={t('survey.fields.question_type')}
                       value={question.type}
                       onChange={(e) =>
-                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [] })
+                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [], config: {} })
                       }
                       sx={{ minWidth: 160 }}
                     >
@@ -505,6 +529,16 @@ export function SurveyBuilderPage() {
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
+
+                  <TextField
+                    label={t('survey.fields.question_hint')}
+                    value={question.description ?? ''}
+                    onChange={(e) => updateQuestion(sectionIndex, questionIndex, { description: e.target.value })}
+                    size="small"
+                    fullWidth
+                    sx={{ pl: 2, mt: 1 }}
+                    slotProps={{ htmlInput: { maxLength: 2000 } }}
+                  />
 
                   {question.type === 'linear_scale' ? (
                     <Stack direction="row" spacing={1} sx={{ pl: 2, mt: 1 }}>
@@ -568,6 +602,11 @@ export function SurveyBuilderPage() {
                       </Box>
                     </Stack>
                   ) : null}
+
+                  <QuestionSettings
+                    question={question}
+                    onConfigChange={(config) => updateQuestion(sectionIndex, questionIndex, { config })}
+                  />
                 </Box>
               ))}
               <Box>
