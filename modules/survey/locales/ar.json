@@ -248,5 +248,24 @@
   "survey.share.download_svg": "تنزيل SVG",
   "survey.share.embed_title": "تضمين في صفحة ويب",
   "survey.share.embed_hint": "الصق هذا في صفحة موقعك لعرض الاستبيان داخلها.",
-  "survey.share.copy_embed": "نسخ كود التضمين"
+  "survey.share.copy_embed": "نسخ كود التضمين",
+
+  "survey.fields.opens_at": "يفتح في (اختياري)",
+  "survey.fields.closes_at": "يغلق في (اختياري)",
+  "survey.fields.response_limit": "الإغلاق بعد هذا العدد من الردود (اختياري)",
+  "survey.fields.thank_you_message": "رسالة الشكر (اختياري)",
+  "survey.fields.show_progress_bar": "عرض شريط التقدم (عندما يحتوي الاستبيان على عدة أقسام)",
+  "survey.builder.availability": "التوقيت والإنهاء",
+  "survey.builder.availability_hint": "التواريخ بتوقيت جهازك. اترك الحقل فارغاً لعدم وضع حد. الاستبيان الذي بلغ حد الردود يتيح لأصحاب الردود تعديل إجاباتهم.",
+  "survey.builder.schedule_invalid": "يجب أن يكون تاريخ الإغلاق بعد تاريخ الفتح.",
+  "survey.builder.thank_you_hint": "تظهر بعد أن يرسل القارئ إجاباته. اتركها فارغة لاستخدام الرسالة الافتراضية.",
+  "survey.availability.not_open_yet": "لم يُفتح بعد",
+  "survey.availability.ended": "انتهى",
+  "survey.availability.full": "مكتمل",
+  "survey.availability.opens_on": "يفتح {{date}}",
+  "survey.availability.closes_on": "يغلق {{date}}",
+  "survey.take.not_open_yet": "هذا الاستبيان لم يُفتح بعد.",
+  "survey.take.not_open_yet_on": "يُفتح هذا الاستبيان في {{date}}.",
+  "survey.take.full": "بلغ هذا الاستبيان الحد الأقصى من الردود.",
+  "survey.take.progress": "تقدم الاستبيان"
 }

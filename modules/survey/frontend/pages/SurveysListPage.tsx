@@ -41,7 +41,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { formatDateOnly } from '../../../../apps/web/src/shared/format';
+import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
@@ -222,9 +222,22 @@ export function SurveysListPage() {
                   </TableCell>
                   <TableCell>
                     <Chip size="small" color={STATUS_COLOR[survey.status]} label={t(`survey.status.${survey.status}`)} />
+                    {survey.availability && survey.availability !== 'open' ? (
+                      <Chip size="small" color="warning" variant="outlined" sx={{ ml: 0.5 }} label={t(`survey.availability.${survey.availability}`)} />
+                    ) : null}
+                    {survey.status === 'published' && survey.availability === 'not_open_yet' && survey.opensAt ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {t('survey.availability.opens_on', { date: formatDateTime(survey.opensAt, language) })}
+                      </Typography>
+                    ) : null}
+                    {survey.status === 'published' && survey.availability === 'open' && survey.closesAt ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {t('survey.availability.closes_on', { date: formatDateTime(survey.closesAt, language) })}
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell>{survey.requiresLogin ? t('core.common.yes') : t('core.common.no')}</TableCell>
-                  <TableCell>{survey.responseCount}</TableCell>
+                  <TableCell>{survey.responseLimit ? `${survey.responseCount} / ${survey.responseLimit}` : survey.responseCount}</TableCell>
                   <TableCell>{formatDateOnly(survey.createdAt, language)}</TableCell>
                   <TableCell align="right">
                     {survey.status !== 'draft' ? (

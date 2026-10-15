@@ -30,6 +30,7 @@ import { SharePanel } from '../components/SharePanel';
 import { SurveyPreviewDialog } from '../components/SurveyPreviewDialog';
 import { useUnsavedChangesGuard } from '../components/useUnsavedChangesGuard';
 import { toFillableSurvey } from '../previewSurvey';
+import { fromLocalInput, toLocalInput } from '../schedule';
 import {
   ENUMERATION_QUESTION_TYPES,
   SURVEY_QUESTION_TYPES,
@@ -79,8 +80,8 @@ function cloneQuestion(question: SurveyQuestionDto, titleSuffix: string): Survey
 
 /** What counts as "unsaved changes": the survey settings plus the whole structure. */
 function snapshotOf(survey: SurveyDetail, sections: SurveySectionDto[], logicRules: SurveyLogicRuleDto[]): string {
-  const { title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage } = survey;
-  return JSON.stringify({ title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, sections, logicRules });
+  const { title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings } = survey;
+  return JSON.stringify({ title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings, sections, logicRules });
 }
 
 function move<T>(items: T[], from: number, to: number): T[] {
@@ -142,6 +143,7 @@ export function SurveyBuilderPage() {
   if (!survey) return null;
 
   const allQuestions = sections.flatMap((s) => s.questions);
+  const scheduleInvalid = Boolean(survey.opensAt && survey.closesAt && new Date(survey.closesAt).getTime() <= new Date(survey.opensAt).getTime());
 
   const updateSurveySettings = (patch: Partial<SurveyDetail>) => setSurvey({ ...survey, ...patch });
 
@@ -401,6 +403,11 @@ export function SurveyBuilderPage() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
+    if (scheduleInvalid) {
+      setSaveError(t('survey.builder.schedule_invalid'));
+      setSaving(false);
+      return;
+    }
     const payload = buildPayload();
     if ('errorKey' in payload) {
       setSaveError(t(payload.errorKey, payload.params));
@@ -420,6 +427,9 @@ export function SurveyBuilderPage() {
           opensAt: survey.opensAt,
           closesAt: survey.closesAt,
           closedMessage: survey.closedMessage ?? '',
+          responseLimit: survey.responseLimit,
+          thankYouMessage: survey.settings?.thankYouMessage ?? '',
+          showProgressBar: survey.settings?.showProgressBar === true,
         }),
       );
       const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, payload));
@@ -522,6 +532,58 @@ export function SurveyBuilderPage() {
             multiline
             minRows={2}
             slotProps={{ htmlInput: { maxLength: 1000 } }}
+          />
+          <Typography variant="subtitle2" sx={{ pt: 1 }}>
+            {t('survey.builder.availability')}
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
+            <TextField
+              type="datetime-local"
+              label={t('survey.fields.opens_at')}
+              value={toLocalInput(survey.opensAt)}
+              onChange={(e) => updateSurveySettings({ opensAt: fromLocalInput(e.target.value) })}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 240 }}
+            />
+            <TextField
+              type="datetime-local"
+              label={t('survey.fields.closes_at')}
+              value={toLocalInput(survey.closesAt)}
+              onChange={(e) => updateSurveySettings({ closesAt: fromLocalInput(e.target.value) })}
+              slotProps={{ inputLabel: { shrink: true } }}
+              error={scheduleInvalid}
+              helperText={scheduleInvalid ? t('survey.builder.schedule_invalid') : undefined}
+              sx={{ minWidth: 240 }}
+            />
+            <TextField
+              type="number"
+              label={t('survey.fields.response_limit')}
+              value={survey.responseLimit ?? ''}
+              onChange={(e) => updateSurveySettings({ responseLimit: e.target.value === '' ? null : Number(e.target.value) })}
+              slotProps={{ htmlInput: { min: 1, step: 1 } }}
+              sx={{ width: 240 }}
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: '-8px !important' }}>
+            {t('survey.builder.availability_hint')}
+          </Typography>
+          <TextField
+            label={t('survey.fields.thank_you_message')}
+            helperText={t('survey.builder.thank_you_hint')}
+            value={survey.settings?.thankYouMessage ?? ''}
+            onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, thankYouMessage: e.target.value } })}
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 4000 } }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={survey.settings?.showProgressBar === true}
+                onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, showProgressBar: e.target.checked } })}
+              />
+            }
+            label={t('survey.fields.show_progress_bar')}
           />
           <TextField
             label={t('survey.fields.notify_emails')}

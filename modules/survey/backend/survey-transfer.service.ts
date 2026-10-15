@@ -5,6 +5,7 @@ import { validateSync } from 'class-validator';
 import { randomUUID } from 'crypto';
 import JSZip from 'jszip';
 import { SurveyStructureDto } from './dto/survey-structure.dto';
+import { normalizeSettings, validateSurveyOptions } from './survey-settings';
 import { SurveysService } from './surveys.service';
 
 export const SURVEY_PACKAGE_FORMAT = 'papp.survey.package';
@@ -25,6 +26,9 @@ interface PackageSettings {
   opensAt: string | null;
   closesAt: string | null;
   closedMessage: string | null;
+  /** Added with phase C; absent in packages exported by older versions (treated as no cap / default settings). */
+  responseLimit?: number | null;
+  settings?: Record<string, unknown>;
 }
 
 interface PackageResponse {
@@ -147,6 +151,8 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
         opensAt: survey.opensAt?.toISOString() ?? null,
         closesAt: survey.closesAt?.toISOString() ?? null,
         closedMessage: survey.closedMessage,
+        responseLimit: survey.responseLimit,
+        settings: normalizeSettings(survey.settings) as Record<string, unknown>,
       },
       sections: survey.sections.map((s) => ({
         id: s.id,
@@ -238,6 +244,9 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
             opensAt: settings.opensAt ? new Date(settings.opensAt) : null,
             closesAt: settings.closesAt ? new Date(settings.closesAt) : null,
             closedMessage: settings.closedMessage ?? null,
+            // An imported file is untrusted: re-check the cap and normalise the settings like a builder save.
+            responseLimit: validateSurveyOptions({ responseLimit: settings.responseLimit }) === null ? (settings.responseLimit ?? null) : null,
+            settings: normalizeSettings(settings.settings) as Prisma.InputJsonValue,
           },
         });
 

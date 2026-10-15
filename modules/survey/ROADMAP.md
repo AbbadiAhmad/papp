@@ -1,6 +1,6 @@
 # Survey module: feature inventory (Microsoft Forms, Google Forms, SurveyMonkey), gap analysis and plan
 
-Status: **IN PROGRESS.** Phase A built (1.2.4, SURVEY-D15), phase B built (1.2.5, SURVEY-D16). Phases C-D follow the table in 3.1. Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
+Status: **IN PROGRESS.** Phase A built (1.2.4, SURVEY-D15), phase B built (1.2.5, SURVEY-D16), phase C built (1.3.0, SURVEY-D17). Phase D follows the table in 3.1. Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
 
 ## 1. How this was compiled (read first)
 

@@ -12,6 +12,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
 const question_rules_1 = require("./question-rules");
+const survey_settings_1 = require("./survey-settings");
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
  * books.service.ts's own docblock in modules/library_catalog for the full
@@ -54,6 +55,11 @@ let SurveysService = SurveysService_1 = class SurveysService {
             archivedAt: s.archivedAt,
             requiresLogin: s.requiresLogin,
             responseCount: s._count.responses,
+            opensAt: s.opensAt,
+            closesAt: s.closesAt,
+            responseLimit: s.responseLimit,
+            // open / not_open_yet / ended / full for a published survey, null otherwise (the list shows a hint chip).
+            availability: (0, survey_settings_1.computeAvailability)(s, s._count.responses),
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
         }));
@@ -71,7 +77,23 @@ let SurveysService = SurveysService_1 = class SurveysService {
         return survey;
     }
     async update(id, dto) {
-        await this.getSurveyOrThrow(id);
+        const current = await this.getSurveyOrThrow(id);
+        // Effective values after this change (undefined = keep, null = clear), checked together so
+        // "closes before it opens" is caught even when only one of the two dates is being edited.
+        const opensAt = dto.opensAt === undefined ? current.opensAt : dto.opensAt;
+        const closesAt = dto.closesAt === undefined ? current.closesAt : dto.closesAt;
+        const problem = (0, survey_settings_1.validateSurveyOptions)({ thankYouMessage: dto.thankYouMessage, responseLimit: dto.responseLimit, opensAt, closesAt });
+        if (problem)
+            throw new common_1.BadRequestException(problem);
+        // Survey-level options live in one JSONB column; merge the incoming keys into what is stored.
+        let settings;
+        if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined) {
+            settings = (0, survey_settings_1.normalizeSettings)({
+                ...(0, survey_settings_1.normalizeSettings)(current.settings),
+                ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
+                ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+            });
+        }
         return this.prisma.surveySurvey.update({
             where: { id },
             data: {
@@ -84,6 +106,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 notifyEmails: dto.notifyEmails,
                 opensAt: dto.opensAt,
                 closesAt: dto.closesAt,
+                responseLimit: dto.responseLimit,
+                settings,
                 closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
             },
         });

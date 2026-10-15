@@ -1,4 +1,4 @@
-import { Box, Button, Checkbox, FormControlLabel, FormGroup, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, Alert } from '@mui/material';
+import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 // Raw .ts imports with explicit extensions: see TakeSurveyPage's history (SURVEY-D8) — the backend's compiled `.js`
@@ -355,6 +355,14 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
         <Stack spacing={2}>
           {survey.sections.length > 1 ? (
             <Box>
+              {survey.showProgressBar ? (
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(100, Math.round((pageNumber / Math.max(visibility.pathSectionIds.length, pageNumber)) * 100))}
+                  aria-label={t('survey.take.progress')}
+                  sx={{ height: 8, borderRadius: 4, mb: 1 }}
+                />
+              ) : null}
               <Typography variant="caption" color="text.secondary">
                 {t('survey.take.page_of', { current: pageNumber, total: Math.max(visibility.pathSectionIds.length, pageNumber) })}
               </Typography>

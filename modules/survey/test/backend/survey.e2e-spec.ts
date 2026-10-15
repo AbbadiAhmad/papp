@@ -243,4 +243,134 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect((xlsx.body as Buffer).length).toBeGreaterThan(500);
     });
   });
+
+  describe('availability and finishing (phase C)', () => {
+    const SEC = uuid(201);
+    const QTEXT = uuid(202);
+    let n = 0;
+
+    /** A published one-question survey; `patch` is applied through the normal PATCH endpoint. */
+    async function publishedSurvey(patch: Record<string, unknown> = {}): Promise<string> {
+      const created = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Phase C survey ${++n}` });
+      const id = created.body.id as string;
+      const structureBody = {
+        sections: [{ id: uuid(300 + n * 2), orderIndex: 0, title: 'S', questions: [{ id: uuid(301 + n * 2), orderIndex: 0, type: 'short_text', title: 'Name', required: true }] }],
+        logicRules: [],
+      };
+      expect((await request(http()).put(`/api/survey/surveys/${id}/structure`).set(admin()).send(structureBody)).status).toBe(200);
+      if (Object.keys(patch).length) expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send(patch)).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin())).status);
+      return id;
+    }
+    const questionIdOf = async (id: string) => {
+      const res = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      return res.body.sections[0].questions[0].id as string;
+    };
+    const submit = async (id: string, value = 'x') =>
+      request(http()).post(`/api/survey/public/${id}`).send({ answers: [{ questionId: await questionIdOf(id), value }] });
+    void SEC;
+    void QTEXT;
+
+    it('refuses invalid settings: a zero limit and a closing date before the opening date', async () => {
+      const id = await publishedSurvey();
+      for (const body of [{ responseLimit: 0 }, { responseLimit: 2.5 }, { opensAt: '2030-02-01T00:00:00Z', closesAt: '2030-01-01T00:00:00Z' }]) {
+        const res = await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send(body);
+        expect({ body, status: res.status }).toEqual({ body, status: 400 });
+      }
+    });
+
+    it('stores the thank-you message and progress bar and hands them to readers', async () => {
+      const id = await publishedSurvey({ thankYouMessage: '  Thanks for reading!  ', showProgressBar: true });
+      const detail = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      expect(detail.body.settings).toEqual({ thankYouMessage: 'Thanks for reading!', showProgressBar: true });
+      const fill = await request(http()).get(`/api/survey/public/${id}`);
+      expect(fill.body.survey).toMatchObject({ thankYouMessage: 'Thanks for reading!', showProgressBar: true, isFull: false });
+
+      // clearing one key keeps the other
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ thankYouMessage: '' });
+      const after = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      expect(after.body.settings).toEqual({ showProgressBar: true });
+    });
+
+    it('a survey that opens in the future answers "not open yet" to both opening and submitting, until the date is cleared', async () => {
+      const opensAt = new Date(Date.now() + 86_400_000).toISOString();
+      const id = await publishedSurvey({ opensAt });
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(404);
+      expect(get.body).toMatchObject({ notOpenYet: true, opensAt });
+      expect((await submit(id)).status).toBe(404);
+
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ opensAt: null })).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/public/${id}`)).status).toBe(200);
+      expect((await submit(id)).status).toBe(201);
+    });
+
+    it('a survey whose closing date has passed is closed for readers, with the owner message', async () => {
+      const id = await publishedSurvey({ closesAt: new Date(Date.now() + 60_000).toISOString(), closedMessage: 'Thanks, we are done.' });
+      expect((await request(http()).get(`/api/survey/public/${id}`)).status).toBe(200);
+      // move the closing moment into the past directly (the API only accepts a valid future-or-past date; use a past one)
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ closesAt: new Date(Date.now() - 1000).toISOString() })).status).toBe(200);
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(404);
+      expect(get.body).toMatchObject({ closed: true, ended: true, closedMessage: 'Thanks, we are done.' });
+      expect((await submit(id)).status).toBe(404);
+    });
+
+    it('the response cap refuses new submissions with 409 {full:true}, flags the survey as full, and shows it in the list', async () => {
+      const id = await publishedSurvey({ responseLimit: 2 });
+      expect((await submit(id, 'a')).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/public/${id}`)).body.survey.isFull).toBe(false);
+      expect((await submit(id, 'b')).status).toBe(201);
+
+      const third = await submit(id, 'c');
+      expect(third.status).toBe(409);
+      expect(third.body).toMatchObject({ full: true });
+      expect((await request(http()).get(`/api/survey/public/${id}`)).body.survey.isFull).toBe(true);
+
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      const row = list.body.find((r: { id: string }) => r.id === id);
+      expect(row).toMatchObject({ responseLimit: 2, responseCount: 2, availability: 'full' });
+
+      // raising the cap reopens it
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ responseLimit: 3 });
+      expect((await submit(id, 'd')).status).toBe(201);
+    });
+
+    it('simultaneous submissions can never exceed the cap (per-survey lock)', async () => {
+      const id = await publishedSurvey({ responseLimit: 3 });
+      const questionId = await questionIdOf(id);
+      const results = await Promise.all(
+        Array.from({ length: 8 }, (_, i) => request(http()).post(`/api/survey/public/${id}`).send({ answers: [{ questionId, value: `r${i}` }] })),
+      );
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses.filter((s) => s === 201)).toHaveLength(3);
+      expect(statuses.filter((s) => s === 409)).toHaveLength(5);
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      expect(list.body.find((r: { id: string }) => r.id === id).responseCount).toBe(3);
+    });
+
+    it('duplicate and export/import carry the cap, the schedule and the settings', async () => {
+      const id = await publishedSurvey({ responseLimit: 7, thankYouMessage: 'Cheers', showProgressBar: true });
+
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const copyDetail = await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin());
+      expect(copyDetail.body).toMatchObject({ responseLimit: 7, settings: { thankYouMessage: 'Cheers', showProgressBar: true }, status: 'draft' });
+
+      const zip = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      expect(zip.status).toBe(200);
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', zip.body as Buffer, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const importedDetail = await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin());
+      expect(importedDetail.body).toMatchObject({ responseLimit: 7, settings: { thankYouMessage: 'Cheers', showProgressBar: true } });
+    });
+  });
 });

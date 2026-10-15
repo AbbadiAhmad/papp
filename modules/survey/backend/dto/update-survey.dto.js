@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateSurveyDto = void 0;
 const class_validator_1 = require("class-validator");
+const survey_settings_1 = require("../survey-settings");
 /**
  * Covers both the survey's descriptive fields and its sharing/access
  * settings (docs/DECISIONS.md) — one PATCH endpoint, not split per concern,
@@ -29,8 +30,16 @@ class UpdateSurveyDto {
      * a real email address; never resolved against the users table.
      */
     notifyEmails;
+    /** ISO date-time; `null` clears the schedule. The survey takes responses only from this moment (when set). */
     opensAt;
+    /** ISO date-time; `null` clears it. From this moment the survey stops taking responses (when set). */
     closesAt;
+    /** Stop taking NEW responses after this many; `null` removes the cap. */
+    responseLimit;
+    /** Text shown after submit instead of the default; empty string clears it. Stored in `settings`. */
+    thankYouMessage;
+    /** Show page progress on surveys with more than one section. Stored in `settings`. */
+    showProgressBar;
     /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
     closedMessage;
 }
@@ -75,13 +84,31 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], UpdateSurveyDto.prototype, "opensAt", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], UpdateSurveyDto.prototype, "closesAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    (0, class_validator_1.Max)(survey_settings_1.MAX_RESPONSE_LIMIT),
+    __metadata("design:type", Object)
+], UpdateSurveyDto.prototype, "responseLimit", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(survey_settings_1.MAX_THANK_YOU_LENGTH),
+    __metadata("design:type", String)
+], UpdateSurveyDto.prototype, "thankYouMessage", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateSurveyDto.prototype, "showProgressBar", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

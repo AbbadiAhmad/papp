@@ -5,13 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../../../apps/web/src/shared/api/httpClient';
+import { formatDateTime } from '../../../../apps/web/src/shared/format';
 import { SurveyRunner } from '../components/SurveyRunner';
 import { surveyApi, type AnswerInput, type FillableSurvey } from '../api';
 
 // 'not_found' also covers "exists but not published" — the backend never
 // distinguishes the two to an anonymous/authenticated respondent
 // (MODULE_SPEC.md §7.2, same rule library_catalog's own public route follows).
-type PageState = 'loading' | 'ready' | 'login_required' | 'not_found' | 'error' | 'submitted';
+type PageState = 'loading' | 'ready' | 'login_required' | 'not_found' | 'not_open_yet' | 'full' | 'error' | 'submitted';
 
 const DRAFT_KEY_PREFIX = 'papp:survey-draft:';
 const SUBMITTED_KEY_PREFIX = 'papp:survey-submitted:';
@@ -58,7 +59,7 @@ function removeKey(key: string): void {
  * construction, not a cleanup job.
  */
 export function TakeSurveyPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { surveyId } = useParams<{ surveyId: string }>();
   const { status: authStatus, mustChangePassword } = useAuth();
   // A forced-password-change account is technically "authenticated" per
@@ -70,6 +71,7 @@ export function TakeSurveyPage() {
   const [pageState, setPageState] = useState<PageState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [closedMessage, setClosedMessage] = useState<string | null>(null);
+  const [opensAt, setOpensAt] = useState<string | null>(null);
   const [survey, setSurvey] = useState<FillableSurvey | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -112,12 +114,26 @@ export function TakeSurveyPage() {
           const draft = readJson<Record<string, unknown>>(draftKey);
           if (draft) setAnswers(draft);
         }
+        // Response cap reached: only someone who already has a response of their own may still open it (to edit).
+        const hasOwnResponse = Boolean(existingResponse) || (!canUseAuthenticatedFlow && Boolean(readJson<StoredSubmission>(submittedKey)) && loaded.allowEditAfterSubmit);
+        if (loaded.isFull && !hasOwnResponse) {
+          setClosedMessage(loaded.closedMessage ?? null);
+          setPageState('full');
+          return;
+        }
         setPageState('ready');
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         if (isNotFoundError(error)) {
-          const body = axios.isAxiosError(error) ? (error.response?.data as { closed?: boolean; closedMessage?: string | null } | undefined) : undefined;
+          const body = axios.isAxiosError(error)
+            ? (error.response?.data as { closed?: boolean; closedMessage?: string | null; notOpenYet?: boolean; opensAt?: string | null } | undefined)
+            : undefined;
+          if (body?.notOpenYet) {
+            setOpensAt(body.opensAt ?? null);
+            setPageState('not_open_yet');
+            return;
+          }
           setClosedMessage(body?.closed ? (body.closedMessage ?? null) : null);
           setPageState('not_found');
           return;
@@ -165,7 +181,12 @@ export function TakeSurveyPage() {
       removeKey(draftKey);
       setPageState('submitted');
     } catch (error) {
-      setSubmitError(extractErrorMessage(error));
+      // The last free place may have been taken while this person was filling the form.
+      if (axios.isAxiosError(error) && (error.response?.data as { full?: boolean } | undefined)?.full) {
+        setPageState('full');
+      } else {
+        setSubmitError(extractErrorMessage(error));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -183,6 +204,10 @@ export function TakeSurveyPage() {
         ) : null}
 
         {pageState === 'not_found' ? <Alert severity="warning">{closedMessage || t('survey.take.not_found')}</Alert> : null}
+        {pageState === 'not_open_yet' ? (
+          <Alert severity="info">{opensAt ? t('survey.take.not_open_yet_on', { date: formatDateTime(opensAt, i18n.language) }) : t('survey.take.not_open_yet')}</Alert>
+        ) : null}
+        {pageState === 'full' ? <Alert severity="warning">{closedMessage || t('survey.take.full')}</Alert> : null}
         {pageState === 'error' ? <Alert severity="error">{errorMessage ?? t('core.common.error')}</Alert> : null}
         {pageState === 'login_required' ? (
           <Stack spacing={2}>
@@ -195,7 +220,9 @@ export function TakeSurveyPage() {
 
         {pageState === 'submitted' ? (
           <Stack spacing={2}>
-            <Alert severity="success">{t('survey.take.thank_you')}</Alert>
+            <Alert severity="success" sx={{ whiteSpace: 'pre-wrap' }}>
+              {survey?.thankYouMessage || t('survey.take.thank_you')}
+            </Alert>
             {returnedEditToken && survey?.allowEditAfterSubmit ? (
               <Typography variant="body2" color="text.secondary">
                 {t('survey.take.edit_hint')}

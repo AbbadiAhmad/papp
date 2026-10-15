@@ -14,7 +14,8 @@ Google-Forms-style survey builder: sections/questions with conditional show/hide
 survey_surveys(id, title, description, status(draft|published|closed),
   owner_user_id, requires_login, allow_edit_after_submit,
   one_response_per_respondent, notify_owner_on_submit, notify_emails jsonb, closed_message text (migration 002), archived_at timestamptz (migration 003),
-  opens_at, closes_at, created_at, updated_at)
+  opens_at, closes_at (editable and ENFORCED since 1.3.0), response_limit int NULL (migration 005), settings jsonb (migration 005: thankYouMessage, showProgressBar),
+  created_at, updated_at)
 survey_sections(id, survey_id, order_index, title, description)
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
@@ -33,6 +34,8 @@ survey_answers(id, response_id, question_id, value jsonb)
 - `one_response_per_respondent` is enforced in `ResponsesService`, **not** a DB unique index — see `SURVEY-D2` below; there is no unique constraint on `(survey_id, respondent_user_id)` in the migration.
 - `edit_token_hash` is the SHA-256 hash of a 32-byte random secret returned to the client **once**, at submit time, exactly like a refresh token — never logged, never returned again, never included in an audit row (see `SURVEY-D4`).
 - **Per-question settings live in `survey_questions.config` (JSONB, no migration), validated by `backend/question-rules.ts`** (see below): `placeholder`, `validation {kind: text|number|email|url, maxLength, min, max, integer, message}` for short_text/paragraph; `minSelections`, `maxSelections`, `exclusiveOptionValue` for multi_choice; `allowOther`, `otherLabel` for the three choice types; `min`/`max` for linear_scale, `max` for rating.
+- **Availability (1.3.0).** A published survey takes responses only between `opens_at` and `closes_at` (when set) and while fewer than `response_limit` responses exist. Not yet open or ended: the public/fill GET and every submit answer 404 (`{notOpenYet, opensAt}` or `{closed, ended, closedMessage}`). Full: GET still works and carries `isFull: true` (people with a response of their own may still open it to edit); a NEW submission answers 409 `{full: true}`. The cap is enforced inside the insert transaction under `pg_advisory_xact_lock(hashtext(survey id))`, so simultaneous submissions cannot exceed it (tested with 8 parallel requests). `computeAvailability` in `backend/survey-settings.ts` is the single definition (also used by the list for the "Not open yet / Ended / Full" chips).
+- **Survey settings** (`settings` JSONB) are validated/normalised by `normalizeSettings`; the builder sends the flat fields `thankYouMessage` and `showProgressBar`, the service merges them into the stored object. Export/import/duplicate carry `responseLimit` and `settings`; a package from an older version simply lacks them.
 - **An "Other" answer is stored as the string `__other__:<text>`** (inside the array for multi_choice), so every consumer that treats choice answers as strings keeps working. Option values may not be `__other__` or start with `__other__:` (rejected on save). Reports collapse it into one "Other" bar plus a list of texts; the pivot, Excel export and notification e-mails show it as `Other: <text>`.
 - Multi_choice/linear_scale/rating answer *values* in `survey_answers.value` are JSON (`string[]`/`number`) — `ResponsesService.validateAnswerShape` is the one place that enforces the real shape per question type.
 
@@ -69,6 +72,7 @@ Frontend (`basePath: /survey`):
 ## Key files
 
 - `backend/logic-engine.ts` — the conditional show/hide evaluator. Zero framework dependency **on purpose**: the backend imports its compiled `.js` sibling to re-validate a submission server-side (defense in depth — never trusts the client's own visibility computation), and the frontend (`TakeSurveyPage.tsx`) imports the raw `.ts` source directly via Vite, so there is exactly one copy of this logic, never two that could drift. Fully unit-tested (`apps/api/test/modules/survey/logic-engine.spec.ts`).
+- `backend/survey-settings.ts` — survey-level options and availability (`normalizeSettings`, `validateSurveyOptions`, `computeAvailability`); framework-free like the other two shared files.
 - `backend/question-rules.ts` — **the one place the per-question rules live** (settings validation on save, answer validation on submit, selection limits, "Other" encoding, report helpers). Framework-free like `logic-engine.ts`: the server uses its compiled sibling, the respondent page and the builder import the `.ts` source (explicit `.ts` extension, SURVEY-D8; `apps/web/tsconfig.app.json` lists it). Problems come back as `{code, params, message?}`: the server renders `describeProblem` (English), the browser maps `code` to `survey.rules.<code>` (answers) or `survey.config_rules.<code>` (builder settings); the owner's custom message wins. Unit-tested exhaustively.
 - `frontend/components/QuestionSettings.tsx` — the builder controls for those settings.
 - `frontend/components/SurveyRunner.tsx` — the whole respondent experience (pages, Next/Back/"go to", live logic, validation messages, selection hints, "Other"), extracted from `TakeSurveyPage` so the builder's **Preview** runs exactly what readers get. The page only loads the survey, keeps the draft in `localStorage` and does the API submit.
@@ -100,7 +104,8 @@ Frontend (`basePath: /survey`):
 - `test/backend/question-rules.spec.ts` (unit, every rule and boundary), `surveys.service.spec.ts` (builder-save validation), `logic-engine.spec.ts`, `survey-transfer.service.spec.ts`.
 - `test/frontend/take-survey.test.tsx` (Vitest + Testing Library): drives the real respondent page — messages on blur, Next/Submit blocked, selection hints and disabling, exclusive choice, "Other".
 - `test/frontend/builder.test.tsx` (duplicate/move/unsaved/preview/share on the real builder page), `share-panel.test.tsx`, `unsaved-guard.test.tsx`, `preview-survey.test.ts`.
-- `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
+- `test/backend/survey-settings.spec.ts` (settings, validation, availability boundaries), `test/frontend/take-survey-states.test.tsx` (not-open / ended / full states, thank-you text, progress bar), `schedule.test.ts`.
+- `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, schedule + response cap (including a concurrent-submission race) + settings + duplicate/export/import round trip, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
 - Browser smoke: `apps/web/tests/e2e/survey.spec.ts`.
 
 ## How to extend

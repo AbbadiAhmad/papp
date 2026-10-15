@@ -28,6 +28,11 @@ export interface SurveySummary {
   archivedAt: string | null;
   requiresLogin: boolean;
   responseCount: number;
+  opensAt: string | null;
+  closesAt: string | null;
+  responseLimit: number | null;
+  /** For a published survey: open / not_open_yet / ended / full; null otherwise. */
+  availability: 'open' | 'not_open_yet' | 'ended' | 'full' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,9 +79,8 @@ export interface SurveyDetail extends SurveySummary {
   oneResponsePerRespondent: boolean;
   notifyOwnerOnSubmit: boolean;
   notifyEmails: string[];
-  opensAt: string | null;
-  closesAt: string | null;
   closedMessage: string | null;
+  settings: { thankYouMessage?: string; showProgressBar?: boolean };
   sections: SurveySectionDto[];
   logicRules: SurveyLogicRuleDto[];
 }
@@ -97,6 +101,9 @@ export interface UpdateSurveyInput {
   opensAt?: string | null;
   closesAt?: string | null;
   closedMessage?: string;
+  responseLimit?: number | null;
+  thankYouMessage?: string;
+  showProgressBar?: boolean;
 }
 
 export interface SurveyStructureInput {
@@ -135,6 +142,12 @@ export interface FillableSurvey {
   description: string | null;
   allowEditAfterSubmit: boolean;
   requiresLogin: boolean;
+  /** Text shown after submit (null = the default one). */
+  thankYouMessage?: string | null;
+  showProgressBar?: boolean;
+  /** The response cap is reached: new submissions are refused, but people can still edit their own answer. */
+  isFull?: boolean;
+  closedMessage?: string | null;
   sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; questions: FillableQuestion[] }>;
   logicRules: SurveyLogicRuleDto[];
 }

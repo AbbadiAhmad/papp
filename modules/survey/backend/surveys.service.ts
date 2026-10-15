@@ -4,6 +4,7 @@ import { CreateSurveyDto } from './dto/create-survey.dto';
 import { ENUMERATION_QUESTION_TYPES, SurveyStructureDto } from './dto/survey-structure.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { describeProblem, validateOptionValues, validateQuestionConfig } from './question-rules';
+import { computeAvailability, normalizeSettings, validateSurveyOptions } from './survey-settings';
 
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
@@ -52,6 +53,11 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       archivedAt: s.archivedAt,
       requiresLogin: s.requiresLogin,
       responseCount: s._count.responses,
+      opensAt: s.opensAt,
+      closesAt: s.closesAt,
+      responseLimit: s.responseLimit,
+      // open / not_open_yet / ended / full for a published survey, null otherwise (the list shows a hint chip).
+      availability: computeAvailability(s, s._count.responses),
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }));
@@ -72,7 +78,25 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
   }
 
   async update(id: string, dto: UpdateSurveyDto) {
-    await this.getSurveyOrThrow(id);
+    const current = await this.getSurveyOrThrow(id);
+
+    // Effective values after this change (undefined = keep, null = clear), checked together so
+    // "closes before it opens" is caught even when only one of the two dates is being edited.
+    const opensAt = dto.opensAt === undefined ? current.opensAt : dto.opensAt;
+    const closesAt = dto.closesAt === undefined ? current.closesAt : dto.closesAt;
+    const problem = validateSurveyOptions({ thankYouMessage: dto.thankYouMessage, responseLimit: dto.responseLimit, opensAt, closesAt });
+    if (problem) throw new BadRequestException(problem);
+
+    // Survey-level options live in one JSONB column; merge the incoming keys into what is stored.
+    let settings: Prisma.InputJsonValue | undefined;
+    if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined) {
+      settings = normalizeSettings({
+        ...normalizeSettings(current.settings),
+        ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
+        ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+      }) as Prisma.InputJsonValue;
+    }
+
     return this.prisma.surveySurvey.update({
       where: { id },
       data: {
@@ -85,6 +109,8 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
         notifyEmails: dto.notifyEmails as unknown as Prisma.InputJsonValue,
         opensAt: dto.opensAt,
         closesAt: dto.closesAt,
+        responseLimit: dto.responseLimit,
+        settings,
         closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
       },
     });

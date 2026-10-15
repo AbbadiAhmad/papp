@@ -30,6 +30,7 @@ const notification_email_service_1 = require("../../../apps/api/dist/core/notifi
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const logic_engine_1 = require("./logic-engine");
 const question_rules_1 = require("./question-rules");
+const survey_settings_1 = require("./survey-settings");
 /**
  * The respondent-facing flow — shared by BOTH the authenticated fill
  * controller and the public/anonymous one (docs/DECISIONS.md's two-endpoint
@@ -165,6 +166,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             include: {
                 sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { orderBy: { orderIndex: 'asc' }, include: { options: { orderBy: { orderIndex: 'asc' } } } } } },
                 logicRules: true,
+                _count: { select: { responses: true } },
             },
         });
         // Never distinguishes "doesn't exist" from "not published" to an
@@ -178,6 +180,15 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             // the owner's custom message (if any) rides along on the 404 body.
             throw new common_1.NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, closedMessage: survey.closedMessage ?? null });
         }
+        // The schedule (opens / closes) applies to everything, edits included. A full survey (response cap) is
+        // NOT rejected here: people may still open it to edit their own answer; new submissions are refused in writeResponse.
+        const availability = (0, survey_settings_1.computeAvailability)(survey, survey._count.responses);
+        if (availability === 'not_open_yet') {
+            throw new common_1.NotFoundException({ statusCode: 404, message: 'Survey not open yet', notOpenYet: true, opensAt: survey.opensAt?.toISOString() ?? null });
+        }
+        if (availability === 'ended') {
+            throw new common_1.NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, ended: true, closedMessage: survey.closedMessage ?? null });
+        }
         return survey;
     }
     toPublicSurvey(survey) {
@@ -190,6 +201,12 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             // anonymous caller, before they fill out the whole form, rather than
             // only discovering it from submitPublic's 403 at the very end.
             requiresLogin: survey.requiresLogin,
+            // Survey-level options the respondent page needs (phase C): the text after submit, the progress bar,
+            // and whether the response cap is reached (so the page can say so up front instead of at Submit).
+            thankYouMessage: (0, survey_settings_1.normalizeSettings)(survey.settings).thankYouMessage ?? null,
+            showProgressBar: (0, survey_settings_1.normalizeSettings)(survey.settings).showProgressBar === true,
+            isFull: (0, survey_settings_1.computeAvailability)(survey, survey._count.responses) === 'full',
+            closedMessage: survey.closedMessage ?? null,
             sections: survey.sections.map((s) => ({
                 id: s.id,
                 title: s.title,
@@ -271,6 +288,15 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             ? await this.prisma.surveyAnswer.findMany({ where: { responseId: opts.responseId }, select: { questionId: true, value: true } })
             : null;
         const response = await this.prisma.$transaction(async (tx) => {
+            // Response cap: take a per-survey lock, THEN count, so two simultaneous submissions cannot both
+            // squeeze in as the last place. Only brand-new responses count against it (edits are not new places).
+            if (!opts.responseId && survey.responseLimit) {
+                await tx.$executeRaw `SELECT pg_advisory_xact_lock(hashtext(${survey.id}))`;
+                const taken = await tx.surveyResponse.count({ where: { surveyId: survey.id } });
+                if (taken >= survey.responseLimit) {
+                    throw new common_1.ConflictException({ statusCode: 409, message: 'This survey has reached its maximum number of responses', full: true });
+                }
+            }
             const responseRow = opts.responseId
                 ? await tx.surveyResponse.update({
                     where: { id: opts.responseId },

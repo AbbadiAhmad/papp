@@ -248,5 +248,24 @@
   "survey.share.download_svg": "Download SVG",
   "survey.share.embed_title": "Embed in a web page",
   "survey.share.embed_hint": "Paste this into your website page to show the survey inside it.",
-  "survey.share.copy_embed": "Copy embed code"
+  "survey.share.copy_embed": "Copy embed code",
+
+  "survey.fields.opens_at": "Opens on (optional)",
+  "survey.fields.closes_at": "Closes on (optional)",
+  "survey.fields.response_limit": "Close after this many responses (optional)",
+  "survey.fields.thank_you_message": "Thank-you message (optional)",
+  "survey.fields.show_progress_bar": "Show a progress bar (when the survey has several sections)",
+  "survey.builder.availability": "Availability and finishing",
+  "survey.builder.availability_hint": "Dates use your computer's time zone. Leave a field empty for no limit. A survey that reached its response limit still lets people edit their own answer.",
+  "survey.builder.schedule_invalid": "The closing date must be after the opening date.",
+  "survey.builder.thank_you_hint": "Shown after a reader submits. Leave empty for the default message.",
+  "survey.availability.not_open_yet": "Not open yet",
+  "survey.availability.ended": "Ended",
+  "survey.availability.full": "Full",
+  "survey.availability.opens_on": "Opens {{date}}",
+  "survey.availability.closes_on": "Closes {{date}}",
+  "survey.take.not_open_yet": "This survey is not open yet.",
+  "survey.take.not_open_yet_on": "This survey opens on {{date}}.",
+  "survey.take.full": "This survey has reached its maximum number of responses.",
+  "survey.take.progress": "Survey progress"
 }

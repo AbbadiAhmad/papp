@@ -21,6 +21,7 @@ const class_validator_1 = require("class-validator");
 const crypto_1 = require("crypto");
 const jszip_1 = __importDefault(require("jszip"));
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
+const survey_settings_1 = require("./survey-settings");
 const surveys_service_1 = require("./surveys.service");
 exports.SURVEY_PACKAGE_FORMAT = 'papp.survey.package';
 exports.SURVEY_PACKAGE_VERSION = 1;
@@ -116,6 +117,8 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                 opensAt: survey.opensAt?.toISOString() ?? null,
                 closesAt: survey.closesAt?.toISOString() ?? null,
                 closedMessage: survey.closedMessage,
+                responseLimit: survey.responseLimit,
+                settings: (0, survey_settings_1.normalizeSettings)(survey.settings),
             },
             sections: survey.sections.map((s) => ({
                 id: s.id,
@@ -200,6 +203,9 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                     opensAt: settings.opensAt ? new Date(settings.opensAt) : null,
                     closesAt: settings.closesAt ? new Date(settings.closesAt) : null,
                     closedMessage: settings.closedMessage ?? null,
+                    // An imported file is untrusted: re-check the cap and normalise the settings like a builder save.
+                    responseLimit: (0, survey_settings_1.validateSurveyOptions)({ responseLimit: settings.responseLimit }) === null ? (settings.responseLimit ?? null) : null,
+                    settings: (0, survey_settings_1.normalizeSettings)(settings.settings),
                 },
             });
             for (const section of pkg.sections) {

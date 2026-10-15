@@ -1,4 +1,5 @@
-import { IsArray, IsBoolean, IsDateString, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { MAX_RESPONSE_LIMIT, MAX_THANK_YOU_LENGTH } from '../survey-settings';
 
 /**
  * Covers both the survey's descriptive fields and its sharing/access
@@ -41,13 +42,33 @@ export class UpdateSurveyDto {
   @IsEmail({}, { each: true })
   notifyEmails?: string[];
 
+  /** ISO date-time; `null` clears the schedule. The survey takes responses only from this moment (when set). */
   @IsOptional()
   @IsDateString()
-  opensAt?: string;
+  opensAt?: string | null;
 
+  /** ISO date-time; `null` clears it. From this moment the survey stops taking responses (when set). */
   @IsOptional()
   @IsDateString()
-  closesAt?: string;
+  closesAt?: string | null;
+
+  /** Stop taking NEW responses after this many; `null` removes the cap. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_RESPONSE_LIMIT)
+  responseLimit?: number | null;
+
+  /** Text shown after submit instead of the default; empty string clears it. Stored in `settings`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_THANK_YOU_LENGTH)
+  thankYouMessage?: string;
+
+  /** Show page progress on surveys with more than one section. Stored in `settings`. */
+  @IsOptional()
+  @IsBoolean()
+  showProgressBar?: boolean;
 
   /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
   @IsOptional()

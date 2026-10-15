@@ -7,6 +7,9 @@ import surveyEn from '../../locales/en.json';
 import { SurveyBuilderPage } from '../../frontend/pages/SurveyBuilderPage';
 import type { SurveyDetail } from '../../frontend/api';
 
+// The builder is a very large form; every interaction re-renders hundreds of MUI inputs in jsdom, so give each test room.
+vi.setConfig({ testTimeout: 30_000 });
+
 vi.mock('../../../../apps/web/src/shared/permissions', () => ({
   useGatedCall: () => async (_code: string, fn: () => Promise<unknown>) => fn(),
 }));
@@ -227,5 +230,58 @@ describe('SurveyBuilderPage: preview and share', () => {
     const dialog = await screen.findByRole('dialog');
     expect((within(dialog).getByLabelText('Link for readers') as HTMLInputElement).value).toBe(`${window.location.origin}/survey/sv-1`);
     expect(within(dialog).getByText(/not published yet/)).toBeInTheDocument();
+  });
+});
+
+describe('SurveyBuilderPage: availability and finishing (phase C)', () => {
+  it('saves the schedule, response limit, thank-you message and progress bar through the normal save', async () => {
+    replaceStructure.mockImplementation(async (_id: string, payload: { sections: unknown; logicRules: unknown[] }) => ({ ...detail(), ...payload }));
+    update.mockResolvedValue(undefined);
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+
+    fireEvent.change(screen.getByLabelText('Opens on (optional)'), { target: { value: '2030-01-10T09:00' } });
+    fireEvent.change(screen.getByLabelText('Closes on (optional)'), { target: { value: '2030-02-01T18:30' } });
+    fireEvent.change(screen.getByLabelText('Close after this many responses (optional)'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Thank-you message (optional)'), { target: { value: 'See you soon!' } });
+    fireEvent.click(screen.getByLabelText(/Show a progress bar/));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const sent = update.mock.calls[0][1];
+    expect(sent).toMatchObject({ responseLimit: 50, thankYouMessage: 'See you soon!', showProgressBar: true });
+    expect(new Date(sent.opensAt).getTime()).toBe(new Date(2030, 0, 10, 9, 0).getTime());
+    expect(new Date(sent.closesAt).getTime()).toBe(new Date(2030, 1, 1, 18, 30).getTime());
+  });
+
+  it('blocks Save and explains when the closing date is not after the opening date', async () => {
+    update.mockResolvedValue(undefined);
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+    fireEvent.change(screen.getByLabelText('Opens on (optional)'), { target: { value: '2030-02-01T09:00' } });
+    fireEvent.change(screen.getByLabelText('Closes on (optional)'), { target: { value: '2030-01-01T09:00' } });
+    expect(screen.getAllByText('The closing date must be after the opening date.').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getAllByText('The closing date must be after the opening date.').length).toBeGreaterThan(1));
+    expect(update).not.toHaveBeenCalled();
+    expect(replaceStructure).not.toHaveBeenCalled();
+  });
+
+  it('shows the saved values and clears the response limit when the field is emptied', async () => {
+    vi.mocked(surveyApi.get).mockResolvedValue(detail({ responseLimit: 20, settings: { thankYouMessage: 'Cheers', showProgressBar: true } }));
+    update.mockResolvedValue(undefined);
+    replaceStructure.mockImplementation(async (_id: string, payload: { sections: unknown; logicRules: unknown[] }) => ({ ...detail(), ...payload }));
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+    expect(screen.getByLabelText('Close after this many responses (optional)')).toHaveValue(20);
+    expect(screen.getByLabelText('Thank-you message (optional)')).toHaveValue('Cheers');
+    expect(screen.getByLabelText(/Show a progress bar/)).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText('Close after this many responses (optional)'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1].responseLimit).toBeNull();
   });
 });
