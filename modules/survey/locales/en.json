@@ -280,5 +280,6 @@
   "survey.image.header": "Picture at the top of the survey",
   "survey.image.section": "Picture for this section",
   "survey.image.question": "Picture for this question",
-  "survey.config_rules.bad_image": "{{detail}}"
+  "survey.config_rules.bad_image": "{{detail}}",
+  "survey.image.proxy_too_large": "The server refused this upload because it is too large. If the picture is under 2 MB, ask your administrator to raise the request size limit of the web server or proxy in front of the application (at least 3 MB)."
 }

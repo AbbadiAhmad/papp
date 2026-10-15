@@ -15,6 +15,7 @@ import type { FillableSurvey } from '../../frontend/api';
 
 const uploadImage = vi.fn();
 let failNextUpload: Error | null = null;
+const tooLarge = () => Object.assign(new Error('Request failed with status code 413'), { isAxiosError: true, response: { status: 413, data: '<html>413 Request Entity Too Large</html>' } });
 
 vi.mock('../../frontend/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../frontend/api')>();
@@ -48,6 +49,13 @@ beforeEach(() => {
 const pngFile = (name = 'pic.png', type = 'image/png', size = 10) => new File([new Uint8Array(size)], name, { type });
 
 describe('ImageField (builder)', () => {
+  it('explains a proxy 413 in plain words instead of a raw status error', async () => {
+    failNextUpload = tooLarge();
+    render(<ImageField surveyId="s1" label="Picture" value={null} onChange={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [pngFile()] } });
+    expect(await screen.findByText(/ask your administrator to raise the request size limit/)).toBeInTheDocument();
+  });
+
   it('uploads a chosen picture and reports it with an empty description to be filled in', async () => {
     uploadImage.mockResolvedValue({ mediaId: H });
     const onChange = vi.fn();

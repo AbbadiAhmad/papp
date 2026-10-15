@@ -1,6 +1,7 @@
 import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import ImageIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import { Alert, Box, Button, Stack, TextField, Typography } from '@mui/material';
+import axios from 'axios';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MAX_ALT_LENGTH, MAX_IMAGE_BYTES } from '../../backend/question-rules.ts';
@@ -33,7 +34,8 @@ export function ImageField({ surveyId, label, value, onChange }: Props) {
       const { mediaId } = await surveyApi.uploadImage(surveyId, file);
       onChange({ mediaId, alt: value?.alt ?? '' });
     } catch (err) {
-      setError(extractErrorMessage(err) || t('survey.image.upload_failed'));
+      // A proxy in front of the API (nginx, a load balancer) answers an oversize body itself with a bare 413 page.
+      setError(axios.isAxiosError(err) && err.response?.status === 413 ? t('survey.image.proxy_too_large') : extractErrorMessage(err) || t('survey.image.upload_failed'));
     } finally {
       setBusy(false);
       if (input.current) input.current.value = '';
