@@ -2,6 +2,8 @@
 
 Read `docs/MODULE_SPEC.md` §9 for what this file and `DECISIONS.md` are for and when to update them. Read `DECISIONS.md` in this same directory too — this file is the current shape, that one is why it's shaped that way (including two real bugs found and fixed while building it).
 
+> **Planned work:** `ROADMAP.md` in this directory holds the Microsoft Forms feature inventory, the gap analysis, the proposed top-10 implementation plan and the documented backlog.
+
 ## Purpose
 
 Google-Forms-style survey builder: sections/questions with conditional show/hide logic driven by prior enumeration answers, public or login-required shareable links, optional post-submit editing via a hashed edit token, completion notifications (owner + arbitrary admin-typed addresses), per-question report charts, and a dynamic pivot table over the flattened response dataset.
