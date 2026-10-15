@@ -72,6 +72,8 @@ export const menuLayoutSchema = z
           id: z.string().regex(/^[a-z0-9_.-]{1,60}$/),
           label: localizedText.optional(),
           icon: z.string().max(60).optional(),
+          /** A "direct links" box: no heading, its entries appear as top-level links at this position instead of under a parent. */
+          direct: z.boolean().optional(),
           itemIds: z.array(entryId).max(MENU_LAYOUT_MAX_ITEMS),
         }),
       )

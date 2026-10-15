@@ -207,5 +207,8 @@
   "core.account.memberSince": "Member since",
   "core.account.none": "Not set",
   "core.account.statusActive": "Active",
-  "core.account.statusInactive": "Inactive"
+  "core.account.statusInactive": "Inactive",
+  "core.appearance.directLinks": "Direct links (no parent menu)",
+  "core.appearance.directLinksHint": "These pages appear as plain links in the menu, not inside a group.",
+  "core.appearance.addDirectLinks": "Add direct links"
 }

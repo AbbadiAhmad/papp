@@ -207,5 +207,8 @@
   "core.account.memberSince": "عضو منذ",
   "core.account.none": "غير محدد",
   "core.account.statusActive": "فعّال",
-  "core.account.statusInactive": "غير فعّال"
+  "core.account.statusInactive": "غير فعّال",
+  "core.appearance.directLinks": "روابط مباشرة (بدون قائمة أب)",
+  "core.appearance.directLinksHint": "تظهر هذه الصفحات كروابط مباشرة في القائمة وليس داخل مجموعة.",
+  "core.appearance.addDirectLinks": "إضافة روابط مباشرة"
 }

@@ -349,6 +349,9 @@ function MenuEditorSection() {
   const addGroup = () =>
     update({ ...draft, groups: [...draft.groups, { id: `custom_${Date.now().toString(36)}`, label: { ar: '', en: '' }, itemIds: [] }] });
 
+  const addDirectBox = () =>
+    update({ ...draft, groups: [...draft.groups, { id: `direct.new_${Date.now().toString(36)}`, direct: true, itemIds: [] }] });
+
   const deleteGroup = (gi: number) => {
     if (draft.groups.length < 2) return;
     const target = gi === 0 ? 1 : 0;
@@ -366,6 +369,7 @@ function MenuEditorSection() {
     groups: draft.groups.map((g) => {
       const ar = g.label?.ar?.trim() ?? '';
       const en = g.label?.en?.trim() ?? '';
+      if (g.direct) return { id: g.id, direct: true, itemIds: g.itemIds };
       return { id: g.id, icon: g.icon, itemIds: g.itemIds, label: ar || en ? { ar: ar || en, en: en || ar } : undefined };
     }),
     hidden: draft.hidden,
@@ -407,6 +411,15 @@ function MenuEditorSection() {
           <Card key={group.id} variant="outlined">
             <CardContent>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' }, mb: 1 }}>
+                {group.direct ? (
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>{t('core.appearance.directLinks')}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('core.appearance.directLinksHint')}
+                    </Typography>
+                  </Box>
+                ) : (
+                  <>
                 <TextField
                   size="small"
                   label={t('core.appearance.groupNameAr')}
@@ -425,6 +438,8 @@ function MenuEditorSection() {
                   onChange={(e) => setGroup(gi, { label: { ar: group.label?.ar ?? '', en: e.target.value } })}
                   slotProps={{ htmlInput: { maxLength: 80 }, inputLabel: { shrink: true } }}
                 />
+                  </>
+                )}
                 <Box sx={{ flexGrow: 1 }} />
                 {canManage ? (
                   <Stack direction="row">
@@ -499,7 +514,7 @@ function MenuEditorSection() {
                     >
                       {draft.groups.map((g, idx) => (
                         <MenuItem key={g.id} value={idx}>
-                          {g.label?.ar || g.label?.en || t(leafById.get(g.itemIds[0] ?? '')?.labelKey ?? 'core.appearance.untitledGroup')}
+                          {g.direct ? t('core.appearance.directLinks') : g.label?.ar || g.label?.en || t(defaultGroupLabelKey(g.id) ?? 'core.appearance.untitledGroup')}
                         </MenuItem>
                       ))}
                     </TextField>
@@ -536,6 +551,9 @@ function MenuEditorSection() {
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
           <Button variant="outlined" onClick={addGroup}>
             {t('core.appearance.addGroup')}
+          </Button>
+          <Button variant="outlined" onClick={addDirectBox}>
+            {t('core.appearance.addDirectLinks')}
           </Button>
           <Box sx={{ flexGrow: 1 }} />
           <Button color="inherit" disabled={saving} onClick={() => void save({ groups: [], hidden: [], labels: {} })}>

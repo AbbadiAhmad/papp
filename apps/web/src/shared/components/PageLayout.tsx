@@ -21,7 +21,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
+import { useTheme } from '@mui/material/styles';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -49,7 +49,7 @@ import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { useColorMode } from '../../app/ColorModeContext';
 import { useBranding, useMenuLayout, useThemePack } from '../../app/AppearanceContext';
-import { applyMenuLayout, labelOf } from '../modules/applyMenuLayout';
+import { applyMenuLayout, asDirectLeaf, buildNavEntries, isRealGroup, labelOf, type NavEntry } from '../modules/applyMenuLayout';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
 import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
@@ -186,18 +186,28 @@ export function useDefaultNavNodes(): ResolvedMenuNode[] {
   );
 }
 
+/**
+ * THE rule every shell shares (see `buildNavEntries`): sidebar, mobile drawer, tabs, header
+ * dropdowns and the public-page menu all render from these entries.
+ */
+function useNavEntries(): NavEntry[] {
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  return buildNavEntries(nodes, (leaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission));
+}
+
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
-  const nodes = useNavNodes();
+  const entries = useNavEntries();
 
   return (
     <List>
-      {nodes.map((node) =>
-        node.type === 'group' ? (
-          <NavGroup key={node.id} group={node} activePath={location.pathname} onNavigate={onNavigate} t={t} />
+      {entries.map((entry) =>
+        isRealGroup(entry) ? (
+          <NavGroup key={entry.node.id} group={entry.node} activePath={location.pathname} onNavigate={onNavigate} t={t} />
         ) : (
-          <NavLeafItem key={node.id} leaf={node} active={location.pathname === node.route} onNavigate={onNavigate} t={t} />
+          <NavLeafItem key={entry.node.id} leaf={asDirectLeaf(entry)} active={location.pathname === asDirectLeaf(entry).route} onNavigate={onNavigate} t={t} />
         ),
       )}
     </List>
@@ -315,15 +325,9 @@ function NavLeafItem({
 function TabsNav() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { hasPermission } = useAuth();
-  const nodes = useNavNodes();
+  const tabs = useNavEntries();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-
-  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
-  const tabs = nodes
-    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
-    .filter((tab) => tab.leaves.length > 0);
   const active = tabs.find((tab) => tab.leaves.some((leaf) => leaf.route === pathname));
 
   return (
@@ -378,16 +382,10 @@ function TabsNav() {
 function HeaderNav() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { hasPermission } = useAuth();
-  const nodes = useNavNodes();
+  const entries = useNavEntries();
   const { pathname } = useLocation();
   const theme = useTheme();
   const [openMenu, setOpenMenu] = useState<{ id: string; anchor: HTMLElement } | null>(null);
-
-  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
-  const entries = nodes
-    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
-    .filter((entry) => entry.leaves.length > 0);
   // Anchor/transform on the reading-start edge so the dropdown lines up with its button in LTR and RTL.
   const edge = theme.direction === 'rtl' ? 'right' : 'left';
   const openEntry = entries.find((entry) => entry.node.id === openMenu?.id);
@@ -401,13 +399,13 @@ function HeaderNav() {
         minHeight: `${HEADER_NAV_HEIGHT}px !important`,
         gap: 0.5,
         overflowX: 'auto',
-        backgroundColor: alpha('#000', 0.22),
-        borderTop: `1px solid ${alpha('#fff', 0.12)}`,
+        backgroundColor: 'color-mix(in srgb, currentColor 6%, transparent)',
+        borderTop: '1px solid color-mix(in srgb, currentColor 14%, transparent)',
       }}
     >
       {entries.map(({ node, leaves }) => {
         const active = leaves.some((leaf) => leaf.route === pathname);
-        const single = leaves.length === 1;
+        const single = !isRealGroup({ node, leaves });
         return (
           <Button
             key={node.id}
@@ -425,9 +423,9 @@ function HeaderNav() {
               px: 1.5,
               borderRadius: 1,
               fontWeight: active ? 700 : 500,
-              backgroundColor: active ? alpha('#fff', 0.14) : 'transparent',
-              boxShadow: active ? `inset 0 -3px 0 ${theme.palette.primary.light}` : 'none',
-              '&:hover': { backgroundColor: alpha('#fff', 0.2) },
+              backgroundColor: active ? 'color-mix(in srgb, currentColor 10%, transparent)' : 'transparent',
+              boxShadow: active ? `inset 0 -3px 0 ${theme.palette.primary.main}` : 'none',
+              '&:hover': { backgroundColor: 'color-mix(in srgb, currentColor 16%, transparent)' },
             }}
           >
             {labelOf(node, language, t)}
@@ -474,15 +472,9 @@ function useOnPublicModulePage(): boolean {
 function PlatformMenuButton() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { hasPermission } = useAuth();
-  const nodes = useNavNodes();
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-
-  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
-  const entries = nodes
-    .map((node) => ({ node, first: (node.type === 'leaf' ? [node] : node.children).find(isVisible) }))
-    .filter((entry): entry is { node: ResolvedMenuNode; first: ResolvedMenuLeaf } => entry.first !== undefined);
+  const entries = useNavEntries().map(({ node, leaves }) => ({ node, first: leaves[0] }));
 
   return (
     <>
@@ -523,7 +515,9 @@ export function TopBar() {
   const navigate = useNavigate();
   const theme = useTheme();
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
-  const shell = useThemePack().pack?.shell;
+  const themePack = useThemePack().pack;
+  const shell = themePack?.shell;
+  const hasHeaderPicture = Boolean(themePack?.headerImage);
   const tabsShell = shell === 'tabs';
   const headerShell = shell === 'header';
   // The header shell switches to the drawer below `md` (a dropdown bar needs the width); other shells below `sm`.
@@ -574,11 +568,11 @@ export function TopBar() {
         >
           <Box
             aria-hidden
-            sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 2 }}
+            sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', border: '1px solid rgba(0,0,0,.14)', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 1 }}
           >
             <LocalLibraryIcon />
           </Box>
-          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, textShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
+          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, ...(hasHeaderPicture ? { textShadow: '0 1px 4px rgba(0,0,0,.4)' } : {}) }}>
             {appTitle}
           </Typography>
         </Box>
