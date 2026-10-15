@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { BookFilesService } from './book-files.service';
 import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
@@ -41,12 +42,17 @@ const fetchCopyState = (prisma: PrismaClient, req: Request) =>
 @Controller('api/library/books')
 @UseGuards(MustChangePasswordGuard)
 export class BooksController {
-  constructor(private readonly books: BooksService) {}
+  constructor(
+    private readonly books: BooksService,
+    private readonly files: BookFilesService,
+  ) {}
 
   @Get()
   @RequirePermission('library_catalog.books.view')
   async list(@Query() query: ListBooksDto) {
-    return this.books.list(query);
+    const books = await this.books.list(query);
+    const summaries = await this.files.summaries(books.map((b: { id: string }) => b.id));
+    return books.map((b: { id: string }) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null } }));
   }
 
   @Get('export')
@@ -88,7 +94,8 @@ export class BooksController {
   @Get(':id')
   @RequirePermission('library_catalog.books.view')
   async findById(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.books.findById(id, user.userId);
+    const book = await this.books.findById(id, user.userId);
+    return { ...book, files: await this.files.summary(id) };
   }
 
   @Post()
@@ -102,7 +109,9 @@ export class BooksController {
   @RequirePermission('library_catalog.books.update')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'update', fetchState: fetchBookState })
   async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookDto) {
-    return this.books.update(id, dto);
+    const updated = await this.books.update(id, dto);
+    await this.files.writeInfo(id); // keeps info.txt (title/author) in step with the record
+    return updated;
   }
 
   @Delete(':id')
@@ -111,6 +120,7 @@ export class BooksController {
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'delete', fetchState: fetchBookState })
   async remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.books.remove(id);
+    await this.files.removeAll(id); // the folder (cover, book file, info.txt); the rows went with the book
   }
 
   // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------

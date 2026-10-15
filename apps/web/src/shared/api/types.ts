@@ -111,6 +111,8 @@ export interface BackupInfo {
   platformVersion: string;
   schemaFingerprint: string;
   backupConfigured: boolean;
+  /** Directories `BACKUP_FILE_DIRS` lists on the server (uploaded files); empty when none are configured. */
+  fileRoots?: string[];
 }
 
 export interface AuditQueryParams {

@@ -210,5 +210,10 @@
   "core.account.statusInactive": "Inactive",
   "core.appearance.directLinks": "Direct links (no parent menu)",
   "core.appearance.directLinksHint": "These pages appear as plain links in the menu, not inside a group.",
-  "core.appearance.addDirectLinks": "Add direct links"
+  "core.appearance.addDirectLinks": "Add direct links",
+  "core.backup.filesSection": "Export files",
+  "core.backup.filesHint": "Downloads an AES-256-encrypted archive of the uploaded files (book covers and book files, survey pictures). The database export does not contain them, so take both. For a very large library, use the server command shown in the documentation instead of the browser.",
+  "core.backup.filesButton": "Export files",
+  "core.backup.filesNotConfigured": "No file directories are configured. Set BACKUP_FILE_DIRS on the api service (docker-compose does this by default).",
+  "core.backup.restoreFilesNotice": "Restore the files after restoring the database, with:"
 }

@@ -210,5 +210,10 @@
   "core.account.statusInactive": "غير فعّال",
   "core.appearance.directLinks": "روابط مباشرة (بدون قائمة أب)",
   "core.appearance.directLinksHint": "تظهر هذه الصفحات كروابط مباشرة في القائمة وليس داخل مجموعة.",
-  "core.appearance.addDirectLinks": "إضافة روابط مباشرة"
+  "core.appearance.addDirectLinks": "إضافة روابط مباشرة",
+  "core.backup.filesSection": "تصدير الملفات",
+  "core.backup.filesHint": "ينزّل أرشيفًا مشفّرًا (AES-256) للملفات المرفوعة (أغلفة الكتب وملفات الكتب وصور الاستبيانات). لا يتضمنها تصدير قاعدة البيانات، لذا خذ النسختين معًا. للمكتبات الكبيرة جدًا استخدم أمر الخادم المذكور في التوثيق بدلًا من المتصفح.",
+  "core.backup.filesButton": "تصدير الملفات",
+  "core.backup.filesNotConfigured": "لم يتم ضبط أي مجلدات ملفات. اضبط BACKUP_FILE_DIRS على خدمة api (يفعل docker-compose ذلك افتراضيًا).",
+  "core.backup.restoreFilesNotice": "استعد الملفات بعد استعادة قاعدة البيانات بالأمر:"
 }

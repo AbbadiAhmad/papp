@@ -383,6 +383,7 @@ let BooksService = BooksService_1 = class BooksService {
         const workbook = new exceljs_1.default.Workbook();
         const worksheet = workbook.addWorksheet('Books');
         worksheet.columns = [
+            { header: 'id', key: 'id', width: 38 },
             { header: 'title', key: 'title', width: 32 },
             { header: 'author', key: 'author', width: 24 },
             { header: 'publisher', key: 'publisher', width: 24 },
@@ -394,6 +395,7 @@ let BooksService = BooksService_1 = class BooksService {
         ];
         for (const book of books) {
             worksheet.addRow({
+                id: book.id,
                 title: book.title,
                 author: book.author ?? '',
                 publisher: book.publisher ?? '',

@@ -24,6 +24,7 @@ const common_1 = require("@nestjs/common");
 // this module at all).
 // eslint-disable-next-line import/no-unresolved
 const public_throttler_guard_1 = require("../../../apps/api/dist/common/guards/public-throttler.guard");
+const book_files_service_1 = require("./book-files.service");
 const books_service_1 = require("./books.service");
 const platform_1 = require("./platform");
 /**
@@ -54,14 +55,37 @@ const platform_1 = require("./platform");
  */
 let PublicBooksController = class PublicBooksController {
     books;
-    constructor(books) {
+    files;
+    constructor(books, files) {
         this.books = books;
+        this.files = files;
     }
     async availability(id) {
         // getAvailability() already throws a plain NotFoundException for a
         // missing book — exactly what an anonymous caller should see (404, no
         // stack trace or internal detail), MODULE_SPEC.md §7.2.
         return this.books.getAvailability(id);
+    }
+    /**
+     * The book's cover picture, for <img> tags (which cannot send an Authorization header). Only the cover
+     * is public — the book FILE is never served here. Not audited: it is hit once per cover per page view.
+     */
+    async cover(id, res) {
+        const found = await this.files.locate(id, 'cover');
+        if (!found)
+            throw new common_1.NotFoundException('This book has no cover');
+        res.set({
+            'Content-Type': found.mime,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+            // The cover can be replaced, so the browser must revalidate (sendFile adds an ETag).
+            'Cache-Control': 'public, max-age=0, must-revalidate',
+        });
+        res.sendFile(found.path, (err) => {
+            if (err && !res.headersSent)
+                res.status(404).json({ statusCode: 404, message: 'Cover not found' });
+        });
     }
 };
 exports.PublicBooksController = PublicBooksController;
@@ -79,7 +103,17 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], PublicBooksController.prototype, "availability", null);
+__decorate([
+    (0, common_1.Get)(':id/cover'),
+    (0, platform_1.Public)(),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], PublicBooksController.prototype, "cover", null);
 exports.PublicBooksController = PublicBooksController = __decorate([
     (0, common_1.Controller)('api/library/public/books'),
-    __metadata("design:paramtypes", [books_service_1.BooksService])
+    __metadata("design:paramtypes", [books_service_1.BooksService,
+        book_files_service_1.BookFilesService])
 ], PublicBooksController);

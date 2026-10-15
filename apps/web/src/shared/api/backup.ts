@@ -9,6 +9,22 @@ function filenameFromContentDisposition(headerValue: string | undefined): string
   return match?.[1] ?? DEFAULT_FILENAME;
 }
 
+async function download(path: string): Promise<void> {
+  const response = await apiClient.post(path, null, { responseType: 'blob' });
+  const filename = filenameFromContentDisposition(response.headers['content-disposition'] as string | undefined);
+  const url = URL.createObjectURL(response.data as Blob);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export const backupApi = {
   getInfo: () => apiClient.get<BackupInfo>('/backup/info').then((r) => r.data),
 
@@ -28,4 +44,7 @@ export const backupApi = {
       URL.revokeObjectURL(url);
     }
   },
+
+  /** The uploaded files (book covers/files, survey pictures...) as their own encrypted archive — the database export does not contain them. */
+  exportFiles: (): Promise<void> => download('/backup/export-files'),
 };

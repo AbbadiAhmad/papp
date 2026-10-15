@@ -348,8 +348,28 @@ model LibraryCatalogBook {
 
   copies  LibraryCatalogBookCopy[]
   ratings LibraryCatalogBookRating[]
+  files   LibraryCatalogBookFile[]
 
   @@map("library_catalog_books")
+}
+
+/// A book's cover picture / book file on disk (migration 008, LIBRARY_CATALOG-D28).
+/// `uploadedBy` is a plain scalar like every other module's createdBy-shaped column.
+model LibraryCatalogBookFile {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookId     String   @map("book_id") @db.Uuid
+  kind       String
+  ext        String
+  mime       String
+  sizeBytes  Int      @map("size_bytes")
+  uploadedBy String?  @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, kind])
+  @@map("library_catalog_book_files")
 }
 
 /// 1-5 star rating + optional written review, one per (book, user), editable

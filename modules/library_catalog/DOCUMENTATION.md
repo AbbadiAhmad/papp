@@ -19,6 +19,10 @@ library_catalog_book_copies(
   condition, location, acquisition_date, created_at, updated_at,
   history JSONB[] DEFAULT '[]'
 )
+library_catalog_book_files(
+  id, book_id -> books(id) ON DELETE CASCADE, kind ('cover'|'book'), ext, mime, size_bytes,
+  uploaded_by, created_at, updated_at, UNIQUE(book_id, kind)
+)   -- migration 008; the BYTES are on disk, see "Cover and book files" below
 library_catalog_copy_code_seq  -- Postgres SEQUENCE (not a table), migration 006 (LIBRARY_CATALOG-D22)
 library_catalog_book_ratings(
   id, book_id -> books(id) ON DELETE CASCADE, user_id -> users(id),
@@ -47,6 +51,7 @@ library_catalog_book_ratings(
 | `library_catalog.books.update` | Edit a book, update a copy's status/condition/location | `BooksController.update/updateCopy` |
 | `library_catalog.books.delete` | Delete a book (and, via cascade, its copies), or remove a single copy directly | `BooksController.remove/removeCopy` |
 | `library_catalog.books.export` | Download the books list as `.xlsx` | `BooksController.export` |
+| `library_catalog.books.download` | Download a book's file (cover pictures are public, see below) | `BookFilesController.download` |
 | `library_catalog.books.rate` | Create/update/delete the CALLER'S OWN rating+review for a book (never someone else's) | `BooksController.rateBook/removeRating` |
 | `library_catalog.books.moderate_ratings` | List the pending-review queue, approve or reject a review | `BooksController.listPendingReviews/approveReview/rejectReview` |
 | `library_catalog.copies.print_codes` | View/filter copies for printing, print the sticker sheet, export the Excel sheet, READ the sticker header-text setting | `BooksController.listCopiesForPrint/exportCopiesForPrint`, `SettingsController.getStickerSettings` |
@@ -59,9 +64,25 @@ library_catalog_book_ratings(
 
 `library_catalog.sticker_header_text` (`{ headerText }`) — the fixed header line printed on every copy sticker (e.g. the school/library name, blank by default). Read/written through `backend/settings.service.ts`'s own minimal endpoint (root D70/D71: the generic per-module Settings-screen surface doesn't exist yet, same pattern as `library_circulation`'s `loan_policy`). This is this module's FIRST `system_settings`-backed value (LIBRARY_CATALOG-D22).
 
+## Cover and book files (1.3.0, LIBRARY_CATALOG-D28)
+
+- **Layout on disk** (`BOOK_FILES_DIR`, default `<working dir>/data/books_files`; docker-compose bind-mounts the git-ignored host folder `./books_files` at `/data/books_files`):
+  ```
+  books_files/<book id>/cover.<png|jpg|webp|gif|avif>
+  books_files/<book id>/book.<pdf|epub|azw3|md>
+  books_files/<book id>/info.txt        Book ID / Title / Author / Publisher / Updated
+  ```
+  The folder name is the book's own UUID, i.e. the id in the book page's URL and in the first column (`id`) of the books Excel export. `info.txt` is rewritten on every upload and every edit of the book, so if the database link is ever lost, searching the `info.txt` files for a title finds the folder. The **uploaded file name is never stored or used** — files always get the fixed names above, and a download is named after the book's title.
+- **One cover and one book file per book** (uploading again replaces the file and removes the old one, even if the format changes). Accepted types are decided from the file's bytes, not its name: covers PNG/JPEG/WebP/GIF/AVIF up to 5 MB (SVG refused); book files PDF, EPUB, AZW3/MOBI without DRM (Amazon's KFX and DRM-protected files cannot be recognised), or Markdown/UTF-8 text, up to 30 MB.
+- **Endpoints** (`BookFilesController`): `POST/DELETE /api/library/books/:id/files/:kind` (`kind` = `cover`|`book`, `books.update`, audited as `upload_file`/`delete_file`, no bytes in the audit row); `GET /api/library/books/:id/files/book` (`books.download`, audited as `download_file`, always `Content-Disposition: attachment`, `nosniff`, sandbox CSP); `GET /api/library/public/books/:id/cover` (public, for `<img>` tags; only the cover, never the book file). `GET /books` and `GET /books/:id` now include `files: { cover, book }` (ext/size/updatedAt or null).
+- Deleting a book deletes its folder; removing the last file removes the folder. `defaultRolePermissions`: `books.download` for admin, library_assistant and reader (not finance).
+- **Backup**: these files are NOT in the database backup. Use the admin **Backup → Export files** button (an encrypted zip of every directory in `BACKUP_FILE_DIRS`) and restore with `./scripts/manageDB.sh restore-files <zip>` after restoring the database (root D116). Because `./books_files` is an ordinary host folder you can also copy it directly.
+- Behind a reverse proxy, allow request bodies of at least 35 MB on `/api/library/` (the bundled nginx allows 55 MB); a proxy refusal shows a plain-language message in the UI.
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):
+- `POST/DELETE /books/:id/files/:kind`, `GET /books/:id/files/book`, public `GET /public/books/:id/cover` — see "Cover and book files" above.
 - `GET/POST /books`, `GET/PATCH/DELETE /books/:id`, `GET /books/export` — `BooksController`, all `@RequirePermission`-gated as above.
 - `GET/POST /books/:bookId/copies`, `PATCH/DELETE /books/:bookId/copies/:id` — same controller, copies sub-resource. `DELETE` is gated by `books.delete` (not a separate code, matching the sub-resource pattern), and fails with 409 if the copy has `library_circulation` borrowing history (no `ON DELETE CASCADE` on that FK — see LIBRARY_CATALOG-D8).
 - `GET /public/books/:id/availability` — `PublicBooksController`, `@Public()` + `PublicThrottlerGuard` (D34 — even though it's a read, applied "for consistency" per the module's own build notes) + `@Audit(...)` (deliberately, to exercise the `actor_type='anonymous'` audit path — see that controller's own docblock).
