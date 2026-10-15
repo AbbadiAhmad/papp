@@ -1,12 +1,13 @@
-# Survey module: Microsoft Forms feature inventory, gap analysis and plan
+# Survey module: feature inventory (Microsoft Forms, Google Forms, SurveyMonkey), gap analysis and plan
 
-Status: **PROPOSED** (nothing here is built yet; see "Decisions needed" at the end). Written 2026-10-15 for module version 1.2.0.
+Status: **PROPOSED** (nothing here is built yet; see "Decisions needed" at the end). Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
 
 ## 1. How this was compiled (read first)
 
 The goal: list every feature Microsoft Forms offers, per item (form, section, question, answer choice, ...), compare with what this module does today, pick the 10 most used missing features to implement, and document the rest.
 
 - **Sources.** The sandbox this was written in cannot fetch `support.microsoft.com` directly (name resolution fails), so the Microsoft pages were read through search excerpts, plus university help desks and community answers that quote them. Main sources: [Create a form with Microsoft Forms](https://support.microsoft.com/en-us/office/create-a-form-with-microsoft-forms-4ffb64cc-7d5d-402f-b82e-b1d49418fd9d), [Adjust your form or quiz settings](https://support.microsoft.com/en-us/forms/adjust-your-form-or-quiz-settings-in-microsoft-forms), [Branch your form or quiz](https://support.microsoft.com/en-us/topic/branch-your-form-or-quiz-using-microsoft-forms-dd443878-959b-4379-8016-39f885c0ae6b), [Create a quiz](https://support.microsoft.com/en-us/forms/create-a-quiz-with-microsoft-forms), [Check and share your quiz results](https://support.microsoft.com/en-us/forms/check-and-share-your-quiz-results), [Choose who can fill out a form](https://support.microsoft.com/en-us/topic/choose-who-can-fill-out-a-form-or-quiz-c90c641e-6f88-45c5-9cb9-aca2b4083949), [Form, question, response and character limits](https://eus.prod.support.services.microsoft.com/en-gb/office/form-question-response-and-character-limits-in-microsoft-forms-ec15323d-92a4-4c33-bf88-3fdb9e5b5fea), [Tips you must know about Forms settings](https://techcommunity.microsoft.com/blog/microsoftformsblog/tips-you-must-know-about-microsoft-forms-settings/3899997), [Copilot in Forms](https://techcommunity.microsoft.com/blog/microsoftformsblog/introducing-copilot-in-forms-redefining-your-forms-creation/4062885), [Working with Ranking, Likert, Upload file and NPS](https://laramellortraining.co.uk/working-with-ranking-likert-upload-file-and-net-promoter-score-questions-in-microsoft-forms), and the [Illinois State](https://help.illinoisstate.edu/technology/support-topics/communication-and-collaboration-tools/microsoft-365/microsoft-forms/creating-a-form-or-quiz-in-microsoft-forms-add-sections-and-questions) / [Hendrix](https://www.hendrix.edu/HelpDesk_Articles/Computers_and_Drives/Software___Apps/Forms_formatting_and_configuration_options/) guides.
+- **Second and third reference.** Because the Microsoft pages could only be read second-hand, the same exercise was repeated for Google Forms and SurveyMonkey (section 2.11). A feature offered by two or three tools is a safer bet than one offered by a single tool, and it settles most of the **(?)** doubts about the top 10.
 - **Confidence.** Items marked **(?)** came only from third-party guides or conflicting posts and should be re-checked in a live Microsoft Forms account before being copied exactly (examples: rating level range, file-upload size options, number-restriction operators, exact question limit).
 - **"papp today"** was checked against the code in `modules/survey` (builder, fill page, DTO, report) on 2026-10-15. Legend: ✅ exists · ◐ partly (see note) · ❌ missing · ➕ papp has it and Microsoft Forms does not.
 
@@ -151,15 +152,52 @@ The goal: list every feature Microsoft Forms offers, per item (form, section, qu
 
 Copilot drafts a form from a sentence, improves questions, drafts invitations, analyses responses; a Surveys agent monitors response goals and sends reminders; Power Automate triggers on new responses; Teams / SharePoint / PowerPoint embedding; Forms Pro / Customer Voice features (rating labels, number restrictions). None of this fits an offline, self-hosted platform without an external service, so it is out of scope.
 
+### 2.11 Cross-check: Google Forms and SurveyMonkey
+
+Sources (again read through search excerpts; the vendor help sites could not be fetched from the sandbox): Google Forms: [cheat sheet](https://extendedforms.io/blog/google-forms-cheat-sheet), [question types](https://formfacade.com/website/resource/question-types-in-google-forms.html), [response validation](https://www.howtogeek.com/773613/how-to-validate-answers-to-questions-in-google-forms/), [settings](https://formswrite.com/blog/google-forms-settings-guide), [shuffling and images](https://www.controlaltachieve.com/2017/01/forms-sequencing.html). SurveyMonkey: [Checkboxes question](https://help.surveymonkey.com/en/surveymonkey/create/checkbox/), [Logic features](https://help.surveymonkey.com/en/surveymonkey/create/logic-options/), [Question skip logic](https://help.surveymonkey.com/en/surveymonkey/create/question-skip-logic/), [Piping](https://help.surveymonkey.com/en/surveymonkey/create/question-answer-piping/), [Character limits](https://help.surveymonkey.com/en/surveymonkey/create/design-character-limits/), [Quizzes](https://help.surveymonkey.com/en/surveymonkey/create/quizzes/), [Single textbox](https://help.surveymonkey.com/en/surveymonkey/create/single-textbox/), [Crosstabs and filters](https://www.surveymonkey.com/product/features/crosstabs/).
+
+| Feature | Microsoft | Google Forms | SurveyMonkey | In top 10? |
+|---|---|---|---|---|
+| Min / max / exactly N selections on checkboxes | no | **yes** (response validation: at least, at most, exactly) | **yes** (at least, at most, a range, exactly, all; with a "None of the above" choice only at least/at most) | #1 (confirmed by two tools) |
+| "Other" choice with text | yes | yes | yes ("Other" answer / comment field) | #2 |
+| Text/number validation with a custom error message | partly (number rules) | yes: number (is number, between, equal), text (contains, email/URL **(?)**), max length, regular expression; paragraph: length and regex | yes: length, whole/decimal number, date format, email; custom error message (250 characters) | #3 |
+| Shuffle choices / questions | yes | yes (choices; question order in settings) | yes (choices, questions, pages, blocks) | #5 |
+| Description with basic formatting and links | rich text | bold/italic/underline, links | rich text | #4 (plain text first; formatting in backlog) |
+| Images in questions | yes | yes | yes; also an Image Choice question | #8 |
+| Close date / maximum number of responses | start/end date | close date; **no response cap** (needs an add-on or manual close) | end date and maximum response count | #6 |
+| Confirmation (thank-you) message, progress bar | yes | yes (Presentation settings) | custom end page, progress bar **(?)** | #7 |
+| Emailed copy of the answers to the respondent | receipt on the thank-you page | "send responders a copy" (needs email collection) | **(?)** | #7 (printable receipt first; email copy is backlog) |
+| Limit to one response per person | yes (org only) | yes (needs a Google account) | **(?)** | exists (login only) |
+| Allow editing after submit | yes | yes (edit link) | **(?)** | exists |
+| Grid / matrix questions | Likert | multiple-choice grid and checkbox grid (optional "one answer per column", "require each row") | Matrix / Rating Scale / Matrix of dropdowns (advice: at most 5 rows and columns) | #9 |
+| Ranking | yes | no native (workarounds) | yes (advice: use sparingly) | backlog |
+| NPS | yes | no native | yes | backlog |
+| File upload | yes | yes (sign-in required, counts against Drive) | yes (paid) **(?)** | backlog |
+| Quiz mode | yes | yes (points + answer key, auto-grade) | yes (scoring on choice, checkbox, image choice, dropdown) | backlog (4.2) |
+| Skip / branching | forward only | by section ("go to section") | page and question skip logic, disqualification page, advanced conditions | exists (section routing) |
+| Show/hide by earlier answer | no | no (section routing only) | display logic | exists ➕ |
+| Piping (insert an earlier answer into later text) and carry-forward choices | no | no | yes (paid) | backlog |
+| Block/page randomisation, response quotas | no | no | yes (higher plans) | backlog |
+| Filters and crosstabs in results, share results page | summary only | summary charts, Sheets link | filters, crosstabs with significance testing, shared data pages | pivot exists ➕; filters in backlog |
+| Export formats | Excel | Sheets / CSV | PDF, PPT, XLS, CSV, SPSS (paid) | Excel exists; CSV in backlog |
+
+What this changed in the plan:
+
+- **#1 is the strongest candidate** (both Google Forms and SurveyMonkey have it; Microsoft does not). Design it with SurveyMonkey's full set: at least, at most, a range, exactly N, plus a rule for an **exclusive "None of the above"** choice (choosing it clears other boxes and the min/max then does not apply to it).
+- **#3 needs a custom error message per rule** (both other tools have it) and should offer Google's "between" and "is number" conditions. A regular expression is offered by Google only; it stays in the backlog because of the ReDoS risk.
+- **#6 is better justified**: SurveyMonkey has a response cap and Google users miss it.
+- **#9 (Likert) design** should allow the Google options "require a response in each row" and a row-count advice (about 5 to 8 rows) in the builder.
+- **New backlog items** found only in the other tools: piping and carry-forward (reuse an earlier answer in later text or choices), a disqualification ("screen-out") end page, page/block randomisation, response quotas per answer, report filters and crosstab significance, CSV export, and an emailed copy of answers.
+
 ## 3. The 10 features to implement (ranked)
 
 Ranking = how often the feature is used in real library surveys (reader satisfaction, event feedback, book suggestions, sign-ups) × how much it unblocks, divided by effort. The first five need **no database change** (they live in the question's existing `config` JSONB); the rest need a migration.
 
 | # | Feature | Why now | Effort | Migration |
 |---|---|---|---|---|
-| 1 | **Selection limits on multiple-choice** (min, max, or exactly N) | Requested by the owner; Microsoft lacks it natively. Prevents "pick your top 3" surveys from collecting 9. | S | no |
+| 1 | **Selection limits on multiple-choice** (at least, at most, range, exactly N; exclusive "None of the above") | Requested by the owner; Google Forms and SurveyMonkey both have it, Microsoft lacks it. Prevents "pick your top 3" surveys from collecting 9. | S | no |
 | 2 | **"Other" choice with free-text** on single / multiple / dropdown | Almost every choice question in a real survey needs an escape hatch; avoids lossy option lists. | S | no |
-| 3 | **Answer validation**: short text (max length; number, email, URL; number min/max), paragraph (max length) | Clean data (phone, card number, age) without manual cleanup. | M | no |
+| 3 | **Answer validation** with a custom error message: short text (max length; number, email, URL; number min/max/between), paragraph (max length) | Clean data (phone, card number, age) without manual cleanup; offered by all three tools. | M | no |
 | 4 | **Descriptions in the builder**: editors for section description and question subtitle/hint, plus optional placeholder | The data columns and the fill page already exist; only the editor is missing, so this is the cheapest visible win. | S | no |
 | 5 | **Shuffle choices** per question (and **shuffle question order** within a section as a survey setting in phase B) | Removes order bias in satisfaction/rating surveys. | S | no (choices); yes for the survey flag |
 | 6 | **Schedule and cap**: editors and server enforcement for open/close date, plus **close after N responses** | Columns already exist but are ignored (a latent bug); event sign-ups need the cap. | M | yes (`response_limit`) |
@@ -182,9 +220,9 @@ Each phase is one pull request with its own module version bump (a migration mea
 
 ### 3.2 Per-feature design notes (so each phase can start without rediscovery)
 
-1. **Selection limits.** Config `{minSelections?, maxSelections?}` on `multi_choice` (and the "exactly N" case as min = max). Builder: two number fields shown only for multi choice, validated `0 <= min <= max <= number of options`. Fill page: disable unchecked boxes once the max is reached and show "choose between X and Y". Server re-validates the count. Interacts with `required` (min 1 when required). Reports unchanged.
+1. **Selection limits.** Config `{minSelections?, maxSelections?, exclusiveOptionValue?}` on `multi_choice` ("exactly N" is min = max; `exclusiveOptionValue` marks a "None of the above" choice that cannot be combined with others and is exempt from the count). Builder: two number fields shown only for multi choice, validated `0 <= min <= max <= number of options`. Fill page: disable unchecked boxes once the max is reached and show "choose between X and Y". Server re-validates the count. Interacts with `required` (min 1 when required). Reports unchanged.
 2. **"Other".** Config `{allowOther: true, otherLabel?}` on the three choice types. Answer shape gains an optional free-text part; `validateAnswerShape` rejects text when the "other" value was not chosen, and caps its length. The pivot and Excel export get an "Other (text)" column.
-3. **Validation.** Config `validation` by kind: `text` (maxLength), `number` (integer?, min, max), `email`, `url`. Messages are translated; both `ar` and `en` keys required (the locale-completeness test enforces it). Regex is intentionally **not** offered at first (ReDoS risk; see backlog).
+3. **Validation.** Config `validation` by kind: `text` (maxLength), `number` (integer?, min, max), `email`, `url`. Each rule has an optional custom error message (per language, falling back to a translated default); both `ar` and `en` keys are required for defaults (the locale-completeness test enforces it). Regex is intentionally **not** offered at first (ReDoS risk; see backlog).
 4. **Descriptions.** Add two text fields to the builder (section description, question hint) and a placeholder field; no schema change. Add a short plain-text length limit (e.g. 2,000 characters). Rich formatting is backlog.
 5. **Shuffle.** Per-question `shuffleOptions`: the fill page shuffles once per page load (stable for that visit); stored answers use option values so results are unaffected. "Other" and "None of the above" stay last. Question shuffle is a survey flag in phase B and is disabled when sections use routing (same restriction Microsoft has with sections).
 6. **Schedule and cap.** Add date-time pickers (using the shared Gregorian/Latin-digit formatters, D6/D7) for opens/closes; `ResponsesService` and the public/fill GET endpoints return a distinct "not open yet" / "closed" state; the cap counts submitted responses inside the same transaction as the insert to avoid overshoot. Show the schedule and remaining count in the survey list.
@@ -233,6 +271,12 @@ Points per question; correct answer(s) for choice/short text/ranking; several ac
 - Respondent "save and continue later" (conflicts with the module's deliberate rule that nothing partial is stored, SURVEY-D1/DOC; would need an explicit owner decision).
 - CAPTCHA / bot protection on anonymous links (rate limiting exists via the public throttler).
 
+- **Piping and carry-forward** (SurveyMonkey): insert an earlier answer into later text, or reuse the chosen options of one question as the choices of another.
+- **Disqualification ("screen-out") end page:** a route that ends the survey with its own message and optionally does not store the response (builds on the existing `submit` route target).
+- **Page/block randomisation and response quotas** (SurveyMonkey higher plans).
+- **Emailed copy of the answers to the respondent** (Google "send responders a copy"); needs an email field and a template through the notifications service.
+- **Basic text formatting and links** in descriptions (bold, italic, link) with strict sanitising; `modules/website` already has a safe-markdown renderer, but modules must not import each other, so this would be a small copy or a platform-level shared component.
+
 ### 4.4 Platform-specific items Microsoft does not cover
 
 - **Bilingual surveys.** This platform is Arabic-first with English. Today a survey has one text per field. A real fix is per-language fields (title/description/options in `ar` and `en`) with the respondent's language choosing which to show. Large (touches every table); recommended to be planned separately from this roadmap.
@@ -242,6 +286,7 @@ Points per question; correct answer(s) for choice/short text/ranking; several ac
 
 - Delete all responses (with confirmation and audit); print/PDF of the summary; more chart types (pie, stacked, trend over time); filters on the report (date range, by answer); response time analytics; respondent-facing "see results" link; shareable read-only results link; scheduled/emailed summary.
 - Webhook or API on new response (the offline replacement for Power Automate); CSV export alongside Excel.
+- Report filters (date range, completed vs partial, by answer) and crosstab significance testing (SurveyMonkey); the existing pivot already covers plain crosstabs.
 - Collaboration: co-owners who can edit one survey (today access is by role permission only).
 - Insights / AI summary and "generate a survey from a sentence": only if an external model is approved (privacy decision), otherwise out of scope.
 - Templates gallery (starter surveys such as "Event feedback", "Reader satisfaction") shipped as importable packages using the existing zip format (SURVEY-D10): cheap and useful, a good candidate right after phase A.
