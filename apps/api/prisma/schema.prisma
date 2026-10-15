@@ -111,9 +111,12 @@ model UserSession {
   userAgent        String?   @map("user_agent")
   geoLocation      Json?     @map("geo_location")
   revokedAt        DateTime? @map("revoked_at")
+  /// One login plus the rotations descending from it; replay detection revokes only this family.
+  familyId         String    @default(uuid()) @db.Uuid @map("family_id")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([familyId])
   @@map("user_sessions")
 }
 

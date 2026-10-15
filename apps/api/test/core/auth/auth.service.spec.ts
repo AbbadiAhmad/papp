@@ -229,6 +229,7 @@ describe('AuthService', () => {
       return {
         id: 'session-1',
         userId: 'user-1',
+        familyId: 'family-1',
         refreshTokenHash: sha256('raw-refresh-token'),
         revokedAt: null,
         expiresAt: new Date(now + 10 * MS_PER_DAY),
@@ -261,6 +262,8 @@ describe('AuthService', () => {
       });
       expect(prisma.userSession.create).toHaveBeenCalledTimes(1);
       expect(prisma.userSession.create.mock.calls[0][0].data.userId).toBe('user-1');
+      // A rotation stays in its login's family.
+      expect(prisma.userSession.create.mock.calls[0][0].data.familyId).toBe('family-1');
       expect(tokens.accessToken).toBe('signed-access-token');
     });
 
@@ -273,13 +276,13 @@ describe('AuthService', () => {
       expect(prisma.userSession.create).not.toHaveBeenCalled();
     });
 
-    it('detects reuse of an already-revoked refresh token and revokes every session for that user', async () => {
+    it('detects reuse of an already-revoked refresh token and revokes only that login\'s family, not the user\'s other devices', async () => {
       prisma.userSession.findUnique.mockResolvedValue(activeSession({ revokedAt: new Date(Date.now() - REFRESH_REUSE_GRACE_MS - 1_000) }));
 
       await expect(service.refresh('raw-refresh-token', REQUEST_META)).rejects.toThrow(/reuse detected/i);
 
       expect(prisma.userSession.updateMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1', revokedAt: null },
+        where: { familyId: 'family-1', revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
       // No new session should ever be issued on the reuse-detection path.

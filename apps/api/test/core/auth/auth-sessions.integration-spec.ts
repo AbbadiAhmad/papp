@@ -3,7 +3,7 @@ import { HttpStatus } from '@nestjs/common';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import * as argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
-import { AuthService } from '../../../src/core/auth/auth.service';
+import { AuthService, REFRESH_REUSE_GRACE_MS } from '../../../src/core/auth/auth.service';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { createTestApp } from '../../support/bootstrap-app';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
@@ -90,23 +90,33 @@ describe('AuthService + user_sessions (integration)', () => {
       expect(newRow.userId).toBe(user.id);
     });
 
-    it('reuse of an already-rotated-away refresh token revokes EVERY active session for that user in the DB', async () => {
+    it('reuse of an already-rotated-away refresh token revokes that login\'s whole chain, but NOT another device of the same user', async () => {
+      const user = await createUser();
+      const phone = await authService.login(user.email, PASSWORD, META);
+      const desktop = await authService.login(user.email, PASSWORD, META);
+      const second = await authService.refresh(phone.refreshToken, META);
+      // Age the rotation past the just-rotated grace window so the replay is judged a real one.
+      await prisma.userSession.update({ where: { id: phone.sessionId }, data: { revokedAt: new Date(Date.now() - REFRESH_REUSE_GRACE_MS - 5_000) } });
+
+      await expect(authService.refresh(phone.refreshToken, META)).rejects.toThrow(/reuse detected/i);
+
+      // The phone's chain (original + the rotation that survived) is revoked...
+      const phoneChain = await prisma.userSession.findMany({ where: { id: { in: [phone.sessionId, second.sessionId] } } });
+      expect(phoneChain.every((s) => s.revokedAt !== null)).toBe(true);
+      // ...but the desktop login is untouched.
+      const desktopRow = await prisma.userSession.findUniqueOrThrow({ where: { id: desktop.sessionId } });
+      expect(desktopRow.revokedAt).toBeNull();
+    });
+
+    it('a token replayed moments after its rotation (two tabs racing) is rejected without revoking anything', async () => {
       const user = await createUser();
       const first = await authService.login(user.email, PASSWORD, META);
       const second = await authService.refresh(first.refreshToken, META);
-      // second.sessionId is currently active. Now replay the stale `first`
-      // refresh token — theft-detection territory.
-      await expect(authService.refresh(first.refreshToken, META)).rejects.toThrow(/reuse detected/i);
 
-      const allSessions = await prisma.userSession.findMany({ where: { userId: user.id } });
-      expect(allSessions.length).toBeGreaterThanOrEqual(2);
-      expect(allSessions.every((s) => s.revokedAt !== null)).toBe(true);
+      await expect(authService.refresh(first.refreshToken, META)).rejects.toThrow(/just rotated/i);
 
-      // The session that survived the rotation and looked perfectly valid a
-      // moment ago is now revoked too — proves the "revoke ALL" behavior
-      // isn't limited to the reused row itself.
-      const survivorRow = await prisma.userSession.findUniqueOrThrow({ where: { id: second.sessionId } });
-      expect(survivorRow.revokedAt).not.toBeNull();
+      const survivor = await prisma.userSession.findUniqueOrThrow({ where: { id: second.sessionId } });
+      expect(survivor.revokedAt).toBeNull();
     });
   });
 

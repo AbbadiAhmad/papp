@@ -82,7 +82,7 @@ export class AuthService {
    * Creates a brand new session row + access/refresh token pair for a user
    * who has already been authenticated (fresh login, or refresh rotation).
    */
-  private async issueSession(userId: string, meta: RequestMeta): Promise<IssuedTokens> {
+  private async issueSession(userId: string, meta: RequestMeta, familyId?: string): Promise<IssuedTokens> {
     const lifetimes = await this.getTokenLifetimes();
 
     const rawRefreshToken = randomBytes(32).toString('hex');
@@ -94,6 +94,8 @@ export class AuthService {
       data: {
         userId,
         refreshTokenHash,
+        // A rotation continues its login's family; a fresh login starts a new one (DB default).
+        ...(familyId ? { familyId } : {}),
         expiresAt: refreshTokenExpiresAt,
         ipAddress: meta.ipAddress ?? undefined,
         userAgent: meta.userAgent ?? undefined,
@@ -114,10 +116,10 @@ export class AuthService {
     };
   }
 
-  /** Revokes every currently-active session for a user (theft-detection response). */
-  private async revokeAllSessionsForUser(userId: string): Promise<void> {
+  /** Revokes the still-active sessions of ONE login chain (theft-detection response); the user's other devices keep theirs. */
+  private async revokeFamily(familyId: string): Promise<void> {
     await this.prisma.userSession.updateMany({
-      where: { userId, revokedAt: null },
+      where: { familyId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }
@@ -192,13 +194,16 @@ export class AuthService {
       // cookie within moments of each other (page restore with several tabs, a lost
       // response retried): the loser sees the winner's rotation as "reuse". Inside a
       // short window that is a race, not theft, so reject this one request WITHOUT
-      // revoking the user's other sessions (a real replay later still revokes all).
+      // revoking anything (a real replay later revokes that login's family only).
       if (Date.now() - session.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
         throw new UnauthorizedException('Refresh token was just rotated; retry with the current cookie');
       }
-      this.logger.warn(`Refresh token reuse detected for session ${session.id} (user ${session.userId}); revoking all sessions.`);
-      await this.revokeAllSessionsForUser(session.userId);
-      throw new UnauthorizedException('Refresh token reuse detected; all sessions have been revoked');
+      this.logger.warn(
+        `Refresh token reuse detected for session ${session.id} (user ${session.userId}, family ${session.familyId}); revoking that login only. ` +
+          `Original login: ip=${session.ipAddress ?? '?'} ua="${session.userAgent ?? '?'}"; replay from: ip=${meta.ipAddress ?? '?'} ua="${meta.userAgent ?? '?'}".`,
+      );
+      await this.revokeFamily(session.familyId);
+      throw new UnauthorizedException('Refresh token reuse detected; this login has been revoked');
     }
 
     const now = Date.now();
@@ -222,7 +227,7 @@ export class AuthService {
     // not cleared, so a later replay of the same raw token is recognized as
     // reuse above) and a brand new session row + token pair is issued.
     await this.prisma.userSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
-    return this.issueSession(session.userId, meta);
+    return this.issueSession(session.userId, meta, session.familyId);
   }
 
   async logout(sessionId: string): Promise<void> {

@@ -110,23 +110,32 @@ describe('Auth (e2e)', () => {
       expect(newCookie).not.toBe(cookie);
     });
 
-    it('reusing an already-rotated-away refresh token revokes EVERY active session for that user (theft detection)', async () => {
+    it('reusing an already-rotated-away refresh token revokes that login (theft detection) but not the user\'s other device', async () => {
       const target = await createUserWithRole(app!, 'reader', { label: 'refresh-reuse' });
       const cookie = await loginAndGetRefreshCookie(target.email);
+      await loginAndGetRefreshCookie(target.email); // a second device of the same user
 
       // Rotate once (old cookie is now "used").
       const firstRefresh = await request(server()).post('/auth/refresh').set('Cookie', cookie);
       expect(firstRefresh.status).toBe(200);
 
-      // Replay the OLD (already-rotated) refresh token.
+      // Replayed moments later it is a race, not theft: rejected, nothing revoked.
+      const raced = await request(server()).post('/auth/refresh').set('Cookie', cookie);
+      expect(raced.status).toBe(401);
+      const prisma = app!.get(PrismaService);
+      expect((await prisma.userSession.findMany({ where: { userId: target.userId, revokedAt: null } })).length).toBe(2);
+
+      // Age the rotation past the grace window; now a replay is real.
+      await prisma.userSession.updateMany({
+        where: { userId: target.userId, revokedAt: { not: null } },
+        data: { revokedAt: new Date(Date.now() - 60_000) },
+      });
       const replay = await request(server()).post('/auth/refresh').set('Cookie', cookie);
       expect(replay.status).toBe(401);
 
-      // Every session for this user (including the one just rotated to) is now revoked.
-      const prisma = app!.get(PrismaService);
-      const sessions = await prisma.userSession.findMany({ where: { userId: target.userId } });
-      expect(sessions.length).toBeGreaterThan(0);
-      expect(sessions.every((s) => s.revokedAt !== null)).toBe(true);
+      // The replayed login's chain is revoked; the other device keeps its session.
+      const stillActive = await prisma.userSession.findMany({ where: { userId: target.userId, revokedAt: null } });
+      expect(stillActive.length).toBe(1);
     });
 
     it('rejects a request with no refresh cookie at all', async () => {
