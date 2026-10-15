@@ -1,6 +1,6 @@
 # Survey module: feature inventory (Microsoft Forms, Google Forms, SurveyMonkey), gap analysis and plan
 
-Status: **PROPOSED** (nothing here is built yet; see "Decisions needed" at the end). Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
+Status: **PLAN APPROVED, decisions answered (section 5); nothing is built yet.** Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
 
 ## 1. How this was compiled (read first)
 
@@ -189,22 +189,24 @@ What this changed in the plan:
 - **#9 (Likert) design** should allow the Google options "require a response in each row" and a row-count advice (about 5 to 8 rows) in the builder.
 - **New backlog items** found only in the other tools: piping and carry-forward (reuse an earlier answer in later text or choices), a disqualification ("screen-out") end page, page/block randomisation, response quotas per answer, report filters and crosstab significance, CSV export, and an emailed copy of answers.
 
-## 3. The 10 features to implement (ranked)
+## 3. The 10 features to implement (ranked by user experience)
 
-Ranking = how often the feature is used in real library surveys (reader satisfaction, event feedback, book suggestions, sign-ups) × how much it unblocks, divided by effort. The first five need **no database change** (they live in the question's existing `config` JSONB); the rest need a migration.
+Owner direction (2026-10-15): focus on the everyday experience of the people filling in and building surveys, not on impressive features that are rarely used. Ranking therefore goes: (a) what a respondent meets (clear errors, hints, closing messages, progress), (b) what a survey owner does all day (build, test, share), then (c) richer content. Features judged rarely used (Likert grid, shuffle, printable receipt, ranking, NPS, quiz) moved to the top of the backlog ("next up", section 4.0).
 
-| # | Feature | Why now | Effort | Migration |
+| # | Feature | Who benefits | Effort | Migration |
 |---|---|---|---|---|
-| 1 | **Selection limits on multiple-choice** (at least, at most, range, exactly N; exclusive "None of the above") | Requested by the owner; Google Forms and SurveyMonkey both have it, Microsoft lacks it. Prevents "pick your top 3" surveys from collecting 9. | S | no |
-| 2 | **"Other" choice with free-text** on single / multiple / dropdown | Almost every choice question in a real survey needs an escape hatch; avoids lossy option lists. | S | no |
-| 3 | **Answer validation** with a custom error message: short text (max length; number, email, URL; number min/max/between), paragraph (max length) | Clean data (phone, card number, age) without manual cleanup; offered by all three tools. | M | no |
-| 4 | **Descriptions in the builder**: editors for section description and question subtitle/hint, plus optional placeholder | The data columns and the fill page already exist; only the editor is missing, so this is the cheapest visible win. | S | no |
-| 5 | **Shuffle choices** per question (and **shuffle question order** within a section as a survey setting in phase B) | Removes order bias in satisfaction/rating surveys. | S | no (choices); yes for the survey flag |
-| 6 | **Schedule and cap**: editors and server enforcement for open/close date, plus **close after N responses** | Columns already exist but are ignored (a latent bug); event sign-ups need the cap. | M | yes (`response_limit`) |
-| 7 | **Thank-you message, progress bar, and receipt** (printable copy of the respondent's answers) | Closes the loop for respondents; progress bar helps long, multi-page surveys. | M | yes (survey settings) |
-| 8 | **Images**: survey header image, section image, question image (with alt text); choice images in a second step | The user's example; makes picture-based questions (book covers, events) possible. Needs a storage decision (see section 5). | L | yes |
-| 9 | **Likert / matrix question** (several statements on one shared scale) | The most used missing question type in satisfaction surveys; also gives clean per-statement charts. | L | yes (new type) |
-| 10 | **Preview and share panel**: preview as respondent (desktop/mobile width), copy link, **QR code**, embed code | Every owner needs to test before publishing and to put a poster QR code in the library. | M | no |
+| 1 | **Answer validation with clear inline messages**: short text (max length; number, email, URL; number min/max/between), paragraph (max length); custom message per rule | Respondent: errors appear next to the field, in their language, before submit. Owner: clean data (phone, card number, age). All three reference tools have it. | M | no |
+| 2 | **Selection limits on checkboxes** (at least, at most, range, exactly N; exclusive "None of the above") with a live hint ("choose 2 to 3", counter, boxes disable at the maximum) | Respondent: cannot make a mistake. Requested by the owner; Google Forms and SurveyMonkey have it. | S | no |
+| 3 | **Hints and instructions in the builder**: editors for section description, question hint, and an input placeholder | Respondent: knows what is expected. The data and the respondent page already exist; only the editor is missing. | S | no |
+| 4 | **Preview**: see the survey as a respondent (desktop and phone width) without submitting | Owner: test before publishing. | M | no |
+| 5 | **Builder usability pack**: duplicate a question or section, move a question to another section, and an unsaved-changes warning when leaving the builder | Owner: building a 30-question survey today means retyping and risks losing work. (No unsaved-changes guard exists today.) | M | no |
+| 6 | **Schedule and response cap with clear messages**: editors and server enforcement for open/close date, plus close after N responses ("not open yet", "closed", "full") | Respondent: understands why they cannot answer. Owner: event sign-ups. Fixes a latent bug (dates exist but are ignored). | M | yes (`response_limit`) |
+| 7 | **"Other" choice with free text** on single / multiple / dropdown | Respondent: never forced into a wrong option. Common in real surveys. | S | no |
+| 8 | **Thank-you message and progress bar** | Respondent: confirmation and a sense of how long is left. | M | yes (survey settings) |
+| 9 | **Share panel**: copy link, QR code (for posters in the library), embed snippet | Owner: getting the survey to readers. | S | no |
+| 10 | **Images**: survey header image, section image, question image with alt text (choice images in a second step) | Both: picture-based questions (book covers, events). Heaviest item (new file storage), so last. | L | yes |
+
+Moved to the backlog top (4.0): Likert/matrix grid, shuffle (choices and questions), printable receipt, ranking, NPS.
 
 ### 3.1 Delivery phases (suggested order)
 
@@ -212,24 +214,23 @@ Each phase is one pull request with its own module version bump (a migration mea
 
 | Phase | Contents | Version | Notes |
 |---|---|---|---|
-| A | #1 #2 #3 #4 #5 (choices) | 1.2.x (patch bumps) | `config` JSONB only. New keys: `minSelections`, `maxSelections`, `allowOther` (+ `otherLabel`), `validation: {kind, min, max, maxLength}`, `shuffleOptions`, `placeholder`. Validate in `SurveysService.validateQuestionConfig` (builder save) **and** `ResponsesService.validateAnswerShape` (submit), never only the client. "Other" answers store `{value: "__other__", text}`; reports show "Other" as one bar plus a text list. |
-| B | #6 #7 + survey-level shuffle | 1.3.0 | Migration 005: `survey_surveys.response_limit INT NULL`, `thank_you_message TEXT NULL`, `settings JSONB NOT NULL DEFAULT '{}'` (progress bar, receipt, shuffle questions; one JSONB column so later flags need no migration). Enforcement in `ResponsesService` (open/close window, cap) with a clear closed/ not-yet-open message. |
-| C | #10 | 1.3.x | Frontend only. QR code drawn client-side with a bundled library (no external service). Preview reuses `TakeSurveyPage` in a read-only "preview" mode that never submits. |
-| D | #8 | 1.4.0 | Migration 006 + upload endpoint; blocked on the storage decision below. |
-| E | #9 | 1.5.0 | Migration 007. See the enum note below. |
+| A: respondent essentials | #1 #2 #3 #7 | 1.2.x (patch bumps) | `config` JSONB only, no migration. New keys: `validation: {kind, min, max, maxLength, message}`, `minSelections`, `maxSelections`, `exclusiveOptionValue`, `allowOther` (+ `otherLabel`), `placeholder`. Validate in `SurveysService.validateQuestionConfig` (builder save) **and** `ResponsesService.validateAnswerShape` (submit), never only the client. "Other" answers store `{value: "__other__", text}`; reports show "Other" as one bar plus a text list. |
+| B: owner tools | #4 #5 #9 | 1.2.x | Frontend only. Preview reuses `TakeSurveyPage` in a read-only mode that never submits. QR code is drawn client-side with a bundled library (no external service). Duplicate/move/unsaved-changes work on the builder's in-memory structure. |
+| C: lifecycle | #6 #8 | 1.3.0 | Migration 005: `survey_surveys.response_limit INT NULL` and `settings JSONB NOT NULL DEFAULT '{}'` (decision 2). `settings` carries `thankYouMessage`, `showProgressBar` and later flags. Enforcement in `ResponsesService` and in the public/fill GET endpoints (distinct "not open yet" / "closed" / "full" states). |
+| D: images | #10 | 1.4.0 | Migration 006 + upload endpoint + files on a mounted volume (decision 1). |
 
 ### 3.2 Per-feature design notes (so each phase can start without rediscovery)
 
-1. **Selection limits.** Config `{minSelections?, maxSelections?, exclusiveOptionValue?}` on `multi_choice` ("exactly N" is min = max; `exclusiveOptionValue` marks a "None of the above" choice that cannot be combined with others and is exempt from the count). Builder: two number fields shown only for multi choice, validated `0 <= min <= max <= number of options`. Fill page: disable unchecked boxes once the max is reached and show "choose between X and Y". Server re-validates the count. Interacts with `required` (min 1 when required). Reports unchanged.
-2. **"Other".** Config `{allowOther: true, otherLabel?}` on the three choice types. Answer shape gains an optional free-text part; `validateAnswerShape` rejects text when the "other" value was not chosen, and caps its length. The pivot and Excel export get an "Other (text)" column.
-3. **Validation.** Config `validation` by kind: `text` (maxLength), `number` (integer?, min, max), `email`, `url`. Each rule has an optional custom error message (per language, falling back to a translated default); both `ar` and `en` keys are required for defaults (the locale-completeness test enforces it). Regex is intentionally **not** offered at first (ReDoS risk; see backlog).
-4. **Descriptions.** Add two text fields to the builder (section description, question hint) and a placeholder field; no schema change. Add a short plain-text length limit (e.g. 2,000 characters). Rich formatting is backlog.
-5. **Shuffle.** Per-question `shuffleOptions`: the fill page shuffles once per page load (stable for that visit); stored answers use option values so results are unaffected. "Other" and "None of the above" stay last. Question shuffle is a survey flag in phase B and is disabled when sections use routing (same restriction Microsoft has with sections).
-6. **Schedule and cap.** Add date-time pickers (using the shared Gregorian/Latin-digit formatters, D6/D7) for opens/closes; `ResponsesService` and the public/fill GET endpoints return a distinct "not open yet" / "closed" state; the cap counts submitted responses inside the same transaction as the insert to avoid overshoot. Show the schedule and remaining count in the survey list.
-7. **Thank-you, progress, receipt.** Thank-you text per survey (max 4,000 characters, plain text, rendered safely). Progress bar from the visited-path position (works with routing by using the resolved path length). Receipt = a print-friendly view of the respondent's own answers (browser print), no server-side PDF.
-8. **Images.** Store only a reference (`imageId`) plus `alt` on survey, section and question; choice images follow in a second step. Serve through a safe endpoint like the theme-asset endpoint (D98: declared file only, `nosniff`, sandboxing CSP, SVG allowed only with the sandbox). Limit type (png/jpg/webp), size (for example 2 MB) and count; audit uploads and deletions; remove images from storage when the survey is deleted. Respondents see an `alt`-labelled image; the report ignores images.
-9. **Likert.** New type `likert`: config `{statements: [{id,label}], scale: {points, labels[]}}`; the answer is an object keyed by statement id. Required means every statement answered. Report: one stacked/grouped bar per statement and an average. The pivot flattens it to one column per statement. Down-migration and duplicate/export/import must carry the new config.
-10. **Preview and share.** Builder gets a "Preview" button (desktop / phone width) and a "Share" dialog (copy link, QR code as downloadable PNG/SVG, iframe snippet, link to the respondent URL). Nothing is stored.
+1. **Validation.** Config `validation` by kind: `text` (maxLength), `number` (integer?, min, max, between), `email`, `url`. Each rule has an optional custom error message per language, falling back to a translated default (both `ar` and `en` keys required; the locale-completeness test enforces it). The fill page validates on blur and on Next/Submit and shows the message under the field; the server re-validates. Regular expressions are **not** offered at first (ReDoS risk; backlog).
+2. **Selection limits.** Config `{minSelections?, maxSelections?, exclusiveOptionValue?}` on `multi_choice` ("exactly N" is min = max; `exclusiveOptionValue` marks a "None of the above" choice that cannot be combined with others and is exempt from the count). Builder: number fields shown only for multiple choice, validated `0 <= min <= max <= number of options`. Fill page: counter hint, unchecked boxes disable at the maximum. Interacts with `required` (min 1 when required). Server re-validates the count.
+3. **Hints.** Add three fields to the builder (section description, question hint, placeholder); no schema change. Plain text, length-limited (for example 2,000 characters). Rich formatting is backlog.
+4. **Preview.** A "Preview" button opens the respondent page in a read-only mode (no network writes, banner "Preview"), with a width toggle (desktop / phone). Uses the unsaved structure so the owner sees changes before saving.
+5. **Builder usability.** Duplicate question (fresh UUIDs, options copied, logic rules not copied), duplicate section, "move to section" selector on a question (rules that point at it are kept; routes are re-validated), and a browser `beforeunload` plus router-leave warning when there are unsaved changes.
+6. **Schedule and cap.** Date-time pickers (shared Gregorian/Latin-digit formatters, D6/D7) for opens/closes. `ResponsesService` and the GET endpoints return distinct states with translated messages. The cap counts submitted responses inside the same transaction as the insert to avoid overshoot. Show schedule and remaining count in the survey list.
+7. **"Other".** Config `{allowOther: true, otherLabel?}` on the three choice types. Answer shape gains an optional free-text part; `validateAnswerShape` rejects text when "other" was not chosen and caps its length. The pivot and Excel export get an "Other (text)" column.
+8. **Thank-you and progress.** Thank-you text per survey (max 4,000 characters, plain text, rendered safely) shown after submit instead of the generic text. Progress bar from the position in the resolved path (works with routing); shown only with 2+ sections.
+9. **Share panel.** Copy link, QR code as downloadable PNG/SVG, iframe snippet (needs the public page to allow framing for that route only; check the platform's frame headers before promising it), link to the respondent URL. Nothing is stored.
+10. **Images.** Store only a reference (`imageId`) plus `alt` on survey, section and question; choice images follow. Files on a mounted disk volume, served through a safe endpoint like the theme-asset endpoint (D98: declared file only, `nosniff`, sandboxing CSP). Allow-list png/jpg/webp, size cap (for example 2 MB), count cap; audit uploads and deletions (no bytes in the audit); delete files when the survey is deleted; document that the volume must be part of backups.
 
 ### 3.3 Cross-cutting rules for every item (from `papp-add-feature`)
 
@@ -242,6 +243,16 @@ Each phase is one pull request with its own module version bump (a migration mea
 - Update `DOCUMENTATION.md` and `DECISIONS.md` in the same pull request as each phase.
 
 ## 4. Backlog: everything else, documented
+
+### 4.0 Next up (the features moved out of the top 10)
+
+| Item | Notes |
+|---|---|
+| **Likert / matrix grid** | Several statements on one shared scale; answer is an object keyed by statement id; report per statement. Needs migration 007 and the question-type column converted to plain text (decision 3), the one-time prerequisite for every later type. Google's options "require a response in each row" and a row-count advice (about 5 to 8) apply. |
+| **Shuffle** | Choices per question (stable for one visit, "Other"/"None" last) and question order within a section (disabled when routing is used). Needs the `settings` column for the survey flag. |
+| **Printable receipt** | Print-friendly view of the respondent's own answers (browser print); emailed copy is separate (below). |
+| **Ranking, NPS** | See 4.1. |
+| **Quiz mode** | See 4.2. |
 
 ### 4.1 Question types (not in the top 10)
 
@@ -267,7 +278,6 @@ Points per question; correct answer(s) for choice/short text/ranking; several ac
 - Lock selected questions while shuffling; shuffle sections.
 - Per-question branching (not just per section).
 - Specific people/roles allowed to respond; explicit anonymous toggle for logged-in surveys; email invitations and reminders; pre-filled links.
-- Multiple-language surveys (see 4.4).
 - Respondent "save and continue later" (conflicts with the module's deliberate rule that nothing partial is stored, SURVEY-D1/DOC; would need an explicit owner decision).
 - CAPTCHA / bot protection on anonymous links (rate limiting exists via the public throttler).
 
@@ -279,7 +289,7 @@ Points per question; correct answer(s) for choice/short text/ranking; several ac
 
 ### 4.4 Platform-specific items Microsoft does not cover
 
-- **Bilingual surveys.** This platform is Arabic-first with English. Today a survey has one text per field. A real fix is per-language fields (title/description/options in `ar` and `en`) with the respondent's language choosing which to show. Large (touches every table); recommended to be planned separately from this roadmap.
+- **Bilingual surveys.** Owner decision 2026-10-15: **not needed** (one survey per language). Recorded so it is not re-proposed.
 - **Reader/member linking.** Tie a response to a library reader (card number) when the respondent is logged in.
 
 ### 4.5 Results and administration
@@ -291,10 +301,12 @@ Points per question; correct answer(s) for choice/short text/ranking; several ac
 - Insights / AI summary and "generate a survey from a sentence": only if an external model is approved (privacy decision), otherwise out of scope.
 - Templates gallery (starter surveys such as "Event feedback", "Reader satisfaction") shipped as importable packages using the existing zip format (SURVEY-D10): cheap and useful, a good candidate right after phase A.
 
-## 5. Decisions needed from the owner before building
+## 5. Decisions (answered by the owner on 2026-10-15)
 
-1. **Image storage (blocks phase D and file upload).** The platform has no general file store today. Options: (a) files on a mounted disk volume served by the API; (b) database `bytea` (simple backup/restore, heavier DB); (c) an external object store (S3-compatible). Recommendation: (a) with a size/type allow-list, because it matches the offline, single-`docker compose` setup and the theme-asset pattern (D98). Needs a backup note, since volume contents are not in the database dump.
-2. **Where survey settings go.** Recommendation: one `settings JSONB` column (phase B) so future flags need no migration, plus real columns only for things queried in SQL (`response_limit`).
-3. **New question types and the Postgres enum.** `survey_question_type` is a native enum; `ALTER TYPE ... ADD VALUE` is awkward inside the migration runner's transaction (the reason SURVEY-D11 avoided a new enum value). Options: convert the column to `TEXT` with a CHECK (one-time migration, easier later), or ship each new type in its own non-transactional migration. Recommendation: convert once in the Likert migration.
-4. **Is the top-10 list right?** In particular: swap #7 (thank-you/receipt) or #10 (preview/QR) for **quiz mode** or **ranking** if those matter more for the library's use cases.
-5. **Bilingual survey content (4.4)**: in scope for this effort, or a separate project?
+1. **Image storage:** files on a mounted disk volume served by the API (allow-listed types and size). Applies to images now and to file-upload questions later. The volume must be included in backups.
+2. **Survey-level settings:** one flexible `settings` JSONB column plus real columns only where SQL needs them (`response_limit`).
+3. **New question types:** convert the question-type column from a fixed database list to plain text once, in the first migration that adds a type (Likert, backlog 4.0). A JSON column is not needed for this: the type is only a short name, while each type's details already live in the question's JSONB `config`. The top-10 list adds no new type, so this conversion is not part of it.
+4. **Priorities:** user experience first (this document's section 3); rarely used features are in the backlog.
+5. **Bilingual survey content:** not needed.
+
+Nothing else is blocking: phase A can start.
