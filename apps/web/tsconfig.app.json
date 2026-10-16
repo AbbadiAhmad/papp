@@ -55,6 +55,8 @@
     // Piping / carry-forward rules (piping.ts), same reasoning.
     "../../modules/*/backend/piping.ts",
     // Email-list parsing for the invitation cards (email-list.ts), same reasoning.
-    "../../modules/*/backend/email-list.ts"
+    "../../modules/*/backend/email-list.ts",
+    // Report filters (report-filter.ts), same reasoning.
+    "../../modules/*/backend/report-filter.ts"
   ]
 }

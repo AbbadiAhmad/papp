@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient, SurveyQuestion, SurveyQuestionOption, SurveyResponse } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { answerForDisplay, formatAnswerForDisplay, summarizeChoiceAnswers } from './question-rules';
 import { getOptionsFrom } from './piping';
+import { dailyAverages, dailyCounts, EMPTY_FILTER, FILTERABLE_TYPES, parseReportFilter, type AveragePoint, type DailyPoint, type ReportFilter, type ReportFilterQuery } from './report-filter';
 
 type QuestionWithOptions = SurveyQuestion & { options: SurveyQuestionOption[] };
 type ResponseWithAnswers = SurveyResponse & { answers: Array<{ questionId: string; value: Prisma.JsonValue }> };
@@ -17,7 +18,7 @@ export interface QuestionSummary {
   /** Texts typed into an "Other" choice (capped), when the question allows it. */
   otherAnswers?: string[];
   /** linear_scale / rating only. */
-  numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }> };
+  numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }>; trend: AveragePoint[] };
   /** short_text / paragraph / date / time only — raw list, capped. */
   sampleAnswers?: string[];
 }
@@ -25,6 +26,8 @@ export interface QuestionSummary {
 export interface SurveyReportSummary {
   surveyId: string;
   totalResponses: number;
+  /** Responses per day (UTC) within the filter — the trend line. */
+  daily: DailyPoint[];
   questions: QuestionSummary[];
 }
 
@@ -60,10 +63,49 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$disconnect();
   }
 
-  async listResponses(surveyId: string) {
+  /** Parses `from` / `to` / `a` from a request; 400 with a plain message when they are malformed. */
+  parseFilter(query: ReportFilterQuery): ReportFilter {
+    const parsed = parseReportFilter(query);
+    if ('error' in parsed) throw new BadRequestException(parsed.error);
+    return parsed.filter;
+  }
+
+  /** The Prisma condition for a filter on one survey's responses; every condition must hold. */
+  private async whereFor(surveyId: string, filter: ReportFilter): Promise<Prisma.SurveyResponseWhereInput> {
+    const where: Prisma.SurveyResponseWhereInput = { surveyId };
+    if (filter.from || filter.toExclusive) {
+      where.submittedAt = { ...(filter.from ? { gte: filter.from } : {}), ...(filter.toExclusive ? { lt: filter.toExclusive } : {}) };
+    }
+    if (filter.answers.length > 0) {
+      const questions = await this.prisma.surveyQuestion.findMany({ where: { id: { in: filter.answers.map((c) => c.questionId) }, section: { surveyId } }, select: { id: true, type: true } });
+      const typeOf = new Map(questions.map((q) => [q.id, q.type as string]));
+      where.AND = filter.answers.map((condition) => {
+        const type = typeOf.get(condition.questionId);
+        if (!type) throw new BadRequestException('A filter refers to a question that is not in this survey');
+        if (!(FILTERABLE_TYPES as readonly string[]).includes(type)) throw new BadRequestException('Responses can be filtered by choice, scale and rating questions only');
+        if (type === 'linear_scale' || type === 'rating') {
+          const n = Number(condition.value);
+          if (!Number.isFinite(n)) throw new BadRequestException('A scale or rating filter needs a number');
+          return { answers: { some: { questionId: condition.questionId, value: { equals: n } } } };
+        }
+        return {
+          answers: {
+            some: {
+              questionId: condition.questionId,
+              // single choice stores a string, multiple choice an array of strings
+              OR: [{ value: { equals: condition.value } }, { value: { array_contains: [condition.value] } }],
+            },
+          },
+        };
+      });
+    }
+    return where;
+  }
+
+  async listResponses(surveyId: string, filter: ReportFilter = EMPTY_FILTER) {
     await this.ensureSurveyExists(surveyId);
     const responses = await this.prisma.surveyResponse.findMany({
-      where: { surveyId },
+      where: await this.whereFor(surveyId, filter),
       orderBy: { submittedAt: 'desc' },
       select: { id: true, respondentUserId: true, respondentEmail: true, submittedAt: true, updatedAt: true, ipAddress: true, userAgent: true },
     });
@@ -94,8 +136,8 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.surveyResponse.delete({ where: { id: responseId } });
   }
 
-  async getSummary(surveyId: string): Promise<SurveyReportSummary> {
-    const { questions, responses } = await this.loadSurveyWithAnswers(surveyId);
+  async getSummary(surveyId: string, filter: ReportFilter = EMPTY_FILTER): Promise<SurveyReportSummary> {
+    const { questions, responses } = await this.loadSurveyWithAnswers(surveyId, filter);
 
     const questions_ = questions.map((q): QuestionSummary => {
       const values = responses.flatMap((r) => r.answers.filter((a) => a.questionId === q.id).map((a) => a.value));
@@ -114,10 +156,13 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
         const distMap = new Map<number, number>();
         for (const n of numbers) distMap.set(n, (distMap.get(n) ?? 0) + 1);
         const distribution = [...distMap.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count }));
+        const trend = dailyAverages(
+          responses.flatMap((r) => r.answers.filter((a) => a.questionId === q.id && typeof a.value === 'number').map((a) => ({ at: r.submittedAt, value: a.value as number }))),
+        );
         const average = numbers.length ? numbers.reduce((sum, n) => sum + n, 0) / numbers.length : 0;
         return {
           ...base,
-          numeric: { average, min: numbers.length ? Math.min(...numbers) : 0, max: numbers.length ? Math.max(...numbers) : 0, distribution },
+          numeric: { average, min: numbers.length ? Math.min(...numbers) : 0, max: numbers.length ? Math.max(...numbers) : 0, distribution, trend },
         };
       }
 
@@ -127,12 +172,12 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
       return { ...base, sampleAnswers: values.filter((v): v is string => typeof v === 'string').slice(0, SAMPLE_ANSWER_CAP) };
     });
 
-    return { surveyId, totalResponses: responses.length, questions: questions_ };
+    return { surveyId, totalResponses: responses.length, daily: dailyCounts(responses.map((r) => r.submittedAt)), questions: questions_ };
   }
 
   /** One row per response, one column per question — feeds the frontend's dynamic pivot table. */
-  async getDataset(surveyId: string): Promise<SurveyDataset> {
-    const { questions, responses } = await this.loadSurveyWithAnswers(surveyId);
+  async getDataset(surveyId: string, filter: ReportFilter = EMPTY_FILTER): Promise<SurveyDataset> {
+    const { questions, responses } = await this.loadSurveyWithAnswers(surveyId, filter);
     return {
       columns: questions.map((q) => ({ questionId: q.id, title: q.title, type: q.type as string })),
       rows: responses.map((r) => ({
@@ -144,8 +189,8 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async exportResponsesWorkbook(surveyId: string): Promise<Buffer> {
-    const { survey, questions, responses } = await this.loadSurveyWithAnswers(surveyId);
+  async exportResponsesWorkbook(surveyId: string, filter: ReportFilter = EMPTY_FILTER): Promise<Buffer> {
+    const { survey, questions, responses } = await this.loadSurveyWithAnswers(surveyId, filter);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Responses');
@@ -179,7 +224,7 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async loadSurveyWithAnswers(surveyId: string): Promise<{
+  private async loadSurveyWithAnswers(surveyId: string, filter: ReportFilter = EMPTY_FILTER): Promise<{
     survey: { id: string };
     questions: QuestionWithOptions[];
     responses: ResponseWithAnswers[];
@@ -198,7 +243,7 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
     }
     const questions = survey.sections.flatMap((s) => s.questions);
     const responses = await this.prisma.surveyResponse.findMany({
-      where: { surveyId },
+      where: await this.whereFor(surveyId, filter),
       include: { answers: { select: { questionId: true, value: true } } },
       orderBy: { submittedAt: 'desc' },
     });

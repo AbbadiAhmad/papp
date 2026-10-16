@@ -353,5 +353,21 @@
   "survey.audience.remove_invitation": "Remove invitation (the link stops working)",
   "survey.audience.status.invited": "Invited",
   "survey.audience.status.opened": "Opened",
-  "survey.audience.status.responded": "Answered"
+  "survey.audience.status.responded": "Answered",
+  "survey.report.chart_type": "Chart type",
+  "survey.report.chart_bar": "Bars",
+  "survey.report.chart_pie": "Pie",
+  "survey.report.chart_stacked": "Share bar",
+  "survey.report.counts": "Answer counts",
+  "survey.report.responses_over_time": "Responses per day",
+  "survey.report.average_over_time": "Average over time",
+  "survey.filters.title": "Filters",
+  "survey.filters.from": "From",
+  "survey.filters.to": "To",
+  "survey.filters.range_invalid": "The end date is before the start date.",
+  "survey.filters.question": "Question",
+  "survey.filters.answer": "Answer",
+  "survey.filters.number": "Value",
+  "survey.filters.add": "Add filter",
+  "survey.filters.clear": "Clear all filters"
 }

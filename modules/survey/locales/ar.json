@@ -353,5 +353,21 @@
   "survey.audience.remove_invitation": "إزالة الدعوة (يتوقف الرابط عن العمل)",
   "survey.audience.status.invited": "مدعو",
   "survey.audience.status.opened": "فتح الرابط",
-  "survey.audience.status.responded": "أجاب"
+  "survey.audience.status.responded": "أجاب",
+  "survey.report.chart_type": "نوع الرسم",
+  "survey.report.chart_bar": "أعمدة",
+  "survey.report.chart_pie": "دائري",
+  "survey.report.chart_stacked": "شريط النِّسَب",
+  "survey.report.counts": "أعداد الإجابات",
+  "survey.report.responses_over_time": "الردود في كل يوم",
+  "survey.report.average_over_time": "المتوسط عبر الزمن",
+  "survey.filters.title": "عوامل التصفية",
+  "survey.filters.from": "من",
+  "survey.filters.to": "إلى",
+  "survey.filters.range_invalid": "تاريخ النهاية قبل تاريخ البداية.",
+  "survey.filters.question": "السؤال",
+  "survey.filters.answer": "الإجابة",
+  "survey.filters.number": "القيمة",
+  "survey.filters.add": "إضافة عامل تصفية",
+  "survey.filters.clear": "مسح كل عوامل التصفية"
 }

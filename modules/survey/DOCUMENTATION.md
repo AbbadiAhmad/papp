@@ -114,6 +114,10 @@ A co-owner can edit, publish/close/reopen and read the results of one survey (no
 
 Builder → **Who can respond**: switch on *Only chosen people may respond*, add logged-in users by email and/or paste invited email addresses (they appear as cards that are checked as you type). Invitations are mailed once the survey is published; **Remind** re-sends the same link to those who have not answered (once per day each). A personal link is `/survey/<id>?invite=<token>`; the token is an HMAC of the invitation id keyed with `JWT_SECRET`, so rotating `JWT_SECRET` invalidates outstanding links. Set `APP_PUBLIC_URL` (or `WEB_ORIGIN`) so emails contain the right address. *Email each respondent a copy of their answers* sends the answers after the first submit. See SURVEY-D22 for every rule (one answer per invitation, invitations never linked to responses).
 
+## Report filters and charts (1.6.1)
+
+The report and the responses list can be filtered by date range and by answers (choice, scale, rating questions; conditions combine with AND); the Excel export follows the filter. Choice questions can be shown as bars, a pie or a share bar, each with the numbers as text; the report also draws responses per day and, for scale/rating questions, the average over time. Rules: SURVEY-D23; code: `backend/report-filter.ts` (shared with the page), `ReportsService.whereFor`.
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.

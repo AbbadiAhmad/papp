@@ -1017,4 +1017,121 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect((await request(http()).get(`/api/survey/public/${open.id}`)).body.survey.emailCopy).toBe(true);
     });
   });
+
+  describe('report filters and trends (ext. I)', () => {
+    let id: string;
+    const Q = { fav: uuid(9101), multi: uuid(9102), rating: uuid(9103), text: uuid(9104) };
+    const opt = (i: number, value: string) => ({ id: uuid(9200 + i), orderIndex: i, value, label: value.toUpperCase() });
+    const bin = (res: request.Response, cb: (err: Error | null, body: Buffer) => void) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    };
+    const summary = (query = '') => request(http()).get(`/api/survey/surveys/${id}/report/summary${query}`).set(admin());
+
+    beforeAll(async () => {
+      id = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: 'Filters' })).body.id as string;
+      const saved = await request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({
+          sections: [
+            {
+              id: uuid(9100),
+              orderIndex: 0,
+              title: 'S',
+              questions: [
+                { id: Q.fav, orderIndex: 0, type: 'single_choice', title: 'Favourite', options: [opt(0, 'fic'), opt(1, 'his')] },
+                { id: Q.multi, orderIndex: 1, type: 'multi_choice', title: 'Read', options: [opt(2, 'a'), opt(3, 'b'), opt(4, 'c')] },
+                { id: Q.rating, orderIndex: 2, type: 'rating', title: 'Stars', config: { max: 5 } },
+                { id: Q.text, orderIndex: 3, type: 'short_text', title: 'Name' },
+              ],
+            },
+          ],
+          logicRules: [],
+        });
+      expect(saved.status).toBe(200);
+      await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+      const rows: Array<[string, string[], number, string]> = [
+        ['fic', ['a'], 5, '2026-03-01T10:00:00Z'],
+        ['fic', ['a', 'b'], 4, '2026-03-01T15:00:00Z'],
+        ['his', ['b'], 2, '2026-03-04T09:00:00Z'],
+        ['his', ['c'], 3, '2026-03-05T09:00:00Z'],
+      ];
+      for (const [fav, multi, rating, at] of rows) {
+        const res = await request(http())
+          .post(`/api/survey/public/${id}`)
+          .send({ answers: [{ questionId: Q.fav, value: fav }, { questionId: Q.multi, value: multi }, { questionId: Q.rating, value: rating }, { questionId: Q.text, value: 'n' }] });
+        expect(res.status).toBe(201);
+        await app!.get(PrismaService).$executeRawUnsafe(`UPDATE survey_responses SET submitted_at = '${at}' WHERE id = '${res.body.responseId}'`);
+      }
+    });
+
+    it('without a filter: totals, responses per day (gaps filled) and the average rating per day', async () => {
+      const res = await summary();
+      expect(res.status).toBe(200);
+      expect(res.body.totalResponses).toBe(4);
+      expect(res.body.daily).toEqual([
+        { date: '2026-03-01', count: 2 },
+        { date: '2026-03-02', count: 0 },
+        { date: '2026-03-03', count: 0 },
+        { date: '2026-03-04', count: 1 },
+        { date: '2026-03-05', count: 1 },
+      ]);
+      const stars = res.body.questions.find((q: { questionId: string }) => q.questionId === Q.rating);
+      expect(stars.numeric.trend).toEqual([
+        { date: '2026-03-01', average: 4.5, count: 2 },
+        { date: '2026-03-04', average: 2, count: 1 },
+        { date: '2026-03-05', average: 3, count: 1 },
+      ]);
+    });
+
+    it('filters by date range (inclusive of the last day) in the summary, list, dataset and export', async () => {
+      const q = '?from=2026-03-01&to=2026-03-01';
+      expect((await summary(q)).body.totalResponses).toBe(2);
+      expect((await summary('?from=2026-03-04')).body.totalResponses).toBe(2);
+      expect((await summary('?to=2026-03-03')).body.totalResponses).toBe(2);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/responses${q}`).set(admin())).body).toHaveLength(2);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/dataset${q}`).set(admin())).body.rows).toHaveLength(2);
+      const xlsx = await request(http()).get(`/api/survey/surveys/${id}/responses/export${q}`).set(admin()).buffer(true).parse(bin);
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(xlsx.body as Buffer);
+      expect(wb.worksheets[0].rowCount).toBe(3); // header + 2
+      const all = await request(http()).get(`/api/survey/surveys/${id}/responses/export`).set(admin()).buffer(true).parse(bin);
+      const wb2 = new ExcelJS.Workbook();
+      await wb2.xlsx.load(all.body as Buffer);
+      expect(wb2.worksheets[0].rowCount).toBe(5);
+    });
+
+    it('filters by answer: single choice, multiple choice (contains), rating, and several at once (AND)', async () => {
+      const count = async (query: string) => (await summary(query)).body.totalResponses as number;
+      expect(await count(`?a=${Q.fav}:fic`)).toBe(2);
+      expect(await count(`?a=${Q.multi}:b`)).toBe(2); // [a,b] and [b]
+      expect(await count(`?a=${Q.rating}:5`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:fic&a=${Q.multi}:b`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:his&from=2026-03-05`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:nothing`)).toBe(0);
+      const filtered = await summary(`?a=${Q.fav}:his`);
+      const fav = filtered.body.questions.find((x: { questionId: string }) => x.questionId === Q.fav);
+      expect(fav.optionCounts.find((o: { value: string }) => o.value === 'his').count).toBe(2);
+      expect(fav.optionCounts.find((o: { value: string }) => o.value === 'fic').count).toBe(0);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/responses?a=${Q.multi}:c`).set(admin())).body).toHaveLength(1);
+    });
+
+    it('refuses malformed or unsupported filters with a clear 400', async () => {
+      for (const bad of ['?from=yesterday', '?to=2026-13-40', '?from=2026-03-05&to=2026-03-01', '?a=nope', `?a=${Q.fav}:`, `?a=${uuid(9999)}:x`, `?a=${Q.text}:n`, `?a=${Q.rating}:many`]) {
+        const res = await summary(bad);
+        expect(res.status).toBe(400);
+      }
+      const many = Array.from({ length: 6 }, (_, i) => `a=${Q.fav}:v${i}`).join('&');
+      expect((await summary(`?${many}`)).status).toBe(400);
+    });
+
+    it('filters respect the same permissions as the unfiltered report', async () => {
+      const reader = { Authorization: `Bearer ${(await fixtureForRole(app!, 'reader')).token}` };
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary?a=${Q.fav}:fic`).set(reader)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary`)).status).toBe(401);
+    });
+  });
 });

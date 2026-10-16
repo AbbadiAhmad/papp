@@ -1,6 +1,7 @@
 // See modules/library_catalog/frontend/api.ts's own docblock: this is a
 // same-repo Vite import (bundled with the rest of apps/web), not the
 // fragile cross-process import the backend half of this module needs.
+import type { AnswerCondition } from '../backend/report-filter.ts';
 import { API_BASE_URL, apiClient } from '../../../apps/web/src/shared/api/httpClient';
 
 export type SurveyStatus = 'draft' | 'published' | 'closed';
@@ -238,6 +239,24 @@ export interface ResponseDetail extends ResponseListItem {
   answers: Array<{ id: string; questionId: string; value: unknown }>;
 }
 
+/** The report/response filter as the pages hold it (dates as `YYYY-MM-DD`). */
+export interface ReportFilterState {
+  from?: string;
+  to?: string;
+  answers: AnswerCondition[];
+}
+
+export const NO_FILTER: ReportFilterState = { answers: [] };
+
+/** Query string for a filter. Repeated `a=` keys (not `a[]=`), which is what the server reads. */
+function filterParams(filter?: ReportFilterState): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filter?.from) params.set('from', filter.from);
+  if (filter?.to) params.set('to', filter.to);
+  for (const c of filter?.answers ?? []) params.append('a', `${c.questionId}:${c.value}`);
+  return params;
+}
+
 export interface QuestionSummary {
   questionId: string;
   title: string;
@@ -246,13 +265,15 @@ export interface QuestionSummary {
   optionCounts?: Array<{ value: string; label: string; count: number }>;
   /** Texts typed into an "Other" choice (capped). */
   otherAnswers?: string[];
-  numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }> };
+  numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }>; trend: Array<{ date: string; average: number; count: number }> };
   sampleAnswers?: string[];
 }
 
 export interface SurveyReportSummary {
   surveyId: string;
   totalResponses: number;
+  /** Responses per day within the filter. */
+  daily: Array<{ date: string; count: number }>;
   questions: QuestionSummary[];
 }
 
@@ -305,15 +326,18 @@ export const surveyApi = {
     apiClient.put<SurveyDetail>(`/api/survey/surveys/${id}/structure`, dto).then((r) => r.data),
 
   // --- admin: responses/reports ---
-  listResponses: (surveyId: string) => apiClient.get<ResponseListItem[]>(`/api/survey/surveys/${surveyId}/responses`).then((r) => r.data),
+  listResponses: (surveyId: string, filter?: ReportFilterState) =>
+    apiClient.get<ResponseListItem[]>(`/api/survey/surveys/${surveyId}/responses`, { params: filterParams(filter) }).then((r) => r.data),
   getResponse: (surveyId: string, responseId: string) =>
     apiClient.get<ResponseDetail>(`/api/survey/surveys/${surveyId}/responses/${responseId}`).then((r) => r.data),
   removeResponse: (surveyId: string, responseId: string) =>
     apiClient.delete<void>(`/api/survey/surveys/${surveyId}/responses/${responseId}`).then((r) => r.data),
-  exportResponses: (surveyId: string) =>
-    apiClient.get<Blob>(`/api/survey/surveys/${surveyId}/responses/export`, { responseType: 'blob' }).then((r) => r.data),
-  getSummary: (surveyId: string) => apiClient.get<SurveyReportSummary>(`/api/survey/surveys/${surveyId}/report/summary`).then((r) => r.data),
-  getDataset: (surveyId: string) => apiClient.get<SurveyDataset>(`/api/survey/surveys/${surveyId}/report/dataset`).then((r) => r.data),
+  exportResponses: (surveyId: string, filter?: ReportFilterState) =>
+    apiClient.get<Blob>(`/api/survey/surveys/${surveyId}/responses/export`, { responseType: 'blob', params: filterParams(filter) }).then((r) => r.data),
+  getSummary: (surveyId: string, filter?: ReportFilterState) =>
+    apiClient.get<SurveyReportSummary>(`/api/survey/surveys/${surveyId}/report/summary`, { params: filterParams(filter) }).then((r) => r.data),
+  getDataset: (surveyId: string, filter?: ReportFilterState) =>
+    apiClient.get<SurveyDataset>(`/api/survey/surveys/${surveyId}/report/dataset`, { params: filterParams(filter) }).then((r) => r.data),
 
   // --- respondent: authenticated (any logged-in user, regardless of requiresLogin) ---
   getForFilling: (surveyId: string, invite?: string | null) =>
