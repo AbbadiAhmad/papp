@@ -67,7 +67,7 @@ describe('NotificationsService.send', () => {
     writer = { write: jest.fn() };
     writer.write.mockResolvedValue(undefined);
 
-    service = new NotificationsService(prisma as never, settings as never, email as never, writer as never);
+    service = new NotificationsService(prisma as never, settings as never, email as never, undefined, writer as never);
   });
 
   function baseInput(overrides: Partial<SendNotificationInput> = {}): SendNotificationInput {
@@ -386,6 +386,48 @@ describe('NotificationsService.send', () => {
       } finally {
         loggedErrors.mockRestore();
       }
+    });
+  });
+
+  describe('confirmation links (D119)', () => {
+    it('a confirmation send forces email, stores the flags, and puts a personal link in each mail', async () => {
+      prisma.user.findUnique.mockResolvedValue(alice);
+      tx.notification.create.mockResolvedValue(
+        createdNotification({ requiresConfirmation: true, confirmationType: 'gdpr_consent', confirmationAllowComment: false }),
+      );
+      const confirmations = { issueToken: jest.fn().mockResolvedValue('tok123') };
+      const withConfirmations = new NotificationsService(
+        prisma as never,
+        settings as never,
+        email as never,
+        confirmations as never,
+        writer as never,
+      );
+      process.env.APP_PUBLIC_URL = 'https://app.example.org/';
+
+      const result = await withConfirmations.send(
+        baseInput({ confirmation: { type: 'gdpr_consent', allowComment: false } }),
+      );
+
+      expect(tx.notification.create.mock.calls[0][0].data).toMatchObject({
+        requiresConfirmation: true,
+        confirmationType: 'gdpr_consent',
+        confirmationAllowComment: false,
+      });
+      expect(confirmations.issueToken).toHaveBeenCalledWith('notif-1', 'u1');
+      const mail = email.send.mock.calls[0][0] as { text: string; html: string };
+      expect(mail.text).toContain('https://app.example.org/notifications/confirm/tok123');
+      expect(mail.html).toContain('href="https://app.example.org/notifications/confirm/tok123"');
+      expect(result.emailedCount).toBe(1);
+      delete process.env.APP_PUBLIC_URL;
+    });
+
+    it('rejects a confirmation send that is told not to email', async () => {
+      const withConfirmations = new NotificationsService(prisma as never, settings as never, email as never, {} as never, writer as never);
+      await expect(
+        withConfirmations.send(baseInput({ email: false, confirmation: { type: 'receipt' } })),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 });

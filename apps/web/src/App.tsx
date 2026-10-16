@@ -31,6 +31,8 @@ import { AuditPage } from './core/audit/AuditPage';
 import { BackupPage } from './core/backup/BackupPage';
 import { SettingsPage } from './core/settings/SettingsPage';
 import { NotificationsInboxPage } from './core/notifications/NotificationsInboxPage';
+import { NotificationConfirmPage } from './core/notifications/NotificationConfirmPage';
+import { NotificationConfirmationsPage } from './core/notifications/NotificationConfirmationsPage';
 import { NotificationsComposePage } from './core/notifications/NotificationsComposePage';
 import { ModulesAdminPage } from './core/modules/ModulesAdminPage';
 import {
@@ -190,6 +192,8 @@ function AppRoutes() {
             setting itself and 403s if it's off, surfaced via RegisterPage's
             own error state. */}
         <Route path="/register" element={<RegisterPage />} />
+        {/* D119: emailed confirmation link — public, the token is the credential. */}
+        <Route path="/notifications/confirm/:token" element={<PublicRouteFrame><NotificationConfirmPage /></PublicRouteFrame>} />
         {/* MODULE_SPEC.md §7.1: a public route "never redirects to the login
             page" — mounted here too so a shared link works for a visitor
             with no session at all, not just an authenticated one. */}
@@ -205,6 +209,7 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/force-password-change" element={<ForcePasswordChangePage />} />
+        <Route path="/notifications/confirm/:token" element={<PublicRouteFrame><NotificationConfirmPage /></PublicRouteFrame>} />
         {publicModuleRoutes.map((route) => (
           <Route key={route.path} path={route.path} element={<PublicRouteFrame>{route.element}</PublicRouteFrame>} />
         ))}
@@ -224,6 +229,7 @@ function AppRoutes() {
         <Route path="/my-permissions" element={<Navigate to="/account/permissions" replace />} />
         <Route path="/sessions" element={<Navigate to="/account/sessions" replace />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/notifications/confirm/:token" element={<NotificationConfirmPage />} />
         <Route path="/register" element={<Navigate to="/" replace />} />
         <Route path="/force-password-change" element={<Navigate to="/" replace />} />
         <Route
@@ -279,6 +285,22 @@ function AppRoutes() {
           element={
             <RequirePermissionRoute code="notifications.view">
               <NotificationsInboxPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/notifications/confirmations"
+          element={
+            <RequirePermissionRoute code="notifications.confirmations.view">
+              <NotificationConfirmationsPage />
+            </RequirePermissionRoute>
+          }
+        />
+        <Route
+          path="/notifications/confirmations/:id"
+          element={
+            <RequirePermissionRoute code="notifications.confirmations.view">
+              <NotificationConfirmationsPage />
             </RequirePermissionRoute>
           }
         />

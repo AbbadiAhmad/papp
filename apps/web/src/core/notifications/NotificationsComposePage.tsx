@@ -1,4 +1,4 @@
-import { Alert, Autocomplete, Box, Button, Checkbox, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, Checkbox, Chip, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,9 @@ export function NotificationsComposePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [roles, setRoles] = useState<PublicRole[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false);
+  const [confirmationType, setConfirmationType] = useState('receipt');
+  const [allowComment, setAllowComment] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +55,9 @@ export function NotificationsComposePage() {
         targetType,
         targetId: targetType === 'user' ? (userId ?? '') : undefined,
         targetIds: targetType === 'role' ? roleIds : undefined,
+        ...(requiresConfirmation
+          ? { requiresConfirmation: true, confirmationType, confirmationAllowComment: allowComment }
+          : {}),
       };
       if (targetType === 'role' && roleIds.length === 0) {
         setError(t('core.notifications.select_roles_required'));
@@ -140,6 +146,32 @@ export function NotificationsComposePage() {
               onChange={(_, value) => setUserId(value?.id ?? null)}
               renderInput={(params) => <TextField {...params} label={t('core.notifications.user')} required />}
             />
+          ) : null}
+          <FormControlLabel
+            control={<Checkbox checked={requiresConfirmation} onChange={(e) => setRequiresConfirmation(e.target.checked)} />}
+            label={t('core.notifications.requires_confirmation')}
+          />
+          {requiresConfirmation ? (
+            <>
+              <Alert severity="info">{t('core.notifications.confirmation_hint')}</Alert>
+              <TextField
+                select
+                label={t('core.notifications.confirmation_type')}
+                value={confirmationType}
+                onChange={(e) => setConfirmationType(e.target.value)}
+                fullWidth
+              >
+                {['receipt', 'policy_acceptance', 'gdpr_consent'].map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {t(`core.notifications.confirmation_types.${type}`)}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <FormControlLabel
+                control={<Checkbox checked={allowComment} onChange={(e) => setAllowComment(e.target.checked)} />}
+                label={t('core.notifications.confirmation_allow_comment')}
+              />
+            </>
           ) : null}
           <Stack direction="row" spacing={2}>
             <Button type="submit" variant="contained" disabled={submitting}>

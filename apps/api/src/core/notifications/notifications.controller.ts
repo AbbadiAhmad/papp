@@ -1,10 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { PublicThrottlerGuard } from '../../common/guards/public-throttler.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { MustChangePasswordGuard } from '../../common/guards/must-change-password.guard';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { extractRequestMeta } from '../auth/request-meta.util';
+import { ConfirmNotificationDto } from './dto/confirm-notification.dto';
+import { NotificationConfirmationsService } from './notification-confirmations.service';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { InboxItem, NotificationsService } from './notifications.service';
 
@@ -31,7 +36,10 @@ const fetchOwnRecipientRow = (prisma: PrismaService, req: Request) => {
 @Controller('notifications')
 @UseGuards(MustChangePasswordGuard)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly confirmationsService: NotificationConfirmationsService,
+  ) {}
 
   @Post()
   @RequirePermission('notifications.send')
@@ -48,10 +56,46 @@ export class NotificationsController {
       targetId: dto.targetId ?? null,
       targetIds: dto.targetIds,
       sentBy: user.userId, // a person composed this send — never null here
+      confirmation: dto.requiresConfirmation
+        ? { type: dto.confirmationType ?? 'receipt', allowComment: dto.confirmationAllowComment }
+        : undefined,
     });
     // `id` at the top level is what AuditInterceptor's entityId fallback
     // reads for the create row.
     return { id: result.notification.id, recipientCount: result.recipientCount, emailedCount: result.emailedCount };
+  }
+
+  // --- D119: confirmation evidence (admin) ---------------------------------
+  // Declared before the ':id' routes so 'confirmations' is never read as an id.
+
+  @Get('confirmations')
+  @RequirePermission('notifications.confirmations.view')
+  listConfirmationRequests() {
+    return this.confirmationsService.listRequests();
+  }
+
+  @Get(':id/confirmations')
+  @RequirePermission('notifications.confirmations.view')
+  listConfirmations(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.confirmationsService.listForNotification(id);
+  }
+
+  // --- D119: public confirm link (no login; the token is the credential) ----
+  // The write is rate-limited per IP like every public write (MODULE_SPEC §6).
+  // Audited inside the service (the token must never reach audit_log as an entity id).
+
+  @Public()
+  @Get('confirm/:token')
+  previewConfirmation(@Param('token') token: string) {
+    return this.confirmationsService.preview(token);
+  }
+
+  @Public()
+  @UseGuards(PublicThrottlerGuard)
+  @Post('confirm/:token')
+  @HttpCode(HttpStatus.OK)
+  confirm(@Param('token') token: string, @Body() dto: ConfirmNotificationDto, @Req() req: Request) {
+    return this.confirmationsService.confirm(token, dto.comment, extractRequestMeta(req));
   }
 
   @Get('me')

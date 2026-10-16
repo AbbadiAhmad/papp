@@ -40,6 +40,14 @@ describe('Notifications (e2e)', () => {
     // notifications.view is granted to ALL FOUR base roles by default — the
     // matrix still proves the real success path + real 401 for anonymous.
     expectPermissionEnforced({ app: () => app!, method: 'get', path: '/notifications/me', requiredPermission: 'notifications.view' });
+
+    // D119: confirmation evidence is admin-only by default.
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'get',
+      path: '/notifications/confirmations',
+      requiredPermission: 'notifications.confirmations.view',
+    });
   });
 
   it('a real send fans out an in-app inbox row to the targeted user, who can then mark it read', async () => {

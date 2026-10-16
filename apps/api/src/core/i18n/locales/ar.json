@@ -123,5 +123,6 @@
   "core.common.colorMode.dark": "المظهر: داكن (انقر للعودة حسب الجهاز)",
   "core.common.menu": "القائمة",
   "core.common.no_data": "لا توجد بيانات",
-  "core.common.status": "الحالة"
+  "core.common.status": "الحالة",
+  "core.perm.notifications.confirmations.view": "عرض تأكيدات الإشعارات (الأدلة)"
 }

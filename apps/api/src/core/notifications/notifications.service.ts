@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { NOTIFICATION_CATEGORIES_KEY, NotificationCategoriesConfig } from '../settings/settings.types';
 import { applyPlaceholders, renderMarkdownToSafeHtml } from './markdown.util';
+import { appPublicUrl, confirmationLink } from './confirmation.util';
+import { NotificationConfirmationsService } from './notification-confirmations.service';
 import { NotificationEmailService } from './notification-email.service';
 
 export interface SendNotificationInput {
@@ -24,7 +26,16 @@ export interface SendNotificationInput {
    * false = in-app only. Omitted = follow `notifications.categories`.
    */
   email?: boolean;
+  /**
+   * D119: ask every recipient to confirm receipt / acceptance through a personal
+   * link in the email (this forces the email channel on — the link lives there).
+   * `type` is stored on the evidence, e.g. 'receipt', 'policy_acceptance', 'gdpr_consent'.
+   */
+  confirmation?: { type: string; allowComment?: boolean };
 }
+
+/** Operator-neutral bilingual line above the confirmation link in the email (not an i18n key: mail has no UI locale). */
+const CONFIRM_PROMPT = 'يرجى تأكيد الاستلام عبر الرابط التالي / Please confirm by opening this link:';
 
 export interface SendResult {
   notification: Notification;
@@ -68,6 +79,8 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly email: NotificationEmailService,
+    // @Optional for lightweight unit fixtures only (D119) — always provided in the real app.
+    @Optional() private readonly confirmations?: NotificationConfirmationsService,
     // @Optional for lightweight unit fixtures only — in the real app the
     // @Global AuditModule always provides it (same rule as SettingsService).
     @Optional() private readonly auditLogWriter?: AuditLogWriter,
@@ -75,6 +88,17 @@ export class NotificationsService {
 
   async send(input: SendNotificationInput): Promise<SendResult> {
     this.assertTargetShape(input);
+    if (input.confirmation) {
+      if (input.email === false) {
+        throw new BadRequestException('A notification that requires confirmation must be sent by email (the link is in the email)');
+      }
+      if (!this.confirmations) {
+        throw new BadRequestException('Confirmation is not available');
+      }
+      if (!input.confirmation.type.trim()) {
+        throw new BadRequestException('confirmation.type is required');
+      }
+    }
     const recipients = await this.resolveRecipients(input);
 
     // The send event + its full in-app fan-out commit atomically: a
@@ -91,6 +115,13 @@ export class NotificationsService {
           // Several roles don't fit the single target_id column: store the
           // id only for a single target; the full list is in the audit row.
           targetId: input.targetType === 'all_users' ? null : (this.singleTargetId(input) ?? null),
+          ...(input.confirmation
+            ? {
+                requiresConfirmation: true,
+                confirmationType: input.confirmation.type.trim(),
+                confirmationAllowComment: input.confirmation.allowComment ?? true,
+              }
+            : {}),
         },
       });
       if (recipients.length > 0) {
@@ -124,6 +155,7 @@ export class NotificationsService {
             targetId: notification.targetId,
             ...(input.targetIds ? { targetIds: input.targetIds } : {}),
             recipientCount: recipients.length,
+            ...(input.confirmation ? { requiresConfirmation: true, confirmationType: input.confirmation.type.trim() } : {}),
           },
         });
       } else {
@@ -134,7 +166,7 @@ export class NotificationsService {
       }
     }
 
-    const emailedCount = (input.email ?? (await this.isEmailEnabled(input.category)))
+    const emailedCount = (input.confirmation || (input.email ?? (await this.isEmailEnabled(input.category))))
       ? await this.emailRecipients(notification, recipients)
       : 0;
 
@@ -277,7 +309,19 @@ export class NotificationsService {
     for (const recipient of recipients) {
       const values = { name: recipient.name };
       const subject = applyPlaceholders(notification.title, values);
-      const bodyMarkdown = applyPlaceholders(notification.bodyMarkdown, values);
+      let bodyMarkdown = applyPlaceholders(notification.bodyMarkdown, values);
+      if (notification.requiresConfirmation && this.confirmations) {
+        const base = appPublicUrl();
+        if (!base) {
+          this.logger.error(
+            `Notification ${notification.id} requires confirmation but APP_PUBLIC_URL is not set — no link can be built, email to ${recipient.email} skipped.`,
+          );
+          continue;
+        }
+        const token = await this.confirmations.issueToken(notification.id, recipient.id);
+        const link = confirmationLink(base, token);
+        bodyMarkdown += `\n\n---\n\n**${CONFIRM_PROMPT}**\n\n[${link}](${link})`;
+      }
       const delivered = await this.email.send({
         to: recipient.email,
         subject,

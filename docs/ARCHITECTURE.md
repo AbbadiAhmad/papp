@@ -229,7 +229,11 @@ Templates (forgot-password, force-password-change notice, future ones) are rows 
 
 ### 12.4 Permissions
 
-`notifications.send` (compose/send to a target), `notifications.templates.manage` (edit templates, effectively `users.settings.update` from §6.3), `notifications.view` (see your own in-app notifications — granted to every role by default, since everyone needs to see notices meant for them).
+`notifications.send` (compose/send to a target), `notifications.templates.manage` (edit templates, effectively `users.settings.update` from §6.3), `notifications.view` (see your own in-app notifications — granted to every role by default, since everyone needs to see notices meant for them), `notifications.confirmations.view` (read the confirmation evidence, §12.5 — admin by default).
+
+### 12.5 Confirmation links and evidence (D119)
+
+A notification may require confirmation. Each emailed recipient gets a personal, expiring link (only the token's hash is stored); opening it shows the exact text and records an append-only evidence row (time, IP, user agent, the text as shown + SHA-256, confirmer, comment). Public endpoints are throttled and audited as `anonymous`; reading the evidence needs `notifications.confirmations.view`.
 
 ## 13. Module system
 

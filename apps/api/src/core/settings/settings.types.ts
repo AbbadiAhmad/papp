@@ -59,6 +59,11 @@ export interface PublicEndpointRateLimit {
 export const PASSWORD_POLICY_KEY = 'auth.password_policy';
 export const TOKEN_LIFETIMES_KEY = 'auth.token_lifetimes';
 export const NOTIFICATION_CATEGORIES_KEY = 'notifications.categories';
+/** D119: `{ linkTtlDays }` — how long an emailed confirmation link stays valid (seeded by 0021). */
+export const NOTIFICATION_CONFIRMATION_KEY = 'notifications.confirmation';
+export interface NotificationConfirmationConfig {
+  linkTtlDays: number;
+}
 /**
  * system_settings key: "users.allow_self_registration" (D41) — plain JSONB
  * boolean. Default false (seeded by 0007): POST /auth/register 403s until an

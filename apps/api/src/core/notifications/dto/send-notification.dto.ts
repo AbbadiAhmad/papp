@@ -1,5 +1,5 @@
 import { NotificationTargetType } from '@prisma/client';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 /**
  * POST /notifications body (D21): target is a platform user, a role (its
@@ -41,4 +41,23 @@ export class SendNotificationDto {
   @ArrayMaxSize(100)
   @IsUUID('all', { each: true })
   targetIds?: string[];
+
+  /**
+   * D119: when true, every recipient is emailed a personal link to confirm
+   * receipt / acceptance; the confirmation is stored as evidence.
+   */
+  @IsOptional()
+  @IsBoolean()
+  requiresConfirmation?: boolean;
+
+  /** Evidence label, e.g. 'receipt' (default), 'policy_acceptance', 'gdpr_consent'. */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  confirmationType?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmationAllowComment?: boolean;
 }
