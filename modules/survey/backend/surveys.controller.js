@@ -15,11 +15,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SurveysController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
+const add_collaborator_dto_1 = require("./dto/add-collaborator.dto");
 const create_survey_dto_1 = require("./dto/create-survey.dto");
 const duplicate_survey_dto_1 = require("./dto/duplicate-survey.dto");
 const survey_structure_dto_1 = require("./dto/survey-structure.dto");
 const update_survey_dto_1 = require("./dto/update-survey.dto");
 const platform_1 = require("./platform");
+const survey_access_1 = require("./survey-access");
 const survey_transfer_service_1 = require("./survey-transfer.service");
 const surveys_service_1 = require("./surveys.service");
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
@@ -35,12 +37,15 @@ const fetchSurveyState = (prisma, req) => prisma.surveySurvey.findUnique({ where
 let SurveysController = class SurveysController {
     surveys;
     transfer;
-    constructor(surveys, transfer) {
+    access;
+    constructor(surveys, transfer, access) {
         this.surveys = surveys;
         this.transfer = transfer;
+        this.access = access;
     }
-    async list(archived) {
-        return this.surveys.list(archived === 'true');
+    async list(archived, user) {
+        const [rows, perms, coOwned] = await Promise.all([this.surveys.list(archived === 'true'), this.access.permissionsOf(user.userId), this.access.coOwnedIds(user.userId)]);
+        return rows.map((row) => ({ ...row, access: this.access.capabilities(perms, user.userId, row, coOwned.has(row.id)) }));
     }
     /** Declared before every `:id` route so `import` is never read as a survey id. */
     async importPackage(file, includeResponses, user) {
@@ -51,8 +56,20 @@ let SurveysController = class SurveysController {
     async create(dto, user) {
         return this.surveys.create(dto, user.userId);
     }
-    async findById(id) {
-        return this.surveys.findById(id);
+    async findById(id, user) {
+        const survey = await this.surveys.findById(id);
+        const [perms, coOwner] = await Promise.all([this.access.permissionsOf(user.userId), this.access.isCoOwner(id, user.userId)]);
+        return { ...survey, access: this.access.capabilities(perms, user.userId, survey, coOwner) };
+    }
+    // --- Co-owners (SURVEY-D21) -------------------------------------------
+    async listCoOwners(id) {
+        return this.access.listCoOwners(id);
+    }
+    async addCoOwner(id, dto, user) {
+        return this.access.addCoOwner(id, dto.email, user.userId);
+    }
+    async removeCoOwner(id, userId) {
+        return this.access.removeCoOwner(id, userId);
     }
     async update(id, dto) {
         return this.surveys.update(id, dto);
@@ -103,8 +120,9 @@ __decorate([
     (0, common_1.Get)(),
     (0, platform_1.RequirePermission)('survey.surveys.view'),
     __param(0, (0, common_1.Query)('archived')),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], SurveysController.prototype, "list", null);
 __decorate([
@@ -134,13 +152,44 @@ __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.RequirePermission)('survey.surveys.view'),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], SurveysController.prototype, "findById", null);
 __decorate([
+    (0, common_1.Get)(':id/collaborators'),
+    (0, platform_1.RequirePermission)('survey.surveys.view'),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "listCoOwners", null);
+__decorate([
+    (0, common_1.Post)(':id/collaborators'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.share', { owner: true }),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveyCollaborator', action: 'add_co_owner' }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, add_collaborator_dto_1.AddCollaboratorDto, Object]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "addCoOwner", null);
+__decorate([
+    (0, common_1.Delete)(':id/collaborators/:userId'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.share', { owner: true }),
+    (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveyCollaborator', action: 'remove_co_owner' }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('userId', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], SurveysController.prototype, "removeCoOwner", null);
+__decorate([
     (0, common_1.Patch)(':id'),
-    (0, platform_1.RequirePermission)('survey.surveys.update'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.update', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update', fetchState: fetchSurveyState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
@@ -160,7 +209,7 @@ __decorate([
 ], SurveysController.prototype, "remove", null);
 __decorate([
     (0, common_1.Post)(':id/publish'),
-    (0, platform_1.RequirePermission)('survey.surveys.publish'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.publish', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'publish', fetchState: fetchSurveyState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
@@ -169,7 +218,7 @@ __decorate([
 ], SurveysController.prototype, "publish", null);
 __decorate([
     (0, common_1.Post)(':id/close'),
-    (0, platform_1.RequirePermission)('survey.surveys.publish'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.publish', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'close', fetchState: fetchSurveyState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
@@ -178,7 +227,7 @@ __decorate([
 ], SurveysController.prototype, "close", null);
 __decorate([
     (0, common_1.Post)(':id/reopen'),
-    (0, platform_1.RequirePermission)('survey.surveys.publish'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.publish', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'reopen', fetchState: fetchSurveyState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
@@ -225,7 +274,7 @@ __decorate([
 ], SurveysController.prototype, "exportDefinition", null);
 __decorate([
     (0, common_1.Get)(':id/export-with-responses'),
-    (0, platform_1.RequirePermission)('survey.responses.export'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.export', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -234,7 +283,7 @@ __decorate([
 ], SurveysController.prototype, "exportWithResponses", null);
 __decorate([
     (0, common_1.Put)(':id/structure'),
-    (0, platform_1.RequirePermission)('survey.surveys.update'),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.update', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
@@ -244,7 +293,8 @@ __decorate([
 ], SurveysController.prototype, "replaceStructure", null);
 exports.SurveysController = SurveysController = __decorate([
     (0, common_1.Controller)('api/survey/surveys'),
-    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
+    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard, survey_access_1.SurveyAccessGuard),
     __metadata("design:paramtypes", [surveys_service_1.SurveysService,
-        survey_transfer_service_1.SurveyTransferService])
+        survey_transfer_service_1.SurveyTransferService,
+        survey_access_1.SurveyAccessService])
 ], SurveysController);

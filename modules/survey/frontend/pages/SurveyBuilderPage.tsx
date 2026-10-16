@@ -26,6 +26,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
 import { ImageField } from '../components/ImageField';
+import { CoOwnersPanel } from '../components/CoOwnersPanel';
 import { CarryForwardEditor } from '../components/CarryForwardEditor';
 import { RichTextField } from '../components/RichTextField';
 import { getOptionsFrom } from '../../backend/piping.ts';
@@ -630,6 +631,10 @@ export function SurveyBuilderPage() {
           />
         </Stack>
       </Paper>
+
+      <Box sx={{ mb: 2 }}>
+        <CoOwnersPanel surveyId={surveyId} canManage={survey.access?.canManageOwners === true} />
+      </Box>
 
       <Stack spacing={2}>
         {sections.map((section, sectionIndex) => (

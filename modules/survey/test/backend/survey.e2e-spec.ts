@@ -710,4 +710,101 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect(detail.sections[1].questions[1].title).toContain(`{{q:${sourceId}}}`);
     });
   });
+
+  describe('co-owners (ext. G)', () => {
+    let target: string;
+    let other: string;
+    const asRole = async (role: RoleCode) => ({ Authorization: `Bearer ${(await fixtureForRole(app!, role)).token}` });
+    const emailOf = async (role: RoleCode) => (await fixtureForRole(app!, role)).email;
+    const mk = async (title: string) => (await request(http()).post('/api/survey/surveys').set(admin()).send({ title })).body.id as string;
+    const structure = (k: number) => ({
+      sections: [{ id: uuid(7000 + k * 2), orderIndex: 0, title: 'S', questions: [{ id: uuid(7001 + k * 2), orderIndex: 0, type: 'short_text', title: 'Q' }] }],
+      logicRules: [],
+    });
+
+    beforeAll(async () => {
+      target = await mk('Shared survey');
+      other = await mk('Not shared');
+    });
+
+    it('a user with no survey permissions is refused everything until they are made a co-owner', async () => {
+      const reader = await asRole('reader');
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'x' })).status).toBe(403);
+      expect((await request(http()).put(`/api/survey/surveys/${target}/structure`).set(reader).send(structure(1))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/summary`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/publish`).set(reader)).status).toBe(403);
+    });
+
+    it('only the owner/share permission can add co-owners; unknown email → 404; the creator cannot be added', async () => {
+      const reader = await asRole('reader');
+      const refused = await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(reader).send({ email: await emailOf('reader') });
+      expect(refused.status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: 'nobody@nowhere.example' })).status).toBe(404);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: 'not-an-email' })).status).toBe(400);
+      const adminEmail = (await fixtureForRole(app!, 'admin')).email;
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: adminEmail })).status).toBe(403);
+    });
+
+    it('a co-owner can edit, publish, read results and upload pictures of THAT survey only', async () => {
+      const added = await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: (await emailOf('reader')).toUpperCase() });
+      expect(added.status).toBe(201);
+      expect(added.body.coOwners.map((c: { email: string }) => c.email)).toContain(await emailOf('reader'));
+      const reader = await asRole('reader');
+
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'Renamed by co-owner' })).status).toBe(200);
+      expect((await request(http()).put(`/api/survey/surveys/${target}/structure`).set(reader).send(structure(2))).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${target}/publish`).set(reader)).status);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/responses`).set(reader)).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/summary`).set(reader)).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/dataset`).set(reader)).status).toBe(200);
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/media`).set(reader).attach('file', png, 'a.png')).status).toBe(201);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${target}/close`).set(reader)).status);
+
+      // ...but not another survey, and not delete / archive / duplicate / managing co-owners
+      expect((await request(http()).patch(`/api/survey/surveys/${other}`).set(reader).send({ title: 'x' })).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${other}/responses`).set(reader)).status).toBe(403);
+      expect((await request(http()).delete(`/api/survey/surveys/${target}`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/archive`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/duplicate`).set(reader).send({})).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(reader).send({ email: await emailOf('finance') })).status).toBe(403);
+      expect((await request(http()).delete(`/api/survey/surveys/${target}/collaborators/${(await fixtureForRole(app!, 'reader')).userId}`).set(reader)).status).toBe(403);
+    });
+
+    it('a co-owner without the general view permission still cannot list or open other surveys', async () => {
+      const reader = await asRole('reader');
+      expect((await request(http()).get('/api/survey/surveys').set(reader)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${target}`).set(reader)).status).toBe(403);
+    });
+
+    it('the list and detail tell the UI what the caller may do', async () => {
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      const row = list.body.find((r: { id: string }) => r.id === target);
+      expect(row.access).toMatchObject({ canEdit: true, canPublish: true, canViewResults: true, canManageOwners: true, isCoOwner: false });
+      const detail = await request(http()).get(`/api/survey/surveys/${target}`).set(admin());
+      expect(detail.body.access.canManageOwners).toBe(true);
+      const names = await request(http()).get(`/api/survey/surveys/${target}/collaborators`).set(admin());
+      expect(names.body.owner.userId).toBe((await fixtureForRole(app!, 'admin')).userId);
+      expect(names.body.coOwners).toHaveLength(1);
+    });
+
+    it('removing a co-owner takes the access away again, and it is all audited', async () => {
+      const readerId = (await fixtureForRole(app!, 'reader')).userId;
+      const removed = await request(http()).delete(`/api/survey/surveys/${target}/collaborators/${readerId}`).set(admin());
+      expect(removed.status).toBe(200);
+      expect(removed.body.coOwners).toHaveLength(0);
+      const reader = await asRole('reader');
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'again' })).status).toBe(403);
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_log WHERE entity_type = 'SurveyCollaborator'`);
+      expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining(['add_co_owner', 'remove_co_owner']));
+    });
+
+    it('deleting the survey removes its co-owner rows', async () => {
+      const gone = await mk('To delete');
+      await request(http()).post(`/api/survey/surveys/${gone}/collaborators`).set(admin()).send({ email: await emailOf('finance') });
+      expect((await request(http()).delete(`/api/survey/surveys/${gone}`).set(admin())).status).toBeLessThan(300);
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM survey_collaborators WHERE survey_id = '${gone}'`);
+      expect(Number(rows[0].n)).toBe(0);
+    });
+  });
 });

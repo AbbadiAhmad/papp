@@ -310,5 +310,12 @@
   "survey.carry.untitled": "(untitled question)",
   "survey.carry.mode": "Offer",
   "survey.carry.selected": "The choices the reader selected",
-  "survey.carry.unselected": "The choices the reader did not select"
+  "survey.carry.unselected": "The choices the reader did not select",
+  "survey.perm.surveys.share": "Share a survey with co-owners (add and remove them)",
+  "survey.coowners.title": "Co-owners",
+  "survey.coowners.hint": "Co-owners can edit this survey, publish or close it, and read its results. They cannot delete or archive it, or change its co-owners.",
+  "survey.coowners.owner": "owner",
+  "survey.coowners.none": "No co-owners yet.",
+  "survey.coowners.email": "Email of a user",
+  "survey.coowners.add": "Add co-owner"
 }

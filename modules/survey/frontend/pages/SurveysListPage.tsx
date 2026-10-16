@@ -38,6 +38,7 @@ import {
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Allowed } from '../components/Allowed';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
@@ -252,7 +253,7 @@ export function SurveysListPage() {
                         <QrCode2Icon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Can permission="survey.responses.view">
+                    <Allowed permission="survey.responses.view" orSurvey={survey.access?.canViewResults}>
                       <Tooltip title={t('survey.list.responses')}>
                         <IconButton size="small" onClick={() => navigate(`/survey/surveys/${survey.id}/responses`)}>
                           <ListAltIcon fontSize="small" />
@@ -263,15 +264,15 @@ export function SurveysListPage() {
                           <AssessmentIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                    </Can>
-                    <Can permission="survey.surveys.update">
+                    </Allowed>
+                    <Allowed permission="survey.surveys.update" orSurvey={survey.access?.canEdit}>
                       <Tooltip title={t('core.common.edit')}>
                         <IconButton size="small" onClick={() => navigate(`/survey/surveys/${survey.id}/edit`)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                    </Can>
-                    <Can permission="survey.surveys.publish">
+                    </Allowed>
+                    <Allowed permission="survey.surveys.publish" orSurvey={survey.access?.canPublish}>
                       {survey.status === 'published' ? (
                         <Tooltip title={t('survey.list.close')}>
                           <span>
@@ -297,7 +298,7 @@ export function SurveysListPage() {
                           </span>
                         </Tooltip>
                       )}
-                    </Can>
+                    </Allowed>
                     <Can permission="survey.surveys.create">
                       <Tooltip title={t('survey.transfer.duplicate')}>
                         <IconButton size="small" onClick={() => setDuplicating(survey)} aria-label={t('survey.transfer.duplicate')}>

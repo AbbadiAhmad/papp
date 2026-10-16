@@ -20,7 +20,25 @@ export type SurveyQuestionType = (typeof SURVEY_QUESTION_TYPES)[number];
 
 export const ENUMERATION_QUESTION_TYPES: readonly SurveyQuestionType[] = ['single_choice', 'multi_choice', 'dropdown'];
 
+/** What the signed-in user may do with one survey: their role's permissions OR being a co-owner of it (SURVEY-D21). */
+export interface SurveyAccessInfo {
+  canEdit: boolean;
+  canPublish: boolean;
+  canViewResults: boolean;
+  canExportResults: boolean;
+  canManageOwners: boolean;
+  isCoOwner: boolean;
+}
+
+export interface CoOwner {
+  userId: string;
+  name: string;
+  email: string;
+  addedAt?: string;
+}
+
 export interface SurveySummary {
+  access?: SurveyAccessInfo;
   id: string;
   title: string;
   description: string | null;
@@ -236,6 +254,11 @@ export const surveyApi = {
     form.append('file', file);
     return apiClient.post<{ mediaId: string }>(`/api/survey/surveys/${id}/media`, form).then((r) => r.data);
   },
+  listCoOwners: (id: string) => apiClient.get<{ owner: CoOwner; coOwners: CoOwner[] }>(`/api/survey/surveys/${id}/collaborators`).then((r) => r.data),
+  addCoOwner: (id: string, email: string) =>
+    apiClient.post<{ owner: CoOwner; coOwners: CoOwner[] }>(`/api/survey/surveys/${id}/collaborators`, { email }).then((r) => r.data),
+  removeCoOwner: (id: string, userId: string) =>
+    apiClient.delete<{ owner: CoOwner; coOwners: CoOwner[] }>(`/api/survey/surveys/${id}/collaborators/${userId}`).then((r) => r.data),
   get: (id: string) => apiClient.get<SurveyDetail>(`/api/survey/surveys/${id}`).then((r) => r.data),
   create: (dto: CreateSurveyInput) => apiClient.post<SurveyDetail>('/api/survey/surveys', dto).then((r) => r.data),
   update: (id: string, dto: UpdateSurveyInput) => apiClient.patch<SurveyDetail>(`/api/survey/surveys/${id}`, dto).then((r) => r.data),

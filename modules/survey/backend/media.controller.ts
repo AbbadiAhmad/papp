@@ -17,7 +17,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { MAX_IMAGE_BYTES } from './media-rules';
 import { SurveyMediaService } from './media.service';
-import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, Public, RequirePermission } from './platform';
+import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, Public } from './platform';
+import { SurveyAccess, SurveyAccessGuard } from './survey-access';
 
 /**
  * Survey pictures (phase D, SURVEY-D18). Uploading needs the same permission as editing the
@@ -30,8 +31,8 @@ export class SurveyMediaController {
 
   @Post('surveys/:id/media')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(MustChangePasswordGuard)
-  @RequirePermission('survey.surveys.update')
+  @UseGuards(MustChangePasswordGuard, SurveyAccessGuard)
+  @SurveyAccess('survey.surveys.update', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveyMedia', action: 'upload_image' })
   // +1 so an oversize file reaches the service's own, clearer message instead of a generic 413.
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_IMAGE_BYTES + 1 } }))

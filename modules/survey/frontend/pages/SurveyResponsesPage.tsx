@@ -27,10 +27,11 @@ import { ConfirmDialog } from '../../../../apps/web/src/shared/components/Confir
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
+import { Allowed } from '../components/Allowed';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { downloadBlob, surveyApi, type ResponseDetail, type ResponseListItem } from '../api';
+import { downloadBlob, surveyApi, type ResponseDetail, type ResponseListItem, type SurveyAccessInfo } from '../api';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import { formatAnswerForDisplay } from '../../backend/question-rules.ts';
 
@@ -95,6 +96,13 @@ export function SurveyResponsesPage() {
     surveyApi.listResponses(surveyId as string),
   );
 
+  const [access, setAccess] = useState<SurveyAccessInfo | undefined>(undefined);
+  useEffect(() => {
+    surveyApi
+      .get(surveyId as string)
+      .then((d) => setAccess(d.access))
+      .catch(() => setAccess(undefined));
+  }, [surveyId]);
   const [viewing, setViewing] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ResponseListItem | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
@@ -143,11 +151,11 @@ export function SurveyResponsesPage() {
         <Typography variant="h5">{t('survey.responses.title')}</Typography>
         <Stack direction="row" spacing={1}>
           <Button onClick={() => navigate(`/survey/surveys/${surveyId}/report`)}>{t('survey.list.report')}</Button>
-          <Can permission="survey.responses.export">
+          <Allowed permission="survey.responses.export" orSurvey={access?.canExportResults}>
             <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport}>
               {t('survey.responses.export')}
             </Button>
-          </Can>
+          </Allowed>
           <Button onClick={() => navigate('/survey/surveys')}>{t('core.common.back')}</Button>
         </Stack>
       </Stack>

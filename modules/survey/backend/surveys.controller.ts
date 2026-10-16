@@ -20,11 +20,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { AddCollaboratorDto } from './dto/add-collaborator.dto';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { DuplicateSurveyDto } from './dto/duplicate-survey.dto';
 import { SurveyStructureDto } from './dto/survey-structure.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
+import { SurveyAccess, SurveyAccessGuard, SurveyAccessService } from './survey-access';
 import { SurveyTransferService } from './survey-transfer.service';
 import { SurveysService } from './surveys.service';
 
@@ -42,17 +44,19 @@ const fetchSurveyState = (prisma: PrismaClient, req: Request) =>
  * other module controller.
  */
 @Controller('api/survey/surveys')
-@UseGuards(MustChangePasswordGuard)
+@UseGuards(MustChangePasswordGuard, SurveyAccessGuard)
 export class SurveysController {
   constructor(
     private readonly surveys: SurveysService,
     private readonly transfer: SurveyTransferService,
+    private readonly access: SurveyAccessService,
   ) {}
 
   @Get()
   @RequirePermission('survey.surveys.view')
-  async list(@Query('archived') archived?: string) {
-    return this.surveys.list(archived === 'true');
+  async list(@Query('archived') archived: string | undefined, @CurrentUser() user: AuthenticatedUser) {
+    const [rows, perms, coOwned] = await Promise.all([this.surveys.list(archived === 'true'), this.access.permissionsOf(user.userId), this.access.coOwnedIds(user.userId)]);
+    return rows.map((row) => ({ ...row, access: this.access.capabilities(perms, user.userId, row, coOwned.has(row.id)) }));
   }
 
   /** Declared before every `:id` route so `import` is never read as a survey id. */
@@ -79,12 +83,37 @@ export class SurveysController {
 
   @Get(':id')
   @RequirePermission('survey.surveys.view')
-  async findById(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.surveys.findById(id);
+  async findById(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
+    const survey = await this.surveys.findById(id);
+    const [perms, coOwner] = await Promise.all([this.access.permissionsOf(user.userId), this.access.isCoOwner(id, user.userId)]);
+    return { ...survey, access: this.access.capabilities(perms, user.userId, survey, coOwner) };
+  }
+
+  // --- Co-owners (SURVEY-D21) -------------------------------------------
+
+  @Get(':id/collaborators')
+  @RequirePermission('survey.surveys.view')
+  async listCoOwners(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.access.listCoOwners(id);
+  }
+
+  @Post(':id/collaborators')
+  @HttpCode(HttpStatus.CREATED)
+  @SurveyAccess('survey.surveys.share', { owner: true })
+  @Audit({ category: 'survey.surveys', entityType: 'SurveyCollaborator', action: 'add_co_owner' })
+  async addCoOwner(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: AddCollaboratorDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.access.addCoOwner(id, dto.email, user.userId);
+  }
+
+  @Delete(':id/collaborators/:userId')
+  @SurveyAccess('survey.surveys.share', { owner: true })
+  @Audit({ category: 'survey.surveys', entityType: 'SurveyCollaborator', action: 'remove_co_owner' })
+  async removeCoOwner(@Param('id', new ParseUUIDPipe()) id: string, @Param('userId', new ParseUUIDPipe()) userId: string) {
+    return this.access.removeCoOwner(id, userId);
   }
 
   @Patch(':id')
-  @RequirePermission('survey.surveys.update')
+  @SurveyAccess('survey.surveys.update', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update', fetchState: fetchSurveyState })
   async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateSurveyDto) {
     return this.surveys.update(id, dto);
@@ -99,21 +128,21 @@ export class SurveysController {
   }
 
   @Post(':id/publish')
-  @RequirePermission('survey.surveys.publish')
+  @SurveyAccess('survey.surveys.publish', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'publish', fetchState: fetchSurveyState })
   async publish(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.publish(id);
   }
 
   @Post(':id/close')
-  @RequirePermission('survey.surveys.publish')
+  @SurveyAccess('survey.surveys.publish', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'close', fetchState: fetchSurveyState })
   async close(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.close(id);
   }
 
   @Post(':id/reopen')
-  @RequirePermission('survey.surveys.publish')
+  @SurveyAccess('survey.surveys.publish', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'reopen', fetchState: fetchSurveyState })
   async reopen(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.surveys.reopen(id);
@@ -149,7 +178,7 @@ export class SurveysController {
 
   /** Definition plus every response — gated by the existing responses-export permission. */
   @Get(':id/export-with-responses')
-  @RequirePermission('survey.responses.export')
+  @SurveyAccess('survey.responses.export', { collaborator: true })
   async exportWithResponses(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
     await this.sendZip(res, id, true);
   }
@@ -164,7 +193,7 @@ export class SurveysController {
   }
 
   @Put(':id/structure')
-  @RequirePermission('survey.surveys.update')
+  @SurveyAccess('survey.surveys.update', { collaborator: true })
   @Audit({ category: 'survey.surveys', entityType: 'SurveySurvey', action: 'update_structure' })
   async replaceStructure(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SurveyStructureDto) {
     return this.surveys.replaceStructure(id, dto);

@@ -59,6 +59,7 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
     });
     return surveys.map((s) => ({
       id: s.id,
+      ownerUserId: s.ownerUserId,
       title: s.title,
       description: s.description,
       status: s.status,

@@ -2,6 +2,7 @@ import { Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Re
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { Audit, MustChangePasswordGuard, RequirePermission } from './platform';
+import { SurveyAccess, SurveyAccessGuard } from './survey-access';
 import { ReportsService } from './reports.service';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -25,12 +26,12 @@ const fetchResponseState = (prisma: PrismaClient, req: Request) =>
  * rule BooksController's own `export` route follows.
  */
 @Controller('api/survey/surveys')
-@UseGuards(MustChangePasswordGuard)
+@UseGuards(MustChangePasswordGuard, SurveyAccessGuard)
 export class ResponsesController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get(':id/responses/export')
-  @RequirePermission('survey.responses.export')
+  @SurveyAccess('survey.responses.export', { collaborator: true })
   async export(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
     const buffer = await this.reports.exportResponsesWorkbook(id);
     res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="survey-responses-export.xlsx"' });
@@ -38,25 +39,25 @@ export class ResponsesController {
   }
 
   @Get(':id/report/summary')
-  @RequirePermission('survey.responses.view')
+  @SurveyAccess('survey.responses.view', { collaborator: true })
   async summary(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.getSummary(id);
   }
 
   @Get(':id/report/dataset')
-  @RequirePermission('survey.responses.view')
+  @SurveyAccess('survey.responses.view', { collaborator: true })
   async dataset(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.getDataset(id);
   }
 
   @Get(':id/responses')
-  @RequirePermission('survey.responses.view')
+  @SurveyAccess('survey.responses.view', { collaborator: true })
   async list(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.reports.listResponses(id);
   }
 
   @Get(':id/responses/:responseId')
-  @RequirePermission('survey.responses.view')
+  @SurveyAccess('survey.responses.view', { collaborator: true })
   async findOne(@Param('id', new ParseUUIDPipe()) id: string, @Param('responseId', new ParseUUIDPipe()) responseId: string) {
     return this.reports.getResponse(id, responseId);
   }

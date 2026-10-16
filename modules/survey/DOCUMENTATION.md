@@ -17,6 +17,7 @@ survey_surveys(id, title, description, status(draft|published|closed),
   opens_at, closes_at (editable and ENFORCED since 1.3.0), response_limit int NULL (migration 005), settings jsonb (migration 005: thankYouMessage, showProgressBar),
   created_at, updated_at)
 survey_sections(id, survey_id, order_index, title, description, navigation jsonb (004), image jsonb NULL (006: {mediaId, alt}))
+survey_collaborators(survey_id, user_id, added_by, created_at, PK(survey_id,user_id))   -- migration 007, co-owners (SURVEY-D21)
 survey_media(id, survey_id, mime, size_bytes, created_by, created_at)   -- migration 006; the file bytes are on disk, see Pictures below
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
@@ -102,6 +103,10 @@ Titles and descriptions take a small safe markup (SURVEY-D19): `**bold**`, `*ita
 ## Piping and carry-forward (1.4.5)
 
 Put `{{q:<id>}}` in a later section's title/description or a later question's title/description (the builder's "Insert an earlier answer" toolbar button inserts it) and the reader sees their earlier answer there. A choice question can instead take its choices from an earlier choice question (the ones ticked, or the ones not ticked). Source questions must be in an earlier section (SURVEY-D20); `backend/piping.ts` is the one shared rules file, the server re-checks everything.
+
+## Co-owners (1.5.0)
+
+A co-owner can edit, publish/close/reopen and read the results of one survey (not delete, archive, duplicate or manage co-owners). Add them by email in the builder (the creator or anyone with `survey.surveys.share`). They still need `survey.surveys.view` to reach the Surveys page. Mechanism: `backend/survey-access.ts` (`@SurveyAccess` + `SurveyAccessGuard`, SURVEY-D21); routes that allow co-owners use it **instead of** `@RequirePermission`, so a new route must pick one on purpose.
 
 ## Known gotchas
 

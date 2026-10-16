@@ -65,6 +65,7 @@ let SurveysService = SurveysService_1 = class SurveysService {
         });
         return surveys.map((s) => ({
             id: s.id,
+            ownerUserId: s.ownerUserId,
             title: s.title,
             description: s.description,
             status: s.status,

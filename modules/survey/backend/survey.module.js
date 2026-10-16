@@ -15,6 +15,8 @@ const common_1 = require("@nestjs/common");
 // ResponsesService.
 // eslint-disable-next-line import/no-unresolved
 const notifications_module_1 = require("../../../apps/api/dist/core/notifications/notifications.module");
+// eslint-disable-next-line import/no-unresolved
+const permissions_service_1 = require("../../../apps/api/dist/core/permissions/permissions.service");
 const fill_controller_1 = require("./fill.controller");
 const media_controller_1 = require("./media.controller");
 const media_service_1 = require("./media.service");
@@ -22,6 +24,7 @@ const public_survey_controller_1 = require("./public-survey.controller");
 const reports_service_1 = require("./reports.service");
 const responses_controller_1 = require("./responses.controller");
 const responses_service_1 = require("./responses.service");
+const survey_access_1 = require("./survey-access");
 const survey_transfer_service_1 = require("./survey-transfer.service");
 const surveys_controller_1 = require("./surveys.controller");
 const surveys_service_1 = require("./surveys.service");
@@ -38,6 +41,11 @@ exports.SurveyModule = SurveyModule = __decorate([
     (0, common_1.Module)({
         imports: [notifications_module_1.NotificationsModule],
         controllers: [surveys_controller_1.SurveysController, media_controller_1.SurveyMediaController, fill_controller_1.FillController, public_survey_controller_1.PublicSurveyController, responses_controller_1.ResponsesController],
-        providers: [media_service_1.SurveyMediaService, surveys_service_1.SurveysService, survey_transfer_service_1.SurveyTransferService, responses_service_1.ResponsesService, reports_service_1.ReportsService],
+        providers: [
+            { provide: survey_access_1.PERMISSIONS_READER, useExisting: permissions_service_1.PermissionsService },
+            survey_access_1.SurveyAccessService,
+            survey_access_1.SurveyAccessGuard,
+            media_service_1.SurveyMediaService, surveys_service_1.SurveysService, survey_transfer_service_1.SurveyTransferService, responses_service_1.ResponsesService, reports_service_1.ReportsService
+        ],
     })
 ], SurveyModule);

@@ -503,10 +503,25 @@ model SurveySurvey {
   logicRules  SurveyLogicRule[]
   responses   SurveyResponse[]
   media       SurveyMedia[]
+  collaborators SurveyCollaborator[]
 
   @@index([ownerUserId])
   @@index([status])
   @@map("survey_surveys")
+}
+
+/// A co-owner of one survey (migration 007, SURVEY-D21). `userId` is a plain column, no relation to core `User`.
+model SurveyCollaborator {
+  surveyId  String   @map("survey_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  addedBy   String?  @map("added_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  survey SurveySurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@id([surveyId, userId])
+  @@index([userId])
+  @@map("survey_collaborators")
 }
 
 model SurveyMedia {
