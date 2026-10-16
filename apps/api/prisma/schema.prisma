@@ -111,9 +111,12 @@ model UserSession {
   userAgent        String?   @map("user_agent")
   geoLocation      Json?     @map("geo_location")
   revokedAt        DateTime? @map("revoked_at")
+  /// One login plus the rotations descending from it; replay detection revokes only this family.
+  familyId         String    @default(uuid()) @db.Uuid @map("family_id")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([familyId])
   @@map("user_sessions")
 }
 
@@ -345,8 +348,28 @@ model LibraryCatalogBook {
 
   copies  LibraryCatalogBookCopy[]
   ratings LibraryCatalogBookRating[]
+  files   LibraryCatalogBookFile[]
 
   @@map("library_catalog_books")
+}
+
+/// A book's cover picture / book file on disk (migration 008, LIBRARY_CATALOG-D28).
+/// `uploadedBy` is a plain scalar like every other module's createdBy-shaped column.
+model LibraryCatalogBookFile {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookId     String   @map("book_id") @db.Uuid
+  kind       String
+  ext        String
+  mime       String
+  sizeBytes  Int      @map("size_bytes")
+  uploadedBy String?  @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, kind])
+  @@map("library_catalog_book_files")
 }
 
 /// 1-5 star rating + optional written review, one per (book, user), editable
@@ -469,16 +492,35 @@ model SurveySurvey {
   closedMessage            String?      @map("closed_message")
   /// Archived surveys leave the main list; NULL = active. See migration 003.
   archivedAt               DateTime?    @map("archived_at")
+  /// Stop taking NEW responses once this many exist; NULL = no cap. See migration 005.
+  responseLimit            Int?         @map("response_limit")
+  /// Survey-level options (thankYouMessage, showProgressBar...). See migration 005 / backend/survey-settings.ts.
+  settings                 Json         @default("{}")
   createdAt                DateTime     @default(now()) @map("created_at")
   updatedAt                DateTime     @updatedAt @map("updated_at")
 
   sections    SurveySection[]
   logicRules  SurveyLogicRule[]
   responses   SurveyResponse[]
+  media       SurveyMedia[]
 
   @@index([ownerUserId])
   @@index([status])
   @@map("survey_surveys")
+}
+
+model SurveyMedia {
+  id        String   @id @default(uuid()) @db.Uuid
+  surveyId  String   @map("survey_id") @db.Uuid
+  mime      String
+  sizeBytes Int      @map("size_bytes")
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  survey SurveySurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId])
+  @@map("survey_media")
 }
 
 model SurveySection {
@@ -489,6 +531,8 @@ model SurveySection {
   description String?
   /// Where the respondent goes after this section — see migration 004.
   navigation  Json    @default("{}")
+  /// { mediaId, alt } or null — see migration 006.
+  image       Json?
 
   survey    SurveySurvey     @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   questions SurveyQuestion[]

@@ -15,6 +15,21 @@ export function BackupPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  const [exportingFiles, setExportingFiles] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+
+  const handleExportFiles = async () => {
+    setFilesError(null);
+    setExportingFiles(true);
+    try {
+      await gated('backup.export', () => backupApi.exportFiles());
+    } catch (err) {
+      setFilesError(extractErrorMessage(err));
+    } finally {
+      setExportingFiles(false);
+    }
+  };
+
   const handleExport = async () => {
     setExportError(null);
     setExporting(true);
@@ -84,6 +99,28 @@ export function BackupPage() {
 
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Typography variant="h6" component="h3" gutterBottom>
+                {t('core.backup.filesSection')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {t('core.backup.filesHint')}
+              </Typography>
+              {(data.fileRoots ?? []).length === 0 ? <Alert severity="info" sx={{ mb: 2 }}>{t('core.backup.filesNotConfigured')}</Alert> : null}
+              {filesError ? (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {filesError}
+                </Alert>
+              ) : null}
+              <Button
+                variant="contained"
+                onClick={handleExportFiles}
+                disabled={!data.backupConfigured || (data.fileRoots ?? []).length === 0 || exportingFiles}
+              >
+                {exportingFiles ? t('core.backup.exporting') : t('core.backup.filesButton')}
+              </Button>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="h6" component="h3" gutterBottom>
                 {t('core.backup.restoreSection')}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -91,6 +128,12 @@ export function BackupPage() {
               </Typography>
               <Box component="code" sx={{ display: 'block', p: 1, bgcolor: 'action.hover', borderRadius: 1, fontFamily: 'monospace' }}>
                 ./scripts/manageDB.sh restore &lt;backup-file&gt;
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
+                {t('core.backup.restoreFilesNotice')}
+              </Typography>
+              <Box component="code" sx={{ display: 'block', p: 1, bgcolor: 'action.hover', borderRadius: 1, fontFamily: 'monospace' }}>
+                ./scripts/manageDB.sh restore-files &lt;files-backup.zip&gt;
               </Box>
             </Paper>
           </Stack>

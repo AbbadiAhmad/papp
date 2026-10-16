@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BooksController = void 0;
 const common_1 = require("@nestjs/common");
+const book_files_service_1 = require("./book-files.service");
 const books_service_1 = require("./books.service");
 const create_book_copy_dto_1 = require("./dto/create-book-copy.dto");
 const create_book_dto_1 = require("./dto/create-book.dto");
@@ -47,11 +48,15 @@ const fetchCopyState = (prisma, req) => prisma.libraryCatalogBookCopy.findUnique
  */
 let BooksController = class BooksController {
     books;
-    constructor(books) {
+    files;
+    constructor(books, files) {
         this.books = books;
+        this.files = files;
     }
     async list(query) {
-        return this.books.list(query);
+        const books = await this.books.list(query);
+        const summaries = await this.files.summaries(books.map((b) => b.id));
+        return books.map((b) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null } }));
     }
     async export(res) {
         const buffer = await this.books.exportBooksWorkbook();
@@ -75,16 +80,20 @@ let BooksController = class BooksController {
         return this.books.rejectReview(ratingId, user.userId);
     }
     async findById(id, user) {
-        return this.books.findById(id, user.userId);
+        const book = await this.books.findById(id, user.userId);
+        return { ...book, files: await this.files.summary(id) };
     }
     async create(dto) {
         return this.books.create(dto);
     }
     async update(id, dto) {
-        return this.books.update(id, dto);
+        const updated = await this.books.update(id, dto);
+        await this.files.writeInfo(id); // keeps info.txt (title/author) in step with the record
+        return updated;
     }
     async remove(id) {
         await this.books.remove(id);
+        await this.files.removeAll(id); // the folder (cover, book file, info.txt); the rows went with the book
     }
     // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------
     // Read-only, cross-book — filtered by acquisitionDate range, feeding the
@@ -375,5 +384,6 @@ __decorate([
 exports.BooksController = BooksController = __decorate([
     (0, common_1.Controller)('api/library/books'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
-    __metadata("design:paramtypes", [books_service_1.BooksService])
+    __metadata("design:paramtypes", [books_service_1.BooksService,
+        book_files_service_1.BookFilesService])
 ], BooksController);

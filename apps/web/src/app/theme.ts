@@ -142,6 +142,27 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       MuiTableCell: { styleOverrides: { root: { borderColor: c.border }, head: { fontWeight: 800, color: c.text } } },
       MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { backgroundColor: tint } } } },
       MuiTab: { styleOverrides: { root: { fontWeight: 700 } } },
+      // Side menu: compact rows, a clear accent bar on the current page, quiet icons. The bar uses a logical
+      // inline-start border so it stays on the reading edge in RTL (the emotion RTL plugin mirrors it).
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: Math.max(radius - 2, 4),
+            marginInline: 8,
+            marginBlock: 1,
+            paddingBlock: 6,
+            borderInlineStart: '3px solid transparent',
+            '&.Mui-selected': {
+              backgroundColor: tint,
+              borderInlineStartColor: c.primary,
+              fontWeight: 700,
+              '&:hover': { backgroundColor: alpha(c.primary, dark ? 0.2 : 0.12) },
+            },
+          },
+        },
+      },
+      MuiListItemIcon: { styleOverrides: { root: { minWidth: 40, color: c.textMuted } } },
+      MuiListItemText: { styleOverrides: { primary: { fontSize: '0.925rem' } } },
       ...(playful
         ? {
             // Child-friendly: chunky pill buttons with a "pressed" edge, soft colored card shadows, roomy tabs.

@@ -23,18 +23,12 @@ test.describe('Library Catalog smoke flow', () => {
     await page.getByRole('button', { name: TEXT.ar.login }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'));
 
-    // library_catalog.root has 2+ children (Books, moderate reviews), so
-    // PageLayout.tsx's NavGroup renders it as a collapsible heading — the
-    // "Books" leaf link doesn't exist in the DOM (Collapse unmountOnExit)
-    // until the group is expanded. Click the "المكتبة" heading first.
-    await page.getByRole('button', { name: TEXT.ar.libraryMenuGroup, exact: true }).click();
-
-    // Navigate via the real sidebar link (library_catalog.menu.books, only
-    // shown because the account really holds library_catalog.books.view).
+    // A reader may see only ONE page of library_catalog (books.view), so the shared nav rule
+    // (buildNavEntries, D113) shows "المكتبة" as a direct sidebar link to it, not a one-item
+    // group. Scoped to the sidebar: the home page also has a shortcut tile with the same name.
     const [booksResponse] = await Promise.all([
       page.waitForResponse((res) => res.url().includes('/api/library/books') && res.request().method() === 'GET'),
-      // Scoped to the sidebar: the home page now also has a shortcut tile with the same name.
-      page.locator('.MuiDrawer-docked').getByRole('link', { name: TEXT.ar.booksMenu, exact: true }).click(),
+      page.locator('.MuiDrawer-docked').getByRole('link', { name: TEXT.ar.libraryMenuGroup, exact: true }).click(),
     ]);
     expect(booksResponse.status()).toBe(200);
     await page.waitForURL(/\/library\/books$/);

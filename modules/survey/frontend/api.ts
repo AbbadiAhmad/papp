@@ -1,7 +1,7 @@
 // See modules/library_catalog/frontend/api.ts's own docblock: this is a
 // same-repo Vite import (bundled with the rest of apps/web), not the
 // fragile cross-process import the backend half of this module needs.
-import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import { API_BASE_URL, apiClient } from '../../../apps/web/src/shared/api/httpClient';
 
 export type SurveyStatus = 'draft' | 'published' | 'closed';
 
@@ -28,6 +28,11 @@ export interface SurveySummary {
   archivedAt: string | null;
   requiresLogin: boolean;
   responseCount: number;
+  opensAt: string | null;
+  closesAt: string | null;
+  responseLimit: number | null;
+  /** For a published survey: open / not_open_yet / ended / full; null otherwise. */
+  availability: 'open' | 'not_open_yet' | 'ended' | 'full' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,8 +61,18 @@ export interface SurveySectionDto {
   title: string;
   description?: string | null;
   navigation?: SectionNavigation;
+  image?: SurveyImage | null;
   questions: SurveyQuestionDto[];
 }
+
+/** A picture on a survey, section or question. `alt` is required — it is what screen readers announce. */
+export interface SurveyImage {
+  mediaId: string;
+  alt: string;
+}
+
+/** Where a picture is served from (public — respondents are often anonymous). */
+export const mediaUrl = (mediaId: string): string => `${API_BASE_URL}/api/survey/media/${mediaId}`;
 
 export interface SurveyLogicRuleDto {
   sourceQuestionId: string;
@@ -74,9 +89,8 @@ export interface SurveyDetail extends SurveySummary {
   oneResponsePerRespondent: boolean;
   notifyOwnerOnSubmit: boolean;
   notifyEmails: string[];
-  opensAt: string | null;
-  closesAt: string | null;
   closedMessage: string | null;
+  settings: { thankYouMessage?: string; showProgressBar?: boolean; headerImage?: SurveyImage };
   sections: SurveySectionDto[];
   logicRules: SurveyLogicRuleDto[];
 }
@@ -97,6 +111,10 @@ export interface UpdateSurveyInput {
   opensAt?: string | null;
   closesAt?: string | null;
   closedMessage?: string;
+  responseLimit?: number | null;
+  thankYouMessage?: string;
+  showProgressBar?: boolean;
+  headerImage?: SurveyImage | null;
 }
 
 export interface SurveyStructureInput {
@@ -135,7 +153,14 @@ export interface FillableSurvey {
   description: string | null;
   allowEditAfterSubmit: boolean;
   requiresLogin: boolean;
-  sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; questions: FillableQuestion[] }>;
+  /** Text shown after submit (null = the default one). */
+  thankYouMessage?: string | null;
+  showProgressBar?: boolean;
+  /** The response cap is reached: new submissions are refused, but people can still edit their own answer. */
+  isFull?: boolean;
+  headerImage?: SurveyImage | null;
+  closedMessage?: string | null;
+  sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; image?: SurveyImage | null; questions: FillableQuestion[] }>;
   logicRules: SurveyLogicRuleDto[];
 }
 
@@ -172,6 +197,8 @@ export interface QuestionSummary {
   type: SurveyQuestionType;
   totalAnswered: number;
   optionCounts?: Array<{ value: string; label: string; count: number }>;
+  /** Texts typed into an "Other" choice (capped). */
+  otherAnswers?: string[];
   numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }> };
   sampleAnswers?: string[];
 }
@@ -203,6 +230,11 @@ export const surveyApi = {
     form.append('includeResponses', String(includeResponses));
     form.append('file', file);
     return apiClient.post<SurveyDetail>('/api/survey/surveys/import', form).then((r) => r.data);
+  },
+  uploadImage: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<{ mediaId: string }>(`/api/survey/surveys/${id}/media`, form).then((r) => r.data);
   },
   get: (id: string) => apiClient.get<SurveyDetail>(`/api/survey/surveys/${id}`).then((r) => r.data),
   create: (dto: CreateSurveyInput) => apiClient.post<SurveyDetail>('/api/survey/surveys', dto).then((r) => r.data),

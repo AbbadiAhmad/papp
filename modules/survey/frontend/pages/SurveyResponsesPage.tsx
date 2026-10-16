@@ -32,11 +32,11 @@ import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, surveyApi, type ResponseDetail, type ResponseListItem } from '../api';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
+import { formatAnswerForDisplay } from '../../backend/question-rules.ts';
 
 function AnswerValue({ value }: { value: unknown }) {
-  if (Array.isArray(value)) return <>{value.join(', ')}</>;
   if (value === null || value === undefined) return <>—</>;
-  return <>{String(value)}</>;
+  return <>{formatAnswerForDisplay(value)}</>;
 }
 
 function ResponseDetailDialog({

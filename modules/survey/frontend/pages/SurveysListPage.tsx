@@ -10,6 +10,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
 import ReplayIcon from '@mui/icons-material/Replay';
 import {
   Alert,
@@ -40,13 +41,14 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { formatDateOnly } from '../../../../apps/web/src/shared/format';
+import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { surveyApi, type SurveyStatus, type SurveySummary } from '../api';
 import { DuplicateSurveyDialog, ExportPackageButton, ImportSurveyDialog } from '../components/SurveyTransfer';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
+import { SharePanel } from '../components/SharePanel';
 
 const STATUS_COLOR: Record<SurveyStatus, 'default' | 'success' | 'warning'> = {
   draft: 'default',
@@ -122,6 +124,7 @@ export function SurveysListPage() {
   const [pendingDelete, setPendingDelete] = useState<SurveySummary | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [linkSnackbar, setLinkSnackbar] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<SurveySummary | null>(null);
   // `busyId` blocks a second click on the same row while a status call is in
   // flight; `pendingStatus` makes close/reopen an explicit confirmed step so a
   // double-click on the publish button (which turns into the close button in
@@ -219,9 +222,22 @@ export function SurveysListPage() {
                   </TableCell>
                   <TableCell>
                     <Chip size="small" color={STATUS_COLOR[survey.status]} label={t(`survey.status.${survey.status}`)} />
+                    {survey.availability && survey.availability !== 'open' ? (
+                      <Chip size="small" color="warning" variant="outlined" sx={{ ml: 0.5 }} label={t(`survey.availability.${survey.availability}`)} />
+                    ) : null}
+                    {survey.status === 'published' && survey.availability === 'not_open_yet' && survey.opensAt ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {t('survey.availability.opens_on', { date: formatDateTime(survey.opensAt, language) })}
+                      </Typography>
+                    ) : null}
+                    {survey.status === 'published' && survey.availability === 'open' && survey.closesAt ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {t('survey.availability.closes_on', { date: formatDateTime(survey.closesAt, language) })}
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell>{survey.requiresLogin ? t('core.common.yes') : t('core.common.no')}</TableCell>
-                  <TableCell>{survey.responseCount}</TableCell>
+                  <TableCell>{survey.responseLimit ? `${survey.responseCount} / ${survey.responseLimit}` : survey.responseCount}</TableCell>
                   <TableCell>{formatDateOnly(survey.createdAt, language)}</TableCell>
                   <TableCell align="right">
                     {survey.status !== 'draft' ? (
@@ -231,6 +247,11 @@ export function SurveysListPage() {
                         </IconButton>
                       </Tooltip>
                     ) : null}
+                    <Tooltip title={t('survey.share.button')}>
+                      <IconButton size="small" onClick={() => setShareTarget(survey)} aria-label={t('survey.share.button')}>
+                        <QrCode2Icon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Can permission="survey.responses.view">
                       <Tooltip title={t('survey.list.responses')}>
                         <IconButton size="small" onClick={() => navigate(`/survey/surveys/${survey.id}/responses`)}>
@@ -347,6 +368,13 @@ export function SurveysListPage() {
           {snackbar}
         </Alert>
       </Snackbar>
+      <SharePanel
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        surveyId={shareTarget?.id ?? ''}
+        title={shareTarget?.title ?? ''}
+        published={shareTarget?.status === 'published'}
+      />
       <Snackbar open={linkSnackbar !== null} autoHideDuration={4000} onClose={() => setLinkSnackbar(null)} message={linkSnackbar} />
     </Box>
   );

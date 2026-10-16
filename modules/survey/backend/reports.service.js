@@ -14,6 +14,7 @@ exports.ReportsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const exceljs_1 = __importDefault(require("exceljs"));
+const question_rules_1 = require("./question-rules");
 const SAMPLE_ANSWER_CAP = 200;
 /**
  * The admin report/response-management surface (docs/BUILD_PLAN.md's own
@@ -73,15 +74,8 @@ let ReportsService = ReportsService_1 = class ReportsService {
             const values = responses.flatMap((r) => r.answers.filter((a) => a.questionId === q.id).map((a) => a.value));
             const base = { questionId: q.id, title: q.title, type: q.type, totalAnswered: values.length };
             if (q.type === 'single_choice' || q.type === 'dropdown' || q.type === 'multi_choice') {
-                const counts = new Map();
-                for (const value of values) {
-                    const selected = Array.isArray(value) ? value : [value];
-                    for (const v of selected) {
-                        if (typeof v === 'string')
-                            counts.set(v, (counts.get(v) ?? 0) + 1);
-                    }
-                }
-                return { ...base, optionCounts: q.options.map((o) => ({ value: o.value, label: o.label, count: counts.get(o.value) ?? 0 })) };
+                const { optionCounts, otherAnswers } = (0, question_rules_1.summarizeChoiceAnswers)(q.options, values, q.config);
+                return { ...base, optionCounts, ...(otherAnswers.length ? { otherAnswers } : {}) };
             }
             if (q.type === 'linear_scale' || q.type === 'rating') {
                 const numbers = values.filter((v) => typeof v === 'number');
@@ -111,7 +105,7 @@ let ReportsService = ReportsService_1 = class ReportsService {
                 responseId: r.id,
                 submittedAt: r.submittedAt,
                 respondentLabel: r.respondentEmail ?? 'Anonymous',
-                answers: Object.fromEntries(r.answers.map((a) => [a.questionId, a.value])),
+                answers: Object.fromEntries(r.answers.map((a) => [a.questionId, (0, question_rules_1.answerForDisplay)(a.value)])),
             })),
         };
     }
@@ -132,7 +126,7 @@ let ReportsService = ReportsService_1 = class ReportsService {
                 respondent: r.respondentEmail ?? 'Anonymous',
             };
             for (const a of r.answers) {
-                row[a.questionId] = Array.isArray(a.value) ? a.value.join(', ') : (a.value ?? '');
+                row[a.questionId] = a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? (0, question_rules_1.formatAnswerForDisplay)(a.value) : a.value;
             }
             worksheet.addRow(row);
         }

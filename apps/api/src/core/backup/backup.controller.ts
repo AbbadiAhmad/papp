@@ -55,4 +55,26 @@ export class BackupController {
     });
     res.send(archive);
   }
+
+  /**
+   * The uploaded files (book covers/files, survey pictures...), as a separate archive from the database
+   * export — see backup-files.ts. Streamed straight to the response. Restore: `scripts/manageDB.sh restore-files`.
+   */
+  @Post('export-files')
+  @RequirePermission('backup.export')
+  @Audit({ category: 'core.backup', entityType: 'Files', action: 'export_files' })
+  async exportFiles(@CurrentUser() user: AuthenticatedUser, @Res() res: Response): Promise<void> {
+    if (!this.backupService.isConfigured()) {
+      throw new HttpException('db_backup_not_configured', HttpStatus.CONFLICT);
+    }
+    if (this.backupService.fileRoots().length === 0) {
+      throw new HttpException('backup_no_file_dirs', HttpStatus.CONFLICT);
+    }
+    const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="papp-files-${timestamp}.zip"`,
+    });
+    await this.backupService.exportFiles(user.userId, res);
+  }
 }

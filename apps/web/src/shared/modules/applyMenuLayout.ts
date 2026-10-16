@@ -26,6 +26,9 @@ function withOverride<T extends { id: string }>(node: T, layout: MenuLayout): T 
  * manifest-derived default nodes. Pure; never grants anything (each leaf's
  * `requiredPermission` still decides visibility at render time).
  *
+ *  - A group flagged `direct` has no heading: its leaves are emitted as plain
+ *    top-level links at that position (how a page like Home or Survey stays a
+ *    direct link instead of being wrapped in a parent).
  *  - `layout.groups` become the leading groups, in order, holding the leaves
  *    named in `itemIds` (ids that no longer exist, e.g. an uninstalled
  *    module, are ignored). A custom group reusing a default group's id keeps
@@ -53,6 +56,11 @@ export function applyMenuLayout(defaults: ResolvedMenuNode[], layout: MenuLayout
       if (!leaf) continue;
       placed.add(id);
       if (!hidden.has(id)) children.push(withOverride(leaf, layout));
+    }
+    // `other` with no name is the catch-all the old editor invented around top-level links (Home, Survey...): read it as direct links.
+    if (group.direct || (group.id === 'other' && !group.label)) {
+      result.push(...children);
+      continue;
     }
     const base = defaultGroupById.get(group.id);
     const own = group.label && (group.label.ar || group.label.en) ? group.label : undefined;
@@ -89,15 +97,51 @@ export function applyMenuLayout(defaults: ResolvedMenuNode[], layout: MenuLayout
 export function materializeLayout(defaults: ResolvedMenuNode[], layout: MenuLayout): MenuLayout {
   const effective = applyMenuLayout(defaults, { ...layout, hidden: [] });
   const groups: MenuLayout['groups'] = [];
-  const loose: string[] = [];
+  // Consecutive top-level leaves stay top-level: each run becomes a `direct` box at the same position,
+  // so saving the editor never wraps a direct link (Home, Survey...) in an invented parent.
+  let run: string[] = [];
+  const flushRun = () => {
+    if (run.length > 0) groups.push({ id: `direct.${run[0]}`.slice(0, 60), direct: true, itemIds: run });
+    run = [];
+  };
   for (const node of effective) {
     if (node.type === 'leaf') {
-      loose.push(node.id);
-    } else {
-      const label = layout.groups.find((g) => g.id === node.id)?.label;
-      groups.push({ id: node.id, label, icon: node.iconName, itemIds: node.children.map((c) => c.id) });
+      run.push(node.id);
+      continue;
     }
+    flushRun();
+    const label = layout.groups.find((g) => g.id === node.id)?.label;
+    groups.push({ id: node.id, label, icon: node.iconName, itemIds: node.children.map((c) => c.id) });
   }
-  if (loose.length > 0) groups.push({ id: 'other', itemIds: loose });
+  flushRun();
   return { groups, hidden: layout.hidden, labels: layout.labels };
+}
+
+/** A top-level menu entry with the leaves the current user may actually see (never empty). */
+export interface NavEntry {
+  node: ResolvedMenuNode;
+  leaves: ResolvedMenuLeaf[];
+}
+
+/**
+ * THE rule every shell shares (sidebar, mobile drawer, tabs, header dropdowns, public-page menu):
+ * an entry with no permitted page disappears, and a group left with exactly ONE permitted page is
+ * a direct link (see `isRealGroup`/`asDirectLeaf`) rather than a one-item parent. Keeping this in
+ * one pure function is what makes a theme's shell a presentation choice only.
+ */
+export function buildNavEntries(nodes: ResolvedMenuNode[], isVisible: (leaf: ResolvedMenuLeaf) => boolean): NavEntry[] {
+  return nodes
+    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
+    .filter((entry) => entry.leaves.length > 0);
+}
+
+/** True only for a group that still has 2+ permitted pages; everything else renders as a plain link. */
+export function isRealGroup(entry: NavEntry): entry is NavEntry & { node: ResolvedMenuGroup } {
+  return entry.node.type === 'group' && entry.leaves.length > 1;
+}
+
+/** The single link a non-group entry stands for: a leaf as is, or a one-page group (group label/icon, that page's route). */
+export function asDirectLeaf(entry: NavEntry): ResolvedMenuLeaf {
+  if (entry.node.type === 'leaf') return entry.node;
+  return { ...entry.leaves[0], id: entry.node.id, labelKey: entry.node.labelKey, labelOverride: entry.node.labelOverride, iconName: entry.node.iconName };
 }

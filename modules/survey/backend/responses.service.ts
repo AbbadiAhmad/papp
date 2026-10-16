@@ -16,13 +16,18 @@ import { NotificationEmailService } from '../../../apps/api/dist/core/notificati
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
 import { resolveVisibility, SectionNavigation, SurveyLogicRuleLike } from './logic-engine';
+import { describeProblem, formatAnswerForDisplay, isEmptyAnswer, validateAnswer, type QuestionTypeName } from './question-rules';
+import { computeAvailability, normalizeSettings } from './survey-settings';
 
 type SurveyWithStructure = SurveySurvey & {
+  /** Response count, loaded with the survey so the cap can be reported without a second query. */
+  _count: { responses: number };
   sections: Array<{
     id: string;
     title: string;
     description: string | null;
     navigation: unknown;
+    image?: unknown;
     questions: Array<SurveyQuestion & { options: SurveyQuestionOption[] }>;
   }>;
   logicRules: SurveyLogicRuleLike[];
@@ -193,6 +198,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       include: {
         sections: { orderBy: { orderIndex: 'asc' }, include: { questions: { orderBy: { orderIndex: 'asc' }, include: { options: { orderBy: { orderIndex: 'asc' } } } } } },
         logicRules: true,
+        _count: { select: { responses: true } },
       },
     });
     // Never distinguishes "doesn't exist" from "not published" to an
@@ -205,6 +211,15 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       // A closed survey's link was already shared, so its state is no secret;
       // the owner's custom message (if any) rides along on the 404 body.
       throw new NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, closedMessage: survey.closedMessage ?? null });
+    }
+    // The schedule (opens / closes) applies to everything, edits included. A full survey (response cap) is
+    // NOT rejected here: people may still open it to edit their own answer; new submissions are refused in writeResponse.
+    const availability = computeAvailability(survey, survey._count.responses);
+    if (availability === 'not_open_yet') {
+      throw new NotFoundException({ statusCode: 404, message: 'Survey not open yet', notOpenYet: true, opensAt: survey.opensAt?.toISOString() ?? null });
+    }
+    if (availability === 'ended') {
+      throw new NotFoundException({ statusCode: 404, message: 'Survey closed', closed: true, ended: true, closedMessage: survey.closedMessage ?? null });
     }
     return survey as SurveyWithStructure;
   }
@@ -219,11 +234,19 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       // anonymous caller, before they fill out the whole form, rather than
       // only discovering it from submitPublic's 403 at the very end.
       requiresLogin: survey.requiresLogin,
+      // Survey-level options the respondent page needs (phase C): the text after submit, the progress bar,
+      // and whether the response cap is reached (so the page can say so up front instead of at Submit).
+      thankYouMessage: normalizeSettings(survey.settings).thankYouMessage ?? null,
+      showProgressBar: normalizeSettings(survey.settings).showProgressBar === true,
+      headerImage: normalizeSettings(survey.settings).headerImage ?? null,
+      isFull: computeAvailability(survey, survey._count.responses) === 'full',
+      closedMessage: survey.closedMessage ?? null,
       sections: survey.sections.map((s) => ({
         id: s.id,
         title: s.title,
         description: s.description,
         navigation: (s.navigation ?? {}) as unknown,
+        image: s.image ?? null,
         questions: s.questions.map((q) => ({
           id: q.id,
           type: q.type,
@@ -281,7 +304,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q] as const))) {
       if (!visibleQuestionIds.has(question.id)) continue; // never visible -> never counted, regardless of what was sent
       const value = answerByQuestionId.get(question.id);
-      if (value === undefined || value === null || value === '') {
+      if (isEmptyAnswer(value)) {
         if (question.required) {
           throw new BadRequestException(`Question "${question.title}" is required`);
         }
@@ -294,38 +317,16 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
+  /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
   private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown): void {
-    switch (question.type) {
-      case 'single_choice':
-      case 'dropdown': {
-        const valid = new Set(question.options.map((o) => o.value));
-        if (typeof value !== 'string' || !valid.has(value)) {
-          throw new BadRequestException(`Invalid option for question "${question.title}"`);
-        }
-        return;
-      }
-      case 'multi_choice': {
-        const valid = new Set(question.options.map((o) => o.value));
-        if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || !valid.has(v))) {
-          throw new BadRequestException(`Invalid option(s) for question "${question.title}"`);
-        }
-        return;
-      }
-      case 'linear_scale':
-      case 'rating': {
-        if (typeof value !== 'number' || !Number.isFinite(value)) {
-          throw new BadRequestException(`Question "${question.title}" expects a number`);
-        }
-        return;
-      }
-      case 'short_text':
-      case 'paragraph':
-      case 'date':
-      case 'time':
-        if (typeof value !== 'string') {
-          throw new BadRequestException(`Question "${question.title}" expects text`);
-        }
-        return;
+    const problem = validateAnswer(
+      question.type as QuestionTypeName,
+      question.config,
+      question.options.map((o) => o.value),
+      value,
+    );
+    if (problem) {
+      throw new BadRequestException(`Question "${question.title}": ${describeProblem(problem)}`);
     }
   }
 
@@ -351,6 +352,15 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       : null;
 
     const response = await this.prisma.$transaction(async (tx) => {
+      // Response cap: take a per-survey lock, THEN count, so two simultaneous submissions cannot both
+      // squeeze in as the last place. Only brand-new responses count against it (edits are not new places).
+      if (!opts.responseId && survey.responseLimit) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${survey.id}))`;
+        const taken = await tx.surveyResponse.count({ where: { surveyId: survey.id } });
+        if (taken >= survey.responseLimit) {
+          throw new ConflictException({ statusCode: 409, message: 'This survey has reached its maximum number of responses', full: true });
+        }
+      }
       const responseRow = opts.responseId
         ? await tx.surveyResponse.update({
             where: { id: opts.responseId },
@@ -462,7 +472,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     answers: Array<{ question: SurveyQuestion; value: unknown }>,
     respondentLabel: string,
   ): { markdown: string; html: string; text: string } {
-    const formatValue = (value: unknown): string => (Array.isArray(value) ? value.join(', ') : String(value));
+    const formatValue = (value: unknown): string => formatAnswerForDisplay(value);
     const rows = answers.map((a) => ({ title: a.question.title, value: formatValue(a.value) }));
 
     const markdown = [

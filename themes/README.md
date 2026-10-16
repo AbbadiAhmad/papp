@@ -9,6 +9,7 @@ value as `"key"` inside (lowercase letters, digits, `_`), and edit the values.
 Packs with a bad `theme.json` or a folder name that differs from `key` are
 skipped and logged by the api. Schema: `packages/shared-types/src/appearance.ts`.
 
+- `shell: "header"` puts the menu groups in the header, each opening a dropdown of its pages (a nested drawer on small screens).
 - `shell: "sidebar"` keeps the permanent side menu; `"tabs"` shows the menu
   groups as top tabs with the active group's pages in a second row.
 - `dark` is optional; without it the theme is light-only.

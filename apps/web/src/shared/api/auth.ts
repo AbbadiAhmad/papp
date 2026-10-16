@@ -24,6 +24,12 @@ export async function forcePasswordChange(newPassword: string): Promise<void> {
   await apiClient.post('/auth/force-password-change', { newPassword });
 }
 
+/** POST /auth/change-password (`users.password.change_my`). Signs out the user's OTHER sessions; returns how many. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ otherSessionsRevoked: number }> {
+  const response = await apiClient.post<{ otherSessionsRevoked: number }>('/auth/change-password', { currentPassword, newPassword });
+  return response.data;
+}
+
 export interface SetupStatus {
   setupNeeded: boolean;
 }

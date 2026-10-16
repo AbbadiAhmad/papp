@@ -61,6 +61,8 @@ const config: Config = {
     // "paid now" needs a second permission check) — same dist -> source redirect as the notifications entries above.
     '^.*/apps/api/dist/core/permissions/permissions\\.service$':
       '<rootDir>/src/core/permissions/permissions.service.ts',
+    // survey writes its own audit row for a submitted response (SURVEY-D4) through core's AuditLogWriter.
+    '^.*/apps/api/dist/core/audit/audit-log\\.writer$': '<rootDir>/src/core/audit/audit-log.writer.ts',
   },
 };
 

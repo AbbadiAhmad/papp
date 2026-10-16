@@ -71,20 +71,34 @@ let refreshPromise: Promise<string> | null = null;
  * this single in-flight promise instead.
  */
 export function refreshAccessToken(): Promise<string> {
-  refreshPromise ??= axios
-    .post<{ accessToken: string }>(
-      '/auth/refresh',
-      {},
-      { baseURL: API_BASE_URL, withCredentials: true },
-    )
-    .then((response) => {
-      setAccessToken(response.data.accessToken);
-      return response.data.accessToken;
+  refreshPromise ??= postRefresh()
+    .catch(async (error: unknown) => {
+      // Another tab of this browser rotated the shared cookie a moment before us (the api
+      // answers "just rotated" without ending any session). Its new cookie is already in the
+      // jar, so ONE retry succeeds; any other failure is a real one.
+      if (!isJustRotatedError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return postRefresh();
     })
     .finally(() => {
       refreshPromise = null;
     });
   return refreshPromise;
+}
+
+function postRefresh(): Promise<string> {
+  return axios
+    .post<{ accessToken: string }>('/auth/refresh', {}, { baseURL: API_BASE_URL, withCredentials: true })
+    .then((response) => {
+      setAccessToken(response.data.accessToken);
+      return response.data.accessToken;
+    });
+}
+
+function isJustRotatedError(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || error.response?.status !== 401) return false;
+  const message = (error.response.data as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' && message.includes('just rotated');
 }
 
 const AUTH_ENDPOINTS_NEVER_RETRIED = ['/auth/login', '/auth/refresh', '/auth/register'];

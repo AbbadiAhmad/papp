@@ -3,6 +3,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { ENUMERATION_QUESTION_TYPES, SurveyStructureDto } from './dto/survey-structure.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
+import { SurveyMediaService } from './media.service';
+import { collectMediaIds } from './media-rules';
+import { parseImageRef } from './question-rules';
+import { describeProblem, validateOptionValues, validateQuestionConfig } from './question-rules';
+import { computeAvailability, normalizeSettings, validateSurveyOptions } from './survey-settings';
 
 /**
  * Real `PrismaClient` instance, not core's `PrismaService` — see
@@ -23,10 +28,18 @@ function navigationOf(section: SurveyStructureDto['sections'][number]): Prisma.I
   };
 }
 
+/** The section picture as stored (`null` = none); shape was already checked by validateStructure. */
+function imageOf(section: SurveyStructureDto['sections'][number]): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  const parsed = parseImageRef(section.image);
+  return 'ref' in parsed && parsed.ref ? (parsed.ref as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
+}
+
 @Injectable()
 export class SurveysService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SurveysService.name);
   private readonly prisma = new PrismaClient();
+
+  constructor(private readonly media: SurveyMediaService) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -51,6 +64,11 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       archivedAt: s.archivedAt,
       requiresLogin: s.requiresLogin,
       responseCount: s._count.responses,
+      opensAt: s.opensAt,
+      closesAt: s.closesAt,
+      responseLimit: s.responseLimit,
+      // open / not_open_yet / ended / full for a published survey, null otherwise (the list shows a hint chip).
+      availability: computeAvailability(s, s._count.responses),
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }));
@@ -71,8 +89,34 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
   }
 
   async update(id: string, dto: UpdateSurveyDto) {
-    await this.getSurveyOrThrow(id);
-    return this.prisma.surveySurvey.update({
+    const current = await this.getSurveyOrThrow(id);
+
+    // Effective values after this change (undefined = keep, null = clear), checked together so
+    // "closes before it opens" is caught even when only one of the two dates is being edited.
+    const opensAt = dto.opensAt === undefined ? current.opensAt : dto.opensAt;
+    const closesAt = dto.closesAt === undefined ? current.closesAt : dto.closesAt;
+    const problem = validateSurveyOptions({ thankYouMessage: dto.thankYouMessage, responseLimit: dto.responseLimit, opensAt, closesAt });
+    if (problem) throw new BadRequestException(problem);
+
+    // Survey-level options live in one JSONB column; merge the incoming keys into what is stored.
+    let settings: Prisma.InputJsonValue | undefined;
+    let headerImage: unknown = normalizeSettings(current.settings).headerImage;
+    if (dto.headerImage !== undefined) {
+      const parsed = parseImageRef(dto.headerImage);
+      if ('error' in parsed) throw new BadRequestException(parsed.error);
+      await this.media.assertOwned(id, parsed.ref ? [parsed.ref.mediaId] : []);
+      headerImage = parsed.ref ?? undefined;
+    }
+    if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined) {
+      settings = normalizeSettings({
+        ...normalizeSettings(current.settings),
+        ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
+        ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+        headerImage: headerImage as never,
+      }) as Prisma.InputJsonValue;
+    }
+
+    const updated = await this.prisma.surveySurvey.update({
       where: { id },
       data: {
         title: dto.title,
@@ -84,14 +128,20 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
         notifyEmails: dto.notifyEmails as unknown as Prisma.InputJsonValue,
         opensAt: dto.opensAt,
         closesAt: dto.closesAt,
+        responseLimit: dto.responseLimit,
+        settings,
         closedMessage: dto.closedMessage === undefined ? undefined : dto.closedMessage.trim() || null,
       },
     });
+    if (dto.headerImage !== undefined) await this.media.collectGarbage(id);
+    return updated;
   }
 
   async remove(id: string): Promise<void> {
     await this.getSurveyOrThrow(id);
+    const pictures = await this.media.listFor(id);
     await this.prisma.surveySurvey.delete({ where: { id } });
+    await this.media.removeFiles(pictures);
   }
 
   async publish(id: string) {
@@ -157,8 +207,9 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
   async replaceStructure(surveyId: string, dto: SurveyStructureDto) {
     await this.getSurveyOrThrow(surveyId);
     this.validateStructure(dto);
+    await this.media.assertOwned(surveyId, collectMediaIds({ sections: dto.sections }));
 
-    return this.prisma.$transaction(async (tx) => {
+    const saved = await this.prisma.$transaction(async (tx) => {
       const keepSectionIds = dto.sections.map((s) => s.id);
       const keepQuestionIds = dto.sections.flatMap((s) => s.questions.map((q) => q.id));
       const keepOptionIds = dto.sections.flatMap((s) => s.questions.flatMap((q) => (q.options ?? []).map((o) => o.id)));
@@ -188,8 +239,8 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       for (const section of dto.sections) {
         await tx.surveySection.upsert({
           where: { id: section.id },
-          create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
-          update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section) },
+          create: { id: section.id, surveyId, orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section), image: imageOf(section) },
+          update: { orderIndex: section.orderIndex, title: section.title, description: section.description, navigation: navigationOf(section), image: imageOf(section) },
         });
 
         for (const question of section.questions) {
@@ -252,6 +303,8 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
         },
       });
     });
+    await this.media.collectGarbage(surveyId);
+    return saved;
   }
 
   // --- internals -------------------------------------------------------
@@ -280,9 +333,20 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
     const sectionOfQuestion = new Map(dto.sections.flatMap((s) => s.questions.map((q) => [q.id, s.id] as const)));
 
     for (const section of dto.sections) {
+      const sectionImage = parseImageRef(section.image);
+      if ('error' in sectionImage) throw new BadRequestException(`Section "${section.title}": ${sectionImage.error}`);
       for (const question of section.questions) {
         if (ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
           throw new BadRequestException(`Question "${question.title}" (${question.type}) needs at least one option`);
+        }
+        // Option values must be unique and not collide with the reserved "Other" encoding; the
+        // question's settings (validation, selection limits, "Other", scale...) must fit its type.
+        const optionValues = (question.options ?? []).map((o) => o.value);
+        const problem =
+          (ENUMERATION_QUESTION_TYPES.includes(question.type) ? validateOptionValues(optionValues) : null) ??
+          validateQuestionConfig(question.type, question.config, optionValues);
+        if (problem) {
+          throw new BadRequestException(`Question "${question.title}": ${describeProblem(problem)}`);
         }
       }
     }

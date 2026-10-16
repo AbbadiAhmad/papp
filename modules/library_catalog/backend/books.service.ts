@@ -426,6 +426,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Books');
     worksheet.columns = [
+      { header: 'id', key: 'id', width: 38 },
       { header: 'title', key: 'title', width: 32 },
       { header: 'author', key: 'author', width: 24 },
       { header: 'publisher', key: 'publisher', width: 24 },
@@ -437,6 +438,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     ];
     for (const book of books) {
       worksheet.addRow({
+        id: book.id,
         title: book.title,
         author: book.author ?? '',
         publisher: book.publisher ?? '',

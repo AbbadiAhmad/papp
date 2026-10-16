@@ -1,7 +1,9 @@
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import {
   Alert,
   Box,
@@ -9,6 +11,7 @@ import {
   Checkbox,
   FormControlLabel,
   IconButton,
+  Menu,
   MenuItem,
   Paper,
   Snackbar,
@@ -16,19 +19,29 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
+import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
+import { ImageField } from '../components/ImageField';
+import { QuestionSettings } from '../components/QuestionSettings';
+import { SharePanel } from '../components/SharePanel';
+import { SurveyPreviewDialog } from '../components/SurveyPreviewDialog';
+import { useUnsavedChangesGuard } from '../components/useUnsavedChangesGuard';
+import { toFillableSurvey } from '../previewSurvey';
+import { fromLocalInput, toLocalInput } from '../schedule';
 import {
   ENUMERATION_QUESTION_TYPES,
   SURVEY_QUESTION_TYPES,
   surveyApi,
   type SurveyDetail,
+  type SurveyImage,
   type SectionNavigation,
   type SurveyLogicRuleDto,
   type SurveyQuestionDto,
+  type FillableSurvey,
   type SurveyQuestionType,
   type SurveySectionDto,
 } from '../api';
@@ -62,6 +75,17 @@ function withoutTarget(navigation: SectionNavigation | undefined, sectionId: str
   };
 }
 
+/** A copy of a question with brand-new ids (options too); logic rules are deliberately not copied. */
+function cloneQuestion(question: SurveyQuestionDto, titleSuffix: string): SurveyQuestionDto {
+  return { ...question, id: newId(), title: `${question.title}${titleSuffix}`, options: (question.options ?? []).map((o) => ({ ...o, id: newId() })) };
+}
+
+/** What counts as "unsaved changes": the survey settings plus the whole structure. */
+function snapshotOf(survey: SurveyDetail, sections: SurveySectionDto[], logicRules: SurveyLogicRuleDto[]): string {
+  const { title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings } = survey;
+  return JSON.stringify({ title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings, sections, logicRules });
+}
+
 function move<T>(items: T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return items;
   const next = [...items];
@@ -91,24 +115,37 @@ export function SurveyBuilderPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [previewSurvey, setPreviewSurvey] = useState<FillableSurvey | null>(null);
+  const [moveMenu, setMoveMenu] = useState<{ anchor: HTMLElement; sectionIndex: number; questionIndex: number } | null>(null);
 
   useEffect(() => {
     if (!surveyId) return;
     surveyApi
       .get(surveyId)
       .then((data) => {
+        const loadedSections = data.sections.length ? data.sections : [newSection(0)];
         setSurvey(data);
-        setSections(data.sections.length ? data.sections : [newSection(0)]);
+        setSections(loadedSections);
         setLogicRules(data.logicRules);
+        setSavedSnapshot(snapshotOf(data, loadedSections, data.logicRules));
       })
       .catch((error: unknown) => setLoadError(extractErrorMessage(error)));
   }, [surveyId]);
+
+  const dirty = useMemo(
+    () => survey !== null && savedSnapshot !== null && snapshotOf(survey, sections, logicRules) !== savedSnapshot,
+    [survey, sections, logicRules, savedSnapshot],
+  );
+  useUnsavedChangesGuard(dirty, t('survey.builder.unsaved_confirm'));
 
   if (!surveyId) return null;
   if (loadError) return <Alert severity="error">{loadError}</Alert>;
   if (!survey) return null;
 
   const allQuestions = sections.flatMap((s) => s.questions);
+  const scheduleInvalid = Boolean(survey.opensAt && survey.closesAt && new Date(survey.closesAt).getTime() <= new Date(survey.opensAt).getTime());
 
   const updateSurveySettings = (patch: Partial<SurveyDetail>) => setSurvey({ ...survey, ...patch });
 
@@ -158,6 +195,44 @@ export function SurveyBuilderPage() {
     setSections((prev) =>
       prev.map((s, i) => (i === sectionIndex ? { ...s, questions: reindex(move(s.questions, questionIndex, questionIndex + direction)) } : s)),
     );
+
+  const duplicateQuestion = (sectionIndex: number, questionIndex: number) =>
+    setSections((prev) =>
+      prev.map((s, i) =>
+        i === sectionIndex
+          ? {
+              ...s,
+              questions: reindex([...s.questions.slice(0, questionIndex + 1), cloneQuestion(s.questions[questionIndex], t('survey.builder.copy_suffix')), ...s.questions.slice(questionIndex + 1)]),
+            }
+          : s,
+      ),
+    );
+  const duplicateSection = (sectionIndex: number) =>
+    setSections((prev) => {
+      const original = prev[sectionIndex];
+      // Navigation is not copied: its routes point at this section's own questions.
+      const copy: SurveySectionDto = {
+        ...original,
+        id: newId(),
+        title: `${original.title}${t('survey.builder.copy_suffix')}`,
+        navigation: undefined,
+        questions: original.questions.map((q) => cloneQuestion(q, '')),
+      };
+      return reindex([...prev.slice(0, sectionIndex + 1), copy, ...prev.slice(sectionIndex + 1)]);
+    });
+  /** Appends the question to the end of another section. Rules that would make it show/hide its new own section are dropped. */
+  const moveQuestionToSection = (sectionIndex: number, questionIndex: number, targetSectionId: string) => {
+    const question = sections[sectionIndex]?.questions[questionIndex];
+    if (!question) return;
+    setLogicRules((prev) => reindex(prev.filter((r) => !(r.targetType === 'section' && r.targetId === targetSectionId && r.sourceQuestionId === question.id))));
+    setSections((prev) =>
+      prev.map((s, i) => {
+        if (i === sectionIndex) return { ...s, questions: reindex(s.questions.filter((_, j) => j !== questionIndex)) };
+        if (s.id === targetSectionId) return { ...s, questions: reindex([...s.questions, question]) };
+        return s;
+      }),
+    );
+  };
 
   const addOption = (sectionIndex: number, questionIndex: number) =>
     setSections((prev) =>
@@ -270,20 +345,35 @@ export function SurveyBuilderPage() {
   };
 
   /** Returns the cleaned payload, or an i18n key describing what is incomplete. */
-  const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string } => {
+  const buildPayload = (): { sections: SurveySectionDto[]; logicRules: SurveyLogicRuleDto[] } | { errorKey: string; params?: Record<string, unknown> } => {
     const cleanSections: SurveySectionDto[] = [];
+    if (survey.settings?.headerImage && !survey.settings.headerImage.alt.trim()) return { errorKey: 'survey.image.alt_required' };
     for (const section of sections) {
       if (!section.title.trim()) return { errorKey: 'survey.builder.error_section_title' };
+      if (section.image && !section.image.alt.trim()) return { errorKey: 'survey.image.alt_required' };
       const questions: SurveyQuestionDto[] = [];
       for (const question of section.questions) {
         if (!question.title.trim()) return { errorKey: 'survey.builder.error_question_title' };
+        const questionImage = question.config?.image as SurveyImage | undefined;
+        if (questionImage && !questionImage.alt?.trim()) return { errorKey: 'survey.image.alt_required' };
         let options = question.options ?? [];
         if (ENUMERATION_QUESTION_TYPES.includes(question.type)) {
           if (options.length === 0) return { errorKey: 'survey.builder.error_no_options' };
           if (options.some((o) => !optionValueOf(o))) return { errorKey: 'survey.builder.error_option_empty' };
           options = options.map((o) => ({ ...o, value: optionValueOf(o), label: o.label.trim() || optionValueOf(o) }));
         }
-        questions.push({ ...question, options });
+        // Drop settings that went stale (an "exclusive" option that was renamed or removed), then
+        // check the rest with the same rules the server applies, so the owner gets a translated hint.
+        const optionValues = options.map((o) => o.value);
+        let config = { ...(question.config ?? {}) };
+        if (typeof config.exclusiveOptionValue === 'string' && !optionValues.includes(config.exclusiveOptionValue)) delete config.exclusiveOptionValue;
+        const problem =
+          (ENUMERATION_QUESTION_TYPES.includes(question.type) ? validateOptionValues(optionValues) : null) ??
+          validateQuestionConfig(question.type as QuestionTypeName, config, optionValues);
+        if (problem) {
+          return { errorKey: `survey.config_rules.${problem.code}`, params: { ...problem.params, title: question.title } };
+        }
+        questions.push({ ...question, options, config });
       }
       cleanSections.push({ ...section, questions });
     }
@@ -319,9 +409,14 @@ export function SurveyBuilderPage() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
+    if (scheduleInvalid) {
+      setSaveError(t('survey.builder.schedule_invalid'));
+      setSaving(false);
+      return;
+    }
     const payload = buildPayload();
     if ('errorKey' in payload) {
-      setSaveError(t(payload.errorKey));
+      setSaveError(t(payload.errorKey, payload.params));
       setSaving(false);
       return;
     }
@@ -338,12 +433,17 @@ export function SurveyBuilderPage() {
           opensAt: survey.opensAt,
           closesAt: survey.closesAt,
           closedMessage: survey.closedMessage ?? '',
+          responseLimit: survey.responseLimit,
+          thankYouMessage: survey.settings?.thankYouMessage ?? '',
+          showProgressBar: survey.settings?.showProgressBar === true,
+          headerImage: survey.settings?.headerImage ?? null,
         }),
       );
       const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, payload));
       setSurvey(updated);
       setSections(updated.sections);
       setLogicRules(updated.logicRules);
+      setSavedSnapshot(snapshotOf(updated, updated.sections, updated.logicRules));
       setSnackbar(t('survey.builder.saved'));
     } catch (error) {
       setSaveError(extractErrorMessage(error));
@@ -352,12 +452,33 @@ export function SurveyBuilderPage() {
     }
   };
 
+  const openPreview = () => {
+    setSaveError(null);
+    const payload = buildPayload();
+    if ('errorKey' in payload) {
+      setSaveError(t(payload.errorKey, payload.params));
+      return;
+    }
+    setPreviewSurvey(toFillableSurvey(survey, payload.sections, payload.logicRules));
+  };
+
+  const leave = () => {
+    if (!dirty || window.confirm(t('survey.builder.unsaved_confirm'))) navigate('/survey/surveys');
+  };
+
   return (
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h5">{survey.title || t('survey.builder.untitled')}</Typography>
-        <Stack direction="row" spacing={1}>
-          <Button onClick={() => navigate('/survey/surveys')}>{t('core.common.back')}</Button>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+          {dirty ? (
+            <Typography variant="body2" color="warning.main" role="status">
+              {t('survey.builder.unsaved_badge')}
+            </Typography>
+          ) : null}
+          <Button onClick={leave}>{t('core.common.back')}</Button>
+          <Button onClick={openPreview}>{t('survey.builder.preview')}</Button>
+          <Button onClick={() => setShareOpen(true)}>{t('survey.share.button')}</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {t('core.common.save')}
           </Button>
@@ -419,6 +540,67 @@ export function SurveyBuilderPage() {
             minRows={2}
             slotProps={{ htmlInput: { maxLength: 1000 } }}
           />
+          <Typography variant="subtitle2" sx={{ pt: 1 }}>
+            {t('survey.builder.availability')}
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
+            <TextField
+              type="datetime-local"
+              label={t('survey.fields.opens_at')}
+              value={toLocalInput(survey.opensAt)}
+              onChange={(e) => updateSurveySettings({ opensAt: fromLocalInput(e.target.value) })}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 240 }}
+            />
+            <TextField
+              type="datetime-local"
+              label={t('survey.fields.closes_at')}
+              value={toLocalInput(survey.closesAt)}
+              onChange={(e) => updateSurveySettings({ closesAt: fromLocalInput(e.target.value) })}
+              slotProps={{ inputLabel: { shrink: true } }}
+              error={scheduleInvalid}
+              helperText={scheduleInvalid ? t('survey.builder.schedule_invalid') : undefined}
+              sx={{ minWidth: 240 }}
+            />
+            <TextField
+              type="number"
+              label={t('survey.fields.response_limit')}
+              value={survey.responseLimit ?? ''}
+              onChange={(e) => updateSurveySettings({ responseLimit: e.target.value === '' ? null : Number(e.target.value) })}
+              slotProps={{ htmlInput: { min: 1, step: 1 } }}
+              sx={{ width: 240 }}
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: '-8px !important' }}>
+            {t('survey.builder.availability_hint')}
+          </Typography>
+          <ImageField
+            surveyId={surveyId}
+            label={t('survey.image.header')}
+            value={survey.settings?.headerImage}
+            onChange={(image) => {
+              const { headerImage: _old, ...rest } = survey.settings ?? {};
+              updateSurveySettings({ settings: image ? { ...rest, headerImage: image } : rest });
+            }}
+          />
+          <TextField
+            label={t('survey.fields.thank_you_message')}
+            helperText={t('survey.builder.thank_you_hint')}
+            value={survey.settings?.thankYouMessage ?? ''}
+            onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, thankYouMessage: e.target.value } })}
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 4000 } }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={survey.settings?.showProgressBar === true}
+                onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, showProgressBar: e.target.checked } })}
+              />
+            }
+            label={t('survey.fields.show_progress_bar')}
+          />
           <TextField
             label={t('survey.fields.notify_emails')}
             helperText={t('survey.builder.notify_emails_hint')}
@@ -452,10 +634,30 @@ export function SurveyBuilderPage() {
               <IconButton disabled={sectionIndex === sections.length - 1} onClick={() => moveSection(sectionIndex, 1)}>
                 <ArrowDownwardIcon fontSize="small" />
               </IconButton>
+              <IconButton aria-label={t('survey.builder.duplicate_section')} title={t('survey.builder.duplicate_section')} onClick={() => duplicateSection(sectionIndex)}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
               <IconButton disabled={sections.length <= 1} onClick={() => removeSection(sectionIndex)}>
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Stack>
+            <TextField
+              label={t('survey.fields.section_description')}
+              value={section.description ?? ''}
+              onChange={(e) => updateSection(sectionIndex, { description: e.target.value })}
+              fullWidth
+              multiline
+              minRows={1}
+              size="small"
+              slotProps={{ htmlInput: { maxLength: 2000 } }}
+              sx={{ mb: 1.5 }}
+            />
+            <ImageField
+              surveyId={surveyId}
+              label={t('survey.image.section')}
+              value={section.image}
+              onChange={(image) => updateSection(sectionIndex, { image })}
+            />
 
             <Stack spacing={2} sx={{ pl: 2, borderInlineStart: '2px solid', borderColor: 'divider' }}>
               {section.questions.map((question, questionIndex) => (
@@ -473,7 +675,7 @@ export function SurveyBuilderPage() {
                       label={t('survey.fields.question_type')}
                       value={question.type}
                       onChange={(e) =>
-                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [] })
+                        updateQuestion(sectionIndex, questionIndex, { type: e.target.value as SurveyQuestionType, options: [], config: question.config?.image ? { image: question.config.image } : {} })
                       }
                       sx={{ minWidth: 160 }}
                     >
@@ -501,10 +703,43 @@ export function SurveyBuilderPage() {
                     >
                       <ArrowDownwardIcon fontSize="small" />
                     </IconButton>
+                    <IconButton aria-label={t('survey.builder.duplicate_question')} title={t('survey.builder.duplicate_question')} onClick={() => duplicateQuestion(sectionIndex, questionIndex)}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                    {sections.length > 1 ? (
+                      <IconButton
+                        aria-label={t('survey.builder.move_to_section')}
+                        title={t('survey.builder.move_to_section')}
+                        onClick={(e) => setMoveMenu({ anchor: e.currentTarget, sectionIndex, questionIndex })}
+                      >
+                        <DriveFileMoveIcon fontSize="small" />
+                      </IconButton>
+                    ) : null}
                     <IconButton onClick={() => removeQuestion(sectionIndex, questionIndex)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
+
+                  <TextField
+                    label={t('survey.fields.question_hint')}
+                    value={question.description ?? ''}
+                    onChange={(e) => updateQuestion(sectionIndex, questionIndex, { description: e.target.value })}
+                    size="small"
+                    fullWidth
+                    sx={{ pl: 2, mt: 1 }}
+                    slotProps={{ htmlInput: { maxLength: 2000 } }}
+                  />
+                  <Box sx={{ pl: 2 }}>
+                    <ImageField
+                      surveyId={surveyId}
+                      label={t('survey.image.question')}
+                      value={question.config?.image as SurveyImage | undefined}
+                      onChange={(image) => {
+                        const { image: _old, ...rest } = question.config ?? {};
+                        updateQuestion(sectionIndex, questionIndex, { config: image ? { ...rest, image } : rest });
+                      }}
+                    />
+                  </Box>
 
                   {question.type === 'linear_scale' ? (
                     <Stack direction="row" spacing={1} sx={{ pl: 2, mt: 1 }}>
@@ -568,6 +803,11 @@ export function SurveyBuilderPage() {
                       </Box>
                     </Stack>
                   ) : null}
+
+                  <QuestionSettings
+                    question={question}
+                    onConfigChange={(config) => updateQuestion(sectionIndex, questionIndex, { config })}
+                  />
                 </Box>
               ))}
               <Box>
@@ -771,6 +1011,27 @@ export function SurveyBuilderPage() {
           </Button>
         </Box>
       </Stack>
+
+      <Menu anchorEl={moveMenu?.anchor} open={moveMenu !== null} onClose={() => setMoveMenu(null)}>
+        {moveMenu
+          ? sections
+              .filter((_, i) => i !== moveMenu.sectionIndex)
+              .map((target) => (
+                <MenuItem
+                  key={target.id}
+                  onClick={() => {
+                    moveQuestionToSection(moveMenu.sectionIndex, moveMenu.questionIndex, target.id);
+                    setMoveMenu(null);
+                  }}
+                >
+                  {target.title || t('survey.builder.untitled_section')}
+                </MenuItem>
+              ))
+          : null}
+      </Menu>
+
+      <SharePanel open={shareOpen} onClose={() => setShareOpen(false)} surveyId={survey.id} title={survey.title} published={survey.status === 'published'} />
+      <SurveyPreviewDialog open={previewSurvey !== null} onClose={() => setPreviewSurvey(null)} survey={previewSurvey} />
 
       <Snackbar open={snackbar !== null} autoHideDuration={3000} onClose={() => setSnackbar(null)} message={snackbar} />
     </Box>

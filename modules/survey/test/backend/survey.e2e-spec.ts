@@ -1,0 +1,581 @@
+import { DynamicModule, ForwardReference, INestApplication, Module, Type } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Client } from 'pg';
+import JSZip from 'jszip';
+import request from 'supertest';
+import { AppModule } from '../../../../apps/api/src/app.module';
+import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
+import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
+import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
+import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../test/support/permission-matrix';
+
+/**
+ * Tier 2 e2e for the `survey` module: a REAL install of the REAL module in a
+ * really-booted app over real HTTP against a real Postgres. Covers the
+ * respondent-facing rules end to end (phase A of ROADMAP.md): bad builder
+ * settings are refused, bad answers are refused with the right message, valid
+ * ones (selection limits, "Other", validated text) are stored and reported.
+ * The bootstrap mirrors library-catalog.e2e-spec.ts (see its docblock for why
+ * the module is imported late and as `.ts`).
+ */
+
+const here = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(here, '..', '..', '..', '..');
+const CORE_MIGRATIONS_DIR = join(REPO_ROOT, 'apps', 'api', 'src', 'core', 'migrations');
+const DIST_GUARD_PATH = join(REPO_ROOT, 'apps', 'api', 'dist', 'common', 'guards', 'public-throttler.guard.js');
+
+async function bootstrapRegistryTables(): Promise<void> {
+  const sql = readFileSync(join(CORE_MIGRATIONS_DIR, '0000_bootstrap_registry.sql'), 'utf8');
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(sql);
+  } finally {
+    await client.end();
+  }
+}
+
+function ensureApiIsBuilt(): void {
+  if (existsSync(DIST_GUARD_PATH)) return;
+  execSync('npm run build --workspace=@papp/api', { cwd: REPO_ROOT, stdio: 'inherit' });
+}
+
+type NestImport = Type<unknown> | DynamicModule | ForwardReference | Promise<DynamicModule>;
+
+async function createAppWithSurveyInstalled(): Promise<INestApplication> {
+  await bootstrapRegistryTables();
+  ensureApiIsBuilt();
+  const { SurveyModule } = (await import('../../backend/survey.module.ts')) as { SurveyModule: Type<unknown> };
+
+  class RootModule {}
+  Module({ imports: [AppModule, SurveyModule as NestImport] })(RootModule);
+  const app = await NestFactory.create(RootModule, { logger: false });
+
+  await app.get(MigrationRunnerService).applyDirectory(CORE_MIGRATIONS_DIR, 'core');
+  await app.get(PrismaService).moduleRegistryEntry.upsert({
+    where: { key: 'core' },
+    update: {},
+    create: { key: 'core', version: '0.0.1', status: 'installed', installedAt: new Date() },
+  });
+  process.env.MODULES_DIR = join(REPO_ROOT, 'modules');
+  await app.get(ModuleRegistryService).install('survey');
+  await app.init();
+  return app;
+}
+
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const SECTION = uuid(1);
+const Q = { email: uuid(10), age: uuid(11), pick: uuid(12), fav: uuid(13) };
+
+function structure(overrides: { pickConfig?: Record<string, unknown> } = {}) {
+  const opt = (n: number, value: string) => ({ id: uuid(n), orderIndex: n % 10, value, label: value.toUpperCase() });
+  return {
+    sections: [
+      {
+        id: SECTION,
+        orderIndex: 0,
+        title: 'About you',
+        questions: [
+          { id: Q.email, orderIndex: 0, type: 'short_text', title: 'Email', config: { validation: { kind: 'email' } } },
+          {
+            id: Q.age,
+            orderIndex: 1,
+            type: 'short_text',
+            title: 'Age',
+            config: { validation: { kind: 'number', integer: true, min: 5, max: 99, message: 'Age must be 5 to 99' } },
+          },
+          {
+            id: Q.pick,
+            orderIndex: 2,
+            type: 'multi_choice',
+            title: 'Genres',
+            config: overrides.pickConfig ?? { minSelections: 1, maxSelections: 2, exclusiveOptionValue: 'none', allowOther: true },
+            options: [opt(20, 'fiction'), opt(21, 'history'), opt(22, 'poetry'), opt(23, 'none')],
+          },
+          { id: Q.fav, orderIndex: 3, type: 'single_choice', title: 'Section', config: { allowOther: true, otherLabel: 'Something else' }, options: [opt(30, 'kids'), opt(31, 'adults')] },
+        ],
+      },
+    ],
+    logicRules: [],
+  };
+}
+
+describe('survey module (e2e, real install + real HTTP)', () => {
+  let container: StartedPostgreSqlContainer | undefined;
+  let app: INestApplication | undefined;
+  let adminToken: string;
+  let surveyId: string;
+  const http = () => app!.getHttpServer();
+  const admin = () => ({ Authorization: `Bearer ${adminToken}` });
+
+  const mediaDir = mkdtempSync(join(tmpdir(), 'survey-media-'));
+
+  beforeAll(async () => {
+    process.env.SURVEY_MEDIA_DIR = mediaDir;
+    container = await startPostgresTestContainer();
+    app = await createAppWithSurveyInstalled();
+    await Promise.all(ALL_ROLE_CODES.map((role) => fixtureForRole(app!, role)));
+    adminToken = (await fixtureForRole(app!, 'admin')).token;
+    // The public-write throttle (per IP) counts rejected submissions too; this suite deliberately sends many.
+    const { SettingsService } = await import('../../../../apps/api/src/core/settings/settings.service');
+    const current = await app!.get(SettingsService).get<{ limit: number; windowSeconds: number }>('security.public_endpoint_rate_limit');
+    await app!.get(SettingsService).set('security.public_endpoint_rate_limit', { ...current, limit: 1000 });
+  }, 180_000);
+
+  afterAll(async () => {
+    await app?.close();
+    await stopPostgresTestContainer(container);
+    rmSync(mediaDir, { recursive: true, force: true });
+  });
+
+  describe('permission matrix', () => {
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/api/survey/surveys', requiredPermission: 'survey.surveys.view' });
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'post',
+      path: '/api/survey/surveys',
+      requiredPermission: 'survey.surveys.create',
+      validBody: () => ({ title: 'Matrix survey' }),
+    });
+  });
+
+  it('builder: refuses settings that do not fit the question, accepts valid ones', async () => {
+    const created = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: 'Reader survey' });
+    expect(created.status).toBe(201);
+    surveyId = created.body.id;
+
+    const tooMany = await request(http())
+      .put(`/api/survey/surveys/${surveyId}/structure`)
+      .set(admin())
+      .send(structure({ pickConfig: { maxSelections: 9 } }));
+    expect(tooMany.status).toBe(400);
+    expect(JSON.stringify(tooMany.body.message)).toMatch(/Genres.*selection limit/);
+
+    const reserved = structure();
+    reserved.sections[0].questions[3].options!.push({ id: uuid(32), orderIndex: 2, value: '__other__', label: 'x' });
+    const reservedRes = await request(http()).put(`/api/survey/surveys/${surveyId}/structure`).set(admin()).send(reserved);
+    expect(reservedRes.status).toBe(400);
+    expect(JSON.stringify(reservedRes.body.message)).toMatch(/reserved/);
+
+    const ok = await request(http()).put(`/api/survey/surveys/${surveyId}/structure`).set(admin()).send(structure());
+    expect(ok.status).toBe(200);
+    const saved = ok.body.sections[0].questions.find((q: { id: string }) => q.id === Q.pick);
+    expect(saved.config).toMatchObject({ minSelections: 1, maxSelections: 2, exclusiveOptionValue: 'none', allowOther: true });
+
+    const publish = await request(http()).post(`/api/survey/surveys/${surveyId}/publish`).set(admin());
+    expect([200, 201]).toContain(publish.status);
+  });
+
+  describe('respondent submit (public link)', () => {
+    const submit = (answers: Array<{ questionId: string; value: unknown }>) =>
+      request(http()).post(`/api/survey/public/${surveyId}`).send({ answers });
+    const good = () => [
+      { questionId: Q.email, value: 'reader@example.com' },
+      { questionId: Q.age, value: '34' },
+      { questionId: Q.pick, value: ['fiction', 'history'] },
+      { questionId: Q.fav, value: 'kids' },
+    ];
+    const withAnswer = (questionId: string, value: unknown) => good().map((a) => (a.questionId === questionId ? { questionId, value } : a));
+
+    it('the public structure carries the settings the page needs', async () => {
+      const res = await request(http()).get(`/api/survey/public/${surveyId}`);
+      expect(res.status).toBe(200);
+      const pick = res.body.survey.sections[0].questions.find((q: { id: string }) => q.id === Q.pick);
+      expect(pick.config.maxSelections).toBe(2);
+    });
+
+    it.each([
+      ['a malformed email', Q.email, 'reader@', /valid email address/],
+      ['an out-of-range number, with the owner\'s own message', Q.age, '120', /Age must be 5 to 99/],
+      ['a non-integer number', Q.age, '34.5', /Age must be 5 to 99/],
+      ['too many selections', Q.pick, ['fiction', 'history', 'poetry'], /at most 2 selections/],
+      ['an exclusive option combined with others', Q.pick, ['none', 'fiction'], /cannot combine/],
+      ['an option that does not exist', Q.pick, ['fiction', 'comics'], /not available/],
+      ['an "Other" with no text', Q.fav, '__other__:  ', /needs a text/],
+      ['an empty "Other" inside a multiple choice', Q.pick, ['fiction', '__other__:'], /needs a text/],
+    ])('rejects %s', async (_label, questionId, value, message) => {
+      const res = await submit(withAnswer(questionId, value));
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.message)).toMatch(message);
+    });
+
+    it('stores a valid response, including "Other" texts and the exclusive choice', async () => {
+      const first = await submit(withAnswer(Q.fav, '__other__:Comics'));
+      expect(first.status).toBe(201);
+      const second = await submit([...withAnswer(Q.pick, ['poetry', '__other__:Plays']).filter((a) => a.questionId !== Q.fav), { questionId: Q.fav, value: 'adults' }]);
+      expect(second.status).toBe(201);
+      const third = await submit(withAnswer(Q.pick, ['none']));
+      expect(third.status).toBe(201);
+    });
+
+    it('an optional question may be left empty (an empty selection is not "answered")', async () => {
+      const res = await submit(good().filter((a) => a.questionId !== Q.age).map((a) => (a.questionId === Q.pick ? { questionId: Q.pick, value: ['fiction'] } : a)));
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe('reports', () => {
+    it('the summary collapses "Other" into one bar and lists the typed texts', async () => {
+      const res = await request(http()).get(`/api/survey/surveys/${surveyId}/report/summary`).set(admin());
+      expect(res.status).toBe(200);
+      const fav = res.body.questions.find((q: { questionId: string }) => q.questionId === Q.fav);
+      const other = fav.optionCounts.find((o: { value: string }) => o.value === '__other__');
+      expect(other).toMatchObject({ label: 'Something else', count: 1 });
+      expect(fav.otherAnswers).toEqual(['Comics']);
+      const pick = res.body.questions.find((q: { questionId: string }) => q.questionId === Q.pick);
+      expect(pick.optionCounts.find((o: { value: string }) => o.value === '__other__').count).toBe(1);
+    });
+
+    it('the dataset and the Excel export show "Other" answers as readable text', async () => {
+      const dataset = await request(http()).get(`/api/survey/surveys/${surveyId}/report/dataset`).set(admin());
+      expect(dataset.status).toBe(200);
+      const texts = dataset.body.rows.flatMap((r: { answers: Record<string, unknown> }) => Object.values(r.answers)).map((v: unknown) => JSON.stringify(v));
+      expect(texts.some((t: string) => t.includes('Something else: Comics') || t.includes('Other: Comics'))).toBe(true);
+      expect(texts.some((t: string) => t.includes('__other__'))).toBe(false);
+
+      const xlsx = await request(http()).get(`/api/survey/surveys/${surveyId}/responses/export`).set(admin()).buffer(true).parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+      expect(xlsx.status).toBe(200);
+      expect((xlsx.body as Buffer).length).toBeGreaterThan(500);
+    });
+  });
+
+  describe('availability and finishing (phase C)', () => {
+    const SEC = uuid(201);
+    const QTEXT = uuid(202);
+    let n = 0;
+
+    /** A published one-question survey; `patch` is applied through the normal PATCH endpoint. */
+    async function publishedSurvey(patch: Record<string, unknown> = {}): Promise<string> {
+      const created = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Phase C survey ${++n}` });
+      const id = created.body.id as string;
+      const structureBody = {
+        sections: [{ id: uuid(300 + n * 2), orderIndex: 0, title: 'S', questions: [{ id: uuid(301 + n * 2), orderIndex: 0, type: 'short_text', title: 'Name', required: true }] }],
+        logicRules: [],
+      };
+      expect((await request(http()).put(`/api/survey/surveys/${id}/structure`).set(admin()).send(structureBody)).status).toBe(200);
+      if (Object.keys(patch).length) expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send(patch)).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin())).status);
+      return id;
+    }
+    const questionIdOf = async (id: string) => {
+      const res = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      return res.body.sections[0].questions[0].id as string;
+    };
+    const submit = async (id: string, value = 'x') =>
+      request(http()).post(`/api/survey/public/${id}`).send({ answers: [{ questionId: await questionIdOf(id), value }] });
+    void SEC;
+    void QTEXT;
+
+    it('refuses invalid settings: a zero limit and a closing date before the opening date', async () => {
+      const id = await publishedSurvey();
+      for (const body of [{ responseLimit: 0 }, { responseLimit: 2.5 }, { opensAt: '2030-02-01T00:00:00Z', closesAt: '2030-01-01T00:00:00Z' }]) {
+        const res = await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send(body);
+        expect({ body, status: res.status }).toEqual({ body, status: 400 });
+      }
+    });
+
+    it('stores the thank-you message and progress bar and hands them to readers', async () => {
+      const id = await publishedSurvey({ thankYouMessage: '  Thanks for reading!  ', showProgressBar: true });
+      const detail = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      expect(detail.body.settings).toEqual({ thankYouMessage: 'Thanks for reading!', showProgressBar: true });
+      const fill = await request(http()).get(`/api/survey/public/${id}`);
+      expect(fill.body.survey).toMatchObject({ thankYouMessage: 'Thanks for reading!', showProgressBar: true, isFull: false });
+
+      // clearing one key keeps the other
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ thankYouMessage: '' });
+      const after = await request(http()).get(`/api/survey/surveys/${id}`).set(admin());
+      expect(after.body.settings).toEqual({ showProgressBar: true });
+    });
+
+    it('a survey that opens in the future answers "not open yet" to both opening and submitting, until the date is cleared', async () => {
+      const opensAt = new Date(Date.now() + 86_400_000).toISOString();
+      const id = await publishedSurvey({ opensAt });
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(404);
+      expect(get.body).toMatchObject({ notOpenYet: true, opensAt });
+      expect((await submit(id)).status).toBe(404);
+
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ opensAt: null })).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/public/${id}`)).status).toBe(200);
+      expect((await submit(id)).status).toBe(201);
+    });
+
+    it('a survey whose closing date has passed is closed for readers, with the owner message', async () => {
+      const id = await publishedSurvey({ closesAt: new Date(Date.now() + 60_000).toISOString(), closedMessage: 'Thanks, we are done.' });
+      expect((await request(http()).get(`/api/survey/public/${id}`)).status).toBe(200);
+      // move the closing moment into the past directly (the API only accepts a valid future-or-past date; use a past one)
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ closesAt: new Date(Date.now() - 1000).toISOString() })).status).toBe(200);
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(404);
+      expect(get.body).toMatchObject({ closed: true, ended: true, closedMessage: 'Thanks, we are done.' });
+      expect((await submit(id)).status).toBe(404);
+    });
+
+    it('the response cap refuses new submissions with 409 {full:true}, flags the survey as full, and shows it in the list', async () => {
+      const id = await publishedSurvey({ responseLimit: 2 });
+      expect((await submit(id, 'a')).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/public/${id}`)).body.survey.isFull).toBe(false);
+      expect((await submit(id, 'b')).status).toBe(201);
+
+      const third = await submit(id, 'c');
+      expect(third.status).toBe(409);
+      expect(third.body).toMatchObject({ full: true });
+      expect((await request(http()).get(`/api/survey/public/${id}`)).body.survey.isFull).toBe(true);
+
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      const row = list.body.find((r: { id: string }) => r.id === id);
+      expect(row).toMatchObject({ responseLimit: 2, responseCount: 2, availability: 'full' });
+
+      // raising the cap reopens it
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ responseLimit: 3 });
+      expect((await submit(id, 'd')).status).toBe(201);
+    });
+
+    it('simultaneous submissions can never exceed the cap (per-survey lock)', async () => {
+      const id = await publishedSurvey({ responseLimit: 3 });
+      const questionId = await questionIdOf(id);
+      const results = await Promise.all(
+        Array.from({ length: 8 }, (_, i) => request(http()).post(`/api/survey/public/${id}`).send({ answers: [{ questionId, value: `r${i}` }] })),
+      );
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses.filter((s) => s === 201)).toHaveLength(3);
+      expect(statuses.filter((s) => s === 409)).toHaveLength(5);
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      expect(list.body.find((r: { id: string }) => r.id === id).responseCount).toBe(3);
+    });
+
+    it('duplicate and export/import carry the cap, the schedule and the settings', async () => {
+      const id = await publishedSurvey({ responseLimit: 7, thankYouMessage: 'Cheers', showProgressBar: true });
+
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const copyDetail = await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin());
+      expect(copyDetail.body).toMatchObject({ responseLimit: 7, settings: { thankYouMessage: 'Cheers', showProgressBar: true }, status: 'draft' });
+
+      const zip = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      expect(zip.status).toBe(200);
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', zip.body as Buffer, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const importedDetail = await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin());
+      expect(importedDetail.body).toMatchObject({ responseLimit: 7, settings: { thankYouMessage: 'Cheers', showProgressBar: true } });
+    });
+  });
+
+  describe('images (phase D)', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8]);
+    let n = 0;
+    const files = () => readdirSync(mediaDir);
+    const newSurvey = async () => {
+      const res = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Images ${++n}` });
+      return res.body.id as string;
+    };
+    const upload = (id: string, bytes: Buffer = PNG, name = 'pic.png', type = 'image/png', headers: Record<string, string> = admin()) =>
+      request(http()).post(`/api/survey/surveys/${id}/media`).set(headers).attach('file', bytes, { filename: name, contentType: type });
+    const save = (id: string, section: Record<string, unknown>, question: Record<string, unknown> = {}) =>
+      request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({
+          sections: [
+            {
+              id: uuid(700 + n * 2),
+              orderIndex: 0,
+              title: 'S',
+              ...section,
+              questions: [{ id: uuid(701 + n * 2), orderIndex: 0, type: 'short_text', title: 'Q', ...question }],
+            },
+          ],
+          logicRules: [],
+        });
+
+    it('stores a picture on disk and serves it publicly with safe headers', async () => {
+      const id = await newSurvey();
+      const up = await upload(id);
+      expect(up.status).toBe(201);
+      expect(up.body).toMatchObject({ mime: 'image/png', sizeBytes: PNG.length });
+      expect(files()).toContain(`${up.body.mediaId}.png`);
+
+      const res = await request(http()).get(`/api/survey/media/${up.body.mediaId}`); // no Authorization header
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/png');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      expect(res.headers['cache-control']).toContain('immutable');
+      expect(Buffer.compare(res.body as Buffer, PNG)).toBe(0);
+    });
+
+    it('rejects SVG, disguised files, GIF, empty and oversize uploads', async () => {
+      const id = await newSurvey();
+      const before = files().length;
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+      expect((await upload(id, svg, 'x.svg', 'image/svg+xml')).status).toBe(400);
+      expect((await upload(id, svg, 'x.png', 'image/png')).status).toBe(400); // lying about the type
+      expect((await upload(id, Buffer.from('<html></html>'), 'x.png')).status).toBe(400);
+      expect((await upload(id, Buffer.from('GIF89a......'), 'x.gif', 'image/gif')).status).toBe(400);
+      const big = Buffer.concat([PNG, Buffer.alloc(2 * 1024 * 1024)]);
+      expect((await upload(id, big)).status).toBe(413); // multer's own size limit
+      expect((await request(http()).post(`/api/survey/surveys/${id}/media`).set(admin())).status).toBe(400);
+      expect(files()).toHaveLength(before);
+    });
+
+    it('needs the survey-edit permission: anonymous 401, other roles 403, unknown survey 404', async () => {
+      const id = await newSurvey();
+      expect((await upload(id, PNG, 'p.png', 'image/png', {})).status).toBe(401);
+      for (const role of ['reader', 'finance'] as const) {
+        const token = (await fixtureForRole(app!, role)).token;
+        expect((await upload(id, PNG, 'p.png', 'image/png', { Authorization: `Bearer ${token}` })).status).toBe(403);
+      }
+      expect((await upload(uuid(999999))).status).toBe(404);
+      expect((await request(http()).get(`/api/survey/media/${uuid(999998)}`)).status).toBe(404);
+      expect((await request(http()).get('/api/survey/media/not-a-uuid')).status).toBe(400);
+    });
+
+    it('is audited without the picture bytes', async () => {
+      const id = await newSurvey();
+      const up = await upload(id);
+      const logs = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE action = 'upload_image' AND entity_type = 'SurveyMedia'`);
+      expect(Number(logs[0].n)).toBeGreaterThan(0);
+      const leak = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE new_value::text LIKE '%PNG%'`);
+      expect(Number(leak[0].n)).toBe(0);
+      expect(up.status).toBe(201);
+    });
+
+    it('a save may only use pictures of its own survey, with a description', async () => {
+      const a = await newSurvey();
+      const b = await newSurvey();
+      const mine = (await upload(a)).body.mediaId as string;
+      const theirs = (await upload(b)).body.mediaId as string;
+
+      expect((await save(a, { image: { mediaId: theirs, alt: 'x' } })).status).toBe(400); // another survey's picture
+      expect((await save(a, { image: { mediaId: uuid(555555), alt: 'x' } })).status).toBe(400); // never uploaded
+      expect((await save(a, { image: { mediaId: mine, alt: '' } })).status).toBe(400); // no description
+      expect((await save(a, {}, { config: { image: { mediaId: mine, alt: '' } } })).status).toBe(400);
+      expect((await save(a, { image: { mediaId: '../../etc/passwd', alt: 'x' } })).status).toBe(400);
+      expect((await request(http()).patch(`/api/survey/surveys/${a}`).set(admin()).send({ headerImage: { mediaId: theirs, alt: 'x' } })).status).toBe(400);
+
+      expect((await save(a, { image: { mediaId: mine, alt: 'A shelf' } })).status).toBe(200);
+    });
+
+    it('header, section and question pictures reach the respondent', async () => {
+      const id = await newSurvey();
+      const [h, s, q] = [(await upload(id)).body.mediaId, (await upload(id)).body.mediaId, (await upload(id)).body.mediaId] as string[];
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: { mediaId: h, alt: 'Logo' } })).status).toBe(200);
+      expect((await save(id, { image: { mediaId: s, alt: 'Reading room' } }, { config: { image: { mediaId: q, alt: 'Cover' } } })).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin())).status);
+
+      const pub = await request(http()).get(`/api/survey/public/${id}`);
+      expect(pub.status).toBe(200);
+      expect(pub.body.survey.headerImage).toEqual({ mediaId: h, alt: 'Logo' });
+      expect(pub.body.survey.sections[0].image).toEqual({ mediaId: s, alt: 'Reading room' });
+      expect(pub.body.survey.sections[0].questions[0].config.image).toEqual({ mediaId: q, alt: 'Cover' });
+
+      // removing the header picture clears the reference
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: null })).status).toBe(200);
+      const after = await request(http()).get(`/api/survey/public/${id}`);
+      expect(after.body.survey.headerImage).toBeNull();
+    });
+
+    it('cleans up pictures nothing uses any more, but keeps new uploads and used ones', async () => {
+      const id = await newSurvey();
+      const used = (await upload(id)).body.mediaId as string;
+      const stale = (await upload(id)).body.mediaId as string;
+      const fresh = (await upload(id)).body.mediaId as string;
+      const prisma = app!.get(PrismaService);
+      await prisma.$executeRawUnsafe(`UPDATE survey_media SET created_at = now() - interval '3 hours' WHERE id IN ('${used}','${stale}')`);
+
+      expect((await save(id, { image: { mediaId: used, alt: 'Kept' } })).status).toBe(200);
+      expect(files()).toContain(`${used}.png`);
+      expect(files()).toContain(`${fresh}.png`); // uploaded a moment ago: the owner may not have clicked Save yet
+      expect(files()).not.toContain(`${stale}.png`);
+      expect((await request(http()).get(`/api/survey/media/${stale}`)).status).toBe(404);
+    });
+
+    it('deleting a survey deletes its picture files', async () => {
+      const id = await newSurvey();
+      const a = (await upload(id)).body.mediaId as string;
+      expect(files()).toContain(`${a}.png`);
+      expect((await request(http()).delete(`/api/survey/surveys/${id}`).set(admin())).status).toBeLessThan(300);
+      expect(files()).not.toContain(`${a}.png`);
+      expect((await request(http()).get(`/api/survey/media/${a}`)).status).toBe(404);
+    });
+
+    it('duplicate copies the pictures; export/import carries them in the zip', async () => {
+      const id = await newSurvey();
+      const [h, s, q] = [(await upload(id)).body.mediaId, (await upload(id)).body.mediaId, (await upload(id)).body.mediaId] as string[];
+      await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ headerImage: { mediaId: h, alt: 'Logo' } });
+      await save(id, { image: { mediaId: s, alt: 'Room' } }, { config: { image: { mediaId: q, alt: 'Cover' } } });
+
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      const copied = [detail.settings.headerImage.mediaId, detail.sections[0].image.mediaId, detail.sections[0].questions[0].config.image.mediaId] as string[];
+      expect(copied).not.toContain(h);
+      expect(copied).not.toContain(s);
+      expect(copied).not.toContain(q);
+      for (const mediaId of copied) expect((await request(http()).get(`/api/survey/media/${mediaId}`)).status).toBe(200);
+      expect(detail.settings.headerImage.alt).toBe('Logo');
+
+      const zipRes = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const zip = await JSZip.loadAsync(zipRes.body as Buffer);
+      expect(Object.keys(zip.files).filter((f) => f.startsWith('media/') && f.endsWith('.png'))).toHaveLength(3);
+
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', zipRes.body as Buffer, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const importedDetail = (await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin())).body;
+      const importedId = importedDetail.sections[0].image.mediaId as string;
+      expect(importedId).not.toBe(s);
+      const served = await request(http()).get(`/api/survey/media/${importedId}`);
+      expect(served.status).toBe(200);
+      expect(Buffer.compare(served.body as Buffer, PNG)).toBe(0);
+    });
+
+    it('an imported file that references a picture it does not contain simply loses that reference', async () => {
+      const id = await newSurvey();
+      const s = (await upload(id)).body.mediaId as string;
+      await save(id, { image: { mediaId: s, alt: 'Room' } });
+      const zipRes = await request(http())
+        .get(`/api/survey/surveys/${id}/export`)
+        .set(admin())
+        .buffer(true)
+        .parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const zip = await JSZip.loadAsync(zipRes.body as Buffer);
+      for (const f of Object.keys(zip.files).filter((x) => x.startsWith('media/'))) zip.remove(f);
+      const stripped = await zip.generateAsync({ type: 'nodebuffer' });
+      const imported = await request(http()).post('/api/survey/surveys/import').set(admin()).attach('file', stripped, 'survey.zip');
+      expect(imported.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin())).body;
+      expect(detail.sections[0].image).toBeNull();
+    });
+  });
+});

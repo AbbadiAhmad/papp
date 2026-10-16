@@ -82,12 +82,9 @@ test.describe('Language switch / RTL', () => {
 
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    // library_catalog.root has 2+ children, so PageLayout.tsx's NavGroup
-    // renders it as a collapsible heading (Collapse unmountOnExit) — expand
-    // it first, in its own now-English label, before the child link exists.
-    await page.getByRole('button', { name: TEXT.en.libraryMenuGroup, exact: true }).click();
-    // The sidebar's own label is now real English copy, not just the dir attribute.
-    await expect(page.locator('.MuiDrawer-docked').getByText(TEXT.en.booksMenu, { exact: true })).toBeVisible();
+    // The reader sees one library page, so the sidebar shows "Library" as a direct link (shared nav
+    // rule, D113). Its label being real English copy proves the sidebar text switched, not just dir.
+    await expect(page.locator('.MuiDrawer-docked').getByRole('link', { name: TEXT.en.libraryMenuGroup, exact: true })).toBeVisible();
 
     const drawerBoxLtr = await sidebarBox(page);
     expect(drawerBoxLtr).not.toBeNull();

@@ -17,11 +17,17 @@
 #
 # Usage:
 #   ./scripts/manageDB.sh restore FILE
+#   ./scripts/manageDB.sh restore-files FILE
 #
 # FILE is the AES-encrypted .zip produced by an export (web UI's "Export
 # backup" button, or POST /backup/export), or a raw, unencrypted .sql dump.
 # Runs inside the `api` container so it always uses the same
 # DATABASE_URL/BACKUP_ENCRYPTION_PASSWORD the running app itself uses.
+#
+# restore-files writes the uploaded files (book covers/files, survey pictures)
+# from the web UI's "Export files" archive back into the directories listed in
+# BACKUP_FILE_DIRS. Run it AFTER `restore`. It never deletes: files already
+# there are overwritten only when the archive holds the same path.
 set -euo pipefail
 
 usage() {
@@ -29,7 +35,8 @@ usage() {
   exit 1
 }
 
-[[ $# -ge 2 && "$1" == "restore" ]] || usage
+[[ $# -ge 2 && ( "$1" == "restore" || "$1" == "restore-files" ) ]] || usage
+COMMAND="$1"
 FILE="$2"
 [[ -f "$FILE" ]] || { echo "File not found: $FILE" >&2; exit 1; }
 
@@ -38,5 +45,5 @@ cd "$SCRIPT_DIR"
 
 # Piped to the container's stdin, restored to a temp file inside the
 # container by cli-db.ts before the actual restore runs.
-docker compose exec -T api sh -c 'cat > /tmp/papp-restore-input && node dist/cli-db.js restore /tmp/papp-restore-input; rm -f /tmp/papp-restore-input' < "$FILE"
+docker compose exec -T api sh -c "cat > /tmp/papp-restore-input && node dist/cli-db.js $COMMAND /tmp/papp-restore-input; rm -f /tmp/papp-restore-input" < "$FILE"
 echo "Restore finished."

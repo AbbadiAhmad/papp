@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
+import type { Writable } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PLATFORM_VERSION } from '../../platform-version';
+import { FILES_MEMBER_PREFIX, FILES_METADATA_MEMBER, listFilesRecursive, parseFileRoots, type FileRoot } from './backup-files';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,6 +36,7 @@ interface ArchiverInstance {
   on(event: 'end', listener: () => void): void;
   file(filepath: string, options: { name: string }): void;
   append(source: string | Buffer, options: { name: string }): void;
+  pipe(destination: Writable): void;
   finalize(): Promise<void>;
 }
 interface ArchiverFactory {
@@ -78,6 +81,8 @@ export interface BackupInfo {
   platformVersion: string;
   schemaFingerprint: string;
   backupConfigured: boolean;
+  /** Names of the directories `BACKUP_FILE_DIRS` lists (empty = nothing to export besides the database). */
+  fileRoots: string[];
 }
 
 interface DbConnParams {
@@ -139,7 +144,50 @@ export class BackupService {
       platformVersion: PLATFORM_VERSION,
       schemaFingerprint: await this.computeSchemaFingerprint(),
       backupConfigured: this.isConfigured(),
+      fileRoots: this.fileRoots().map((r) => r.name),
     };
+  }
+
+  fileRoots(): FileRoot[] {
+    return parseFileRoots(process.env.BACKUP_FILE_DIRS);
+  }
+
+  /**
+   * Streams an AES-256 encrypted zip of every file under the `BACKUP_FILE_DIRS` directories into
+   * `destination` (members `files/<root>/<path>`). Streamed, not buffered: book files can make this
+   * many gigabytes. Stored uncompressed — covers and PDFs are already compressed. The database is NOT in
+   * this archive; take `exportBackup` too.
+   */
+  async exportFiles(actorLabel: string, destination: Writable): Promise<{ fileCount: number }> {
+    this.requireConfigured();
+    const roots = this.fileRoots();
+    const archiver = await loadArchiver();
+    const archive = archiver('zip-encrypted', {
+      zlib: { level: 0 },
+      encryptionMethod: 'aes256',
+      password: process.env.BACKUP_ENCRYPTION_PASSWORD,
+    });
+    const finished = new Promise<void>((resolve, reject) => {
+      archive.on('error', reject);
+      archive.on('warning', (warning) => this.logger.warn(`archiver warning: ${warning.message}`));
+      destination.on('close', () => resolve());
+      destination.on('error', reject);
+    });
+    archive.pipe(destination);
+    let fileCount = 0;
+    for (const root of roots) {
+      for (const rel of listFilesRecursive(root.dir)) {
+        archive.file(join(root.dir, rel), { name: `${FILES_MEMBER_PREFIX}${root.name}/${rel}` });
+        fileCount += 1;
+      }
+    }
+    archive.append(
+      JSON.stringify({ platformVersion: PLATFORM_VERSION, exportedAt: new Date().toISOString(), exportedBy: actorLabel, roots: roots.map((r) => r.name), fileCount }),
+      { name: FILES_METADATA_MEMBER },
+    );
+    await archive.finalize();
+    await finished;
+    return { fileCount };
   }
 
   private connParams(): DbConnParams {

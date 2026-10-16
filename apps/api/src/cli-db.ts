@@ -26,6 +26,8 @@ import { BlobReader, BlobWriter, ZipReader, type Entry, type FileEntry } from '@
 import { execFile } from 'node:child_process';
 import { Client } from 'pg';
 import { promisify } from 'node:util';
+import { parseFileRoots } from './core/backup/backup-files';
+import { restoreFilesArchive } from './core/backup/backup-files-restore';
 
 const execFileAsync = promisify(execFile);
 
@@ -235,10 +237,23 @@ async function restoreRawSql(sqlBytes: Buffer, conn: DbConnParams): Promise<void
   console.log('Restore complete (psql).');
 }
 
+async function restoreFiles(file: string): Promise<void> {
+  const password = process.env.BACKUP_ENCRYPTION_PASSWORD;
+  if (!password) throw new Error('BACKUP_ENCRYPTION_PASSWORD is not set — cannot decrypt the files archive.');
+  const roots = parseFileRoots(process.env.BACKUP_FILE_DIRS);
+  if (roots.length === 0) throw new Error('BACKUP_FILE_DIRS is not set — there is nowhere to restore the files to.');
+  const { restored, skipped } = await restoreFilesArchive(file, password, roots);
+  console.log(`Files restore complete: ${restored} file(s) written, ${skipped} skipped.`);
+}
+
 async function main(): Promise<void> {
   const [command, file] = process.argv.slice(2);
+  if (command === 'restore-files' && file) {
+    await restoreFiles(file);
+    return;
+  }
   if (command !== 'restore' || !file) {
-    console.error('Usage: node dist/cli-db.js restore <file>');
+    console.error('Usage: node dist/cli-db.js restore <file> | restore-files <files-archive.zip>');
     process.exit(1);
   }
 

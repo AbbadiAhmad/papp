@@ -7,9 +7,25 @@
 // into `apps/web/src/**` is NOT a fragile runtime cross-process import here
 // — Vite resolves and bundles the whole module graph at build/dev-serve
 // time, exactly like any other same-repo TypeScript import.
-import { apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import { API_BASE_URL, apiClient } from '../../../apps/web/src/shared/api/httpClient';
 
 export type BookCopyStatus = 'available' | 'borrowed' | 'lost' | 'damaged' | 'maintenance' | 'reserved';
+
+export interface BookFileInfo {
+  ext: string;
+  sizeBytes: number;
+  updatedAt: string;
+}
+
+/** What is stored on disk for a book (list and detail responses). */
+export interface BookFilesInfo {
+  cover: BookFileInfo | null;
+  book: BookFileInfo | null;
+}
+
+/** Public cover picture URL (an <img> cannot send the login header); `version` makes the browser reload after a replace. */
+export const coverUrl = (bookId: string, version?: string): string =>
+  `${API_BASE_URL}/api/library/public/books/${bookId}/cover${version ? `?v=${encodeURIComponent(version)}` : ''}`;
 
 export interface LibraryBook {
   id: string;
@@ -25,6 +41,7 @@ export interface LibraryBook {
   pageCount: number | null;
   createdAt: string;
   updatedAt: string;
+  files?: BookFilesInfo;
   totalCopies?: number;
   availableCopies?: number;
   copies?: LibraryBookCopy[];
@@ -190,6 +207,20 @@ export const libraryCatalogApi = {
     apiClient
       .get<LibraryBook[]>('/api/library/books', { params: params && { ...params, copyStatus: params.copyStatus?.length ? params.copyStatus.join(',') : undefined } })
       .then((r) => r.data),
+  uploadBookFile: (id: string, kind: 'cover' | 'book', file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<BookFilesInfo>(`/api/library/books/${id}/files/${kind}`, form).then((r) => r.data);
+  },
+  deleteBookFile: (id: string, kind: 'cover' | 'book') => apiClient.delete<void>(`/api/library/books/${id}/files/${kind}`).then((r) => r.data),
+  /** The book file as a Blob plus the download name the server chose (from the book's title). */
+  downloadBookFile: async (id: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await apiClient.get<Blob>(`/api/library/books/${id}/files/book`, { responseType: 'blob' });
+    const header = (response.headers['content-disposition'] as string | undefined) ?? '';
+    const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+    const plain = /filename="([^"]+)"/i.exec(header)?.[1];
+    return { blob: response.data, filename: utf8 ? decodeURIComponent(utf8) : (plain ?? 'book') };
+  },
   getBook: (id: string) => apiClient.get<LibraryBookDetail>(`/api/library/books/${id}`).then((r) => r.data),
   createBook: (dto: CreateBookInput) => apiClient.post<LibraryBook>('/api/library/books', dto).then((r) => r.data),
   updateBook: (id: string, dto: UpdateBookInput) =>

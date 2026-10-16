@@ -1,0 +1,52 @@
+{
+  "key": "classic_library",
+  "version": "1.0.0",
+  "name": {
+    "ar": "المكتبة الكلاسيكية",
+    "en": "Classic Library"
+  },
+  "description": {
+    "ar": "مظهر مهني هادئ: رمادي فحمي وأزرق هادئ وخط IBM Plex.",
+    "en": "A calm professional look: graphite, steady blue, IBM Plex type."
+  },
+  "shell": "header",
+  "radius": 6,
+  "fonts": {
+    "ar": "\"IBM Plex Sans Arabic\", \"Segoe UI\", Tahoma, Arial, sans-serif",
+    "en": "\"IBM Plex Sans Arabic\", \"Segoe UI\", Roboto, Arial, sans-serif"
+  },
+  "light": {
+    "primary": "#2A5CAA",
+    "primaryContrast": "#ffffff",
+    "secondary": "#0F766E",
+    "background": "#F6F7F9",
+    "surface": "#ffffff",
+    "text": "#111827",
+    "textMuted": "#4B5563",
+    "border": "#E2E5EA",
+    "hero": "#EEF2F8",
+    "headerBg": "#FFFFFF",
+    "headerText": "#111827",
+    "success": "#1E7B45",
+    "warning": "#8A5A00",
+    "error": "#B42318",
+    "info": "#2A5CAA"
+  },
+  "dark": {
+    "primary": "#7FA6E0",
+    "primaryContrast": "#0B1220",
+    "secondary": "#5EC4B6",
+    "background": "#0E1116",
+    "surface": "#161B22",
+    "text": "#E6EAF0",
+    "textMuted": "#9AA4B2",
+    "border": "#262D38",
+    "hero": "#1A2230",
+    "headerBg": "#0A0D12",
+    "headerText": "#ffffff",
+    "success": "#6FCB92",
+    "warning": "#E8C36E",
+    "error": "#F28B82",
+    "info": "#8DB4EA"
+  }
+}

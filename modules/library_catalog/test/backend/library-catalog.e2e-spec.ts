@@ -2,7 +2,8 @@ import { DynamicModule, ForwardReference, INestApplication, Module, Type } from 
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
@@ -172,7 +173,10 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
   let bookId: string;
   let copyId: string;
 
+  const filesDir = mkdtempSync(join(tmpdir(), 'book-files-'));
+
   beforeAll(async () => {
+    process.env.BOOK_FILES_DIR = filesDir;
     container = await startPostgresTestContainer();
     app = await createAppWithLibraryCatalogInstalled();
     await Promise.all(ALL_ROLE_CODES.map((role) => fixtureForRole(app!, role)));
@@ -202,6 +206,7 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
   afterAll(async () => {
     await app?.close();
     await stopPostgresTestContainer(container);
+    rmSync(filesDir, { recursive: true, force: true });
   });
 
   it('really installed with the real seeded default grants (per manifest.json defaultRolePermissions)', async () => {
@@ -397,6 +402,186 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
         .set('Authorization', `Bearer ${admin.token}`);
       // A logged-in caller can reach it too (public routes don't reject a session).
       expect([200, 429]).toContain(withAuth.status);
+    });
+  });
+
+  describe('cover and book files (LIBRARY_CATALOG-D28)', () => {
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+    const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(32, 2)]);
+    const PDF = Buffer.from('%PDF-1.4\n%fake but recognisable\n');
+    const MD = Buffer.from('# Chapter 1\n\nمرحبا\n', 'utf8');
+    let id: string;
+    const tokenOf = async (role: RoleCode) => `Bearer ${(await fixtureForRole(app!, role)).token}`;
+    const upload = async (kind: 'cover' | 'book', bytes: Buffer, name: string, type: string, role: RoleCode = 'admin') =>
+      request(app!.getHttpServer())
+        .post(`/api/library/books/${id}/files/${kind}`)
+        .set('Authorization', await tokenOf(role))
+        .attach('file', bytes, { filename: name, contentType: type });
+    const folder = () => join(filesDir, id);
+
+    beforeAll(async () => {
+      const res = await request(app!.getHttpServer())
+        .post('/api/library/books')
+        .set('Authorization', await tokenOf('admin'))
+        .send({ title: 'The Hobbit: There/and "Back" Again', author: 'J. R. R. Tolkien', copy: { qrCode: `E2E-FILES-${Date.now()}`, status: 'available' } });
+      expect(res.status).toBe(201);
+      id = res.body.id;
+    });
+
+    it('stores files as <books_files>/<book id>/cover.* and book.*, never under the uploaded name, with an info.txt', async () => {
+      const cover = await upload('cover', PNG, '../../evil name.png', 'image/png');
+      expect(cover.status).toBe(201);
+      expect(cover.body.cover).toMatchObject({ ext: 'png', sizeBytes: PNG.length });
+      const book = await upload('book', PDF, 'Secret Original Name.pdf', 'application/pdf');
+      expect(book.status).toBe(201);
+      expect(book.body.book).toMatchObject({ ext: 'pdf' });
+
+      expect(readdirSync(folder()).sort()).toEqual(['book.pdf', 'cover.png', 'info.txt']);
+      const info = readFileSync(join(folder(), 'info.txt'), 'utf8');
+      expect(info).toContain(`Book ID: ${id}`);
+      expect(info).toContain('Title: The Hobbit: There/and "Back" Again');
+      expect(info).toContain('Author: J. R. R. Tolkien');
+    });
+
+    it('the detail and list responses say what files a book has', async () => {
+      const detail = await request(app!.getHttpServer()).get(`/api/library/books/${id}`).set('Authorization', await tokenOf('reader'));
+      expect(detail.body.files.cover.ext).toBe('png');
+      expect(detail.body.files.book.ext).toBe('pdf');
+      const list = await request(app!.getHttpServer()).get('/api/library/books').set('Authorization', await tokenOf('reader'));
+      expect(list.body.find((b: { id: string }) => b.id === id).files.book.ext).toBe('pdf');
+      expect(list.body.find((b: { id: string }) => b.id !== id).files).toEqual({ cover: null, book: null });
+    });
+
+    it('serves the cover publicly with safe headers (no login), and never serves the book file that way', async () => {
+      const res = await request(app!.getHttpServer()).get(`/api/library/public/books/${id}/cover`);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/png');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      expect(Buffer.compare(res.body as Buffer, PNG)).toBe(0);
+      expect((await request(app!.getHttpServer()).get(`/api/library/public/books/${id}/book`)).status).toBe(404);
+      expect((await request(app!.getHttpServer()).get(`/api/library/public/books/${bookId}/cover`)).status).toBe(404); // a book without a cover
+    });
+
+    it('download needs library_catalog.books.download: anonymous 401, finance 403, reader and staff 200; named after the title, as an attachment', async () => {
+      const url = `/api/library/books/${id}/files/book`;
+      expect((await request(app!.getHttpServer()).get(url)).status).toBe(401);
+      expect((await request(app!.getHttpServer()).get(url).set('Authorization', await tokenOf('finance'))).status).toBe(403);
+      for (const role of ['reader', 'library_assistant', 'admin'] as const) {
+        const res = await request(app!.getHttpServer()).get(url).set('Authorization', await tokenOf(role));
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toContain('application/pdf');
+        expect(res.headers['content-disposition']).toContain('attachment');
+        expect(res.headers['content-disposition']).toContain('The Hobbit There and Back Again.pdf'); // unsafe characters stripped
+        expect(res.headers['content-disposition']).not.toContain('Secret Original Name');
+        expect(res.headers['x-content-type-options']).toBe('nosniff');
+        expect(Buffer.compare(res.body as Buffer, PDF)).toBe(0);
+      }
+    });
+
+    it('uploading and removing need books.update: anonymous 401, reader and finance 403', async () => {
+      const anon = await request(app!.getHttpServer()).post(`/api/library/books/${id}/files/cover`).attach('file', PNG, 'a.png');
+      expect(anon.status).toBe(401);
+      for (const role of ['reader', 'finance'] as const) {
+        expect((await upload('cover', PNG, 'a.png', 'image/png', role)).status).toBe(403);
+        const del = await request(app!.getHttpServer()).delete(`/api/library/books/${id}/files/cover`).set('Authorization', await tokenOf(role));
+        expect(del.status).toBe(403);
+      }
+      expect((await upload('cover', PNG, 'a.png', 'image/png', 'library_assistant')).status).toBe(201);
+    });
+
+    it('accepts Markdown books and checks the type from the bytes, not the name or declared type', async () => {
+      const md = await upload('book', MD, 'notes.pdf', 'application/pdf'); // lying about the name and type
+      expect(md.status).toBe(201);
+      expect(md.body.book.ext).toBe('md');
+      expect(readdirSync(folder())).toContain('book.md');
+      expect(readdirSync(folder())).not.toContain('book.pdf'); // the replaced file was removed
+      const dl = await request(app!.getHttpServer()).get(`/api/library/books/${id}/files/book`).set('Authorization', await tokenOf('reader'));
+      expect(dl.headers['content-type']).toContain('text/markdown');
+      expect(dl.headers['content-disposition']).toContain('.md');
+    });
+
+    it('refuses SVG, scripts, executables, a PDF as a cover and a picture as a book, and oversize files', async () => {
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+      expect((await upload('cover', svg, 'x.png', 'image/png')).status).toBe(400);
+      expect((await upload('cover', Buffer.from('<html><script>1</script></html>'), 'x.jpg', 'image/jpeg')).status).toBe(400);
+      expect((await upload('cover', PDF, 'x.png', 'image/png')).status).toBe(400);
+      expect((await upload('book', Buffer.concat([Buffer.from('MZ'), Buffer.alloc(64)]), 'x.pdf', 'application/pdf')).status).toBe(400); // contains NUL: not text
+      expect((await upload('book', PNG, 'x.pdf', 'application/pdf')).status).toBe(400);
+      expect((await upload('cover', Buffer.concat([PNG, Buffer.alloc(5 * 1024 * 1024)]), 'big.png', 'image/png')).status).toBe(400);
+      expect((await upload('book', Buffer.concat([PDF, Buffer.alloc(31 * 1024 * 1024, 65)]), 'big.pdf', 'application/pdf')).status).toBeGreaterThanOrEqual(400);
+      const bad = await request(app!.getHttpServer())
+        .post(`/api/library/books/${id}/files/other`)
+        .set('Authorization', await tokenOf('admin'))
+        .attach('file', PNG, 'a.png');
+      expect(bad.status).toBe(400);
+      expect((await request(app!.getHttpServer()).post(`/api/library/books/${id}/files/cover`).set('Authorization', await tokenOf('admin'))).status).toBe(400);
+      expect(readdirSync(folder()).sort()).toEqual(['book.md', 'cover.png', 'info.txt']); // nothing leaked onto disk
+    }, 60_000);
+
+    it('replacing a cover with another format removes the old file', async () => {
+      expect((await upload('cover', JPG, 'c.jpeg', 'image/jpeg')).status).toBe(201);
+      expect(readdirSync(folder())).toContain('cover.jpg');
+      expect(readdirSync(folder())).not.toContain('cover.png');
+      const res = await request(app!.getHttpServer()).get(`/api/library/public/books/${id}/cover`);
+      expect(res.headers['content-type']).toContain('image/jpeg');
+    });
+
+    it('editing the book rewrites info.txt, and uploads are audited without the file bytes', async () => {
+      const patch = await request(app!.getHttpServer()).patch(`/api/library/books/${id}`).set('Authorization', await tokenOf('admin')).send({ title: 'Renamed Hobbit' });
+      expect(patch.status).toBe(200);
+      expect(readFileSync(join(folder(), 'info.txt'), 'utf8')).toContain('Title: Renamed Hobbit');
+      const prisma = app!.get(PrismaService);
+      const rows = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE entity_type = 'LibraryCatalogBookFile' AND action IN ('upload_file','download_file')`);
+      expect(Number(rows[0].n)).toBeGreaterThan(0);
+      const leak = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM audit_log WHERE entity_type = 'LibraryCatalogBookFile' AND (new_value::text LIKE '%PNG%' OR new_value::text LIKE '%PDF-1.4%')`);
+      expect(Number(leak[0].n)).toBe(0);
+    });
+
+    it('the books export has the book id as its first column', async () => {
+      const res = await request(app!.getHttpServer())
+        .get('/api/library/books/export')
+        .set('Authorization', await tokenOf('admin'))
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      expect(res.status).toBe(200);
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(res.body as Buffer);
+      const sheet = wb.worksheets[0];
+      expect(sheet.getRow(1).getCell(1).value).toBe('id');
+      const ids: string[] = [];
+      sheet.eachRow((row, n) => n > 1 && ids.push(String(row.getCell(1).value)));
+      expect(ids).toContain(id);
+    });
+
+    it('removing one file keeps the other; removing the last file removes the folder; a missing file is 404', async () => {
+      const del = (kind: string, role: RoleCode = 'admin') =>
+        request(app!.getHttpServer()).delete(`/api/library/books/${id}/files/${kind}`);
+      expect((await del('cover').set('Authorization', await tokenOf('admin'))).status).toBe(204);
+      expect(readdirSync(folder()).sort()).toEqual(['book.md', 'info.txt']);
+      expect((await del('cover').set('Authorization', await tokenOf('admin'))).status).toBe(404);
+      expect((await request(app!.getHttpServer()).get(`/api/library/public/books/${id}/cover`)).status).toBe(404);
+      expect((await del('book').set('Authorization', await tokenOf('admin'))).status).toBe(204);
+      expect(existsSync(folder())).toBe(false);
+    });
+
+    it('deleting a book deletes its folder', async () => {
+      expect((await upload('cover', PNG, 'a.png', 'image/png')).status).toBe(201);
+      expect(existsSync(folder())).toBe(true);
+      // a book with registered copies cannot be deleted, so remove them first
+      const copies = await request(app!.getHttpServer()).get(`/api/library/books/${id}/copies`).set('Authorization', await tokenOf('admin'));
+      for (const copy of copies.body as Array<{ id: string }>) {
+        const gone = await request(app!.getHttpServer()).delete(`/api/library/books/${id}/copies/${copy.id}`).set('Authorization', await tokenOf('admin'));
+        expect(gone.status).toBe(204);
+      }
+      const del = await request(app!.getHttpServer()).delete(`/api/library/books/${id}`).set('Authorization', await tokenOf('admin'));
+      expect(del.status).toBe(204);
+      expect(existsSync(folder())).toBe(false);
     });
   });
 });

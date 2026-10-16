@@ -1,4 +1,5 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 // The REAL core guard, imported from apps/api's BUILT output (never `src/`)
 // — see this file's docblock below and platform.ts's docblock for exactly
 // why. This is the one deliberate cross-repo runtime dependency in this
@@ -9,6 +10,7 @@ import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common
 // this module at all).
 // eslint-disable-next-line import/no-unresolved
 import { PublicThrottlerGuard } from '../../../apps/api/dist/common/guards/public-throttler.guard';
+import { BookFilesService } from './book-files.service';
 import { BooksService, BookAvailability } from './books.service';
 import { Audit, Public } from './platform';
 
@@ -40,7 +42,10 @@ import { Audit, Public } from './platform';
  */
 @Controller('api/library/public/books')
 export class PublicBooksController {
-  constructor(private readonly books: BooksService) {}
+  constructor(
+    private readonly books: BooksService,
+    private readonly files: BookFilesService,
+  ) {}
 
   @Get(':id/availability')
   @Public()
@@ -55,5 +60,27 @@ export class PublicBooksController {
     // missing book — exactly what an anonymous caller should see (404, no
     // stack trace or internal detail), MODULE_SPEC.md §7.2.
     return this.books.getAvailability(id);
+  }
+
+  /**
+   * The book's cover picture, for <img> tags (which cannot send an Authorization header). Only the cover
+   * is public — the book FILE is never served here. Not audited: it is hit once per cover per page view.
+   */
+  @Get(':id/cover')
+  @Public()
+  async cover(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
+    const found = await this.files.locate(id, 'cover');
+    if (!found) throw new NotFoundException('This book has no cover');
+    res.set({
+      'Content-Type': found.mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      // The cover can be replaced, so the browser must revalidate (sendFile adds an ETag).
+      'Cache-Control': 'public, max-age=0, must-revalidate',
+    });
+    res.sendFile(found.path, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ statusCode: 404, message: 'Cover not found' });
+    });
   }
 }

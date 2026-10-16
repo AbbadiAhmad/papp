@@ -23,8 +23,8 @@ function mockResponse(config: InternalAxiosRequestConfig, data: unknown) {
   return { data, status: 200, statusText: 'OK', headers: {}, config };
 }
 
-function mockError(config: InternalAxiosRequestConfig, status: number) {
-  const response = { data: {}, status, statusText: '', headers: {}, config };
+function mockError(config: InternalAxiosRequestConfig, status: number, data: unknown = {}) {
+  const response = { data, status, statusText: '', headers: {}, config };
   return new AxiosError('Request failed', String(status), config, undefined, response as never);
 }
 
@@ -95,6 +95,35 @@ describe('httpClient 401-refresh interceptor', () => {
     expect(refreshCallCount).toBe(1);
     expect(authExpiredCallCount).toBe(1);
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('retries the refresh ONCE when the api says the cookie was just rotated by another tab, without logging out', async () => {
+    const calls: string[] = [];
+    const adapter = vi.fn(async (config: RetryableConfig) => {
+      const url = config.url ?? '';
+      if (url.includes('/auth/refresh')) {
+        calls.push('refresh');
+        if (calls.length === 1) throw mockError(config, 401, { message: 'Refresh token was just rotated; retry with the current cookie' });
+        return mockResponse(config, { accessToken: 'refreshed-after-race' });
+      }
+      if (!config._retriedAfterRefresh) throw mockError(config, 401);
+      return mockResponse(config, { ok: true, url });
+    });
+    apiClient.defaults.adapter = adapter;
+    axios.defaults.adapter = adapter;
+
+    const response = await apiClient.get('/resource-a');
+
+    expect(calls).toEqual(['refresh', 'refresh']);
+    expect(response.data).toEqual({ ok: true, url: '/resource-a' });
+    expect(getAccessToken()).toBe('refreshed-after-race');
+    expect(authExpiredCallCount).toBe(0);
+  });
+
+  it('does not retry the refresh for an ordinary 401 (a real failure still logs out after ONE call)', async () => {
+    refreshShouldFail = true;
+    await expect(apiClient.get('/resource-a')).rejects.toBeInstanceOf(AxiosError);
+    expect(refreshCallCount).toBe(1);
   });
 
   it('never retries /auth/login, /auth/refresh or /auth/register themselves on 401', async () => {

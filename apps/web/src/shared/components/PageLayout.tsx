@@ -2,6 +2,7 @@ import {
   AppBar,
   Avatar,
   Box,
+  Button,
   Chip,
   Collapse,
   Divider,
@@ -29,7 +30,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import GroupIcon from '@mui/icons-material/Group';
 import HistoryIcon from '@mui/icons-material/History';
-import LockPersonIcon from '@mui/icons-material/LockPerson';
 import LogoutIcon from '@mui/icons-material/Logout';
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto';
 import LocalLibraryIcon from '@mui/icons-material/LocalLibrary';
@@ -49,7 +49,7 @@ import { useAuth } from '../../app/AuthContext';
 import { useLanguage } from '../../app/LanguageContext';
 import { useColorMode } from '../../app/ColorModeContext';
 import { useBranding, useMenuLayout, useThemePack } from '../../app/AppearanceContext';
-import { applyMenuLayout, labelOf } from '../modules/applyMenuLayout';
+import { applyMenuLayout, asDirectLeaf, buildNavEntries, isRealGroup, labelOf, type NavEntry } from '../modules/applyMenuLayout';
 import { usePermission } from '../permissions';
 import { NotificationsBellMenu } from '../../core/notifications/NotificationsBellMenu';
 import { buildModuleMenuEntries, type ResolvedMenuLeaf, type ResolvedMenuNode } from '../modules/buildModuleMenuEntries';
@@ -57,6 +57,8 @@ import { resolveMenuIcon } from '../modules/menuIcons';
 import { useModuleFrontendManifests, usePublicModuleRoutes } from '../modules/useInstalledModules';
 
 const DRAWER_WIDTH = 260;
+/** Height of the second header row of the `header` shell. */
+const HEADER_NAV_HEIGHT = 48;
 
 /**
  * Shared open/close state for the mobile (below `sm`) overlay drawer.
@@ -119,13 +121,12 @@ const ALWAYS_ALLOWED = '__always__';
  * consistency, even though core has no manifest-driven parent/child
  * structure of its own to derive one from.
  */
+const HOME_LEAF: ResolvedMenuLeaf = { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED };
+
 const CORE_MENU_LEAVES: ResolvedMenuLeaf[] = [
-  { type: 'leaf', id: 'dashboard', labelKey: 'core.menu.dashboard', iconName: undefined, route: '/', requiredPermission: ALWAYS_ALLOWED },
   { type: 'leaf', id: 'users', labelKey: 'core.menu.users', iconName: undefined, route: '/users', requiredPermission: 'users.view' },
   { type: 'leaf', id: 'roles', labelKey: 'core.menu.roles', iconName: undefined, route: '/roles', requiredPermission: 'roles.view' },
   { type: 'leaf', id: 'permissions', labelKey: 'core.menu.permissions', iconName: undefined, route: '/permissions', requiredPermission: 'permissions.view' },
-  { type: 'leaf', id: 'my-permissions', labelKey: 'core.menu.myPermissions', iconName: undefined, route: '/my-permissions', requiredPermission: 'permissions.view_my' },
-  { type: 'leaf', id: 'sessions', labelKey: 'core.menu.sessions', iconName: undefined, route: '/sessions', requiredPermission: 'sessions.view_my' },
   { type: 'leaf', id: 'audit', labelKey: 'core.menu.audit', iconName: undefined, route: '/audit', requiredPermission: 'audit.view' },
   { type: 'leaf', id: 'backup', labelKey: 'core.menu.backup', iconName: undefined, route: '/backup', requiredPermission: 'backup.export' },
   { type: 'leaf', id: 'notifications', labelKey: 'core.menu.notifications', iconName: undefined, route: '/notifications', requiredPermission: 'notifications.view' },
@@ -140,8 +141,6 @@ const CORE_ICONS: Record<string, ReactNode> = {
   users: <GroupIcon />,
   roles: <AssignmentIndIcon />,
   permissions: <ShieldIcon />,
-  'my-permissions': <ShieldIcon />,
-  sessions: <LockPersonIcon />,
   audit: <HistoryIcon />,
   backup: <CloudDownloadIcon />,
   notifications: <NotificationsIcon />,
@@ -174,30 +173,41 @@ export function useNavNodes(): ResolvedMenuNode[] {
     [],
   );
 
-  return useMemo<ResolvedMenuNode[]>(() => applyMenuLayout([platformGroup, ...moduleNodes], layout), [platformGroup, moduleNodes, layout]);
+  // Convention: Home first, the day-to-day work (modules) next, administration last.
+  return useMemo<ResolvedMenuNode[]>(() => applyMenuLayout([HOME_LEAF, ...moduleNodes, platformGroup], layout), [platformGroup, moduleNodes, layout]);
 }
 
 /** Every default (un-customised) node — what the Appearance page's menu editor starts from. */
 export function useDefaultNavNodes(): ResolvedMenuNode[] {
   const moduleManifests = useModuleFrontendManifests(true);
   return useMemo<ResolvedMenuNode[]>(
-    () => [{ type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }, ...buildModuleMenuEntries(moduleManifests ?? [])],
+    () => [HOME_LEAF, ...buildModuleMenuEntries(moduleManifests ?? []), { type: 'group', id: 'platform', labelKey: 'core.menu.platform', iconName: undefined, children: CORE_MENU_LEAVES }],
     [moduleManifests],
   );
+}
+
+/**
+ * THE rule every shell shares (see `buildNavEntries`): sidebar, mobile drawer, tabs, header
+ * dropdowns and the public-page menu all render from these entries.
+ */
+function useNavEntries(): NavEntry[] {
+  const { hasPermission } = useAuth();
+  const nodes = useNavNodes();
+  return buildNavEntries(nodes, (leaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission));
 }
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
-  const nodes = useNavNodes();
+  const entries = useNavEntries();
 
   return (
     <List>
-      {nodes.map((node) =>
-        node.type === 'group' ? (
-          <NavGroup key={node.id} group={node} activePath={location.pathname} onNavigate={onNavigate} t={t} />
+      {entries.map((entry) =>
+        isRealGroup(entry) ? (
+          <NavGroup key={entry.node.id} group={entry.node} activePath={location.pathname} onNavigate={onNavigate} t={t} />
         ) : (
-          <NavLeafItem key={node.id} leaf={node} active={location.pathname === node.route} onNavigate={onNavigate} t={t} />
+          <NavLeafItem key={entry.node.id} leaf={asDirectLeaf(entry)} active={location.pathname === asDirectLeaf(entry).route} onNavigate={onNavigate} t={t} />
         ),
       )}
     </List>
@@ -315,15 +325,9 @@ function NavLeafItem({
 function TabsNav() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { hasPermission } = useAuth();
-  const nodes = useNavNodes();
+  const tabs = useNavEntries();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-
-  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
-  const tabs = nodes
-    .map((node) => ({ node, leaves: (node.type === 'leaf' ? [node] : node.children).filter(isVisible) }))
-    .filter((tab) => tab.leaves.length > 0);
   const active = tabs.find((tab) => tab.leaves.some((leaf) => leaf.route === pathname));
 
   return (
@@ -369,6 +373,84 @@ function TabsNav() {
 }
 
 /**
+ * The `header` shell (theme packs): the menu's top levels as a bar inside the
+ * header, each group opening a dropdown of its pages (a single-page entry is a
+ * plain link). Same nodes, permission checks and labels as the sidebar/tabs.
+ * Desktop only: below `md` the header shows a menu button that opens the nested
+ * (collapsible) drawer instead, which suits narrow screens better than dropdowns.
+ */
+function HeaderNav() {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const entries = useNavEntries();
+  const { pathname } = useLocation();
+  const theme = useTheme();
+  const [openMenu, setOpenMenu] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  // Anchor/transform on the reading-start edge so the dropdown lines up with its button in LTR and RTL.
+  const edge = theme.direction === 'rtl' ? 'right' : 'left';
+  const openEntry = entries.find((entry) => entry.node.id === openMenu?.id);
+
+  return (
+    <Toolbar
+      component="nav"
+      variant="dense"
+      aria-label={t('core.common.menu')}
+      sx={{
+        minHeight: `${HEADER_NAV_HEIGHT}px !important`,
+        gap: 0.5,
+        overflowX: 'auto',
+        backgroundColor: 'color-mix(in srgb, currentColor 6%, transparent)',
+        borderTop: '1px solid color-mix(in srgb, currentColor 14%, transparent)',
+      }}
+    >
+      {entries.map(({ node, leaves }) => {
+        const active = leaves.some((leaf) => leaf.route === pathname);
+        const single = !isRealGroup({ node, leaves });
+        return (
+          <Button
+            key={node.id}
+            color="inherit"
+            {...(single ? { component: RouterLink, to: leaves[0].route } : {})}
+            onClick={single ? undefined : (e: React.MouseEvent<HTMLElement>) => setOpenMenu({ id: node.id, anchor: e.currentTarget })}
+            aria-haspopup={single ? undefined : 'menu'}
+            aria-expanded={single ? undefined : openMenu?.id === node.id}
+            aria-current={active && single ? 'page' : undefined}
+            startIcon={iconFor(node) as ReactElement}
+            endIcon={single ? undefined : <ExpandMoreIcon fontSize="small" />}
+            sx={{
+              flexShrink: 0,
+              height: HEADER_NAV_HEIGHT - 8,
+              px: 1.5,
+              borderRadius: 1,
+              fontWeight: active ? 700 : 500,
+              backgroundColor: active ? 'color-mix(in srgb, currentColor 10%, transparent)' : 'transparent',
+              boxShadow: active ? `inset 0 -3px 0 ${theme.palette.primary.main}` : 'none',
+              '&:hover': { backgroundColor: 'color-mix(in srgb, currentColor 16%, transparent)' },
+            }}
+          >
+            {labelOf(node, language, t)}
+          </Button>
+        );
+      })}
+      <Menu
+        anchorEl={openMenu?.anchor}
+        open={Boolean(openEntry)}
+        onClose={() => setOpenMenu(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: edge }}
+        transformOrigin={{ vertical: 'top', horizontal: edge }}
+        slotProps={{ paper: { sx: { minWidth: 220, mt: 0.5 } } }}
+      >
+        {openEntry?.leaves.map((leaf) => (
+          <MenuItem key={leaf.id} component={RouterLink} to={leaf.route} selected={leaf.route === pathname} onClick={() => setOpenMenu(null)}>
+            {labelOf(leaf, language, t)}
+          </MenuItem>
+        ))}
+      </Menu>
+    </Toolbar>
+  );
+}
+
+/**
  * True on a module's PUBLIC page (e.g. the website) while logged in. Those
  * pages render like a normal site — no sidebar/tabs — and the platform menu
  * is reached from the top bar's menu button instead (`PlatformMenuButton`),
@@ -390,15 +472,9 @@ function useOnPublicModulePage(): boolean {
 function PlatformMenuButton() {
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const { hasPermission } = useAuth();
-  const nodes = useNavNodes();
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-
-  const isVisible = (leaf: ResolvedMenuLeaf) => leaf.requiredPermission === ALWAYS_ALLOWED || hasPermission(leaf.requiredPermission);
-  const entries = nodes
-    .map((node) => ({ node, first: (node.type === 'leaf' ? [node] : node.children).find(isVisible) }))
-    .filter((entry): entry is { node: ResolvedMenuNode; first: ResolvedMenuLeaf } => entry.first !== undefined);
+  const entries = useNavEntries().map(({ node, leaves }) => ({ node, first: leaves[0] }));
 
   return (
     <>
@@ -435,12 +511,17 @@ function PlatformMenuButton() {
 export function TopBar() {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const { status, user, logout } = useAuth();
+  const { status, user, logout, mustChangePassword } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen, setSidebarOpen } = useMobileNav();
-  const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const themePack = useThemePack().pack;
+  const shell = themePack?.shell;
+  const hasHeaderPicture = Boolean(themePack?.headerImage);
+  const tabsShell = shell === 'tabs';
+  const headerShell = shell === 'header';
+  // The header shell switches to the drawer below `md` (a dropdown bar needs the width); other shells below `sm`.
+  const isMobile = useMediaQuery(theme.breakpoints.down(headerShell ? 'md' : 'sm'));
   const { branding } = useBranding();
   const onPublicPage = useOnPublicModulePage();
   const appTitle = language === 'ar' ? branding.titleAr : branding.titleEn;
@@ -460,38 +541,13 @@ export function TopBar() {
   return (
     <AppBar position="fixed" data-app-shell="topbar" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar sx={{ gap: 2 }}>
-        {/* Clicking the brand goes to "/", which redirects to the user's landing page. */}
-        <Box
-          component={RouterLink}
-          to="/"
-          sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
-        >
-          <Box
-            aria-hidden
-            sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 2 }}
-          >
-            <LocalLibraryIcon />
-          </Box>
-          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, textShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
-            {appTitle}
-          </Typography>
-        </Box>
-
-        {status === 'authenticated' ? <NotificationsBellMenu /> : null}
-
-        <Tooltip title={t(`core.common.colorMode.${colorMode}`)}>
-          <IconButton color="inherit" onClick={cycleColorMode} aria-label={t(`core.common.colorMode.${colorMode}`)}>
-            {colorMode === 'dark' ? <DarkModeIcon /> : colorMode === 'light' ? <LightModeIcon /> : <BrightnessAutoIcon />}
-          </IconButton>
-        </Tooltip>
-
-        {/* The platform menu, one click away beside the language switcher —
+        {/* The platform menu, at the leading edge, before the brand (the usual place) —
             only for a logged-in user. On a public (website) page it is a
             dropdown of the platform's top levels; on a platform page it opens
             the mobile overlay drawer, or folds the desktop sidebar. Not shown
             for the tabs shell on platform pages, which has no sidebar. */}
         {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
-        {status === 'authenticated' && !onPublicPage && !tabsShell ? (
+        {status === 'authenticated' && !onPublicPage && !tabsShell && (!headerShell || isMobile) ? (
           <Tooltip title={t('core.common.menu')}>
             <IconButton
               color="inherit"
@@ -503,6 +559,31 @@ export function TopBar() {
             </IconButton>
           </Tooltip>
         ) : null}
+
+        {/* Clicking the brand goes to "/", which redirects to the user's landing page. */}
+        <Box
+          component={RouterLink}
+          to="/"
+          sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
+        >
+          <Box
+            aria-hidden
+            sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: '#fff', color: 'primary.dark', border: '1px solid rgba(0,0,0,.14)', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 1 }}
+          >
+            <LocalLibraryIcon />
+          </Box>
+          <Typography variant="h6" component="h1" noWrap sx={{ fontWeight: 800, letterSpacing: 0.2, ...(hasHeaderPicture ? { textShadow: '0 1px 4px rgba(0,0,0,.4)' } : {}) }}>
+            {appTitle}
+          </Typography>
+        </Box>
+
+        {status === 'authenticated' ? <NotificationsBellMenu /> : null}
+
+        <Tooltip title={t(`core.common.colorMode.${colorMode}`)}>
+          <IconButton color="inherit" onClick={cycleColorMode} aria-label={t(`core.common.colorMode.${colorMode}`)}>
+            {colorMode === 'dark' ? <DarkModeIcon /> : colorMode === 'light' ? <LightModeIcon /> : <BrightnessAutoIcon />}
+          </IconButton>
+        </Tooltip>
 
         <Tooltip title={t('core.common.language')}>
           <IconButton color="inherit" onClick={(e) => setLangMenuAnchor(e.currentTarget)} aria-label={t('core.common.language')}>
@@ -541,13 +622,13 @@ export function TopBar() {
               <MenuItem
                 onClick={() => {
                   setUserMenuAnchor(null);
-                  navigate('/my-preferences');
+                  navigate('/account');
                 }}
               >
                 <ListItemIcon>
                   <ManageAccountsIcon fontSize="small" />
                 </ListItemIcon>
-                {t('core.menu.myPreferences')}
+                {t('core.account.title')}
               </MenuItem>
               <MenuItem onClick={handleLogout}>
                 <ListItemIcon>
@@ -559,6 +640,7 @@ export function TopBar() {
           </>
         ) : null}
       </Toolbar>
+      {headerShell && !isMobile && status === 'authenticated' && !mustChangePassword && !onPublicPage ? <HeaderNav /> : null}
     </AppBar>
   );
 }
@@ -585,7 +667,9 @@ export function TopBar() {
 export function PageLayout({ children }: { children: ReactNode }) {
   const { open: mobileNavOpen, setOpen: setMobileNavOpen, sidebarOpen } = useMobileNav();
   const closeMobileNav = () => setMobileNavOpen(false);
-  const tabsShell = useThemePack().pack?.shell === 'tabs';
+  const shell = useThemePack().pack?.shell;
+  const tabsShell = shell === 'tabs';
+  const headerShell = shell === 'header';
   const onPublicPage = useOnPublicModulePage();
 
   if (onPublicPage) {
@@ -594,6 +678,33 @@ export function PageLayout({ children }: { children: ReactNode }) {
         <Toolbar data-app-shell="main-spacer" />
         {children}
       </Box>
+    );
+  }
+
+  if (headerShell) {
+    return (
+      <>
+        {/* Below `md` the header has no dropdown bar: its menu button opens this
+            nested (collapsible) drawer, the usual pattern for narrow screens. */}
+        <Drawer
+          variant="temporary"
+          anchor="left"
+          open={mobileNavOpen}
+          onClose={closeMobileNav}
+          ModalProps={{ keepMounted: true }}
+          slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
+          sx={{ display: { xs: 'block', md: 'none' }, [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' } }}
+        >
+          <Toolbar />
+          <NavList onNavigate={closeMobileNav} />
+        </Drawer>
+        <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
+          <Toolbar data-app-shell="main-spacer" />
+          {/* Room for the header's second row (dropdown bar), which only exists from `md` up. */}
+          <Box data-app-shell="main-spacer" sx={{ display: { xs: 'none', md: 'block' }, height: `${HEADER_NAV_HEIGHT}px` }} />
+          {children}
+        </Box>
+      </>
     );
   }
 

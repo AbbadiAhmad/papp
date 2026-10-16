@@ -1,7 +1,7 @@
 {
   "key": "library_catalog",
   "name": "Library Catalog",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Book catalog: titles, physical copies, categories, and a public shareable availability check. D44: stands alone — borrowing/returning/fines are a separate, future library_circulation+library_finance module that will dependsOn this one.",
@@ -21,6 +21,7 @@
     { "code": "library_catalog.books.update", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.update" },
     { "code": "library_catalog.books.delete", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.delete" },
     { "code": "library_catalog.books.export", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.export" },
+    { "code": "library_catalog.books.download", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.download" },
     { "code": "library_catalog.books.rate", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.rate" },
     { "code": "library_catalog.books.moderate_ratings", "category": "library_catalog", "descriptionKey": "library_catalog.perm.books.moderate_ratings" },
     { "code": "library_catalog.copies.print_codes", "category": "library_catalog", "descriptionKey": "library_catalog.perm.copies.print_codes" },
@@ -35,6 +36,7 @@
       "library_catalog.books.update",
       "library_catalog.books.delete",
       "library_catalog.books.export",
+      "library_catalog.books.download",
       "library_catalog.books.rate",
       "library_catalog.books.moderate_ratings",
       "library_catalog.copies.print_codes",
@@ -45,13 +47,14 @@
       "library_catalog.books.view",
       "library_catalog.books.create",
       "library_catalog.books.update",
+      "library_catalog.books.download",
       "library_catalog.books.rate",
       "library_catalog.books.moderate_ratings",
       "library_catalog.copies.print_codes",
       "library_catalog.copies.inventory"
     ],
     "finance": [],
-    "reader": ["library_catalog.books.view", "library_catalog.books.rate"]
+    "reader": ["library_catalog.books.view", "library_catalog.books.download", "library_catalog.books.rate"]
   },
 
   "roleAccessPolicy": "grantable",

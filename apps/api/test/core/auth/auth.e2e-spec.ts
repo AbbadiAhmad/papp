@@ -110,23 +110,38 @@ describe('Auth (e2e)', () => {
       expect(newCookie).not.toBe(cookie);
     });
 
-    it('reusing an already-rotated-away refresh token revokes EVERY active session for that user (theft detection)', async () => {
+    it('reusing an already-rotated-away refresh token revokes that login (theft detection) but not the user\'s other device', async () => {
       const target = await createUserWithRole(app!, 'reader', { label: 'refresh-reuse' });
-      const cookie = await loginAndGetRefreshCookie(target.email);
+      const phoneCookie = await loginAndGetRefreshCookie(target.email);
+      const desktopCookie = await loginAndGetRefreshCookie(target.email); // a second device of the same user
+      const cookieOf = (res: { headers: Record<string, unknown> }) =>
+        (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith(`${REFRESH_TOKEN_COOKIE_NAME}=`))!.split(';')[0];
+      const prisma = app!.get(PrismaService);
 
-      // Rotate once (old cookie is now "used").
-      const firstRefresh = await request(server()).post('/auth/refresh').set('Cookie', cookie);
+      // Rotate the phone's cookie once (the old one is now "used").
+      const firstRefresh = await request(server()).post('/auth/refresh').set('Cookie', phoneCookie);
       expect(firstRefresh.status).toBe(200);
+      const phoneCurrent = cookieOf(firstRefresh);
 
-      // Replay the OLD (already-rotated) refresh token.
-      const replay = await request(server()).post('/auth/refresh').set('Cookie', cookie);
+      // Replayed moments later it is a race, not theft: rejected, and the current cookie still works.
+      const raced = await request(server()).post('/auth/refresh').set('Cookie', phoneCookie);
+      expect(raced.status).toBe(401);
+      const stillWorks = await request(server()).post('/auth/refresh').set('Cookie', phoneCurrent);
+      expect(stillWorks.status).toBe(200);
+      const phoneLatest = cookieOf(stillWorks);
+
+      // Age every rotation past the grace window; now a replay of the old cookie is a real one.
+      await prisma.userSession.updateMany({
+        where: { userId: target.userId, revokedAt: { not: null } },
+        data: { revokedAt: new Date(Date.now() - 60_000) },
+      });
+      const replay = await request(server()).post('/auth/refresh').set('Cookie', phoneCookie);
       expect(replay.status).toBe(401);
 
-      // Every session for this user (including the one just rotated to) is now revoked.
-      const prisma = app!.get(PrismaService);
-      const sessions = await prisma.userSession.findMany({ where: { userId: target.userId } });
-      expect(sessions.length).toBeGreaterThan(0);
-      expect(sessions.every((s) => s.revokedAt !== null)).toBe(true);
+      // The replayed login's whole chain is dead...
+      expect((await request(server()).post('/auth/refresh').set('Cookie', phoneLatest)).status).toBe(401);
+      // ...but the other device keeps working.
+      expect((await request(server()).post('/auth/refresh').set('Cookie', desktopCookie)).status).toBe(200);
     });
 
     it('rejects a request with no refresh cookie at all', async () => {

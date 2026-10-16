@@ -8,6 +8,11 @@ import { SURVEY_ADMIN_USER, TEXT } from './support/test-data';
  */
 const ACTIVATE = 'استخدم هذا التصميم'; // core.appearance.activate (ar)
 const COLOR_MODE_BUTTON = /المظهر:/; // core.common.colorMode.* (ar), the top-bar toggle
+// Theme cards are found by NAME, never by position: installing another pack must not change what a spec activates.
+const SCHOOL_BLUE_NAME = 'مكتبة الأطفال'; // themes/school_blue/theme.json name.ar
+const BUILT_IN_NAME = 'الافتراضي'; // BUILT_IN_THEME name.ar
+const activateButton = (page: Page, themeName: string) =>
+  page.locator('.MuiCard-root', { hasText: themeName }).getByRole('button', { name: ACTIVATE });
 
 async function loginAsAdmin(page: Page) {
   await page.goto('/login');
@@ -27,10 +32,9 @@ test.describe('Appearance', () => {
     await expect(page.locator('[data-app-shell="tabs"]')).toHaveCount(0);
 
     try {
-      // Cards are ordered default, school_blue, template_theme; the active one has no button, so the first button is School Blue.
       const [activeResponse] = await Promise.all([
         page.waitForResponse((res) => res.url().includes('/appearance/active-theme') && res.request().method() === 'PUT'),
-        page.getByRole('button', { name: ACTIVATE }).first().click(),
+        activateButton(page, SCHOOL_BLUE_NAME).click(),
       ]);
       expect(activeResponse.status()).toBe(200);
 
@@ -44,10 +48,10 @@ test.describe('Appearance', () => {
         .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
         .toBe('rgb(16, 27, 58)');
     } finally {
-      // Restore the built-in sidebar theme for every other spec: it is the first card, and now has an Activate button.
+      // Restore the built-in sidebar theme for every other spec (it now has an Activate button).
       await Promise.all([
         page.waitForResponse((res) => res.url().includes('/appearance/active-theme') && res.request().method() === 'PUT'),
-        page.getByRole('button', { name: ACTIVATE }).first().click(),
+        activateButton(page, BUILT_IN_NAME).click(),
       ]);
       await expect(page.locator('.MuiDrawer-root.MuiDrawer-docked')).toBeVisible();
     }

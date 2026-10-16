@@ -2,6 +2,8 @@
 
 Read `docs/MODULE_SPEC.md` §9 for what this file and `DECISIONS.md` are for and when to update them. Read `DECISIONS.md` in this same directory too — this file is the current shape, that one is why it's shaped that way (including two real bugs found and fixed while building it).
 
+> **Planned work:** `ROADMAP.md` in this directory holds the Microsoft Forms feature inventory, the gap analysis, the proposed top-10 implementation plan and the documented backlog.
+
 ## Purpose
 
 Google-Forms-style survey builder: sections/questions with conditional show/hide logic driven by prior enumeration answers, public or login-required shareable links, optional post-submit editing via a hashed edit token, completion notifications (owner + arbitrary admin-typed addresses), per-question report charts, and a dynamic pivot table over the flattened response dataset.
@@ -12,8 +14,10 @@ Google-Forms-style survey builder: sections/questions with conditional show/hide
 survey_surveys(id, title, description, status(draft|published|closed),
   owner_user_id, requires_login, allow_edit_after_submit,
   one_response_per_respondent, notify_owner_on_submit, notify_emails jsonb, closed_message text (migration 002), archived_at timestamptz (migration 003),
-  opens_at, closes_at, created_at, updated_at)
-survey_sections(id, survey_id, order_index, title, description)
+  opens_at, closes_at (editable and ENFORCED since 1.3.0), response_limit int NULL (migration 005), settings jsonb (migration 005: thankYouMessage, showProgressBar),
+  created_at, updated_at)
+survey_sections(id, survey_id, order_index, title, description, navigation jsonb (004), image jsonb NULL (006: {mediaId, alt}))
+survey_media(id, survey_id, mime, size_bytes, created_by, created_at)   -- migration 006; the file bytes are on disk, see Pictures below
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
                              --       multi_choice|dropdown|linear_scale|
@@ -30,6 +34,10 @@ survey_answers(id, response_id, question_id, value jsonb)
 - **No draft/partial-response table exists anywhere** — the "abandoned mid-way / session expired → never stored" requirement is satisfied by construction: the frontend never calls a write endpoint until one atomic final submit. In-progress answers live only in React state + `localStorage`.
 - `one_response_per_respondent` is enforced in `ResponsesService`, **not** a DB unique index — see `SURVEY-D2` below; there is no unique constraint on `(survey_id, respondent_user_id)` in the migration.
 - `edit_token_hash` is the SHA-256 hash of a 32-byte random secret returned to the client **once**, at submit time, exactly like a refresh token — never logged, never returned again, never included in an audit row (see `SURVEY-D4`).
+- **Per-question settings live in `survey_questions.config` (JSONB, no migration), validated by `backend/question-rules.ts`** (see below): `placeholder`, `validation {kind: text|number|email|url, maxLength, min, max, integer, message}` for short_text/paragraph; `minSelections`, `maxSelections`, `exclusiveOptionValue` for multi_choice; `allowOther`, `otherLabel` for the three choice types; `min`/`max` for linear_scale, `max` for rating.
+- **Availability (1.3.0).** A published survey takes responses only between `opens_at` and `closes_at` (when set) and while fewer than `response_limit` responses exist. Not yet open or ended: the public/fill GET and every submit answer 404 (`{notOpenYet, opensAt}` or `{closed, ended, closedMessage}`). Full: GET still works and carries `isFull: true` (people with a response of their own may still open it to edit); a NEW submission answers 409 `{full: true}`. The cap is enforced inside the insert transaction under `pg_advisory_xact_lock(hashtext(survey id))`, so simultaneous submissions cannot exceed it (tested with 8 parallel requests). `computeAvailability` in `backend/survey-settings.ts` is the single definition (also used by the list for the "Not open yet / Ended / Full" chips).
+- **Survey settings** (`settings` JSONB) are validated/normalised by `normalizeSettings`; the builder sends the flat fields `thankYouMessage` and `showProgressBar`, the service merges them into the stored object. Export/import/duplicate carry `responseLimit` and `settings`; a package from an older version simply lacks them.
+- **An "Other" answer is stored as the string `__other__:<text>`** (inside the array for multi_choice), so every consumer that treats choice answers as strings keeps working. Option values may not be `__other__` or start with `__other__:` (rejected on save). Reports collapse it into one "Other" bar plus a list of texts; the pivot, Excel export and notification e-mails show it as `Other: <text>`.
 - Multi_choice/linear_scale/rating answer *values* in `survey_answers.value` are JSON (`string[]`/`number`) — `ResponsesService.validateAnswerShape` is the one place that enforces the real shape per question type.
 
 ## Permissions
@@ -65,11 +73,27 @@ Frontend (`basePath: /survey`):
 ## Key files
 
 - `backend/logic-engine.ts` — the conditional show/hide evaluator. Zero framework dependency **on purpose**: the backend imports its compiled `.js` sibling to re-validate a submission server-side (defense in depth — never trusts the client's own visibility computation), and the frontend (`TakeSurveyPage.tsx`) imports the raw `.ts` source directly via Vite, so there is exactly one copy of this logic, never two that could drift. Fully unit-tested (`apps/api/test/modules/survey/logic-engine.spec.ts`).
+- `backend/survey-settings.ts` — survey-level options and availability (`normalizeSettings`, `validateSurveyOptions`, `computeAvailability`); framework-free like the other two shared files.
+- `backend/question-rules.ts` — **the one place the per-question rules live** (settings validation on save, answer validation on submit, selection limits, "Other" encoding, report helpers). Framework-free like `logic-engine.ts`: the server uses its compiled sibling, the respondent page and the builder import the `.ts` source (explicit `.ts` extension, SURVEY-D8; `apps/web/tsconfig.app.json` lists it). Problems come back as `{code, params, message?}`: the server renders `describeProblem` (English), the browser maps `code` to `survey.rules.<code>` (answers) or `survey.config_rules.<code>` (builder settings); the owner's custom message wins. Unit-tested exhaustively.
+- `frontend/components/QuestionSettings.tsx` — the builder controls for those settings.
+- `frontend/components/SurveyRunner.tsx` — the whole respondent experience (pages, Next/Back/"go to", live logic, validation messages, selection hints, "Other"), extracted from `TakeSurveyPage` so the builder's **Preview** runs exactly what readers get. The page only loads the survey, keeps the draft in `localStorage` and does the API submit.
+- `frontend/components/SurveyPreviewDialog.tsx` + `frontend/previewSurvey.ts` — Preview: converts the builder's CURRENT (even unsaved) structure to the respondent shape; Submit only says "preview finished", nothing is sent. Desktop/phone width toggle.
+- `frontend/components/SharePanel.tsx` — link, QR code (drawn in the browser with the `qrcode` package, PNG/SVG download) and iframe embed snippet; opened from the list and the builder.
+- `frontend/components/useUnsavedChangesGuard.ts` — warns before losing builder edits: `beforeunload` plus a capture-phase click listener on in-app links (the app uses `BrowserRouter`, so `useBlocker` is not available). The builder's own Back button asks itself. Browser Back/Forward and programmatic navigations (for example the avatar menu) cannot be intercepted.
 - `backend/responses.service.ts` — the respondent-facing flow shared by both `FillController` and `PublicSurveyController`: fill/submit/edit, server-side answer re-validation, the audit write (done **manually**, not via `@Audit`, on purpose — see `SURVEY-D4`), and the owner/notify-emails dispatch.
 - `backend/surveys.service.ts` — builder/admin CRUD + `replaceStructure` (the whole-tree upsert-by-client-generated-UUID save) + `validateStructure` (structure-level validation, independently unit-tested with no dist imports).
 - `backend/reports.service.ts` — per-question aggregate summary, the flattened dataset the frontend's pivot table consumes, and the xlsx export.
 - `frontend/pages/TakeSurveyPage.tsx` — the respondent UI: live visibility via `logic-engine.ts`, `localStorage` draft + submitted-answer/edit-token persistence, the `requiresLogin` upfront gate.
 - `frontend/pages/SurveyReportPage.tsx` — per-question `recharts` charts + the bespoke rows/columns/aggregation pivot table (not a pivot-table library).
+
+## Pictures (1.4.0)
+
+- A picture can be set on the survey (top), on each section and on each question; every picture needs a description (alt text). Upload is `POST /api/survey/surveys/:id/media` (`survey.surveys.update`); respondents load them from the public `GET /api/survey/media/:mediaId`.
+- **Files are stored on disk, not in the database**: directory `SURVEY_MEDIA_DIR` (docker-compose bind-mounts the host folder `<FILES_DIR>/survey_media` (default next to the code, git-ignored) at `/data/survey-media`; without the variable the api uses `<working dir>/data/survey-media`). **Back this folder up together with the database** — the core backup does not include it, and restoring a database without it leaves broken pictures. Uninstalling the module with "drop data" removes the tables but leaves the files.
+- Limits: PNG/JPEG/WebP only (checked from the file's bytes), 2 MB, 100 per survey. Pictures no survey part references are deleted on the next save (after one hour of grace); deleting a survey deletes its files.
+- **Backup and restore of pictures.** The database export does not contain them. The admin **Backup → Export files** button archives this directory too (it is listed in `BACKUP_FILE_DIRS` as `survey_media`, root D116); restore with `./scripts/manageDB.sh restore-files <zip>` after restoring the database. Manual alternative: `docker compose exec -T api tar czf - -C /data/survey-media . > survey-media.tgz` and `docker compose exec -T api tar xzf - -C /data/survey-media < survey-media.tgz`. If the pictures are missing after a restore, surveys still work and the affected pictures show as broken until restored. A survey exported as a zip from the Surveys page also contains its own pictures.
+- Export includes the pictures (`media/` in the zip); import and duplicate copy them into the new survey.
+- Behind a reverse proxy, allow request bodies of at least 3 MB on `/api/survey/` (the bundled nginx allows 55 MB).
 
 ## Known gotchas
 
@@ -85,8 +109,19 @@ Frontend (`basePath: /survey`):
 
 `migrations/down/001_create_survey_tables.sql` now exists — the structural inverse of the up-migration (drops every table this module created, child-before-parent: `survey_answers` down through `survey_surveys`, then the four ENUM types), applied by `ModuleRegistryService.runDownMigrationsIfPresent` when an admin uninstalls this module with `--drop-data`. Before this, `--drop-data` on this module silently left every table in place. See root D86 for the platform-level dependency guard added alongside this (reads every installed module's manifest `dependsOn` generically — this module has no known dependents today, but the guard would reject uninstalling it if one existed).
 
+## Tests
+
+- `test/backend/question-rules.spec.ts` (unit, every rule and boundary), `surveys.service.spec.ts` (builder-save validation), `logic-engine.spec.ts`, `survey-transfer.service.spec.ts`.
+- `test/frontend/take-survey.test.tsx` (Vitest + Testing Library): drives the real respondent page — messages on blur, Next/Submit blocked, selection hints and disabling, exclusive choice, "Other".
+- `test/frontend/builder.test.tsx` (duplicate/move/unsaved/preview/share on the real builder page), `share-panel.test.tsx`, `unsaved-guard.test.tsx`, `preview-survey.test.ts`.
+- `test/backend/survey-settings.spec.ts` (settings, validation, availability boundaries), `test/frontend/take-survey-states.test.tsx` (not-open / ended / full states, thank-you text, progress bar), `schedule.test.ts`.
+- `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, schedule + response cap (including a concurrent-submission race) + settings + duplicate/export/import round trip, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
+- `test/backend/media-rules.spec.ts` (type detection, reference parsing), `test/frontend/images.test.tsx` (upload/describe/remove, respondent rendering); the e2e suite's "images (phase D)" block covers upload/serve headers, rejected files, permissions, ownership, clean-up, duplicate and export/import with pictures.
+- Browser smoke: `apps/web/tests/e2e/survey.spec.ts`.
+
 ## How to extend
 
+- **A new per-question setting**: add the key to `validateQuestionConfig` and (if it affects answers) `validateAnswer` in `question-rules.ts` with unit tests, a control in `QuestionSettings.tsx`, the respondent behaviour in `TakeSurveyPage.tsx`'s `QuestionInput`, and `survey.rules.*` / `survey.config_rules.*` keys in both locale files. Export/import/duplicate copy `config` verbatim, so they need nothing.
 - **A new question type**: add it to `SURVEY_QUESTION_TYPES` (backend `dto/survey-structure.dto.ts` AND frontend `api.ts` — kept as two independent literal arrays, must stay in sync by hand), add a case to `ResponsesService.validateAnswerShape` (answer-shape validation), a case to `TakeSurveyPage.tsx`'s `QuestionInput` (respondent-facing input), and a branch in `ReportsService.getSummary` (how it aggregates) — plus new `survey.question_type.<type>` locale keys in both `ar.json`/`en.json`.
 - **A new report aggregation**: extend `ReportsService.getSummary`'s per-type branch, or add a new pivot "value" option in `SurveyReportPage.tsx`'s `PivotTable` (currently count-or-average-of-a-numeric-question).
 - **A new notify channel**: extend `ResponsesService.notifyOnSubmit` — it already has the pattern for a real in-app+email send (`NotificationsService`, D21-compliant) alongside a module-owned direct-transport send (`NotificationEmailService`, root `D64`).

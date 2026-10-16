@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { BookFilesController } from './book-files.controller';
+import { BookFilesService } from './book-files.service';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
 import { PublicBooksController } from './public.controller';
@@ -21,7 +23,7 @@ import { SettingsService } from './settings.service';
  * matters WITHIN `BooksController` (see its own docblock).
  */
 @Module({
-  controllers: [PublicBooksController, BooksController, SettingsController],
-  providers: [BooksService, SettingsService],
+  controllers: [PublicBooksController, BooksController, BookFilesController, SettingsController],
+  providers: [BooksService, BookFilesService, SettingsService],
 })
 export class LibraryCatalogModule {}

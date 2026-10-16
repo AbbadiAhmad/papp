@@ -50,6 +50,19 @@ function QuestionSummaryCard({ summary }: { summary: QuestionSummary }) {
         </Box>
       ) : null}
 
+      {summary.otherAnswers && summary.otherAnswers.length > 0 ? (
+        <Box sx={{ mt: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            {t('survey.report.other_answers')}
+          </Typography>
+          {summary.otherAnswers.map((answer, index) => (
+            <Typography key={index} variant="body2" color="text.secondary">
+              {answer}
+            </Typography>
+          ))}
+        </Box>
+      ) : null}
+
       {summary.numeric ? (
         <Box sx={{ mt: 1 }}>
           <Typography variant="body2" sx={{ mb: 1 }}>

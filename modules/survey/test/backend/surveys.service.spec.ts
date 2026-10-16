@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from '@jest/globals';
+import { SurveyMediaService } from '../../backend/media.service';
 import { SurveysService } from '../../backend/surveys.service';
 import type { SurveyStructureDto } from '../../backend/dto/survey-structure.dto';
 
@@ -10,7 +11,7 @@ import type { SurveyStructureDto } from '../../backend/dto/survey-structure.dto'
  * pass that runs entirely off the payload, no DB access at all.
  */
 function buildService(): SurveysService {
-  return new SurveysService();
+  return new SurveysService(new SurveyMediaService());
 }
 
 function callValidateStructure(service: SurveysService, dto: SurveyStructureDto): void {
@@ -44,6 +45,48 @@ function baseStructure(): SurveyStructureDto {
     ],
   } as unknown as SurveyStructureDto;
 }
+
+describe('SurveysService.validateStructure: question settings (phase A)', () => {
+  function withQuestion(question: Record<string, unknown>): SurveyStructureDto {
+    const dto = baseStructure();
+    dto.sections[0].questions.push({ id: 'q-extra', orderIndex: 2, title: 'Extra', ...question } as never);
+    return dto;
+  }
+  const options = [
+    { id: 'o1', orderIndex: 0, value: 'a', label: 'A' },
+    { id: 'o2', orderIndex: 1, value: 'b', label: 'B' },
+    { id: 'o3', orderIndex: 2, value: 'c', label: 'C' },
+  ];
+
+  it('accepts valid selection limits, "Other", and text validation', () => {
+    const service = buildService();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'multi_choice', options, config: { minSelections: 1, maxSelections: 2, allowOther: true } }))).not.toThrow();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'short_text', config: { validation: { kind: 'number', min: 0, max: 10 }, placeholder: '0-10' } }))).not.toThrow();
+  });
+
+  it('rejects a selection limit above the number of options, with the question title in the message', () => {
+    const service = buildService();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'multi_choice', options, config: { maxSelections: 9 } }))).toThrow(/Extra.*selection limit/);
+  });
+
+  it('rejects settings that do not belong to the question type', () => {
+    const service = buildService();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'single_choice', options, config: { minSelections: 1 } }))).toThrow(BadRequestException);
+    expect(() => callValidateStructure(service, withQuestion({ type: 'date', config: { validation: { kind: 'text' } } }))).toThrow(/not available/);
+  });
+
+  it('rejects the reserved "Other" option value and duplicate option values', () => {
+    const service = buildService();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'single_choice', options: [...options, { id: 'o4', orderIndex: 3, value: '__other__', label: 'x' }] }))).toThrow(/reserved/);
+    expect(() => callValidateStructure(service, withQuestion({ type: 'single_choice', options: [...options, { id: 'o5', orderIndex: 3, value: 'a', label: 'again' }] }))).toThrow(/same value/);
+  });
+
+  it('rejects an invalid scale', () => {
+    const service = buildService();
+    expect(() => callValidateStructure(service, withQuestion({ type: 'linear_scale', config: { min: 5, max: 2 } }))).toThrow(BadRequestException);
+    expect(() => callValidateStructure(service, withQuestion({ type: 'linear_scale', config: { min: 0, max: 10 } }))).not.toThrow();
+  });
+});
 
 describe('SurveysService.validateStructure', () => {
   it('accepts a well-formed structure with a valid logic rule', () => {

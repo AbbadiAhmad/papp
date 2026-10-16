@@ -42,6 +42,7 @@ import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { BookFilesPanel } from './BookFilesPanel';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import {
   libraryCatalogApi,
@@ -49,6 +50,7 @@ import {
   type CopyHistoryEntry,
   type CreateBookCopyInput,
   type LibraryBookCopy,
+  coverUrl,
 } from '../api';
 
 // 1.3: at-a-glance status color coding (docs/LIBRARY_IMPROVEMENTS.md §1.3) —
@@ -217,7 +219,16 @@ export function BookDetailPage() {
             <PageHero
               media={
                 <Box sx={{ width: 96, flexShrink: 0 }}>
-                  <BookCover title={book.title} author={book.author} />
+                  {book.files?.cover ? (
+                    <Box
+                      component="img"
+                      src={coverUrl(book.id, book.files.cover.updatedAt)}
+                      alt={t('library_catalog.files.cover_alt', { title: book.title })}
+                      sx={{ display: 'block', width: '100%', borderRadius: 1, objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <BookCover title={book.title} author={book.author} />
+                  )}
                 </Box>
               }
               title={book.title}
@@ -241,6 +252,8 @@ export function BookDetailPage() {
             />
 
             {error ? <Alert severity="error">{error}</Alert> : null}
+
+            <BookFilesPanel bookId={book.id} files={book.files} onChanged={reload} />
 
             <Paper sx={{ p: 2 }}>
               <Stack spacing={1}>

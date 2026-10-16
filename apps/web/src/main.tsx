@@ -3,6 +3,14 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 // Bundled (offline-safe, OFL) rounded Arabic + Latin face used by the playful themes as the fallback behind any
 // font a theme pack ships itself (e.g. Thmanyah, see themes/README.md).
+import '@fontsource/ibm-plex-sans-arabic/arabic-400.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-500.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-600.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-700.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-400.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-500.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-600.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-700.css';
 import '@fontsource/baloo-bhaijaan-2/arabic-500.css';
 import '@fontsource/baloo-bhaijaan-2/arabic-700.css';
 import '@fontsource/baloo-bhaijaan-2/arabic-800.css';

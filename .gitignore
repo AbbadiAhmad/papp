@@ -33,3 +33,8 @@ blob-report/
 
 # misc
 *.local
+
+# uploaded book covers/files (docker-compose bind mount) and local media dirs
+/books_files/
+/survey_media/
+/data/

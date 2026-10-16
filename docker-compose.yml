@@ -48,6 +48,14 @@ services:
       # stance as SMTP_HOST above, not an admin-tunable system_settings value
       # (it's a secret, same category as JWT_SECRET).
       BACKUP_ENCRYPTION_PASSWORD: ${BACKUP_ENCRYPTION_PASSWORD:-}
+      # Survey module pictures (SURVEY-D18): files live in ./survey_media (see volumes below), NOT in
+      # the database, so the database backup does not contain them — the "Export files" backup does.
+      SURVEY_MEDIA_DIR: /data/survey-media
+      # Library Catalog book covers and book files (see ./books_files below).
+      BOOK_FILES_DIR: /data/books_files
+      # Directories the admin "Export files" backup archives (name=path, comma separated). The database
+      # export does NOT contain uploaded files; a module that stores files must be listed here.
+      BACKUP_FILE_DIRS: books_files=/data/books_files,survey_media=/data/survey-media
     ports:
       - "${API_HOST_PORT:-3000}:3000"
     volumes:
@@ -64,6 +72,13 @@ services:
       - ./modules:/repo/modules
       # Theme packs are read on demand: drop a folder in, no restart needed.
       - ./themes:/repo/themes
+      # Uploaded files are plain host folders (git-ignored), never hidden Docker named volumes, so
+      # nothing the server depends on lives out of sight: they can be browsed, copied and backed up
+      # by hand. FILES_DIR is where they sit: "." = next to this file (default), ".." = the folder above
+      # the code. Layout: <FILES_DIR>/books_files/<book id>/{cover.*, book.*, info.txt} and
+      # <FILES_DIR>/survey_media/<picture id>.<ext>.
+      - ${FILES_DIR:-.}/books_files:/data/books_files
+      - ${FILES_DIR:-.}/survey_media:/data/survey-media
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 5s

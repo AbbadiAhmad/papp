@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient, SurveyQuestion, SurveyQuestionOption, SurveyResponse } from '@prisma/client';
 import ExcelJS from 'exceljs';
+import { answerForDisplay, formatAnswerForDisplay, summarizeChoiceAnswers } from './question-rules';
 
 type QuestionWithOptions = SurveyQuestion & { options: SurveyQuestionOption[] };
 type ResponseWithAnswers = SurveyResponse & { answers: Array<{ questionId: string; value: Prisma.JsonValue }> };
@@ -12,6 +13,8 @@ export interface QuestionSummary {
   totalAnswered: number;
   /** single_choice / multi_choice / dropdown only. */
   optionCounts?: Array<{ value: string; label: string; count: number }>;
+  /** Texts typed into an "Other" choice (capped), when the question allows it. */
+  otherAnswers?: string[];
   /** linear_scale / rating only. */
   numeric?: { average: number; min: number; max: number; distribution: Array<{ value: number; count: number }> };
   /** short_text / paragraph / date / time only — raw list, capped. */
@@ -98,14 +101,8 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
       const base = { questionId: q.id, title: q.title, type: q.type as string, totalAnswered: values.length };
 
       if (q.type === 'single_choice' || q.type === 'dropdown' || q.type === 'multi_choice') {
-        const counts = new Map<string, number>();
-        for (const value of values) {
-          const selected = Array.isArray(value) ? value : [value];
-          for (const v of selected) {
-            if (typeof v === 'string') counts.set(v, (counts.get(v) ?? 0) + 1);
-          }
-        }
-        return { ...base, optionCounts: q.options.map((o) => ({ value: o.value, label: o.label, count: counts.get(o.value) ?? 0 })) };
+        const { optionCounts, otherAnswers } = summarizeChoiceAnswers(q.options, values, q.config);
+        return { ...base, optionCounts, ...(otherAnswers.length ? { otherAnswers } : {}) };
       }
 
       if (q.type === 'linear_scale' || q.type === 'rating') {
@@ -138,7 +135,7 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
         responseId: r.id,
         submittedAt: r.submittedAt,
         respondentLabel: r.respondentEmail ?? 'Anonymous',
-        answers: Object.fromEntries(r.answers.map((a) => [a.questionId, a.value])),
+        answers: Object.fromEntries(r.answers.map((a) => [a.questionId, answerForDisplay(a.value) as Prisma.JsonValue])),
       })),
     };
   }
@@ -161,7 +158,7 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
         respondent: r.respondentEmail ?? 'Anonymous',
       };
       for (const a of r.answers) {
-        row[a.questionId] = Array.isArray(a.value) ? a.value.join(', ') : (a.value ?? '');
+        row[a.questionId] = a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? formatAnswerForDisplay(a.value) : a.value;
       }
       worksheet.addRow(row);
     }

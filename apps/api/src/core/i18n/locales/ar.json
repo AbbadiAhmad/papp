@@ -26,6 +26,7 @@
   "core.perm.sessions.view_my": "عرض جلساتي النشطة الخاصة",
   "core.perm.users.preferences.view_my": "عرض تفضيلات حسابي الخاصة",
   "core.perm.users.preferences.update_my": "تحديث تفضيلات حسابي الخاصة",
+  "core.perm.users.password.change_my": "تغيير كلمة المرور الخاصة بي",
   "core.perm.audit.view": "عرض سجل التدقيق",
   "core.perm.audit.purge": "حذف سجلات التدقيق القديمة",
   "core.perm.backup.export": "تصدير نسخة احتياطية من قاعدة البيانات",
@@ -39,7 +40,7 @@
   "core.perm.modules.upgrade": "ترقية الوحدات",
   "core.perm.modules.uninstall": "إزالة الوحدات",
 
-  "core.menu.platform": "المنصة",
+  "core.menu.platform": "الإدارة",
   "core.menu.dashboard": "لوحة التحكم",
   "core.menu.users": "المستخدمون",
   "core.menu.roles": "الأدوار",
@@ -53,6 +54,8 @@
   "core.menu.settings": "الإعدادات",
   "core.menu.modules": "الوحدات",
   "core.menu.myPreferences": "تفضيلاتي",
+  "core.menu.account": "الحساب",
+  "core.menu.changePassword": "تغيير كلمة المرور",
 
   "core.auth.login": "تسجيل الدخول",
   "core.auth.logout": "تسجيل الخروج",
