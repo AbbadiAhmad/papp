@@ -49,6 +49,8 @@
     "../../modules/*/backend/logic-engine.ts",
     // Same reasoning for the survey's shared question rules (question-rules.ts):
     // one framework-free file used by the server AND the respondent page / builder.
-    "../../modules/*/backend/question-rules.ts"
+    "../../modules/*/backend/question-rules.ts",
+    // The survey's shared safe-markup parser (rich-text.ts), same reasoning.
+    "../../modules/*/backend/rich-text.ts"
   ]
 }

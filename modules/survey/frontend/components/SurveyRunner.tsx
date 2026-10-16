@@ -1,6 +1,7 @@
-import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, Link, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { useMemo, useState } from 'react';
 import { mediaUrl, type SurveyImage } from '../api';
+import { RichText } from './RichText';
 import { useTranslation } from 'react-i18next';
 // Raw .ts imports with explicit extensions: see TakeSurveyPage's history (SURVEY-D8) — the backend's compiled `.js`
 // siblings live next to these files and Vite would otherwise resolve to them.
@@ -351,8 +352,8 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
         <Picture image={survey.headerImage} />
         <Typography variant="h5">{survey.title}</Typography>
         {survey.description ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {survey.description}
+          <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 1 }}>
+            <RichText text={survey.description} component="div" />
           </Typography>
         ) : null}
       </Box>
@@ -374,11 +375,13 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
               <Typography variant="caption" color="text.secondary">
                 {t('survey.take.page_of', { current: pageNumber, total: Math.max(visibility.pathSectionIds.length, pageNumber) })}
               </Typography>
-              <Typography variant="h6">{currentSection.title}</Typography>
+              <Typography variant="h6">
+                <RichText text={currentSection.title} />
+              </Typography>
               <Picture image={currentSection.image} />
               {currentSection.description ? (
-                <Typography variant="body2" color="text.secondary">
-                  {currentSection.description}
+                <Typography variant="body2" color="text.secondary" component="div">
+                  <RichText text={currentSection.description} component="div" />
                 </Typography>
               ) : null}
             </Box>
@@ -387,8 +390,8 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
             <Box>
               <Picture image={currentSection.image} />
               {currentSection.description ? (
-                <Typography variant="body2" color="text.secondary">
-                  {currentSection.description}
+                <Typography variant="body2" color="text.secondary" component="div">
+                  <RichText text={currentSection.description} component="div" />
                 </Typography>
               ) : null}
             </Box>
@@ -397,16 +400,21 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
             .filter((question) => visibility.visibleQuestionIds.has(question.id))
             .map((question) => (
               <Box key={question.id}>
-                <Typography variant="subtitle1">
-                  {question.title}
+                <Typography variant="subtitle1" component="div">
+                  <RichText text={question.title} />
                   {question.required ? ' *' : ''}
                 </Typography>
                 {question.description ? (
-                  <Typography variant="body2" color="text.secondary">
-                    {question.description}
+                  <Typography variant="body2" color="text.secondary" component="div">
+                    <RichText text={question.description} component="div" />
                   </Typography>
                 ) : null}
                 <Picture image={question.config?.image as SurveyImage | undefined} />
+                {typeof question.config?.videoUrl === 'string' && question.config.videoUrl ? (
+                  <Link href={question.config.videoUrl} target="_blank" rel="noopener noreferrer nofollow" sx={{ display: 'inline-block', my: 0.5 }}>
+                    {t('survey.take.watch_video')}
+                  </Link>
+                ) : null}
                 <Box sx={{ mt: 1 }}>
                   <QuestionInput
                     question={question}

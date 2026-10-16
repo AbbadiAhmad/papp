@@ -26,6 +26,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
 import { ImageField } from '../components/ImageField';
+import { RichTextField } from '../components/RichTextField';
 import { QuestionSettings } from '../components/QuestionSettings';
 import { SharePanel } from '../components/SharePanel';
 import { SurveyPreviewDialog } from '../components/SurveyPreviewDialog';
@@ -497,10 +498,10 @@ export function SurveyBuilderPage() {
         </Typography>
         <Stack spacing={2}>
           <TextField label={t('survey.fields.title')} value={survey.title} onChange={(e) => updateSurveySettings({ title: e.target.value })} required />
-          <TextField
+          <RichTextField
             label={t('survey.fields.description')}
             value={survey.description ?? ''}
-            onChange={(e) => updateSurveySettings({ description: e.target.value })}
+            onValueChange={(description) => updateSurveySettings({ description })}
             multiline
             minRows={2}
           />
@@ -641,17 +642,16 @@ export function SurveyBuilderPage() {
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Stack>
-            <TextField
-              label={t('survey.fields.section_description')}
-              value={section.description ?? ''}
-              onChange={(e) => updateSection(sectionIndex, { description: e.target.value })}
-              fullWidth
-              multiline
-              minRows={1}
-              size="small"
-              slotProps={{ htmlInput: { maxLength: 2000 } }}
-              sx={{ mb: 1.5 }}
-            />
+            <Box sx={{ mb: 1.5 }}>
+              <RichTextField
+                label={t('survey.fields.section_description')}
+                value={section.description ?? ''}
+                onValueChange={(description) => updateSection(sectionIndex, { description })}
+                multiline
+                minRows={1}
+                size="small"
+              />
+            </Box>
             <ImageField
               surveyId={surveyId}
               label={t('survey.image.section')}
@@ -663,13 +663,14 @@ export function SurveyBuilderPage() {
               {section.questions.map((question, questionIndex) => (
                 <Box key={question.id}>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <TextField
-                      label={t('survey.fields.question_title')}
-                      value={question.title}
-                      onChange={(e) => updateQuestion(sectionIndex, questionIndex, { title: e.target.value })}
-                      sx={{ flex: 2, minWidth: 200 }}
-                      required
-                    />
+                    <Box sx={{ flex: 2, minWidth: 200 }}>
+                      <RichTextField
+                        label={t('survey.fields.question_title')}
+                        value={question.title}
+                        onValueChange={(title) => updateQuestion(sectionIndex, questionIndex, { title })}
+                        required
+                      />
+                    </Box>
                     <TextField
                       select
                       label={t('survey.fields.question_type')}
@@ -720,15 +721,14 @@ export function SurveyBuilderPage() {
                     </IconButton>
                   </Stack>
 
-                  <TextField
-                    label={t('survey.fields.question_hint')}
-                    value={question.description ?? ''}
-                    onChange={(e) => updateQuestion(sectionIndex, questionIndex, { description: e.target.value })}
-                    size="small"
-                    fullWidth
-                    sx={{ pl: 2, mt: 1 }}
-                    slotProps={{ htmlInput: { maxLength: 2000 } }}
-                  />
+                  <Box sx={{ pl: 2, mt: 1 }}>
+                    <RichTextField
+                      label={t('survey.fields.question_hint')}
+                      value={question.description ?? ''}
+                      onValueChange={(description) => updateQuestion(sectionIndex, questionIndex, { description })}
+                      size="small"
+                    />
+                  </Box>
                   <Box sx={{ pl: 2 }}>
                     <ImageField
                       surveyId={surveyId}
@@ -738,6 +738,19 @@ export function SurveyBuilderPage() {
                         const { image: _old, ...rest } = question.config ?? {};
                         updateQuestion(sectionIndex, questionIndex, { config: image ? { ...rest, image } : rest });
                       }}
+                    />
+                    <TextField
+                      size="small"
+                      fullWidth
+                      type="url"
+                      label={t('survey.fields.video_url')}
+                      helperText={t('survey.fields.video_url_hint')}
+                      value={(question.config?.videoUrl as string | undefined) ?? ''}
+                      onChange={(e) => {
+                        const { videoUrl: _old, ...rest } = question.config ?? {};
+                        updateQuestion(sectionIndex, questionIndex, { config: e.target.value ? { ...rest, videoUrl: e.target.value } : rest });
+                      }}
+                      sx={{ mt: 1 }}
                     />
                   </Box>
 

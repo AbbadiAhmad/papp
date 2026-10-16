@@ -95,6 +95,10 @@ Frontend (`basePath: /survey`):
 - Export includes the pictures (`media/` in the zip); import and duplicate copy them into the new survey.
 - Behind a reverse proxy, allow request bodies of at least 3 MB on `/api/survey/` (the bundled nginx allows 55 MB).
 
+## Text formatting, maths and video links (1.4.4)
+
+Titles and descriptions take a small safe markup (SURVEY-D19): `**bold**`, `*italic*`, `[text](https://link)`, `{red|coloured}` or `{#b00020|hex}`, `$x^2$` for maths, `\*` to show a symbol literally. The builder fields have a toolbar and a live preview. It is not HTML: `backend/rich-text.ts` parses, `frontend/components/RichText.tsx` renders. A question can also carry a video link (`config.videoUrl`), shown as a "Watch the video" link, never embedded.
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.
