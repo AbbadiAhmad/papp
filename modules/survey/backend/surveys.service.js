@@ -17,6 +17,7 @@ const survey_structure_dto_1 = require("./dto/survey-structure.dto");
 const media_service_1 = require("./media.service");
 const media_rules_1 = require("./media-rules");
 const question_rules_1 = require("./question-rules");
+const piping_1 = require("./piping");
 const question_rules_2 = require("./question-rules");
 const survey_settings_1 = require("./survey-settings");
 /**
@@ -323,7 +324,8 @@ let SurveysService = SurveysService_1 = class SurveysService {
             if ('error' in sectionImage)
                 throw new common_1.BadRequestException(`Section "${section.title}": ${sectionImage.error}`);
             for (const question of section.questions) {
-                if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length)) {
+                // A question that takes its choices from an earlier one has none of its own (checked by validatePiping below).
+                if (survey_structure_dto_1.ENUMERATION_QUESTION_TYPES.includes(question.type) && !(question.options?.length) && !(0, piping_1.getOptionsFrom)({ config: question.config })) {
                     throw new common_1.BadRequestException(`Question "${question.title}" (${question.type}) needs at least one option`);
                 }
                 // Option values must be unique and not collide with the reserved "Other" encoding; the
@@ -336,6 +338,22 @@ let SurveysService = SurveysService_1 = class SurveysService {
                 }
             }
         }
+        // Piping tokens and carry-forward sources must exist and sit in earlier sections.
+        const pipingProblem = (0, piping_1.validatePiping)(dto.sections.map((section) => ({
+            id: section.id,
+            title: section.title,
+            description: section.description,
+            questions: section.questions.map((q) => ({
+                id: q.id,
+                type: q.type,
+                title: q.title,
+                description: q.description,
+                config: q.config,
+                options: (q.options ?? []).map((o) => ({ value: o.value, label: o.label })),
+            })),
+        })), new Set((dto.logicRules ?? []).map((r) => r.sourceQuestionId)));
+        if (pipingProblem)
+            throw new common_1.BadRequestException(pipingProblem);
         // Section navigation: jumps only go FORWARD (so a survey can never loop),
         // to a real later section or to 'submit'; a route's source is a choice
         // question of the section being left.

@@ -24,6 +24,7 @@ const survey_structure_dto_1 = require("./dto/survey-structure.dto");
 const media_service_1 = require("./media.service");
 const media_rules_1 = require("./media-rules");
 const question_rules_1 = require("./question-rules");
+const piping_1 = require("./piping");
 const survey_settings_1 = require("./survey-settings");
 const surveys_service_1 = require("./surveys.service");
 exports.SURVEY_PACKAGE_FORMAT = 'papp.survey.package';
@@ -329,8 +330,8 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                             id: sectionIds.get(section.id),
                             surveyId: newSurveyId,
                             orderIndex: section.orderIndex,
-                            title: section.title,
-                            description: section.description,
+                            title: (0, piping_1.remapTokens)(section.title, questionIds) ?? section.title,
+                            description: (0, piping_1.remapTokens)(section.description, questionIds),
                             navigation: this.remapNavigation(section.navigation, sectionIds, questionIds),
                             image: (remapImage(section.image) ?? client_1.Prisma.DbNull),
                         },
@@ -343,10 +344,10 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
                                 sectionId: sectionIds.get(section.id),
                                 orderIndex: question.orderIndex,
                                 type: question.type,
-                                title: question.title,
-                                description: question.description,
+                                title: (0, piping_1.remapTokens)(question.title, questionIds) ?? question.title,
+                                description: (0, piping_1.remapTokens)(question.description, questionIds),
                                 required: question.required ?? false,
-                                config: this.remapQuestionConfig(question.config, remapImage),
+                                config: this.remapQuestionConfig(question.config, remapImage, questionIds),
                             },
                         });
                         if (question.options?.length) {
@@ -389,11 +390,15 @@ let SurveyTransferService = SurveyTransferService_1 = class SurveyTransferServic
         }
     }
     /** `config.image` is rewritten to the copied picture, or removed when its file is not available. */
-    remapQuestionConfig(config, remapImage) {
-        const { image, ...rest } = config ?? {};
+    remapQuestionConfig(config, remapImage, questionIds) {
+        const { image, optionsFrom, ...rest } = config ?? {};
         const mapped = image === undefined ? null : remapImage(image);
+        // Carry-forward points at another question by id: follow it to the copy.
+        const from = (0, piping_1.getOptionsFrom)({ config: { optionsFrom } });
+        const carried = from ? { optionsFrom: { questionId: questionIds.get(from.questionId) ?? from.questionId, mode: from.mode } } : {};
         return {
             ...rest,
+            ...carried,
             ...(mapped ? { image: mapped } : {}),
         };
     }

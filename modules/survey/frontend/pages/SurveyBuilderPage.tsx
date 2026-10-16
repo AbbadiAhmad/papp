@@ -26,7 +26,9 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
 import { ImageField } from '../components/ImageField';
+import { CarryForwardEditor } from '../components/CarryForwardEditor';
 import { RichTextField } from '../components/RichTextField';
+import { getOptionsFrom } from '../../backend/piping.ts';
 import { QuestionSettings } from '../components/QuestionSettings';
 import { SharePanel } from '../components/SharePanel';
 import { SurveyPreviewDialog } from '../components/SurveyPreviewDialog';
@@ -235,6 +237,15 @@ export function SurveyBuilderPage() {
     );
   };
 
+  /** Questions in sections BEFORE `sectionIndex`: the ones whose answers can be piped into this section's text. */
+  const questionsBefore = (sectionIndex: number) =>
+    sections.slice(0, sectionIndex).flatMap((s) => s.questions.map((q) => ({ id: q.id, title: q.title, type: q.type, config: q.config })));
+  const pipeSourcesFor = (sectionIndex: number) => questionsBefore(sectionIndex).map(({ id, title }) => ({ id, title }));
+  const carryCandidatesFor = (sectionIndex: number) =>
+    questionsBefore(sectionIndex)
+      .filter((q) => ENUMERATION_QUESTION_TYPES.includes(q.type) && !getOptionsFrom({ config: q.config }))
+      .map(({ id, title }) => ({ id, title }));
+
   const addOption = (sectionIndex: number, questionIndex: number) =>
     setSections((prev) =>
       prev.map((s, i) =>
@@ -358,7 +369,9 @@ export function SurveyBuilderPage() {
         const questionImage = question.config?.image as SurveyImage | undefined;
         if (questionImage && !questionImage.alt?.trim()) return { errorKey: 'survey.image.alt_required' };
         let options = question.options ?? [];
-        if (ENUMERATION_QUESTION_TYPES.includes(question.type)) {
+        const carries = ENUMERATION_QUESTION_TYPES.includes(question.type) && getOptionsFrom({ config: question.config }) !== null;
+        if (carries) options = [];
+        else if (ENUMERATION_QUESTION_TYPES.includes(question.type)) {
           if (options.length === 0) return { errorKey: 'survey.builder.error_no_options' };
           if (options.some((o) => !optionValueOf(o))) return { errorKey: 'survey.builder.error_option_empty' };
           options = options.map((o) => ({ ...o, value: optionValueOf(o), label: o.label.trim() || optionValueOf(o) }));
@@ -647,6 +660,7 @@ export function SurveyBuilderPage() {
                 label={t('survey.fields.section_description')}
                 value={section.description ?? ''}
                 onValueChange={(description) => updateSection(sectionIndex, { description })}
+                pipeSources={pipeSourcesFor(sectionIndex)}
                 multiline
                 minRows={1}
                 size="small"
@@ -668,6 +682,7 @@ export function SurveyBuilderPage() {
                         label={t('survey.fields.question_title')}
                         value={question.title}
                         onValueChange={(title) => updateQuestion(sectionIndex, questionIndex, { title })}
+                        pipeSources={pipeSourcesFor(sectionIndex)}
                         required
                       />
                     </Box>
@@ -726,6 +741,7 @@ export function SurveyBuilderPage() {
                       label={t('survey.fields.question_hint')}
                       value={question.description ?? ''}
                       onValueChange={(description) => updateQuestion(sectionIndex, questionIndex, { description })}
+                      pipeSources={pipeSourcesFor(sectionIndex)}
                       size="small"
                     />
                   </Box>
@@ -789,6 +805,14 @@ export function SurveyBuilderPage() {
                   ) : null}
 
                   {ENUMERATION_QUESTION_TYPES.includes(question.type) ? (
+                    <CarryForwardEditor
+                      config={question.config}
+                      candidates={carryCandidatesFor(sectionIndex)}
+                      onConfigChange={(config) => updateQuestion(sectionIndex, questionIndex, { config })}
+                    />
+                  ) : null}
+
+                  {ENUMERATION_QUESTION_TYPES.includes(question.type) && !getOptionsFrom({ config: question.config }) ? (
                     <Stack spacing={1} sx={{ pl: 2, mt: 1 }}>
                       {(question.options ?? []).map((option, optionIndex) => (
                         <Stack key={option.id} direction="row" spacing={1}>

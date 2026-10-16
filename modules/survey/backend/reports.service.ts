@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } 
 import { Prisma, PrismaClient, SurveyQuestion, SurveyQuestionOption, SurveyResponse } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { answerForDisplay, formatAnswerForDisplay, summarizeChoiceAnswers } from './question-rules';
+import { getOptionsFrom } from './piping';
 
 type QuestionWithOptions = SurveyQuestion & { options: SurveyQuestionOption[] };
 type ResponseWithAnswers = SurveyResponse & { answers: Array<{ questionId: string; value: Prisma.JsonValue }> };
@@ -101,7 +102,10 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
       const base = { questionId: q.id, title: q.title, type: q.type as string, totalAnswered: values.length };
 
       if (q.type === 'single_choice' || q.type === 'dropdown' || q.type === 'multi_choice') {
-        const { optionCounts, otherAnswers } = summarizeChoiceAnswers(q.options, values, q.config);
+        // A question that takes its choices from an earlier one is reported against all of that question's options.
+        const from = getOptionsFrom({ config: q.config as Record<string, unknown> | null });
+        const sourceOptions = from ? questions.find((x) => x.id === from.questionId)?.options : undefined;
+        const { optionCounts, otherAnswers } = summarizeChoiceAnswers(sourceOptions ?? q.options, values, q.config);
         return { ...base, optionCounts, ...(otherAnswers.length ? { otherAnswers } : {}) };
       }
 

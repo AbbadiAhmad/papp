@@ -301,5 +301,14 @@
   "survey.fields.video_url": "رابط فيديو (اختياري)",
   "survey.fields.video_url_hint": "يظهر للقرّاء كرابط يفتح الفيديو في تبويب جديد؛ لا يُحمَّل شيء من موقع الفيديو قبل أن ينقروا عليه.",
   "survey.take.watch_video": "شاهد الفيديو",
-  "survey.config_rules.bad_video_url": "\"{{title}}\": يجب أن يكون رابط الفيديو عنوان ويب يبدأ بـ http:// أو https://."
+  "survey.config_rules.bad_video_url": "\"{{title}}\": يجب أن يكون رابط الفيديو عنوان ويب يبدأ بـ http:// أو https://.",
+  "survey.richtext.pipe": "إدراج إجابة سابقة",
+  "survey.richtext.pipe_note": "يُستبدل {{q:…}} بإجابة القارئ السابقة عند تعبئة الاستبيان.",
+  "survey.carry.source": "الخيارات",
+  "survey.carry.own": "سأكتب الخيارات بنفسي",
+  "survey.carry.hint": "أو أعد استخدام خيارات سؤال من قسم سابق.",
+  "survey.carry.untitled": "(سؤال بلا عنوان)",
+  "survey.carry.mode": "اعرض",
+  "survey.carry.selected": "الخيارات التي اختارها القارئ",
+  "survey.carry.unselected": "الخيارات التي لم يخترها القارئ"
 }

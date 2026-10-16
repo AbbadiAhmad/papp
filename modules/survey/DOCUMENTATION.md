@@ -99,6 +99,10 @@ Frontend (`basePath: /survey`):
 
 Titles and descriptions take a small safe markup (SURVEY-D19): `**bold**`, `*italic*`, `[text](https://link)`, `{red|coloured}` or `{#b00020|hex}`, `$x^2$` for maths, `\*` to show a symbol literally. The builder fields have a toolbar and a live preview. It is not HTML: `backend/rich-text.ts` parses, `frontend/components/RichText.tsx` renders. A question can also carry a video link (`config.videoUrl`), shown as a "Watch the video" link, never embedded.
 
+## Piping and carry-forward (1.4.5)
+
+Put `{{q:<id>}}` in a later section's title/description or a later question's title/description (the builder's "Insert an earlier answer" toolbar button inserts it) and the reader sees their earlier answer there. A choice question can instead take its choices from an earlier choice question (the ones ticked, or the ones not ticked). Source questions must be in an earlier section (SURVEY-D20); `backend/piping.ts` is the one shared rules file, the server re-checks everything.
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.

@@ -15,6 +15,7 @@ const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const exceljs_1 = __importDefault(require("exceljs"));
 const question_rules_1 = require("./question-rules");
+const piping_1 = require("./piping");
 const SAMPLE_ANSWER_CAP = 200;
 /**
  * The admin report/response-management surface (docs/BUILD_PLAN.md's own
@@ -74,7 +75,10 @@ let ReportsService = ReportsService_1 = class ReportsService {
             const values = responses.flatMap((r) => r.answers.filter((a) => a.questionId === q.id).map((a) => a.value));
             const base = { questionId: q.id, title: q.title, type: q.type, totalAnswered: values.length };
             if (q.type === 'single_choice' || q.type === 'dropdown' || q.type === 'multi_choice') {
-                const { optionCounts, otherAnswers } = (0, question_rules_1.summarizeChoiceAnswers)(q.options, values, q.config);
+                // A question that takes its choices from an earlier one is reported against all of that question's options.
+                const from = (0, piping_1.getOptionsFrom)({ config: q.config });
+                const sourceOptions = from ? questions.find((x) => x.id === from.questionId)?.options : undefined;
+                const { optionCounts, otherAnswers } = (0, question_rules_1.summarizeChoiceAnswers)(sourceOptions ?? q.options, values, q.config);
                 return { ...base, optionCounts, ...(otherAnswers.length ? { otherAnswers } : {}) };
             }
             if (q.type === 'linear_scale' || q.type === 'rating') {

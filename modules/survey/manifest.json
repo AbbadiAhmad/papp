@@ -1,7 +1,7 @@
 {
   "key": "survey",
   "name": "Survey",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Google-Forms-style survey builder: sections/questions with conditional show/hide logic driven by prior enumeration answers, public or login-required shareable links, optional post-submit answer editing, completion notifications to the owner and/or admin-configured addresses, and reporting including a dynamic pivot table.",

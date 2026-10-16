@@ -16,6 +16,7 @@ import { NotificationEmailService } from '../../../apps/api/dist/core/notificati
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
 import { resolveVisibility, SectionNavigation, SurveyLogicRuleLike } from './logic-engine';
+import { resolveOptions, type PipeQuestion } from './piping';
 import { describeProblem, formatAnswerForDisplay, isEmptyAnswer, validateAnswer, type QuestionTypeName } from './question-rules';
 import { computeAvailability, normalizeSettings } from './survey-settings';
 
@@ -300,9 +301,21 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       enumerationAnswers,
     );
 
+    // Carry-forward: a question may take its choices from an earlier one, judged on what THIS submission really answered.
+    const pipeQuestions = new Map<string, PipeQuestion>(
+      [...questionsById.values()].map((q) => [
+        q.id,
+        { id: q.id, type: q.type as string, config: (q.config ?? null) as Record<string, unknown> | null, options: q.options.map((o) => ({ value: o.value, label: o.label })) },
+      ]),
+    );
+    const answerOf = (questionId: string) => (visibleQuestionIds.has(questionId) ? answerByQuestionId.get(questionId) : undefined);
+
     const normalized: AnswerInput[] = [];
     for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q] as const))) {
       if (!visibleQuestionIds.has(question.id)) continue; // never visible -> never counted, regardless of what was sent
+      const carried = resolveOptions(pipeQuestions.get(question.id)!, pipeQuestions, answerOf);
+      // Nothing to choose from (e.g. "the ones you ticked" when none were ticked): the question does not apply.
+      if (carried !== null && carried.length === 0) continue;
       const value = answerByQuestionId.get(question.id);
       if (isEmptyAnswer(value)) {
         if (question.required) {
@@ -310,7 +323,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
         }
         continue;
       }
-      this.validateAnswerShape(question, value);
+      this.validateAnswerShape(question, value, carried?.map((o) => o.value));
       normalized.push({ questionId: question.id, value });
       void sectionId; // sectionId kept for readability of the destructure above; not otherwise needed here
     }
@@ -318,11 +331,11 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
-  private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown): void {
+  private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown, optionValues?: string[]): void {
     const problem = validateAnswer(
       question.type as QuestionTypeName,
       question.config,
-      question.options.map((o) => o.value),
+      optionValues ?? question.options.map((o) => o.value),
       value,
     );
     if (problem) {

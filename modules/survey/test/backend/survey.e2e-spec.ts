@@ -578,4 +578,136 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect(detail.sections[0].image).toBeNull();
     });
   });
+
+  describe('piping and carry-forward (ext. F)', () => {
+    let n = 0;
+    const S1 = (k: number) => 900 + k * 10; // a number: the ids below are uuid(S1 + offset)
+    /** Section 1: a multi-choice "genres" question. Section 2: a carry-forward question + a text question piping the answer. */
+    async function build(mode: 'selected' | 'unselected', opts: { tokenTarget?: 'later' | 'same' | 'ok' } = {}) {
+      const k = ++n;
+      const created = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Carry ${k}` });
+      const id = created.body.id as string;
+      const [sec1, sec2, qGenres, qFav, qWhy] = [0, 1, 2, 3, 4].map((offset) => uuid(S1(k) + offset));
+      const opt = (i: number, value: string) => ({ id: uuid(5000 + k * 10 + i), orderIndex: i, value, label: value.toUpperCase() });
+      const body = {
+        sections: [
+          {
+            id: sec1,
+            orderIndex: 0,
+            title: 'Genres',
+            questions: [{ id: qGenres, orderIndex: 0, type: 'multi_choice', title: 'Pick genres', options: [opt(0, 'fic'), opt(1, 'his'), opt(2, 'poe')] }],
+          },
+          {
+            id: sec2,
+            orderIndex: 1,
+            title: opts.tokenTarget === 'same' ? `About {{q:${qFav}}}` : 'More',
+            questions: [
+              { id: qFav, orderIndex: 0, type: 'single_choice', title: 'Favourite', config: { optionsFrom: { questionId: qGenres, mode } } },
+              { id: qWhy, orderIndex: 1, type: 'short_text', title: opts.tokenTarget === 'later' ? `Why {{q:${uuid(S1(k) + 9)}}}?` : `Why {{q:${qFav}}}?`, required: false },
+            ],
+          },
+        ],
+        logicRules: [],
+      };
+      return { id, body, ids: { qGenres, qFav, qWhy } };
+    }
+    const save = (id: string, body: unknown) => request(http()).put(`/api/survey/surveys/${id}/structure`).set(admin()).send(body as object);
+    const publish = (id: string) => request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+    const submit = (id: string, answers: Array<{ questionId: string; value: unknown }>) => request(http()).post(`/api/survey/public/${id}`).send({ answers });
+
+    it('saves a question whose choices come from an earlier section', async () => {
+      const { id, body } = await build('selected');
+      // the piping token in section 2 points at a question of section 2 itself: refused
+      const bad = await save(id, body);
+      expect(bad.status).toBe(400);
+      expect(String(bad.body.message)).toMatch(/earlier section/);
+    });
+
+    it('refuses tokens that point at a missing question or the same section, and bad carry-forward', async () => {
+      const k = await build('selected', { tokenTarget: 'later' });
+      expect((await save(k.id, k.body)).status).toBe(400);
+      const sameSection = await build('selected');
+      sameSection.body.sections[1].questions[1].title = 'Plain';
+      sameSection.body.sections[1].questions[0].config = { optionsFrom: { questionId: sameSection.ids.qFav, mode: 'selected' } }; // itself
+      expect((await save(sameSection.id, sameSection.body)).status).toBe(400);
+      const wrongType = await build('selected');
+      wrongType.body.sections[1].questions[1].title = 'Plain';
+      wrongType.body.sections[1].questions[1].config = { optionsFrom: { questionId: wrongType.ids.qGenres, mode: 'selected' } }; // a text question
+      expect((await save(wrongType.id, wrongType.body)).status).toBe(400);
+    });
+
+    async function valid(mode: 'selected' | 'unselected') {
+      const built = await build(mode);
+      built.body.sections[1].questions[1].title = `Why {{q:${built.ids.qGenres}}}?`; // pipe the earlier section's answer instead
+      const saved = await save(built.id, built.body);
+      expect(saved.status).toBe(200);
+      expect([200, 201]).toContain((await publish(built.id)).status);
+      return built;
+    }
+
+    it('the carried question accepts only the chosen options (selected) and rejects others', async () => {
+      const { id, ids } = await valid('selected');
+      const ok = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic', 'poe'] },
+        { questionId: ids.qFav, value: 'poe' },
+      ]);
+      expect(ok.status).toBe(201);
+      const notChosen = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic', 'poe'] },
+        { questionId: ids.qFav, value: 'his' },
+      ]);
+      expect(notChosen.status).toBe(400);
+      const unknown = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic'] },
+        { questionId: ids.qFav, value: 'nonsense' },
+      ]);
+      expect(unknown.status).toBe(400);
+    });
+
+    it('unselected mode offers the options that were not ticked', async () => {
+      const { id, ids } = await valid('unselected');
+      expect((await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'his' }])).status).toBe(201);
+      expect((await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'fic' }])).status).toBe(400);
+    });
+
+    it('a carried question with nothing to choose from is skipped, even when it is marked required', async () => {
+      const built = await build('selected');
+      built.body.sections[1].questions[1].title = 'Plain';
+      built.body.sections[1].questions[0].required = true;
+      expect((await save(built.id, built.body)).status).toBe(200);
+      await publish(built.id);
+      // the reader ticked nothing in the first question (it is optional) -> nothing is offered -> the carried question does not apply
+      const res = await submit(built.id, [{ questionId: built.ids.qWhy, value: 'x' }]);
+      expect(res.status).toBe(201);
+      // and an answer sent for it anyway is dropped, not stored
+      const sneaky = await submit(built.id, [{ questionId: built.ids.qFav, value: 'fic' }]);
+      expect(sneaky.status).toBe(201);
+      const responses = await request(http()).get(`/api/survey/surveys/${built.id}/responses`).set(admin());
+      const stored = JSON.stringify(responses.body);
+      expect(stored).not.toContain('fic');
+    });
+
+    it('the public survey exposes the carry-forward setting (the page does the substitution) and reports use the source options', async () => {
+      const { id, ids } = await valid('selected');
+      const pub = await request(http()).get(`/api/survey/public/${id}`);
+      expect(pub.body.survey.sections[1].questions[0].config.optionsFrom).toEqual({ questionId: ids.qGenres, mode: 'selected' });
+      await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'poe' }]);
+      const report = await request(http()).get(`/api/survey/surveys/${id}/report/summary`).set(admin());
+      expect(report.status).toBe(200);
+      const fav = (report.body.questions as Array<{ questionId: string; optionCounts?: Array<{ value: string; count: number }> }>).find((x) => x.questionId === ids.qFav)!;
+      expect(fav.optionCounts?.find((o) => o.value === 'poe')?.count).toBe(1);
+      expect(fav.optionCounts?.length).toBe(3);
+    });
+
+    it('duplicate keeps carry-forward working (ids are remapped inside the setting)', async () => {
+      const { id } = await valid('selected');
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      const sourceId = detail.sections[0].questions[0].id as string;
+      const carried = detail.sections[1].questions[0].config.optionsFrom as { questionId: string };
+      expect(carried.questionId).toBe(sourceId);
+      expect(detail.sections[1].questions[1].title).toContain(`{{q:${sourceId}}}`);
+    });
+  });
 });

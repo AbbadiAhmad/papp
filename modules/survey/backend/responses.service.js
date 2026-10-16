@@ -29,6 +29,7 @@ const notification_email_service_1 = require("../../../apps/api/dist/core/notifi
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const logic_engine_1 = require("./logic-engine");
+const piping_1 = require("./piping");
 const question_rules_1 = require("./question-rules");
 const survey_settings_1 = require("./survey-settings");
 /**
@@ -258,10 +259,20 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             questions: s.questions.map((q) => ({ id: q.id })),
             navigation: s.navigation,
         })), survey.logicRules, enumerationAnswers);
+        // Carry-forward: a question may take its choices from an earlier one, judged on what THIS submission really answered.
+        const pipeQuestions = new Map([...questionsById.values()].map((q) => [
+            q.id,
+            { id: q.id, type: q.type, config: (q.config ?? null), options: q.options.map((o) => ({ value: o.value, label: o.label })) },
+        ]));
+        const answerOf = (questionId) => (visibleQuestionIds.has(questionId) ? answerByQuestionId.get(questionId) : undefined);
         const normalized = [];
         for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q]))) {
             if (!visibleQuestionIds.has(question.id))
                 continue; // never visible -> never counted, regardless of what was sent
+            const carried = (0, piping_1.resolveOptions)(pipeQuestions.get(question.id), pipeQuestions, answerOf);
+            // Nothing to choose from (e.g. "the ones you ticked" when none were ticked): the question does not apply.
+            if (carried !== null && carried.length === 0)
+                continue;
             const value = answerByQuestionId.get(question.id);
             if ((0, question_rules_1.isEmptyAnswer)(value)) {
                 if (question.required) {
@@ -269,15 +280,15 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
                 }
                 continue;
             }
-            this.validateAnswerShape(question, value);
+            this.validateAnswerShape(question, value, carried?.map((o) => o.value));
             normalized.push({ questionId: question.id, value });
             void sectionId; // sectionId kept for readability of the destructure above; not otherwise needed here
         }
         return normalized;
     }
     /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
-    validateAnswerShape(question, value) {
-        const problem = (0, question_rules_1.validateAnswer)(question.type, question.config, question.options.map((o) => o.value), value);
+    validateAnswerShape(question, value, optionValues) {
+        const problem = (0, question_rules_1.validateAnswer)(question.type, question.config, optionValues ?? question.options.map((o) => o.value), value);
         if (problem) {
             throw new common_1.BadRequestException(`Question "${question.title}": ${(0, question_rules_1.describeProblem)(problem)}`);
         }

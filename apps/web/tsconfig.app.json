@@ -51,6 +51,8 @@
     // one framework-free file used by the server AND the respondent page / builder.
     "../../modules/*/backend/question-rules.ts",
     // The survey's shared safe-markup parser (rich-text.ts), same reasoning.
-    "../../modules/*/backend/rich-text.ts"
+    "../../modules/*/backend/rich-text.ts",
+    // Piping / carry-forward rules (piping.ts), same reasoning.
+    "../../modules/*/backend/piping.ts"
   ]
 }

@@ -301,5 +301,14 @@
   "survey.fields.video_url": "Video link (optional)",
   "survey.fields.video_url_hint": "Shown to readers as a link that opens the video in a new tab; nothing is loaded from the video site until they click.",
   "survey.take.watch_video": "Watch the video",
-  "survey.config_rules.bad_video_url": "\"{{title}}\": the video link must be a web address starting with http:// or https://."
+  "survey.config_rules.bad_video_url": "\"{{title}}\": the video link must be a web address starting with http:// or https://.",
+  "survey.richtext.pipe": "Insert an earlier answer",
+  "survey.richtext.pipe_note": "{{q:…}} is replaced by the reader's earlier answer when they fill the survey.",
+  "survey.carry.source": "Choices",
+  "survey.carry.own": "I'll write the choices myself",
+  "survey.carry.hint": "Or reuse the choices of a question from an earlier section.",
+  "survey.carry.untitled": "(untitled question)",
+  "survey.carry.mode": "Offer",
+  "survey.carry.selected": "The choices the reader selected",
+  "survey.carry.unselected": "The choices the reader did not select"
 }
