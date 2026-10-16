@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
+import { PrismaService } from '../../../src/prisma/prisma.service';
 import { createTestApp } from '../../support/bootstrap-app';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../support/postgres-test-container';
 import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../../test/support/permission-matrix';
@@ -69,5 +70,14 @@ describe('Backup: export files (e2e)', () => {
     const none = await request(app!.getHttpServer()).post('/backup/export-files').set('Authorization', `Bearer ${admin.token}`);
     expect(none.status).toBe(409);
     process.env.BACKUP_FILE_DIRS = `books_files=${join(work, 'books')}`;
+  });
+
+  it('audits the export as core.backup / export_files, without any file contents (TESTING_STRATEGY §3)', async () => {
+    const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ category: string; entity_type: string; new_value: unknown }>>(
+      `SELECT category, entity_type, new_value FROM audit_log WHERE action = 'export_files'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toMatchObject({ category: 'core.backup', entity_type: 'Files' });
+    expect(JSON.stringify(rows.map((r) => r.new_value))).not.toContain('hello');
   });
 });

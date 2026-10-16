@@ -137,6 +137,14 @@ Frontend (`basePath: /library`):
   - **Exception**: Feature 2.1 (D18) adds a `history` JSONB column tracking changes to copy state (`status`, `condition`, `location`) — this is catalog-level metadata for audit/compliance, not circulation history. See DECISIONS.md D18 for the manual migration process.
 - The `export` endpoint returns a raw `xlsx` buffer; Supertest/`superagent`-based e2e tests need an explicit binary `.parse()` callback to read it correctly (root `D63` — a real bug found in a *different* module's export endpoint with the exact same shape; if this module's own export test ever reads `.body` as `undefined`, that's why).
 
+## Tests (cover and book files, LIBRARY_CATALOG-A4)
+
+Unit `test/backend/book-file-rules.spec.ts` and `migrations-down.spec.ts`; component `test/frontend/BookFilesPanel.test.tsx` and `locale-keys.test.ts`; e2e blocks "cover and book files" and "cover and book files: permission matrix, audit, lifecycle" in `library-catalog.e2e-spec.ts`. Core side: `apps/api/test/core/backup/backup-files.spec.ts` (real archive round trip) and `backup.e2e-spec.ts`.
+
+## Upgrading an installed instance (read before upgrading from 1.2.x)
+
+The platform never grants new permissions during an upgrade (root D118): after upgrading to 1.3.0 grant **`library_catalog.books.download`** to the roles that should download book files (a fresh install gives it to admin, library_assistant and reader). Migration 008 applies automatically; set `BOOK_FILES_DIR` (docker-compose does) and add `books_files=<dir>` to `BACKUP_FILE_DIRS`.
+
 ## How to extend
 
 - **A new book field** (e.g. `edition`): add a migration (`003_...sql`, `ALTER TABLE ... ADD COLUMN`), mirror it in `apps/api/prisma/schema.prisma`'s `LibraryCatalogBook` model, add it to `CreateBookDto`/`UpdateBookDto` with real `class-validator` decorators (see root `D67` — an undecorated field is silently stripped by the global `ValidationPipe`), thread it through `BooksService`, and add the column to `BooksListPage.tsx`'s table + `BookFormDialog.tsx`'s form + both locale files.

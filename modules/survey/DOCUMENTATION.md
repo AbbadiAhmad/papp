@@ -144,7 +144,12 @@ Three tabs — Questions, Settings (grouped), Sharing — and a folded "Conditio
 - `test/backend/survey-settings.spec.ts` (settings, validation, availability boundaries), `test/frontend/take-survey-states.test.tsx` (not-open / ended / full states, thank-you text, progress bar), `schedule.test.ts`.
 - `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, schedule + response cap (including a concurrent-submission race) + settings + duplicate/export/import round trip, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
 - `test/backend/media-rules.spec.ts` (type detection, reference parsing), `test/frontend/images.test.tsx` (upload/describe/remove, respondent rendering); the e2e suite's "images (phase D)" block covers upload/serve headers, rejected files, permissions, ownership, clean-up, duplicate and export/import with pictures.
+- Second batch (SURVEY-A9): unit `rich-text.spec.ts`, `piping.spec.ts`, `audience.spec.ts` (email list, invitation tokens, mails), `report-filter.spec.ts`, `survey-access.spec.ts`, `migrations-down.spec.ts`; component `rich-text`, `piping`, `audience`, `coowners`, `report-filters`, `report-filter-params`, `rtl-digits`, `locale-keys`; e2e blocks "piping and carry-forward", "co-owners", "who may respond, invitations and emailed copies", "report filters and trends", "permission matrix (ext. G–I endpoints)".
 - Browser smoke: `apps/web/tests/e2e/survey.spec.ts`.
+
+## Upgrading an installed instance (read before upgrading from 1.4.x)
+
+The platform never grants new permissions during an upgrade (root D118). After upgrading to 1.5.0 or later: grant **`survey.surveys.share`** to the roles that may manage co-owners (a fresh install gives it to `admin` only). Migrations 005–008 apply automatically. Set `APP_PUBLIC_URL` (or `WEB_ORIGIN`) before sending invitations. Nothing else needs doing: surveys stay unrestricted until someone switches *Only chosen people may respond* on.
 
 ## How to extend
 

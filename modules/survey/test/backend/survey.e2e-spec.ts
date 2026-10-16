@@ -963,10 +963,21 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect((await request(http()).get(`/api/survey/surveys/${id}/audience`).set(reader)).status).toBe(200);
     });
 
-    it('the audit trail records invitations without copying the address list', async () => {
-      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ action: string; new_value: unknown }>>(`SELECT action, new_value FROM audit_log WHERE entity_type = 'SurveyInvitation'`);
-      expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining(['invite', 'remind']));
-      expect(JSON.stringify(rows.map((r) => r.new_value))).not.toMatch(/"invitations":\[/);
+    it('audits every audience change; an invited anonymous submit is recorded as anonymous; no link or address list reaches the log (TESTING_STRATEGY §3, §6)', async () => {
+      const prisma = app!.get(PrismaService);
+      const actions = async (entityType: string) =>
+        (await prisma.$queryRawUnsafe<Array<{ action: string }>>(`SELECT DISTINCT action FROM audit_log WHERE entity_type = '${entityType}'`)).map((r) => r.action);
+      expect(await actions('SurveyInvitation')).toEqual(expect.arrayContaining(['invite', 'remind', 'remove_invitation']));
+      expect(await actions('SurveyAllowedUser')).toEqual(expect.arrayContaining(['add_allowed_user', 'remove_allowed_user']));
+
+      const submitted = await prisma.$queryRawUnsafe<Array<{ actor_type: string; actor_user_id: string | null; ip_address: string | null }>>(
+        `SELECT actor_type, actor_user_id, ip_address FROM audit_log WHERE entity_type = 'SurveyResponse' AND action = 'submit' AND actor_type = 'anonymous' LIMIT 1`,
+      );
+      expect(submitted[0]).toMatchObject({ actor_type: 'anonymous', actor_user_id: null });
+
+      const everything = JSON.stringify(await prisma.$queryRawUnsafe(`SELECT new_value, old_value FROM audit_log WHERE category = 'survey.surveys' OR category = 'survey.responses'`));
+      expect(everything).not.toMatch(/invite=/); // no personal link
+      expect(everything).not.toMatch(/"invitations":\[/); // no copy of the address list
     });
 
     it('emails a copy of the answers: to the account, to the invited address, or to an address a public respondent typed', async () => {
@@ -1132,6 +1143,66 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       const reader = { Authorization: `Bearer ${(await fixtureForRole(app!, 'reader')).token}` };
       expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary?a=${Q.fav}:fic`).set(reader)).status).toBe(403);
       expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary`)).status).toBe(401);
+    });
+  });
+
+  // docs/TESTING_STRATEGY.md §2: every protected endpoint of the second batch (co-owners, audience, invitations,
+  // filtered reports) through the shared helper — all four base roles plus anonymous. Only admin holds these codes by
+  // default, which is itself part of what is asserted (a role gaining access by accident would fail here).
+  describe('permission matrix (ext. G–I endpoints)', () => {
+    let sid: string;
+    let readerEmail: string;
+    let counter = 0;
+    const path = (suffix: string) => () => `/api/survey/surveys/${sid}${suffix}`;
+
+    beforeAll(async () => {
+      sid = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: 'Matrix' })).body.id as string;
+      const put = await request(http())
+        .put(`/api/survey/surveys/${sid}/structure`)
+        .set(admin())
+        .send({ sections: [{ id: uuid(9501), orderIndex: 0, title: 'S', questions: [{ id: uuid(9502), orderIndex: 0, type: 'short_text', title: 'Q' }] }], logicRules: [] });
+      expect(put.status).toBe(200);
+      readerEmail = (await fixtureForRole(app!, 'reader')).email;
+    });
+
+    const m = (method: 'get' | 'post' | 'patch' | 'put' | 'delete', suffix: string, requiredPermission: string, extra: { validBody?: object | ((r: RoleCode) => object | undefined); expectedSuccessStatus?: number } = {}) =>
+      expectPermissionEnforced({ app: () => app!, method, path: path(suffix), label: `/api/survey/surveys/:id${suffix}`, requiredPermission, ...extra });
+
+    m('patch', '', 'survey.surveys.update', { validBody: { title: 'Matrix renamed' } });
+    m('put', '/structure', 'survey.surveys.update', {
+      validBody: { sections: [{ id: uuid(9501), orderIndex: 0, title: 'S', questions: [{ id: uuid(9502), orderIndex: 0, type: 'short_text', title: 'Q' }] }], logicRules: [] },
+    });
+    m('post', '/publish', 'survey.surveys.publish');
+    m('post', '/close', 'survey.surveys.publish');
+    m('post', '/reopen', 'survey.surveys.publish');
+    m('get', '/audience', 'survey.surveys.update');
+    m('post', '/audience/users', 'survey.surveys.update', { validBody: () => ({ email: readerEmail }) });
+    m('post', '/invitations', 'survey.surveys.update', { validBody: () => ({ emails: [`matrix-${(counter += 1)}@x.io`] }) });
+    m('post', '/invitations/remind', 'survey.surveys.update');
+    m('get', '/collaborators', 'survey.surveys.view');
+    m('get', '/report/summary', 'survey.responses.view');
+    m('get', '/report/dataset', 'survey.responses.view');
+    m('get', '/responses', 'survey.responses.view');
+    m('get', '/responses/export', 'survey.responses.export');
+    m('get', '/export-with-responses', 'survey.responses.export');
+    m('get', '/report/summary?from=2026-01-01&a=00000000-0000-4000-8000-000000000001:x', 'survey.responses.view', { expectedSuccessStatus: 400 });
+    // LAST on purpose: it makes the reader a co-owner of this survey, which (correctly) opens the results endpoints above to them.
+    m('post', '/collaborators', 'survey.surveys.share', { validBody: () => ({ email: readerEmail }) });
+
+    it('the new permission code is declared in the manifest and granted to admin only by default', async () => {
+      const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../manifest.json'), 'utf8')) as {
+        permissions: Array<{ code: string }>;
+        defaultRolePermissions: Record<string, string[]>;
+      };
+      expect(manifest.permissions.map((p) => p.code)).toContain('survey.surveys.share');
+      expect(manifest.defaultRolePermissions.admin).toContain('survey.surveys.share');
+      for (const role of ['library_assistant', 'finance', 'reader']) expect(manifest.defaultRolePermissions[role]).not.toContain('survey.surveys.share');
+    });
+
+    it('a fresh install recorded every migration file (005–008 included) exactly once', async () => {
+      const files = readdirSync(join(dirname(fileURLToPath(import.meta.url)), '../../migrations')).filter((f) => f.endsWith('.sql')).sort();
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ filename: string }>>(`SELECT filename FROM module_migrations WHERE module_key = 'survey' ORDER BY filename`);
+      expect(rows.map((r) => r.filename)).toEqual(files);
     });
   });
 });
