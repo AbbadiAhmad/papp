@@ -109,11 +109,13 @@ export class SurveysService implements OnModuleInit, OnModuleDestroy {
       await this.media.assertOwned(id, parsed.ref ? [parsed.ref.mediaId] : []);
       headerImage = parsed.ref ?? undefined;
     }
-    if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined) {
+    if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined || dto.restricted !== undefined || dto.emailCopy !== undefined) {
       settings = normalizeSettings({
         ...normalizeSettings(current.settings),
         ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
         ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+        ...(dto.restricted !== undefined ? { restricted: dto.restricted } : {}),
+        ...(dto.emailCopy !== undefined ? { emailCopy: dto.emailCopy } : {}),
         headerImage: headerImage as never,
       }) as Prisma.InputJsonValue;
     }

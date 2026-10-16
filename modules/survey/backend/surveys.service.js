@@ -112,11 +112,13 @@ let SurveysService = SurveysService_1 = class SurveysService {
             await this.media.assertOwned(id, parsed.ref ? [parsed.ref.mediaId] : []);
             headerImage = parsed.ref ?? undefined;
         }
-        if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined) {
+        if (dto.thankYouMessage !== undefined || dto.showProgressBar !== undefined || dto.headerImage !== undefined || dto.restricted !== undefined || dto.emailCopy !== undefined) {
             settings = (0, survey_settings_1.normalizeSettings)({
                 ...(0, survey_settings_1.normalizeSettings)(current.settings),
                 ...(dto.thankYouMessage !== undefined ? { thankYouMessage: dto.thankYouMessage } : {}),
                 ...(dto.showProgressBar !== undefined ? { showProgressBar: dto.showProgressBar } : {}),
+                ...(dto.restricted !== undefined ? { restricted: dto.restricted } : {}),
+                ...(dto.emailCopy !== undefined ? { emailCopy: dto.emailCopy } : {}),
                 headerImage: headerImage,
             });
         }

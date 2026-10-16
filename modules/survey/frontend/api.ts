@@ -30,6 +30,31 @@ export interface SurveyAccessInfo {
   isCoOwner: boolean;
 }
 
+export interface Invitation {
+  id: string;
+  email: string;
+  status: 'invited' | 'opened' | 'responded';
+  invitedAt: string;
+  openedAt: string | null;
+  respondedAt: string | null;
+  lastReminderAt: string | null;
+  reminderCount: number;
+}
+
+export interface AudienceInfo {
+  restricted: boolean;
+  allowedUsers: Array<{ userId: string; name: string; email: string }>;
+  invitations: Invitation[];
+}
+
+export interface InviteResult {
+  invited: number;
+  alreadyInvited: number;
+  invalid: string[];
+  sent: number;
+  failed: number;
+}
+
 export interface CoOwner {
   userId: string;
   name: string;
@@ -108,7 +133,7 @@ export interface SurveyDetail extends SurveySummary {
   notifyOwnerOnSubmit: boolean;
   notifyEmails: string[];
   closedMessage: string | null;
-  settings: { thankYouMessage?: string; showProgressBar?: boolean; headerImage?: SurveyImage };
+  settings: { thankYouMessage?: string; showProgressBar?: boolean; headerImage?: SurveyImage; restricted?: boolean; emailCopy?: boolean };
   sections: SurveySectionDto[];
   logicRules: SurveyLogicRuleDto[];
 }
@@ -133,6 +158,8 @@ export interface UpdateSurveyInput {
   thankYouMessage?: string;
   showProgressBar?: boolean;
   headerImage?: SurveyImage | null;
+  restricted?: boolean;
+  emailCopy?: boolean;
 }
 
 export interface SurveyStructureInput {
@@ -176,6 +203,8 @@ export interface FillableSurvey {
   showProgressBar?: boolean;
   /** The response cap is reached: new submissions are refused, but people can still edit their own answer. */
   isFull?: boolean;
+  /** The survey emails each respondent a copy of their answers. */
+  emailCopy?: boolean;
   headerImage?: SurveyImage | null;
   closedMessage?: string | null;
   sections: Array<{ id: string; title: string; description: string | null; navigation: SectionNavigation; image?: SurveyImage | null; questions: FillableQuestion[] }>;
@@ -254,6 +283,12 @@ export const surveyApi = {
     form.append('file', file);
     return apiClient.post<{ mediaId: string }>(`/api/survey/surveys/${id}/media`, form).then((r) => r.data);
   },
+  getAudience: (id: string) => apiClient.get<AudienceInfo>(`/api/survey/surveys/${id}/audience`).then((r) => r.data),
+  addAllowedUser: (id: string, email: string) => apiClient.post<{ userId: string }>(`/api/survey/surveys/${id}/audience/users`, { email }).then((r) => r.data),
+  removeAllowedUser: (id: string, userId: string) => apiClient.delete<{ userId: string }>(`/api/survey/surveys/${id}/audience/users/${userId}`).then((r) => r.data),
+  invite: (id: string, emails: string[]) => apiClient.post<InviteResult>(`/api/survey/surveys/${id}/invitations`, { emails }).then((r) => r.data),
+  remind: (id: string) => apiClient.post<{ reminded: number; failed: number; skipped: number }>(`/api/survey/surveys/${id}/invitations/remind`).then((r) => r.data),
+  removeInvitation: (id: string, invitationId: string) => apiClient.delete<{ invitationId: string }>(`/api/survey/surveys/${id}/invitations/${invitationId}`).then((r) => r.data),
   listCoOwners: (id: string) => apiClient.get<{ owner: CoOwner; coOwners: CoOwner[] }>(`/api/survey/surveys/${id}/collaborators`).then((r) => r.data),
   addCoOwner: (id: string, email: string) =>
     apiClient.post<{ owner: CoOwner; coOwners: CoOwner[] }>(`/api/survey/surveys/${id}/collaborators`, { email }).then((r) => r.data),
@@ -281,16 +316,22 @@ export const surveyApi = {
   getDataset: (surveyId: string) => apiClient.get<SurveyDataset>(`/api/survey/surveys/${surveyId}/report/dataset`).then((r) => r.data),
 
   // --- respondent: authenticated (any logged-in user, regardless of requiresLogin) ---
-  getForFilling: (surveyId: string) =>
-    apiClient.get<{ survey: FillableSurvey; existingResponse: ExistingResponse | null }>(`/api/survey/${surveyId}/fill`).then((r) => r.data),
-  submitAuthenticated: (surveyId: string, answers: AnswerInput[]) =>
-    apiClient.post<{ id: string }>(`/api/survey/${surveyId}/fill`, { answers }).then((r) => r.data),
+  getForFilling: (surveyId: string, invite?: string | null) =>
+    apiClient.get<{ survey: FillableSurvey; existingResponse: ExistingResponse | null }>(`/api/survey/${surveyId}/fill`, { params: invite ? { invite } : undefined }).then((r) => r.data),
+  submitAuthenticated: (surveyId: string, answers: AnswerInput[], invite?: string | null) =>
+    apiClient.post<{ id: string }>(`/api/survey/${surveyId}/fill`, { answers }, { params: invite ? { invite } : undefined }).then((r) => r.data),
 
   // --- respondent: public/anonymous ---
-  getForFillingPublic: (surveyId: string) =>
-    apiClient.get<{ survey: FillableSurvey; existingResponse: ExistingResponse | null }>(`/api/survey/public/${surveyId}`).then((r) => r.data),
-  submitPublic: (surveyId: string, answers: AnswerInput[]) =>
-    apiClient.post<{ responseId: string; editToken: string | null }>(`/api/survey/public/${surveyId}`, { answers }).then((r) => r.data),
+  getForFillingPublic: (surveyId: string, invite?: string | null) =>
+    apiClient.get<{ survey: FillableSurvey; existingResponse: ExistingResponse | null }>(`/api/survey/public/${surveyId}`, { params: invite ? { invite } : undefined }).then((r) => r.data),
+  submitPublic: (surveyId: string, answers: AnswerInput[], opts: { invite?: string | null; copyToEmail?: string } = {}) =>
+    apiClient
+      .post<{ responseId: string; editToken: string | null }>(
+        `/api/survey/public/${surveyId}`,
+        { answers, ...(opts.copyToEmail ? { copyToEmail: opts.copyToEmail } : {}) },
+        { params: opts.invite ? { invite: opts.invite } : undefined },
+      )
+      .then((r) => r.data),
   editPublic: (surveyId: string, editToken: string, answers: AnswerInput[]) =>
     apiClient.patch<{ id: string }>(`/api/survey/public/${surveyId}`, { answers }, { params: { editToken } }).then((r) => r.data),
 };

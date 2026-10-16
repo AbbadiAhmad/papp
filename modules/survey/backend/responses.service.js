@@ -29,7 +29,10 @@ const notification_email_service_1 = require("../../../apps/api/dist/core/notifi
 // eslint-disable-next-line import/no-unresolved
 const notifications_service_1 = require("../../../apps/api/dist/core/notifications/notifications.service");
 const logic_engine_1 = require("./logic-engine");
+const audience_service_1 = require("./audience.service");
+const invitations_1 = require("./invitations");
 const piping_1 = require("./piping");
+const rich_text_1 = require("./rich-text");
 const question_rules_1 = require("./question-rules");
 const survey_settings_1 = require("./survey-settings");
 /**
@@ -42,12 +45,14 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
     auditLogWriter;
     notifications;
     notificationEmail;
+    audience;
     logger = new common_1.Logger(ResponsesService_1.name);
     prisma = new client_1.PrismaClient();
-    constructor(auditLogWriter, notifications, notificationEmail) {
+    constructor(auditLogWriter, notifications, notificationEmail, audience) {
         this.auditLogWriter = auditLogWriter;
         this.notifications = notifications;
         this.notificationEmail = notificationEmail;
+        this.audience = audience;
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -62,8 +67,11 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
      * `oneResponsePerRespondent` is on; when it's off, "the most recent one"
      * isn't a meaningful thing to pre-fill (each submit is independent).
      */
-    async getForFilling(surveyId, respondentUserId) {
+    async getForFilling(surveyId, respondentUserId, inviteToken) {
         const survey = await this.getPublishedSurveyWithStructure(surveyId);
+        const decision = await this.audience.check(survey, { userId: respondentUserId, inviteToken });
+        if (decision.invitationId)
+            await this.audience.markOpened(decision.invitationId);
         const existing = respondentUserId && survey.oneResponsePerRespondent
             ? await this.prisma.surveyResponse.findFirst({
                 where: { surveyId, respondentUserId },
@@ -82,8 +90,9 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
      * is never deduplicated in the first place — see the migration's own
      * comment on this column).
      */
-    async submitAuthenticated(surveyId, respondentUserId, respondentSessionId, answers, meta) {
+    async submitAuthenticated(surveyId, respondentUserId, respondentSessionId, answers, meta, inviteToken) {
         const survey = await this.getPublishedSurveyWithStructure(surveyId);
+        const decision = await this.audience.check(survey, { userId: respondentUserId, inviteToken });
         const existing = survey.oneResponsePerRespondent
             ? await this.prisma.surveyResponse.findFirst({ where: { surveyId, respondentUserId } })
             : null;
@@ -103,14 +112,25 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
                 actor,
             });
         }
-        return this.writeResponse(survey, answers, { respondentUserId, respondentEmail, meta, isEdit: false, actor });
+        return this.writeResponse(survey, answers, {
+            respondentUserId,
+            respondentEmail,
+            meta,
+            isEdit: false,
+            actor,
+            invitationId: decision.invitationId,
+            copyTo: respondentEmail,
+        });
     }
     /** Public path: create a brand-new anonymous response. */
-    async submitPublic(surveyId, answers, meta) {
+    async submitPublic(surveyId, answers, meta, opts = {}) {
         const survey = await this.getPublishedSurveyWithStructure(surveyId);
         if (survey.requiresLogin) {
             throw new common_1.ForbiddenException('This survey requires you to log in before responding');
         }
+        const decision = await this.audience.check(survey, { userId: null, inviteToken: opts.inviteToken });
+        // An invited person's copy goes to the invited address; anyone else may name one (only when the survey offers it).
+        const copyTo = decision.invitationId ? await this.audience.invitationEmail(decision.invitationId) : (opts.copyToEmail ?? null);
         let editToken = null;
         let editTokenHash;
         if (survey.allowEditAfterSubmit) {
@@ -125,6 +145,8 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             meta,
             isEdit: false,
             actor,
+            invitationId: decision.invitationId,
+            copyTo,
         });
         return { responseId: result.id, editToken };
     }
@@ -206,6 +228,7 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             // and whether the response cap is reached (so the page can say so up front instead of at Submit).
             thankYouMessage: (0, survey_settings_1.normalizeSettings)(survey.settings).thankYouMessage ?? null,
             showProgressBar: (0, survey_settings_1.normalizeSettings)(survey.settings).showProgressBar === true,
+            emailCopy: (0, survey_settings_1.normalizeSettings)(survey.settings).emailCopy === true,
             headerImage: (0, survey_settings_1.normalizeSettings)(survey.settings).headerImage ?? null,
             isFull: (0, survey_settings_1.computeAvailability)(survey, survey._count.responses) === 'full',
             closedMessage: survey.closedMessage ?? null,
@@ -310,6 +333,9 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
                     throw new common_1.ConflictException({ statusCode: 409, message: 'This survey has reached its maximum number of responses', full: true });
                 }
             }
+            if (!opts.responseId && opts.invitationId && !(await this.audience.claimInvitation(tx, opts.invitationId))) {
+                throw new common_1.ConflictException('This invitation has already been used to answer the survey');
+            }
             const responseRow = opts.responseId
                 ? await tx.surveyResponse.update({
                     where: { id: opts.responseId },
@@ -365,8 +391,21 @@ let ResponsesService = ResponsesService_1 = class ResponsesService {
             await this.notifyOnSubmit(survey, resolvedAnswers, opts.respondentEmail ?? 'Anonymous').catch((error) => {
                 this.logger.error('Post-submission notification dispatch failed (response itself was saved successfully)', error);
             });
+            if ((0, survey_settings_1.normalizeSettings)(survey.settings).emailCopy === true && opts.copyTo) {
+                await this.sendCopy(survey, resolvedAnswers, response.submittedAt, opts.copyTo).catch((error) => {
+                    this.logger.error('Emailing the respondent a copy failed (response itself was saved successfully)', error);
+                });
+            }
         }
         return response;
+    }
+    /** The respondent's own copy of their answers (survey.settings.emailCopy). NotificationEmailService.send never throws. */
+    async sendCopy(survey, answers, submittedAt, to) {
+        const rows = answers.map((a) => ({
+            question: (0, rich_text_1.toPlainText)(a.question.title),
+            answer: (0, piping_1.answerText)({ id: a.question.id, type: a.question.type, options: a.question.options.map((o) => ({ value: o.value, label: o.label })) }, a.value),
+        }));
+        await this.notificationEmail.send({ to, ...(0, invitations_1.buildCopyMail)({ title: (0, rich_text_1.toPlainText)(survey.title), submittedAt, rows }) });
     }
     /**
      * Fires on the INITIAL submit only, never an edit (docs/DECISIONS.md —
@@ -428,7 +467,8 @@ exports.ResponsesService = ResponsesService = ResponsesService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [audit_log_writer_1.AuditLogWriter,
         notifications_service_1.NotificationsService,
-        notification_email_service_1.NotificationEmailService])
+        notification_email_service_1.NotificationEmailService,
+        audience_service_1.AudienceService])
 ], ResponsesService);
 function escapeHtml(value) {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

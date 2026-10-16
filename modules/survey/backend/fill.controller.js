@@ -36,13 +36,13 @@ let FillController = class FillController {
     constructor(responses) {
         this.responses = responses;
     }
-    async getForFilling(id, user) {
-        return this.responses.getForFilling(id, user.userId);
+    async getForFilling(id, user, invite) {
+        return this.responses.getForFilling(id, user.userId, invite);
     }
-    async submit(id, dto, user, req) {
+    async submit(id, dto, user, req, invite) {
         // No @Audit here — ResponsesService writes its own audit_log row
         // directly (see responses.service.ts's writeResponse docblock).
-        return this.responses.submitAuthenticated(id, user.userId, user.sessionId, dto.answers, (0, request_meta_1.extractRequestMeta)(req));
+        return this.responses.submitAuthenticated(id, user.userId, user.sessionId, dto.answers, (0, request_meta_1.extractRequestMeta)(req), invite);
     }
 };
 exports.FillController = FillController;
@@ -50,8 +50,9 @@ __decorate([
     (0, common_1.Get)(':id/fill'),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, platform_1.CurrentUser)()),
+    __param(2, (0, common_1.Query)('invite')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, String]),
     __metadata("design:returntype", Promise)
 ], FillController.prototype, "getForFilling", null);
 __decorate([
@@ -60,8 +61,9 @@ __decorate([
     __param(1, (0, common_1.Body)()),
     __param(2, (0, platform_1.CurrentUser)()),
     __param(3, (0, common_1.Req)()),
+    __param(4, (0, common_1.Query)('invite')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, submit_response_dto_1.SubmitResponseDto, Object, Object]),
+    __metadata("design:paramtypes", [String, submit_response_dto_1.SubmitResponseDto, Object, Object, String]),
     __metadata("design:returntype", Promise)
 ], FillController.prototype, "submit", null);
 exports.FillController = FillController = __decorate([

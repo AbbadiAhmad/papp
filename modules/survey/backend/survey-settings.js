@@ -22,6 +22,10 @@ function normalizeSettings(input) {
     }
     if (raw.showProgressBar === true)
         result.showProgressBar = true;
+    if (raw.restricted === true)
+        result.restricted = true;
+    if (raw.emailCopy === true)
+        result.emailCopy = true;
     const image = (0, question_rules_1.parseImageRef)(raw.headerImage);
     if ('ref' in image && image.ref)
         result.headerImage = image.ref;

@@ -504,6 +504,8 @@ model SurveySurvey {
   responses   SurveyResponse[]
   media       SurveyMedia[]
   collaborators SurveyCollaborator[]
+  allowedUsers  SurveyAllowedUser[]
+  invitations   SurveyInvitation[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -522,6 +524,38 @@ model SurveyCollaborator {
   @@id([surveyId, userId])
   @@index([userId])
   @@map("survey_collaborators")
+}
+
+/// A logged-in user allowed to respond to a restricted survey (migration 008, SURVEY-D22).
+model SurveyAllowedUser {
+  surveyId  String   @map("survey_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  addedBy   String?  @map("added_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  survey SurveySurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@id([surveyId, userId])
+  @@map("survey_allowed_users")
+}
+
+/// An invited email address (migration 008). The personal link is derived (HMAC), never stored.
+model SurveyInvitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  email          String
+  invitedBy      String?   @map("invited_by") @db.Uuid
+  invitedAt      DateTime  @default(now()) @map("invited_at")
+  openedAt       DateTime? @map("opened_at")
+  respondedAt    DateTime? @map("responded_at")
+  lastReminderAt DateTime? @map("last_reminder_at")
+  reminderCount  Int       @default(0) @map("reminder_count")
+
+  survey SurveySurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, email])
+  @@index([email])
+  @@map("survey_invitations")
 }
 
 model SurveyMedia {

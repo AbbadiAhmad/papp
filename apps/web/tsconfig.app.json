@@ -53,6 +53,8 @@
     // The survey's shared safe-markup parser (rich-text.ts), same reasoning.
     "../../modules/*/backend/rich-text.ts",
     // Piping / carry-forward rules (piping.ts), same reasoning.
-    "../../modules/*/backend/piping.ts"
+    "../../modules/*/backend/piping.ts",
+    // Email-list parsing for the invitation cards (email-list.ts), same reasoning.
+    "../../modules/*/backend/email-list.ts"
   ]
 }

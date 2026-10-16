@@ -18,6 +18,8 @@ survey_surveys(id, title, description, status(draft|published|closed),
   created_at, updated_at)
 survey_sections(id, survey_id, order_index, title, description, navigation jsonb (004), image jsonb NULL (006: {mediaId, alt}))
 survey_collaborators(survey_id, user_id, added_by, created_at, PK(survey_id,user_id))   -- migration 007, co-owners (SURVEY-D21)
+survey_allowed_users(survey_id, user_id, added_by, created_at)   -- migration 008
+survey_invitations(id, survey_id, email, invited_by, invited_at, opened_at, responded_at, last_reminder_at, reminder_count)   -- migration 008; the personal link is derived, not stored
 survey_media(id, survey_id, mime, size_bytes, created_by, created_at)   -- migration 006; the file bytes are on disk, see Pictures below
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
@@ -107,6 +109,10 @@ Put `{{q:<id>}}` in a later section's title/description or a later question's ti
 ## Co-owners (1.5.0)
 
 A co-owner can edit, publish/close/reopen and read the results of one survey (not delete, archive, duplicate or manage co-owners). Add them by email in the builder (the creator or anyone with `survey.surveys.share`). They still need `survey.surveys.view` to reach the Surveys page. Mechanism: `backend/survey-access.ts` (`@SurveyAccess` + `SurveyAccessGuard`, SURVEY-D21); routes that allow co-owners use it **instead of** `@RequirePermission`, so a new route must pick one on purpose.
+
+## Who may respond, invitations, emailed copies (1.6.0)
+
+Builder → **Who can respond**: switch on *Only chosen people may respond*, add logged-in users by email and/or paste invited email addresses (they appear as cards that are checked as you type). Invitations are mailed once the survey is published; **Remind** re-sends the same link to those who have not answered (once per day each). A personal link is `/survey/<id>?invite=<token>`; the token is an HMAC of the invitation id keyed with `JWT_SECRET`, so rotating `JWT_SECRET` invalidates outstanding links. Set `APP_PUBLIC_URL` (or `WEB_ORIGIN`) so emails contain the right address. *Email each respondent a copy of their answers* sends the answers after the first submit. See SURVEY-D22 for every rule (one answer per invitation, invitations never linked to responses).
 
 ## Known gotchas
 

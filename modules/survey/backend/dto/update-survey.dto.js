@@ -40,6 +40,10 @@ class UpdateSurveyDto {
     thankYouMessage;
     /** Show page progress on surveys with more than one section. Stored in `settings`. */
     showProgressBar;
+    /** Only listed users and invited people may respond. Stored in `settings`. */
+    restricted;
+    /** Email each respondent a copy of their answers. Stored in `settings`. */
+    emailCopy;
     /** Picture at the top of the survey: `{ mediaId, alt }`; null removes it. Checked in SurveysService. */
     headerImage;
     /** Shown to respondents of a closed survey; empty string clears it (generic message again). */
@@ -111,6 +115,16 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], UpdateSurveyDto.prototype, "showProgressBar", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateSurveyDto.prototype, "restricted", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateSurveyDto.prototype, "emailCopy", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsObject)(),

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { DynamicModule, ForwardReference, INestApplication, Module, Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -12,6 +13,7 @@ import request from 'supertest';
 import { AppModule } from '../../../../apps/api/src/app.module';
 import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
 import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { NotificationEmailService } from '../../../../apps/api/src/core/notifications/notification-email.service';
 import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
 import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../test/support/permission-matrix';
@@ -805,6 +807,214 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect((await request(http()).delete(`/api/survey/surveys/${gone}`).set(admin())).status).toBeLessThan(300);
       const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM survey_collaborators WHERE survey_id = '${gone}'`);
       expect(Number(rows[0].n)).toBe(0);
+    });
+  });
+
+  describe('who may respond, invitations and emailed copies (ext. H)', () => {
+    type Mail = { to: string; subject: string; text: string };
+    let sent: Mail[];
+    let n = 0;
+    const asRole = async (role: RoleCode) => ({ Authorization: `Bearer ${(await fixtureForRole(app!, role)).token}` });
+    const emailOf = async (role: RoleCode) => (await fixtureForRole(app!, role)).email;
+
+    beforeEach(() => {
+      sent = [];
+      const mailer = app!.get(NotificationEmailService, { strict: false });
+      jest.spyOn(mailer, 'send').mockImplementation(async (mail: Mail) => {
+        sent.push(mail);
+        return true;
+      });
+    });
+
+    async function restrictedSurvey(patch: Record<string, unknown> = {}) {
+      const k = ++n;
+      const id = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Restricted ${k}` })).body.id as string;
+      const questionId = uuid(8000 + k * 2 + 1);
+      await request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({ sections: [{ id: uuid(8000 + k * 2), orderIndex: 0, title: 'S', questions: [{ id: questionId, orderIndex: 0, type: 'short_text', title: 'Name' }] }], logicRules: [] });
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ restricted: true, ...patch })).status).toBe(200);
+      return { id, questionId };
+    }
+    const publish = (id: string) => request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+    const audience = async (id: string) => (await request(http()).get(`/api/survey/surveys/${id}/audience`).set(admin())).body;
+    const tokenFrom = (mail: Mail) => /[?&]invite=([^\s&]+)/.exec(mail.text)![1];
+    const answer = (questionId: string, value = 'x') => ({ answers: [{ questionId, value }] });
+
+    it('a restricted survey refuses strangers, anonymous and logged in', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(403);
+      expect(get.body.restricted).toBe(true);
+      expect((await request(http()).post(`/api/survey/public/${id}`).send(answer(questionId))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('finance'))).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/public/${id}?invite=garbage`)).status).toBe(403);
+    });
+
+    it('invitations need a published survey; bad addresses are reported, duplicates and repeats are not sent twice', async () => {
+      const { id } = await restrictedSurvey();
+      const draft = await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['a@x.io'] });
+      expect(draft.status).toBe(409);
+      await publish(id);
+      const res = await request(http())
+        .post(`/api/survey/surveys/${id}/invitations`)
+        .set(admin())
+        .send({ emails: ['Ann@X.io, bob@x.io', 'not-an-email', 'ann@x.io', 'Cy <cy@x.io>'] });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ invited: 3, alreadyInvited: 0, invalid: ['not-an-email'], sent: 3, failed: 0 });
+      expect(sent.map((m) => m.to).sort()).toEqual(['ann@x.io', 'bob@x.io', 'cy@x.io']);
+      expect(sent[0].subject).toContain('Restricted');
+      const again = await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io', 'dee@x.io'] });
+      expect(again.body).toMatchObject({ invited: 1, alreadyInvited: 1 });
+      expect(sent.filter((m) => m.to === 'ann@x.io')).toHaveLength(1);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['nope'] })).status).toBe(400);
+    });
+
+    it('a personal link opens the survey once, marks the invitation, and cannot be reused', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      const token = tokenFrom(sent[0]);
+      const invitedAs = async () => (await audience(id)).invitations.find((i: { email: string }) => i.email === 'ann@x.io');
+      expect((await invitedAs()).status).toBe('invited');
+
+      const opened = await request(http()).get(`/api/survey/public/${id}?invite=${token}`);
+      expect(opened.status).toBe(200);
+      expect((await invitedAs()).status).toBe('opened');
+
+      const submitted = await request(http()).post(`/api/survey/public/${id}?invite=${token}`).send(answer(questionId, 'Ann'));
+      expect(submitted.status).toBe(201);
+      expect((await invitedAs()).status).toBe('responded');
+      expect((await request(http()).post(`/api/survey/public/${id}?invite=${token}`).send(answer(questionId, 'Again'))).status).toBe(409);
+      // the response is not linked to the address
+      const responses = await request(http()).get(`/api/survey/surveys/${id}/responses`).set(admin());
+      expect(JSON.stringify(responses.body)).not.toContain('ann@x.io');
+      expect(responses.body).toHaveLength(1);
+    });
+
+    it('forged, foreign and revoked links are refused', async () => {
+      const a = await restrictedSurvey();
+      const b = await restrictedSurvey();
+      await publish(a.id);
+      await publish(b.id);
+      await request(http()).post(`/api/survey/surveys/${a.id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      await request(http()).post(`/api/survey/surveys/${b.id}/invitations`).set(admin()).send({ emails: ['bob@x.io'] });
+      const tokenA = tokenFrom(sent[0]);
+      const tokenB = tokenFrom(sent[1]);
+      const [idA, signature] = tokenA.split('.');
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${idA}.${'0'.repeat(signature.length)}`)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenB}`)).status).toBe(403); // another survey's link
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenA}`)).status).toBe(200);
+      const invitationId = (await audience(a.id)).invitations[0].id;
+      expect((await request(http()).delete(`/api/survey/surveys/${a.id}/invitations/${invitationId}`).set(admin())).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenA}`)).status).toBe(403); // revoked
+    });
+
+    it('allowed users and invited accounts can answer while logged in; others cannot', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      const added = await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(admin()).send({ email: await emailOf('reader') });
+      expect(added.status).toBe(201);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(admin()).send({ email: 'ghost@nowhere.example' })).status).toBe(404);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('reader'))).status).toBe(200);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('reader')).send(answer(questionId))).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('library_assistant'))).status).toBe(403);
+      // an invitation to finance's own email address works for that account when logged in, without the link
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: [await emailOf('finance')] });
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('finance'))).status).toBe(200);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(201);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(409); // the invitation is used
+      const removed = await request(http()).delete(`/api/survey/surveys/${id}/audience/users/${(await fixtureForRole(app!, 'reader')).userId}`).set(admin());
+      expect(removed.status).toBe(200);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('reader'))).status).toBe(403);
+    });
+
+    it('reminders go to people who have not answered, at most once a day', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io', 'bob@x.io'] });
+      const annToken = tokenFrom(sent.find((m) => m.to === 'ann@x.io')!);
+      await request(http()).post(`/api/survey/public/${id}?invite=${annToken}`).send(answer(questionId));
+      sent.length = 0;
+      const first = await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(admin());
+      expect(first.body).toMatchObject({ reminded: 1, failed: 0 });
+      expect(sent.map((m) => m.to)).toEqual(['bob@x.io']);
+      expect(sent[0].subject).toMatch(/Reminder/);
+      const bobToken = tokenFrom(sent[0]);
+      expect((await request(http()).get(`/api/survey/public/${id}?invite=${bobToken}`)).status).toBe(200); // the reminder carries a working link
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(admin())).body.reminded).toBe(0);
+      const bob = (await audience(id)).invitations.find((i: { email: string }) => i.email === 'bob@x.io');
+      expect(bob.reminderCount).toBe(1);
+    });
+
+    it('managing the audience needs edit rights on the survey: strangers 403, co-owners allowed', async () => {
+      const { id } = await restrictedSurvey();
+      await publish(id);
+      const reader = await asRole('reader');
+      expect((await request(http()).get(`/api/survey/surveys/${id}/audience`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(reader).send({ emails: ['a@x.io'] })).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(reader).send({ email: await emailOf('finance') })).status).toBe(403);
+      await request(http()).post(`/api/survey/surveys/${id}/collaborators`).set(admin()).send({ email: await emailOf('reader') });
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(reader).send({ emails: ['co@x.io'] })).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/audience`).set(reader)).status).toBe(200);
+    });
+
+    it('the audit trail records invitations without copying the address list', async () => {
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ action: string; new_value: unknown }>>(`SELECT action, new_value FROM audit_log WHERE entity_type = 'SurveyInvitation'`);
+      expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining(['invite', 'remind']));
+      expect(JSON.stringify(rows.map((r) => r.new_value))).not.toMatch(/"invitations":\[/);
+    });
+
+    it('emails a copy of the answers: to the account, to the invited address, or to an address a public respondent typed', async () => {
+      const open = await restrictedSurvey({ restricted: false, emailCopy: true });
+      await publish(open.id);
+      const typed = await request(http()).post(`/api/survey/public/${open.id}`).send({ ...answer(open.questionId, 'Hello'), copyToEmail: 'me@x.io' });
+      expect(typed.status).toBe(201);
+      const mail = sent.find((m) => m.to === 'me@x.io')!;
+      expect(mail.subject).toContain('Your answers');
+      expect(mail.text).toContain('Name');
+      expect(mail.text).toContain('Hello');
+      // nothing is sent when the respondent gives no address
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${open.id}`).send(answer(open.questionId));
+      expect(sent).toHaveLength(0);
+
+      // a logged-in respondent gets it at the account address, whatever they typed
+      sent.length = 0;
+      await request(http()).post(`/api/survey/${open.id}/fill`).set(await asRole('finance')).send({ ...answer(open.questionId, 'Fin'), copyToEmail: 'attacker@x.io' });
+      expect(sent.map((m) => m.to)).toEqual([await emailOf('finance')]);
+
+      // an invited respondent gets it at the invited address, whatever they typed
+      const inv = await restrictedSurvey({ emailCopy: true });
+      await publish(inv.id);
+      await request(http()).post(`/api/survey/surveys/${inv.id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      const token = tokenFrom(sent[sent.length - 1]);
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${inv.id}?invite=${token}`).send({ ...answer(inv.questionId, 'Ann'), copyToEmail: 'attacker@x.io' });
+      expect(sent.map((m) => m.to)).toEqual(['ann@x.io']);
+
+      // survey option off -> no copy even with an address
+      const off = await restrictedSurvey({ restricted: false });
+      await publish(off.id);
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${off.id}`).send({ ...answer(off.questionId), copyToEmail: 'me@x.io' });
+      expect(sent).toHaveLength(0);
+    });
+
+    it('the public survey says whether it offers a copy; duplicate keeps the restriction with an empty audience', async () => {
+      const { id } = await restrictedSurvey({ emailCopy: true });
+      await publish(id);
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      expect(detail.settings).toMatchObject({ restricted: true, emailCopy: true });
+      expect((await audience(copy.body.id)).invitations).toEqual([]);
+      const open = await restrictedSurvey({ restricted: false, emailCopy: true });
+      await publish(open.id);
+      expect((await request(http()).get(`/api/survey/public/${open.id}`)).body.survey.emailCopy).toBe(true);
     });
   });
 });

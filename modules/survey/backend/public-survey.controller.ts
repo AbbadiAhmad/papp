@@ -28,15 +28,15 @@ export class PublicSurveyController {
 
   @Get(':id')
   @Public()
-  async getForFilling(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.responses.getForFilling(id, null);
+  async getForFilling(@Param('id', new ParseUUIDPipe()) id: string, @Query('invite') invite?: string) {
+    return this.responses.getForFilling(id, null, invite);
   }
 
   @Post(':id')
   @Public()
   @UseGuards(PublicThrottlerGuard)
-  async submit(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SubmitResponseDto, @Req() req: Request) {
-    return this.responses.submitPublic(id, dto.answers, extractRequestMeta(req));
+  async submit(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SubmitResponseDto, @Req() req: Request, @Query('invite') invite?: string) {
+    return this.responses.submitPublic(id, dto.answers, extractRequestMeta(req), { inviteToken: invite, copyToEmail: dto.copyToEmail });
   }
 
   /**

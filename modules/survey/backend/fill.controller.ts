@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { SubmitResponseDto } from './dto/submit-response.dto';
 import { AuthenticatedUser, CurrentUser, MustChangePasswordGuard } from './platform';
@@ -24,14 +24,20 @@ export class FillController {
   constructor(private readonly responses: ResponsesService) {}
 
   @Get(':id/fill')
-  async getForFilling(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.responses.getForFilling(id, user.userId);
+  async getForFilling(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Query('invite') invite?: string) {
+    return this.responses.getForFilling(id, user.userId, invite);
   }
 
   @Post(':id/fill')
-  async submit(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SubmitResponseDto, @CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
+  async submit(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: SubmitResponseDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+    @Query('invite') invite?: string,
+  ) {
     // No @Audit here — ResponsesService writes its own audit_log row
     // directly (see responses.service.ts's writeResponse docblock).
-    return this.responses.submitAuthenticated(id, user.userId, user.sessionId, dto.answers, extractRequestMeta(req));
+    return this.responses.submitAuthenticated(id, user.userId, user.sessionId, dto.answers, extractRequestMeta(req), invite);
   }
 }

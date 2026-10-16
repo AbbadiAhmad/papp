@@ -26,6 +26,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { validateOptionValues, validateQuestionConfig, type QuestionTypeName } from '../../backend/question-rules.ts';
 import { ImageField } from '../components/ImageField';
+import { AudiencePanel } from '../components/AudiencePanel';
 import { CoOwnersPanel } from '../components/CoOwnersPanel';
 import { CarryForwardEditor } from '../components/CarryForwardEditor';
 import { RichTextField } from '../components/RichTextField';
@@ -452,6 +453,8 @@ export function SurveyBuilderPage() {
           thankYouMessage: survey.settings?.thankYouMessage ?? '',
           showProgressBar: survey.settings?.showProgressBar === true,
           headerImage: survey.settings?.headerImage ?? null,
+          restricted: survey.settings?.restricted === true,
+          emailCopy: survey.settings?.emailCopy === true,
         }),
       );
       const updated = await gated('survey.surveys.update', () => surveyApi.replaceStructure(surveyId, payload));
@@ -632,9 +635,16 @@ export function SurveyBuilderPage() {
         </Stack>
       </Paper>
 
-      <Box sx={{ mb: 2 }}>
+      <Stack spacing={2} sx={{ mb: 2 }}>
+        <AudiencePanel
+          surveyId={surveyId}
+          published={survey.status === 'published'}
+          restricted={survey.settings?.restricted === true}
+          emailCopy={survey.settings?.emailCopy === true}
+          onSettingsChange={(patch) => updateSurveySettings({ settings: { ...survey.settings, ...patch } })}
+        />
         <CoOwnersPanel surveyId={surveyId} canManage={survey.access?.canManageOwners === true} />
-      </Box>
+      </Stack>
 
       <Stack spacing={2}>
         {sections.map((section, sectionIndex) => (

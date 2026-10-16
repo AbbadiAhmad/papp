@@ -1,8 +1,9 @@
 import axios from 'axios';
-import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { isValidEmail } from '../../backend/email-list.ts';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
@@ -12,7 +13,7 @@ import { surveyApi, type AnswerInput, type FillableSurvey } from '../api';
 // 'not_found' also covers "exists but not published" — the backend never
 // distinguishes the two to an anonymous/authenticated respondent
 // (MODULE_SPEC.md §7.2, same rule library_catalog's own public route follows).
-type PageState = 'loading' | 'ready' | 'login_required' | 'not_found' | 'not_open_yet' | 'full' | 'error' | 'submitted';
+type PageState = 'loading' | 'ready' | 'restricted' | 'login_required' | 'not_found' | 'not_open_yet' | 'full' | 'error' | 'submitted';
 
 const DRAFT_KEY_PREFIX = 'papp:survey-draft:';
 const SUBMITTED_KEY_PREFIX = 'papp:survey-submitted:';
@@ -61,6 +62,10 @@ function removeKey(key: string): void {
 export function TakeSurveyPage() {
   const { t, i18n } = useTranslation();
   const { surveyId } = useParams<{ surveyId: string }>();
+  // A personal invitation link carries ?invite=...; the server checks it, the page only passes it along.
+  const [searchParams] = useSearchParams();
+  const invite = searchParams.get('invite');
+  const [copyEmail, setCopyEmail] = useState('');
   const { status: authStatus, mustChangePassword } = useAuth();
   // A forced-password-change account is technically "authenticated" per
   // AuthContext's own status model, but FillController's
@@ -86,7 +91,7 @@ export function TakeSurveyPage() {
     if (!surveyId || authStatus === 'initializing') return;
     let cancelled = false;
 
-    const load = canUseAuthenticatedFlow ? surveyApi.getForFilling(surveyId) : surveyApi.getForFillingPublic(surveyId);
+    const load = canUseAuthenticatedFlow ? surveyApi.getForFilling(surveyId, invite) : surveyApi.getForFillingPublic(surveyId, invite);
     load
       .then(({ survey: loaded, existingResponse }) => {
         if (cancelled) return;
@@ -139,7 +144,9 @@ export function TakeSurveyPage() {
           return;
         }
         if (isForbiddenError(error)) {
-          setPageState('login_required');
+          // "By invitation only" is a different message from "please log in": a login may not help.
+          const restricted = axios.isAxiosError(error) && (error.response?.data as { restricted?: boolean } | undefined)?.restricted === true;
+          setPageState(restricted ? 'restricted' : 'login_required');
           return;
         }
         setPageState('error');
@@ -162,16 +169,21 @@ export function TakeSurveyPage() {
 
   const handleSubmit = async (payload: AnswerInput[]) => {
     if (!survey || !surveyId) return;
-    setSubmitting(true);
     setSubmitError(null);
+    const typedCopy = copyEmail.trim();
+    if (typedCopy && !isValidEmail(typedCopy)) {
+      setSubmitError(t('survey.take.copy_email_invalid'));
+      return;
+    }
+    setSubmitting(true);
     try {
       if (canUseAuthenticatedFlow) {
-        await surveyApi.submitAuthenticated(surveyId, payload);
+        await surveyApi.submitAuthenticated(surveyId, payload, invite);
       } else if (editContext) {
         await surveyApi.editPublic(surveyId, editContext.editToken, payload);
         writeJson(submittedKey, { responseId: '', editToken: editContext.editToken, answers } satisfies StoredSubmission);
       } else {
-        const result = await surveyApi.submitPublic(surveyId, payload);
+        const result = await surveyApi.submitPublic(surveyId, payload, { invite, copyToEmail: typedCopy || undefined });
         if (result.editToken) {
           writeJson(submittedKey, { responseId: result.responseId, editToken: result.editToken, answers } satisfies StoredSubmission);
           setReturnedEditToken(result.editToken);
@@ -229,6 +241,36 @@ export function TakeSurveyPage() {
               </Typography>
             ) : null}
           </Stack>
+        ) : null}
+
+        {pageState === 'restricted' ? (
+          <Stack spacing={2}>
+            <Alert severity="warning">{t('survey.take.restricted')}</Alert>
+            {authStatus !== 'authenticated' ? (
+              <Button variant="contained" href="/login">
+                {t('survey.take.go_to_login')}
+              </Button>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {pageState === 'ready' && survey?.emailCopy ? (
+          canUseAuthenticatedFlow || invite ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              {t('survey.take.copy_will_be_emailed')}
+            </Alert>
+          ) : (
+            <TextField
+              type="email"
+              size="small"
+              fullWidth
+              sx={{ mb: 2 }}
+              label={t('survey.take.copy_email')}
+              helperText={t('survey.take.copy_email_hint')}
+              value={copyEmail}
+              onChange={(e) => setCopyEmail(e.target.value)}
+            />
+          )
         ) : null}
 
         {pageState === 'ready' && survey ? (

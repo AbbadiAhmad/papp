@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsDefined, IsUUID, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsDefined, IsEmail, IsOptional, IsUUID, MaxLength, ValidateNested } from 'class-validator';
 
 export class AnswerInputDto {
   @IsUUID()
@@ -34,4 +34,13 @@ export class SubmitResponseDto {
   @ValidateNested({ each: true })
   @Type(() => AnswerInputDto)
   answers!: AnswerInputDto[];
+
+  /**
+   * Where to email a copy of the answers, for an ANONYMOUS respondent of a survey that offers it. Ignored for a
+   * logged-in respondent (their account email is used) and for an invited one (the invited address is used).
+   */
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  copyToEmail?: string;
 }

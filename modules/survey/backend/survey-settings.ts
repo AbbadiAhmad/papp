@@ -18,6 +18,10 @@ export interface SurveySettings {
   showProgressBar?: boolean;
   /** Picture shown at the top of the survey (phase D). */
   headerImage?: ImageRef;
+  /** Only listed users and invited people may respond (SURVEY-D22). */
+  restricted?: boolean;
+  /** Email each respondent a copy of their answers (SURVEY-D22). */
+  emailCopy?: boolean;
 }
 
 /** Returns a clean settings object (known keys only, trimmed, empty values removed). Never throws. */
@@ -28,6 +32,8 @@ export function normalizeSettings(input: unknown): SurveySettings {
     result.thankYouMessage = raw.thankYouMessage.trim().slice(0, MAX_THANK_YOU_LENGTH);
   }
   if (raw.showProgressBar === true) result.showProgressBar = true;
+  if (raw.restricted === true) result.restricted = true;
+  if (raw.emailCopy === true) result.emailCopy = true;
   const image = parseImageRef(raw.headerImage);
   if ('ref' in image && image.ref) result.headerImage = image.ref;
   return result;

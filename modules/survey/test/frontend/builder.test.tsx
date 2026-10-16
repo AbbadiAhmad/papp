@@ -14,6 +14,8 @@ vi.mock('../../../../apps/web/src/shared/permissions', () => ({
   useGatedCall: () => async (_code: string, fn: () => Promise<unknown>) => fn(),
 }));
 
+vi.mock('../../../../apps/web/src/app/LanguageContext', () => ({ useLanguage: () => ({ language: 'en', direction: 'ltr' }) }));
+
 const replaceStructure = vi.fn();
 const update = vi.fn();
 const submitPublic = vi.fn();
@@ -25,6 +27,9 @@ vi.mock('../../frontend/api', async (importOriginal) => {
     surveyApi: {
       ...original.surveyApi,
       get: vi.fn(),
+      // The builder also shows the audience and co-owner panels; they load their own lists.
+      getAudience: vi.fn(async () => ({ restricted: false, allowedUsers: [], invitations: [] })),
+      listCoOwners: vi.fn(async () => ({ owner: { userId: 'o', name: 'Owner', email: 'o@x.io' }, coOwners: [] })),
       update: (...args: unknown[]) => update(...args),
       replaceStructure: (...args: unknown[]) => replaceStructure(...args),
       submitPublic: (...args: unknown[]) => submitPublic(...args),
