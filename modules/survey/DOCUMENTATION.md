@@ -118,6 +118,10 @@ Builder → **Who can respond**: switch on *Only chosen people may respond*, add
 
 The report and the responses list can be filtered by date range and by answers (choice, scale, rating questions; conditions combine with AND); the Excel export follows the filter. Choice questions can be shown as bars, a pie or a share bar, each with the numbers as text; the report also draws responses per day and, for scale/rating questions, the average over time. Rules: SURVEY-D23; code: `backend/report-filter.ts` (shared with the page), `ReportsService.whereFor`.
 
+## Builder layout (1.6.2)
+
+Three tabs — Questions, Settings (grouped), Sharing — and a folded "Conditions and flow (n)" panel per section (SURVEY-D24). Tests that edit survey settings first click the Settings tab (`openSettings()` in `builder.test.tsx`); the Playwright spec opens the conditions panel before "Add rule".
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.

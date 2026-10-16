@@ -78,6 +78,8 @@ test.describe('Survey smoke flow', () => {
 
     // A condition lives in the section it controls; its defaults are
     // "if <first choice question of another section> = <its first option> then show this section".
+    // Conditions are folded away under each section; open the last section's.
+    await page.getByRole('button', { name: TEXT.ar.conditionsHeader }).last().click();
     await page.getByRole('button', { name: TEXT.ar.addRule }).last().click();
 
     const [structureResponse] = await Promise.all([

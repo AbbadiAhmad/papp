@@ -369,5 +369,13 @@
   "survey.filters.answer": "الإجابة",
   "survey.filters.number": "القيمة",
   "survey.filters.add": "إضافة عامل تصفية",
-  "survey.filters.clear": "مسح كل عوامل التصفية"
+  "survey.filters.clear": "مسح كل عوامل التصفية",
+  "survey.builder.tabs": "أقسام الاستبيان",
+  "survey.builder.tab_questions": "الأسئلة",
+  "survey.builder.tab_settings": "الإعدادات",
+  "survey.builder.tab_sharing": "المشاركة",
+  "survey.builder.group_basics": "الأساسيات",
+  "survey.builder.group_answering": "طريقة الإجابة",
+  "survey.builder.group_after": "بعد الإرسال",
+  "survey.builder.conditions_title": "الشروط والتنقل ({{count}})"
 }

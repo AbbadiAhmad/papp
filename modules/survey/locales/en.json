@@ -369,5 +369,13 @@
   "survey.filters.answer": "Answer",
   "survey.filters.number": "Value",
   "survey.filters.add": "Add filter",
-  "survey.filters.clear": "Clear all filters"
+  "survey.filters.clear": "Clear all filters",
+  "survey.builder.tabs": "Survey sections",
+  "survey.builder.tab_questions": "Questions",
+  "survey.builder.tab_settings": "Settings",
+  "survey.builder.tab_sharing": "Sharing",
+  "survey.builder.group_basics": "Basics",
+  "survey.builder.group_answering": "How people answer",
+  "survey.builder.group_after": "After they submit",
+  "survey.builder.conditions_title": "Conditions and flow ({{count}})"
 }

@@ -1,4 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -17,6 +19,11 @@ import {
   Snackbar,
   Stack,
   TextField,
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
@@ -86,6 +93,8 @@ function cloneQuestion(question: SurveyQuestionDto, titleSuffix: string): Survey
 }
 
 /** What counts as "unsaved changes": the survey settings plus the whole structure. */
+type BuilderTab = 'questions' | 'settings' | 'sharing';
+
 function snapshotOf(survey: SurveyDetail, sections: SurveySectionDto[], logicRules: SurveyLogicRuleDto[]): string {
   const { title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings } = survey;
   return JSON.stringify({ title, description, requiresLogin, allowEditAfterSubmit, oneResponsePerRespondent, notifyOwnerOnSubmit, notifyEmails, opensAt, closesAt, closedMessage, responseLimit, settings, sections, logicRules });
@@ -122,6 +131,7 @@ export function SurveyBuilderPage() {
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [tab, setTab] = useState<BuilderTab>('questions');
   const [previewSurvey, setPreviewSurvey] = useState<FillableSurvey | null>(null);
   const [moveMenu, setMoveMenu] = useState<{ anchor: HTMLElement; sectionIndex: number; questionIndex: number } | null>(null);
 
@@ -509,11 +519,37 @@ export function SurveyBuilderPage() {
         </Alert>
       ) : null}
 
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle1" sx={{ mb: 2 }}>
-          {t('survey.builder.settings')}
-        </Typography>
-        <Stack spacing={2}>
+
+
+      <Tabs
+        value={tab}
+        onChange={(_e, next: BuilderTab) => setTab(next)}
+        aria-label={t('survey.builder.tabs')}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab value="questions" label={t('survey.builder.tab_questions')} id="builder-tab-questions" aria-controls="builder-panel" />
+        <Tab
+          value="settings"
+          label={t('survey.builder.tab_settings')}
+          id="builder-tab-settings"
+          aria-controls="builder-panel"
+          icon={scheduleInvalid ? <ErrorOutlineIcon color="error" fontSize="small" /> : undefined}
+          iconPosition="end"
+        />
+        <Tab value="sharing" label={t('survey.builder.tab_sharing')} id="builder-tab-sharing" aria-controls="builder-panel" />
+      </Tabs>
+
+      <Box role="tabpanel" id="builder-panel" aria-labelledby={`builder-tab-${tab}`}>
+        {tab === 'settings' ? (
+          <>
+      <Stack spacing={2} sx={{ mb: 3 }}>
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle1" component="h2" sx={{ mb: 2 }}>
+            {t('survey.builder.group_basics')}
+          </Typography>
+          <Stack spacing={2}>
           <TextField label={t('survey.fields.title')} value={survey.title} onChange={(e) => updateSurveySettings({ title: e.target.value })} required />
           <RichTextField
             label={t('survey.fields.description')}
@@ -522,6 +558,23 @@ export function SurveyBuilderPage() {
             multiline
             minRows={2}
           />
+          <ImageField
+            surveyId={surveyId}
+            label={t('survey.image.header')}
+            value={survey.settings?.headerImage}
+            onChange={(image) => {
+              const { headerImage: _old, ...rest } = survey.settings ?? {};
+              updateSurveySettings({ settings: image ? { ...rest, headerImage: image } : rest });
+            }}
+          />
+          </Stack>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle1" component="h2" sx={{ mb: 1 }}>
+            {t('survey.builder.group_answering')}
+          </Typography>
+          <Stack spacing={1}>
           <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Checkbox checked={survey.requiresLogin} onChange={(e) => updateSurveySettings({ requiresLogin: e.target.checked })} />}
@@ -542,25 +595,24 @@ export function SurveyBuilderPage() {
               }
               label={t('survey.fields.one_response_per_respondent')}
             />
-            <FormControlLabel
-              control={
-                <Checkbox checked={survey.notifyOwnerOnSubmit} onChange={(e) => updateSurveySettings({ notifyOwnerOnSubmit: e.target.checked })} />
-              }
-              label={t('survey.fields.notify_owner_on_submit')}
-            />
           </Stack>
-          <TextField
-            label={t('survey.fields.closed_message')}
-            helperText={t('survey.builder.closed_message_hint')}
-            value={survey.closedMessage ?? ''}
-            onChange={(e) => updateSurveySettings({ closedMessage: e.target.value })}
-            multiline
-            minRows={2}
-            slotProps={{ htmlInput: { maxLength: 1000 } }}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={survey.settings?.showProgressBar === true}
+                onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, showProgressBar: e.target.checked } })}
+              />
+            }
+            label={t('survey.fields.show_progress_bar')}
           />
-          <Typography variant="subtitle2" sx={{ pt: 1 }}>
+          </Stack>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle1" component="h2" sx={{ mb: 1 }}>
             {t('survey.builder.availability')}
           </Typography>
+          <Stack spacing={2}>
           <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
             <TextField
               type="datetime-local"
@@ -592,15 +644,23 @@ export function SurveyBuilderPage() {
           <Typography variant="caption" color="text.secondary" sx={{ mt: '-8px !important' }}>
             {t('survey.builder.availability_hint')}
           </Typography>
-          <ImageField
-            surveyId={surveyId}
-            label={t('survey.image.header')}
-            value={survey.settings?.headerImage}
-            onChange={(image) => {
-              const { headerImage: _old, ...rest } = survey.settings ?? {};
-              updateSurveySettings({ settings: image ? { ...rest, headerImage: image } : rest });
-            }}
+          <TextField
+            label={t('survey.fields.closed_message')}
+            helperText={t('survey.builder.closed_message_hint')}
+            value={survey.closedMessage ?? ''}
+            onChange={(e) => updateSurveySettings({ closedMessage: e.target.value })}
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 1000 } }}
           />
+          </Stack>
+        </Paper>
+
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle1" component="h2" sx={{ mb: 2 }}>
+            {t('survey.builder.group_after')}
+          </Typography>
+          <Stack spacing={2}>
           <TextField
             label={t('survey.fields.thank_you_message')}
             helperText={t('survey.builder.thank_you_hint')}
@@ -610,15 +670,12 @@ export function SurveyBuilderPage() {
             minRows={2}
             slotProps={{ htmlInput: { maxLength: 4000 } }}
           />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={survey.settings?.showProgressBar === true}
-                onChange={(e) => updateSurveySettings({ settings: { ...survey.settings, showProgressBar: e.target.checked } })}
-              />
-            }
-            label={t('survey.fields.show_progress_bar')}
-          />
+            <FormControlLabel
+              control={
+                <Checkbox checked={survey.notifyOwnerOnSubmit} onChange={(e) => updateSurveySettings({ notifyOwnerOnSubmit: e.target.checked })} />
+              }
+              label={t('survey.fields.notify_owner_on_submit')}
+            />
           <TextField
             label={t('survey.fields.notify_emails')}
             helperText={t('survey.builder.notify_emails_hint')}
@@ -632,9 +689,12 @@ export function SurveyBuilderPage() {
               })
             }
           />
-        </Stack>
-      </Paper>
-
+          </Stack>
+        </Paper>
+      </Stack>
+          </>
+        ) : null}
+        {tab === 'sharing' ? (
       <Stack spacing={2} sx={{ mb: 2 }}>
         <AudiencePanel
           surveyId={surveyId}
@@ -645,7 +705,9 @@ export function SurveyBuilderPage() {
         />
         <CoOwnersPanel surveyId={surveyId} canManage={survey.access?.canManageOwners === true} />
       </Stack>
-
+        ) : null}
+        {tab === 'questions' ? (
+          <>
       <Stack spacing={2}>
         {sections.map((section, sectionIndex) => (
           <Paper key={section.id} sx={{ p: 2 }}>
@@ -869,25 +931,31 @@ export function SurveyBuilderPage() {
               </Box>
             </Stack>
 
-            <Box sx={{ mt: 2, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+            <Accordion disableGutters variant="outlined" sx={{ mt: 2, '&::before': { display: 'none' } }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls={`conditions-${section.id}`} id={`conditions-head-${section.id}`}>
+                <Typography variant="subtitle2">{t('survey.builder.conditions_title', { count: rulesOfSection(section).length + (section.navigation?.routes?.length ?? 0) + (section.navigation?.defaultTarget ? 1 : 0) })}</Typography>
+              </AccordionSummary>
+              <AccordionDetails id={`conditions-${section.id}`} sx={{ pt: 0 }}>
+            <Box sx={{ mt: 1 }}>
               <Typography variant="subtitle2">{t('survey.builder.logic_rules')}</Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                 {t('survey.builder.logic_rules_hint')}
               </Typography>
-              <Stack spacing={1.5}>
+              <Stack spacing={0.75}>
                 {rulesOfSection(section).map(({ rule, index }) => {
                   const sourceQuestion = allQuestions.find((q) => q.id === rule.sourceQuestionId);
                   const sources = sourceCandidates(section);
                   const targetKey = `${rule.targetType}:${rule.targetId}`;
                   return (
-                    <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                    <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_source_question')}
                         value={sources.some((q) => q.id === rule.sourceQuestionId) ? rule.sourceQuestionId : ''}
                         onChange={(e) => changeRuleSource(index, e.target.value)}
-                        sx={{ minWidth: 180 }}
+                        sx={{ minWidth: 140 }}
                       >
                         {sources.map((q) => (
                           <MenuItem key={q.id} value={q.id}>
@@ -898,10 +966,11 @@ export function SurveyBuilderPage() {
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_option_value')}
                         value={(sourceQuestion?.options ?? []).some((o) => optionValueOf(o) === rule.sourceOptionValue) ? rule.sourceOptionValue : ''}
                         onChange={(e) => updateLogicRule(index, { sourceOptionValue: e.target.value })}
-                        sx={{ minWidth: 140 }}
+                        sx={{ minWidth: 80 }}
                       >
                         {(sourceQuestion?.options ?? [])
                           .filter((o) => optionValueOf(o))
@@ -914,10 +983,11 @@ export function SurveyBuilderPage() {
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_action')}
                         value={rule.action}
                         onChange={(e) => updateLogicRule(index, { action: e.target.value as 'show' | 'hide' })}
-                        sx={{ minWidth: 110 }}
+                        sx={{ minWidth: 80 }}
                       >
                         <MenuItem value="show">{t('survey.builder.action_show')}</MenuItem>
                         <MenuItem value="hide">{t('survey.builder.action_hide')}</MenuItem>
@@ -925,13 +995,14 @@ export function SurveyBuilderPage() {
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_target')}
                         value={targetKey}
                         onChange={(e) => {
                           const [targetType, ...rest] = e.target.value.split(':');
                           updateLogicRule(index, { targetType: targetType as 'section' | 'question', targetId: rest.join(':') });
                         }}
-                        sx={{ minWidth: 200 }}
+                        sx={{ minWidth: 150 }}
                       >
                         <MenuItem value={`section:${section.id}`}>{t('survey.builder.target_this_section')}</MenuItem>
                         {section.questions.map((q) => (
@@ -959,26 +1030,27 @@ export function SurveyBuilderPage() {
               </Stack>
             </Box>
 
-            <Box sx={{ mt: 2, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+            <Box sx={{ mt: 1 }}>
               <Typography variant="subtitle2">{t('survey.builder.navigation_title')}</Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                 {t('survey.builder.navigation_hint')}
               </Typography>
-              <Stack spacing={1.5}>
+              <Stack spacing={0.75}>
                 {(section.navigation?.routes ?? []).map((route, routeIndex) => {
                   const routeSource = section.questions.find((q) => q.id === route.sourceQuestionId);
                   return (
-                    <Stack key={routeIndex} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                    <Stack key={routeIndex} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_source_question')}
                         value={choiceQuestionsOf(section).some((q) => q.id === route.sourceQuestionId) ? route.sourceQuestionId : ''}
                         onChange={(e) => {
                           const first = section.questions.find((q) => q.id === e.target.value)?.options?.find((o) => optionValueOf(o));
                           updateRoute(sectionIndex, routeIndex, { sourceQuestionId: e.target.value, sourceOptionValue: first ? optionValueOf(first) : '' });
                         }}
-                        sx={{ minWidth: 180 }}
+                        sx={{ minWidth: 140 }}
                       >
                         {choiceQuestionsOf(section).map((q) => (
                           <MenuItem key={q.id} value={q.id}>
@@ -989,6 +1061,7 @@ export function SurveyBuilderPage() {
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.fields.logic_option_value')}
                         value={(routeSource?.options ?? []).some((o) => optionValueOf(o) === route.sourceOptionValue) ? route.sourceOptionValue : ''}
                         onChange={(e) => updateRoute(sectionIndex, routeIndex, { sourceOptionValue: e.target.value })}
@@ -1005,10 +1078,11 @@ export function SurveyBuilderPage() {
                       <TextField
                         select
                         size="small"
+                        variant="standard"
                         label={t('survey.builder.go_to')}
                         value={route.target === 'submit' || laterSections(sectionIndex).some((s) => s.id === route.target) ? route.target : ''}
                         onChange={(e) => updateRoute(sectionIndex, routeIndex, { target: e.target.value })}
-                        sx={{ minWidth: 200 }}
+                        sx={{ minWidth: 150 }}
                       >
                         {laterSections(sectionIndex).map((s) => (
                           <MenuItem key={s.id} value={s.id}>
@@ -1023,10 +1097,11 @@ export function SurveyBuilderPage() {
                     </Stack>
                   );
                 })}
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
                   <TextField
                     select
                     size="small"
+                    variant="standard"
                     label={t('survey.builder.otherwise_go_to')}
                     value={
                       section.navigation?.defaultTarget === 'submit' || laterSections(sectionIndex).some((s) => s.id === section.navigation?.defaultTarget)
@@ -1034,7 +1109,7 @@ export function SurveyBuilderPage() {
                         : 'next'
                     }
                     onChange={(e) => updateNavigation(sectionIndex, { defaultTarget: e.target.value === 'next' ? null : e.target.value })}
-                    sx={{ minWidth: 220 }}
+                    sx={{ minWidth: 170 }}
                   >
                     <MenuItem value="next">{t('survey.builder.next_section')}</MenuItem>
                     {laterSections(sectionIndex).map((s) => (
@@ -1055,6 +1130,8 @@ export function SurveyBuilderPage() {
                 </Stack>
               </Stack>
             </Box>
+              </AccordionDetails>
+            </Accordion>
           </Paper>
         ))}
         <Box>
@@ -1063,6 +1140,9 @@ export function SurveyBuilderPage() {
           </Button>
         </Box>
       </Stack>
+          </>
+        ) : null}
+      </Box>
 
       <Menu anchorEl={moveMenu?.anchor} open={moveMenu !== null} onClose={() => setMoveMenu(null)}>
         {moveMenu
