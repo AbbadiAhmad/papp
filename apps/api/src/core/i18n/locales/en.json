@@ -123,5 +123,6 @@
   "core.common.colorMode.dark": "Theme: dark (click to follow device)",
   "core.common.menu": "Menu",
   "core.common.no_data": "No data",
-  "core.common.status": "Status"
+  "core.common.status": "Status",
+  "core.perm.notifications.confirmations.view": "View notification confirmations (evidence)"
 }

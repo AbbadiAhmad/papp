@@ -25,11 +25,18 @@ export function NotificationsInboxPage() {
         <Typography variant="h4" component="h2">
           {t('core.menu.notifications')}
         </Typography>
+        <Stack direction="row" spacing={1}>
+        <Can permission="notifications.confirmations.view">
+          <Button component={RouterLink} to="/notifications/confirmations" variant="outlined">
+            {t('core.notifications.confirmations.menu')}
+          </Button>
+        </Can>
         <Can permission="notifications.send">
           <Button startIcon={<AddIcon />} component={RouterLink} to="/notifications/compose" variant="contained">
             {t('core.notifications.compose')}
           </Button>
         </Can>
+        </Stack>
       </Stack>
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>

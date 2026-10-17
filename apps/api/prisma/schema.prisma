@@ -256,6 +256,11 @@ model Notification {
   targetType   NotificationTargetType @map("target_type")
   /// user_id or role_id; null when targetType = 'all_users'.
   targetId     String?                @db.Uuid @map("target_id")
+  /// D119: each emailed recipient gets a personal link to confirm receipt / acceptance.
+  requiresConfirmation     Boolean @default(false) @map("requires_confirmation")
+  /// e.g. 'receipt', 'policy_acceptance', 'gdpr_consent' (free text, stored on the evidence).
+  confirmationType         String? @map("confirmation_type")
+  confirmationAllowComment Boolean @default(true) @map("confirmation_allow_comment")
 
   recipients NotificationRecipient[]
 
@@ -273,12 +278,41 @@ model NotificationRecipient {
   userId         String    @db.Uuid @map("user_id")
   readAt         DateTime? @map("read_at")
   emailedAt      DateTime? @map("emailed_at")
+  /// SHA-256 of the emailed confirmation link token (D119).
+  /// @Sensitive
+  confirmationTokenHash String?   @map("confirmation_token_hash")
+  confirmationExpiresAt DateTime? @map("confirmation_expires_at")
 
   notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@id([notificationId, userId])
   @@index([userId, readAt])
   @@map("notification_recipients")
+}
+
+/// D119: append-only evidence that a recipient confirmed a notification. Snapshots,
+/// no relations — it must outlive the notification and the user (DB trigger blocks
+/// UPDATE/DELETE). See 0021_notification_confirmations.sql.
+model NotificationConfirmation {
+  id                       String   @id @default(uuid()) @db.Uuid
+  notificationId           String   @map("notification_id") @db.Uuid
+  userId                   String   @map("user_id") @db.Uuid
+  confirmationType         String   @map("confirmation_type")
+  confirmedAt              DateTime @default(now()) @map("confirmed_at")
+  ipAddress                String?  @map("ip_address")
+  userAgent                String?  @map("user_agent")
+  method                   String   @default("email_link")
+  notificationTitle        String   @map("notification_title")
+  notificationBodyMarkdown String   @map("notification_body_markdown")
+  contentSha256            String   @map("content_sha256")
+  confirmerName            String   @map("confirmer_name")
+  confirmerEmail           String   @map("confirmer_email")
+  comment                  String?
+
+  @@unique([notificationId, userId], name: "notification_confirmations_once")
+  @@index([userId, confirmationType])
+  @@index([confirmedAt])
+  @@map("notification_confirmations")
 }
 
 // --- Phase 5: Module registry menu entries -------------------------------
