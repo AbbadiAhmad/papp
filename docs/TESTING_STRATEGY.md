@@ -72,6 +72,8 @@ export function expectPermissionEnforced(opts: {
 }
 ```
 
+`path` may also be a function (`path: () => \`/x/${id}\``, with a `label`) when the row's id only exists after a `beforeAll`; read at run time. When one role's success changes what the next role sees (a first call that makes someone a co-owner, deletes a file, publishes a survey), put that call LAST in the describe or narrow `roles` and say why at the call site.
+
 This one helper, called once per endpoint in a module's e2e test file, is what makes "every action is permission-gated" a tested guarantee rather than a hope. It's part of the required checklist in `.claude/skills/papp-add-feature/SKILL.md` for any new endpoint.
 
 ## 3. Audit log tests

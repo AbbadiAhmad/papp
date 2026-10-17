@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { DynamicModule, ForwardReference, INestApplication, Module, Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -12,6 +13,7 @@ import request from 'supertest';
 import { AppModule } from '../../../../apps/api/src/app.module';
 import { MigrationRunnerService } from '../../../../apps/api/src/core/module-registry/migration-runner.service';
 import { ModuleRegistryService } from '../../../../apps/api/src/core/module-registry/module-registry.service';
+import { NotificationEmailService } from '../../../../apps/api/src/core/notifications/notification-email.service';
 import { PrismaService } from '../../../../apps/api/src/prisma/prisma.service';
 import { startPostgresTestContainer, stopPostgresTestContainer } from '../../../../apps/api/test/support/postgres-test-container';
 import { ALL_ROLE_CODES, expectPermissionEnforced, fixtureForRole } from '../../../../test/support/permission-matrix';
@@ -576,6 +578,631 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect(imported.status).toBe(201);
       const detail = (await request(http()).get(`/api/survey/surveys/${imported.body.id}`).set(admin())).body;
       expect(detail.sections[0].image).toBeNull();
+    });
+  });
+
+  describe('piping and carry-forward (ext. F)', () => {
+    let n = 0;
+    const S1 = (k: number) => 900 + k * 10; // a number: the ids below are uuid(S1 + offset)
+    /** Section 1: a multi-choice "genres" question. Section 2: a carry-forward question + a text question piping the answer. */
+    async function build(mode: 'selected' | 'unselected', opts: { tokenTarget?: 'later' | 'same' | 'ok' } = {}) {
+      const k = ++n;
+      const created = await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Carry ${k}` });
+      const id = created.body.id as string;
+      const [sec1, sec2, qGenres, qFav, qWhy] = [0, 1, 2, 3, 4].map((offset) => uuid(S1(k) + offset));
+      const opt = (i: number, value: string) => ({ id: uuid(5000 + k * 10 + i), orderIndex: i, value, label: value.toUpperCase() });
+      const body = {
+        sections: [
+          {
+            id: sec1,
+            orderIndex: 0,
+            title: 'Genres',
+            questions: [{ id: qGenres, orderIndex: 0, type: 'multi_choice', title: 'Pick genres', options: [opt(0, 'fic'), opt(1, 'his'), opt(2, 'poe')] }],
+          },
+          {
+            id: sec2,
+            orderIndex: 1,
+            title: opts.tokenTarget === 'same' ? `About {{q:${qFav}}}` : 'More',
+            questions: [
+              { id: qFav, orderIndex: 0, type: 'single_choice', title: 'Favourite', config: { optionsFrom: { questionId: qGenres, mode } } },
+              { id: qWhy, orderIndex: 1, type: 'short_text', title: opts.tokenTarget === 'later' ? `Why {{q:${uuid(S1(k) + 9)}}}?` : `Why {{q:${qFav}}}?`, required: false },
+            ],
+          },
+        ],
+        logicRules: [],
+      };
+      return { id, body, ids: { qGenres, qFav, qWhy } };
+    }
+    const save = (id: string, body: unknown) => request(http()).put(`/api/survey/surveys/${id}/structure`).set(admin()).send(body as object);
+    const publish = (id: string) => request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+    const submit = (id: string, answers: Array<{ questionId: string; value: unknown }>) => request(http()).post(`/api/survey/public/${id}`).send({ answers });
+
+    it('saves a question whose choices come from an earlier section', async () => {
+      const { id, body } = await build('selected');
+      // the piping token in section 2 points at a question of section 2 itself: refused
+      const bad = await save(id, body);
+      expect(bad.status).toBe(400);
+      expect(String(bad.body.message)).toMatch(/earlier section/);
+    });
+
+    it('refuses tokens that point at a missing question or the same section, and bad carry-forward', async () => {
+      const k = await build('selected', { tokenTarget: 'later' });
+      expect((await save(k.id, k.body)).status).toBe(400);
+      const sameSection = await build('selected');
+      sameSection.body.sections[1].questions[1].title = 'Plain';
+      sameSection.body.sections[1].questions[0].config = { optionsFrom: { questionId: sameSection.ids.qFav, mode: 'selected' } }; // itself
+      expect((await save(sameSection.id, sameSection.body)).status).toBe(400);
+      const wrongType = await build('selected');
+      wrongType.body.sections[1].questions[1].title = 'Plain';
+      wrongType.body.sections[1].questions[1].config = { optionsFrom: { questionId: wrongType.ids.qGenres, mode: 'selected' } }; // a text question
+      expect((await save(wrongType.id, wrongType.body)).status).toBe(400);
+    });
+
+    async function valid(mode: 'selected' | 'unselected') {
+      const built = await build(mode);
+      built.body.sections[1].questions[1].title = `Why {{q:${built.ids.qGenres}}}?`; // pipe the earlier section's answer instead
+      const saved = await save(built.id, built.body);
+      expect(saved.status).toBe(200);
+      expect([200, 201]).toContain((await publish(built.id)).status);
+      return built;
+    }
+
+    it('the carried question accepts only the chosen options (selected) and rejects others', async () => {
+      const { id, ids } = await valid('selected');
+      const ok = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic', 'poe'] },
+        { questionId: ids.qFav, value: 'poe' },
+      ]);
+      expect(ok.status).toBe(201);
+      const notChosen = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic', 'poe'] },
+        { questionId: ids.qFav, value: 'his' },
+      ]);
+      expect(notChosen.status).toBe(400);
+      const unknown = await submit(id, [
+        { questionId: ids.qGenres, value: ['fic'] },
+        { questionId: ids.qFav, value: 'nonsense' },
+      ]);
+      expect(unknown.status).toBe(400);
+    });
+
+    it('unselected mode offers the options that were not ticked', async () => {
+      const { id, ids } = await valid('unselected');
+      expect((await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'his' }])).status).toBe(201);
+      expect((await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'fic' }])).status).toBe(400);
+    });
+
+    it('a carried question with nothing to choose from is skipped, even when it is marked required', async () => {
+      const built = await build('selected');
+      built.body.sections[1].questions[1].title = 'Plain';
+      built.body.sections[1].questions[0].required = true;
+      expect((await save(built.id, built.body)).status).toBe(200);
+      await publish(built.id);
+      // the reader ticked nothing in the first question (it is optional) -> nothing is offered -> the carried question does not apply
+      const res = await submit(built.id, [{ questionId: built.ids.qWhy, value: 'x' }]);
+      expect(res.status).toBe(201);
+      // and an answer sent for it anyway is dropped, not stored
+      const sneaky = await submit(built.id, [{ questionId: built.ids.qFav, value: 'fic' }]);
+      expect(sneaky.status).toBe(201);
+      const responses = await request(http()).get(`/api/survey/surveys/${built.id}/responses`).set(admin());
+      const stored = JSON.stringify(responses.body);
+      expect(stored).not.toContain('fic');
+    });
+
+    it('the public survey exposes the carry-forward setting (the page does the substitution) and reports use the source options', async () => {
+      const { id, ids } = await valid('selected');
+      const pub = await request(http()).get(`/api/survey/public/${id}`);
+      expect(pub.body.survey.sections[1].questions[0].config.optionsFrom).toEqual({ questionId: ids.qGenres, mode: 'selected' });
+      await submit(id, [{ questionId: ids.qGenres, value: ['fic', 'poe'] }, { questionId: ids.qFav, value: 'poe' }]);
+      const report = await request(http()).get(`/api/survey/surveys/${id}/report/summary`).set(admin());
+      expect(report.status).toBe(200);
+      const fav = (report.body.questions as Array<{ questionId: string; optionCounts?: Array<{ value: string; count: number }> }>).find((x) => x.questionId === ids.qFav)!;
+      expect(fav.optionCounts?.find((o) => o.value === 'poe')?.count).toBe(1);
+      expect(fav.optionCounts?.length).toBe(3);
+    });
+
+    it('duplicate keeps carry-forward working (ids are remapped inside the setting)', async () => {
+      const { id } = await valid('selected');
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      expect(copy.status).toBe(201);
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      const sourceId = detail.sections[0].questions[0].id as string;
+      const carried = detail.sections[1].questions[0].config.optionsFrom as { questionId: string };
+      expect(carried.questionId).toBe(sourceId);
+      expect(detail.sections[1].questions[1].title).toContain(`{{q:${sourceId}}}`);
+    });
+  });
+
+  describe('co-owners (ext. G)', () => {
+    let target: string;
+    let other: string;
+    const asRole = async (role: RoleCode) => ({ Authorization: `Bearer ${(await fixtureForRole(app!, role)).token}` });
+    const emailOf = async (role: RoleCode) => (await fixtureForRole(app!, role)).email;
+    const mk = async (title: string) => (await request(http()).post('/api/survey/surveys').set(admin()).send({ title })).body.id as string;
+    const structure = (k: number) => ({
+      sections: [{ id: uuid(7000 + k * 2), orderIndex: 0, title: 'S', questions: [{ id: uuid(7001 + k * 2), orderIndex: 0, type: 'short_text', title: 'Q' }] }],
+      logicRules: [],
+    });
+
+    beforeAll(async () => {
+      target = await mk('Shared survey');
+      other = await mk('Not shared');
+    });
+
+    it('a user with no survey permissions is refused everything until they are made a co-owner', async () => {
+      const reader = await asRole('reader');
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'x' })).status).toBe(403);
+      expect((await request(http()).put(`/api/survey/surveys/${target}/structure`).set(reader).send(structure(1))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/summary`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/publish`).set(reader)).status).toBe(403);
+    });
+
+    it('only the owner/share permission can add co-owners; unknown email → 404; the creator cannot be added', async () => {
+      const reader = await asRole('reader');
+      const refused = await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(reader).send({ email: await emailOf('reader') });
+      expect(refused.status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: 'nobody@nowhere.example' })).status).toBe(404);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: 'not-an-email' })).status).toBe(400);
+      const adminEmail = (await fixtureForRole(app!, 'admin')).email;
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: adminEmail })).status).toBe(403);
+    });
+
+    it('a co-owner can edit, publish, read results and upload pictures of THAT survey only', async () => {
+      const added = await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(admin()).send({ email: (await emailOf('reader')).toUpperCase() });
+      expect(added.status).toBe(201);
+      expect(added.body.coOwners.map((c: { email: string }) => c.email)).toContain(await emailOf('reader'));
+      const reader = await asRole('reader');
+
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'Renamed by co-owner' })).status).toBe(200);
+      expect((await request(http()).put(`/api/survey/surveys/${target}/structure`).set(reader).send(structure(2))).status).toBe(200);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${target}/publish`).set(reader)).status);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/responses`).set(reader)).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/summary`).set(reader)).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/surveys/${target}/report/dataset`).set(reader)).status).toBe(200);
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/media`).set(reader).attach('file', png, 'a.png')).status).toBe(201);
+      expect([200, 201]).toContain((await request(http()).post(`/api/survey/surveys/${target}/close`).set(reader)).status);
+
+      // ...but not another survey, and not delete / archive / duplicate / managing co-owners
+      expect((await request(http()).patch(`/api/survey/surveys/${other}`).set(reader).send({ title: 'x' })).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${other}/responses`).set(reader)).status).toBe(403);
+      expect((await request(http()).delete(`/api/survey/surveys/${target}`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/archive`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/duplicate`).set(reader).send({})).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${target}/collaborators`).set(reader).send({ email: await emailOf('finance') })).status).toBe(403);
+      expect((await request(http()).delete(`/api/survey/surveys/${target}/collaborators/${(await fixtureForRole(app!, 'reader')).userId}`).set(reader)).status).toBe(403);
+    });
+
+    it('a co-owner without the general view permission still cannot list or open other surveys', async () => {
+      const reader = await asRole('reader');
+      expect((await request(http()).get('/api/survey/surveys').set(reader)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${target}`).set(reader)).status).toBe(403);
+    });
+
+    it('the list and detail tell the UI what the caller may do', async () => {
+      const list = await request(http()).get('/api/survey/surveys').set(admin());
+      const row = list.body.find((r: { id: string }) => r.id === target);
+      expect(row.access).toMatchObject({ canEdit: true, canPublish: true, canViewResults: true, canManageOwners: true, isCoOwner: false });
+      const detail = await request(http()).get(`/api/survey/surveys/${target}`).set(admin());
+      expect(detail.body.access.canManageOwners).toBe(true);
+      const names = await request(http()).get(`/api/survey/surveys/${target}/collaborators`).set(admin());
+      expect(names.body.owner.userId).toBe((await fixtureForRole(app!, 'admin')).userId);
+      expect(names.body.coOwners).toHaveLength(1);
+    });
+
+    it('removing a co-owner takes the access away again, and it is all audited', async () => {
+      const readerId = (await fixtureForRole(app!, 'reader')).userId;
+      const removed = await request(http()).delete(`/api/survey/surveys/${target}/collaborators/${readerId}`).set(admin());
+      expect(removed.status).toBe(200);
+      expect(removed.body.coOwners).toHaveLength(0);
+      const reader = await asRole('reader');
+      expect((await request(http()).patch(`/api/survey/surveys/${target}`).set(reader).send({ title: 'again' })).status).toBe(403);
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ action: string }>>(`SELECT action FROM audit_log WHERE entity_type = 'SurveyCollaborator'`);
+      expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining(['add_co_owner', 'remove_co_owner']));
+    });
+
+    it('deleting the survey removes its co-owner rows', async () => {
+      const gone = await mk('To delete');
+      await request(http()).post(`/api/survey/surveys/${gone}/collaborators`).set(admin()).send({ email: await emailOf('finance') });
+      expect((await request(http()).delete(`/api/survey/surveys/${gone}`).set(admin())).status).toBeLessThan(300);
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*)::bigint AS n FROM survey_collaborators WHERE survey_id = '${gone}'`);
+      expect(Number(rows[0].n)).toBe(0);
+    });
+  });
+
+  describe('who may respond, invitations and emailed copies (ext. H)', () => {
+    type Mail = { to: string; subject: string; text: string };
+    let sent: Mail[];
+    let n = 0;
+    const asRole = async (role: RoleCode) => ({ Authorization: `Bearer ${(await fixtureForRole(app!, role)).token}` });
+    const emailOf = async (role: RoleCode) => (await fixtureForRole(app!, role)).email;
+
+    beforeEach(() => {
+      sent = [];
+      const mailer = app!.get(NotificationEmailService, { strict: false });
+      jest.spyOn(mailer, 'send').mockImplementation(async (mail: Mail) => {
+        sent.push(mail);
+        return true;
+      });
+    });
+
+    async function restrictedSurvey(patch: Record<string, unknown> = {}) {
+      const k = ++n;
+      const id = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: `Restricted ${k}` })).body.id as string;
+      const questionId = uuid(8000 + k * 2 + 1);
+      await request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({ sections: [{ id: uuid(8000 + k * 2), orderIndex: 0, title: 'S', questions: [{ id: questionId, orderIndex: 0, type: 'short_text', title: 'Name' }] }], logicRules: [] });
+      expect((await request(http()).patch(`/api/survey/surveys/${id}`).set(admin()).send({ restricted: true, ...patch })).status).toBe(200);
+      return { id, questionId };
+    }
+    const publish = (id: string) => request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+    const audience = async (id: string) => (await request(http()).get(`/api/survey/surveys/${id}/audience`).set(admin())).body;
+    const tokenFrom = (mail: Mail) => /[?&]invite=([^\s&]+)/.exec(mail.text)![1];
+    const answer = (questionId: string, value = 'x') => ({ answers: [{ questionId, value }] });
+
+    it('a restricted survey refuses strangers, anonymous and logged in', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      const get = await request(http()).get(`/api/survey/public/${id}`);
+      expect(get.status).toBe(403);
+      expect(get.body.restricted).toBe(true);
+      expect((await request(http()).post(`/api/survey/public/${id}`).send(answer(questionId))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('finance'))).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/public/${id}?invite=garbage`)).status).toBe(403);
+    });
+
+    it('invitations need a published survey; bad addresses are reported, duplicates and repeats are not sent twice', async () => {
+      const { id } = await restrictedSurvey();
+      const draft = await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['a@x.io'] });
+      expect(draft.status).toBe(409);
+      await publish(id);
+      const res = await request(http())
+        .post(`/api/survey/surveys/${id}/invitations`)
+        .set(admin())
+        .send({ emails: ['Ann@X.io, bob@x.io', 'not-an-email', 'ann@x.io', 'Cy <cy@x.io>'] });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ invited: 3, alreadyInvited: 0, invalid: ['not-an-email'], sent: 3, failed: 0 });
+      expect(sent.map((m) => m.to).sort()).toEqual(['ann@x.io', 'bob@x.io', 'cy@x.io']);
+      expect(sent[0].subject).toContain('Restricted');
+      const again = await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io', 'dee@x.io'] });
+      expect(again.body).toMatchObject({ invited: 1, alreadyInvited: 1 });
+      expect(sent.filter((m) => m.to === 'ann@x.io')).toHaveLength(1);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['nope'] })).status).toBe(400);
+    });
+
+    it('a personal link opens the survey once, marks the invitation, and cannot be reused', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      const token = tokenFrom(sent[0]);
+      const invitedAs = async () => (await audience(id)).invitations.find((i: { email: string }) => i.email === 'ann@x.io');
+      expect((await invitedAs()).status).toBe('invited');
+
+      const opened = await request(http()).get(`/api/survey/public/${id}?invite=${token}`);
+      expect(opened.status).toBe(200);
+      expect((await invitedAs()).status).toBe('opened');
+
+      const submitted = await request(http()).post(`/api/survey/public/${id}?invite=${token}`).send(answer(questionId, 'Ann'));
+      expect(submitted.status).toBe(201);
+      expect((await invitedAs()).status).toBe('responded');
+      expect((await request(http()).post(`/api/survey/public/${id}?invite=${token}`).send(answer(questionId, 'Again'))).status).toBe(409);
+      // the response is not linked to the address
+      const responses = await request(http()).get(`/api/survey/surveys/${id}/responses`).set(admin());
+      expect(JSON.stringify(responses.body)).not.toContain('ann@x.io');
+      expect(responses.body).toHaveLength(1);
+    });
+
+    it('forged, foreign and revoked links are refused', async () => {
+      const a = await restrictedSurvey();
+      const b = await restrictedSurvey();
+      await publish(a.id);
+      await publish(b.id);
+      await request(http()).post(`/api/survey/surveys/${a.id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      await request(http()).post(`/api/survey/surveys/${b.id}/invitations`).set(admin()).send({ emails: ['bob@x.io'] });
+      const tokenA = tokenFrom(sent[0]);
+      const tokenB = tokenFrom(sent[1]);
+      const [idA, signature] = tokenA.split('.');
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${idA}.${'0'.repeat(signature.length)}`)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenB}`)).status).toBe(403); // another survey's link
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenA}`)).status).toBe(200);
+      const invitationId = (await audience(a.id)).invitations[0].id;
+      expect((await request(http()).delete(`/api/survey/surveys/${a.id}/invitations/${invitationId}`).set(admin())).status).toBe(200);
+      expect((await request(http()).get(`/api/survey/public/${a.id}?invite=${tokenA}`)).status).toBe(403); // revoked
+    });
+
+    it('allowed users and invited accounts can answer while logged in; others cannot', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      const added = await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(admin()).send({ email: await emailOf('reader') });
+      expect(added.status).toBe(201);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(admin()).send({ email: 'ghost@nowhere.example' })).status).toBe(404);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('reader'))).status).toBe(200);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('reader')).send(answer(questionId))).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('library_assistant'))).status).toBe(403);
+      // an invitation to finance's own email address works for that account when logged in, without the link
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: [await emailOf('finance')] });
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('finance'))).status).toBe(200);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(201);
+      expect((await request(http()).post(`/api/survey/${id}/fill`).set(await asRole('finance')).send(answer(questionId))).status).toBe(409); // the invitation is used
+      const removed = await request(http()).delete(`/api/survey/surveys/${id}/audience/users/${(await fixtureForRole(app!, 'reader')).userId}`).set(admin());
+      expect(removed.status).toBe(200);
+      expect((await request(http()).get(`/api/survey/${id}/fill`).set(await asRole('reader'))).status).toBe(403);
+    });
+
+    it('reminders go to people who have not answered, at most once a day', async () => {
+      const { id, questionId } = await restrictedSurvey();
+      await publish(id);
+      await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(admin()).send({ emails: ['ann@x.io', 'bob@x.io'] });
+      const annToken = tokenFrom(sent.find((m) => m.to === 'ann@x.io')!);
+      await request(http()).post(`/api/survey/public/${id}?invite=${annToken}`).send(answer(questionId));
+      sent.length = 0;
+      const first = await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(admin());
+      expect(first.body).toMatchObject({ reminded: 1, failed: 0 });
+      expect(sent.map((m) => m.to)).toEqual(['bob@x.io']);
+      expect(sent[0].subject).toMatch(/Reminder/);
+      const bobToken = tokenFrom(sent[0]);
+      expect((await request(http()).get(`/api/survey/public/${id}?invite=${bobToken}`)).status).toBe(200); // the reminder carries a working link
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(admin())).body.reminded).toBe(0);
+      const bob = (await audience(id)).invitations.find((i: { email: string }) => i.email === 'bob@x.io');
+      expect(bob.reminderCount).toBe(1);
+    });
+
+    it('managing the audience needs edit rights on the survey: strangers 403, co-owners allowed', async () => {
+      const { id } = await restrictedSurvey();
+      await publish(id);
+      const reader = await asRole('reader');
+      expect((await request(http()).get(`/api/survey/surveys/${id}/audience`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(reader).send({ emails: ['a@x.io'] })).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations/remind`).set(reader)).status).toBe(403);
+      expect((await request(http()).post(`/api/survey/surveys/${id}/audience/users`).set(reader).send({ email: await emailOf('finance') })).status).toBe(403);
+      await request(http()).post(`/api/survey/surveys/${id}/collaborators`).set(admin()).send({ email: await emailOf('reader') });
+      expect((await request(http()).post(`/api/survey/surveys/${id}/invitations`).set(reader).send({ emails: ['co@x.io'] })).status).toBe(201);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/audience`).set(reader)).status).toBe(200);
+    });
+
+    it('audits every audience change; an invited anonymous submit is recorded as anonymous; no link or address list reaches the log (TESTING_STRATEGY §3, §6)', async () => {
+      const prisma = app!.get(PrismaService);
+      const actions = async (entityType: string) =>
+        (await prisma.$queryRawUnsafe<Array<{ action: string }>>(`SELECT DISTINCT action FROM audit_log WHERE entity_type = '${entityType}'`)).map((r) => r.action);
+      expect(await actions('SurveyInvitation')).toEqual(expect.arrayContaining(['invite', 'remind', 'remove_invitation']));
+      expect(await actions('SurveyAllowedUser')).toEqual(expect.arrayContaining(['add_allowed_user', 'remove_allowed_user']));
+
+      const submitted = await prisma.$queryRawUnsafe<Array<{ actor_type: string; actor_user_id: string | null; ip_address: string | null }>>(
+        `SELECT actor_type, actor_user_id, ip_address FROM audit_log WHERE entity_type = 'SurveyResponse' AND action = 'submit' AND actor_type = 'anonymous' LIMIT 1`,
+      );
+      expect(submitted[0]).toMatchObject({ actor_type: 'anonymous', actor_user_id: null });
+
+      const everything = JSON.stringify(await prisma.$queryRawUnsafe(`SELECT new_value, old_value FROM audit_log WHERE category = 'survey.surveys' OR category = 'survey.responses'`));
+      expect(everything).not.toMatch(/invite=/); // no personal link
+      expect(everything).not.toMatch(/"invitations":\[/); // no copy of the address list
+    });
+
+    it('emails a copy of the answers: to the account, to the invited address, or to an address a public respondent typed', async () => {
+      const open = await restrictedSurvey({ restricted: false, emailCopy: true });
+      await publish(open.id);
+      const typed = await request(http()).post(`/api/survey/public/${open.id}`).send({ ...answer(open.questionId, 'Hello'), copyToEmail: 'me@x.io' });
+      expect(typed.status).toBe(201);
+      const mail = sent.find((m) => m.to === 'me@x.io')!;
+      expect(mail.subject).toContain('Your answers');
+      expect(mail.text).toContain('Name');
+      expect(mail.text).toContain('Hello');
+      // nothing is sent when the respondent gives no address
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${open.id}`).send(answer(open.questionId));
+      expect(sent).toHaveLength(0);
+
+      // a logged-in respondent gets it at the account address, whatever they typed
+      sent.length = 0;
+      await request(http()).post(`/api/survey/${open.id}/fill`).set(await asRole('finance')).send({ ...answer(open.questionId, 'Fin'), copyToEmail: 'attacker@x.io' });
+      expect(sent.map((m) => m.to)).toEqual([await emailOf('finance')]);
+
+      // an invited respondent gets it at the invited address, whatever they typed
+      const inv = await restrictedSurvey({ emailCopy: true });
+      await publish(inv.id);
+      await request(http()).post(`/api/survey/surveys/${inv.id}/invitations`).set(admin()).send({ emails: ['ann@x.io'] });
+      const token = tokenFrom(sent[sent.length - 1]);
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${inv.id}?invite=${token}`).send({ ...answer(inv.questionId, 'Ann'), copyToEmail: 'attacker@x.io' });
+      expect(sent.map((m) => m.to)).toEqual(['ann@x.io']);
+
+      // survey option off -> no copy even with an address
+      const off = await restrictedSurvey({ restricted: false });
+      await publish(off.id);
+      sent.length = 0;
+      await request(http()).post(`/api/survey/public/${off.id}`).send({ ...answer(off.questionId), copyToEmail: 'me@x.io' });
+      expect(sent).toHaveLength(0);
+    });
+
+    it('the public survey says whether it offers a copy; duplicate keeps the restriction with an empty audience', async () => {
+      const { id } = await restrictedSurvey({ emailCopy: true });
+      await publish(id);
+      const copy = await request(http()).post(`/api/survey/surveys/${id}/duplicate`).set(admin()).send({});
+      const detail = (await request(http()).get(`/api/survey/surveys/${copy.body.id}`).set(admin())).body;
+      expect(detail.settings).toMatchObject({ restricted: true, emailCopy: true });
+      expect((await audience(copy.body.id)).invitations).toEqual([]);
+      const open = await restrictedSurvey({ restricted: false, emailCopy: true });
+      await publish(open.id);
+      expect((await request(http()).get(`/api/survey/public/${open.id}`)).body.survey.emailCopy).toBe(true);
+    });
+  });
+
+  describe('report filters and trends (ext. I)', () => {
+    let id: string;
+    const Q = { fav: uuid(9101), multi: uuid(9102), rating: uuid(9103), text: uuid(9104) };
+    const opt = (i: number, value: string) => ({ id: uuid(9200 + i), orderIndex: i, value, label: value.toUpperCase() });
+    const bin = (res: request.Response, cb: (err: Error | null, body: Buffer) => void) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    };
+    const summary = (query = '') => request(http()).get(`/api/survey/surveys/${id}/report/summary${query}`).set(admin());
+
+    beforeAll(async () => {
+      id = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: 'Filters' })).body.id as string;
+      const saved = await request(http())
+        .put(`/api/survey/surveys/${id}/structure`)
+        .set(admin())
+        .send({
+          sections: [
+            {
+              id: uuid(9100),
+              orderIndex: 0,
+              title: 'S',
+              questions: [
+                { id: Q.fav, orderIndex: 0, type: 'single_choice', title: 'Favourite', options: [opt(0, 'fic'), opt(1, 'his')] },
+                { id: Q.multi, orderIndex: 1, type: 'multi_choice', title: 'Read', options: [opt(2, 'a'), opt(3, 'b'), opt(4, 'c')] },
+                { id: Q.rating, orderIndex: 2, type: 'rating', title: 'Stars', config: { max: 5 } },
+                { id: Q.text, orderIndex: 3, type: 'short_text', title: 'Name' },
+              ],
+            },
+          ],
+          logicRules: [],
+        });
+      expect(saved.status).toBe(200);
+      await request(http()).post(`/api/survey/surveys/${id}/publish`).set(admin());
+      const rows: Array<[string, string[], number, string]> = [
+        ['fic', ['a'], 5, '2026-03-01T10:00:00Z'],
+        ['fic', ['a', 'b'], 4, '2026-03-01T15:00:00Z'],
+        ['his', ['b'], 2, '2026-03-04T09:00:00Z'],
+        ['his', ['c'], 3, '2026-03-05T09:00:00Z'],
+      ];
+      for (const [fav, multi, rating, at] of rows) {
+        const res = await request(http())
+          .post(`/api/survey/public/${id}`)
+          .send({ answers: [{ questionId: Q.fav, value: fav }, { questionId: Q.multi, value: multi }, { questionId: Q.rating, value: rating }, { questionId: Q.text, value: 'n' }] });
+        expect(res.status).toBe(201);
+        await app!.get(PrismaService).$executeRawUnsafe(`UPDATE survey_responses SET submitted_at = '${at}' WHERE id = '${res.body.responseId}'`);
+      }
+    });
+
+    it('without a filter: totals, responses per day (gaps filled) and the average rating per day', async () => {
+      const res = await summary();
+      expect(res.status).toBe(200);
+      expect(res.body.totalResponses).toBe(4);
+      expect(res.body.daily).toEqual([
+        { date: '2026-03-01', count: 2 },
+        { date: '2026-03-02', count: 0 },
+        { date: '2026-03-03', count: 0 },
+        { date: '2026-03-04', count: 1 },
+        { date: '2026-03-05', count: 1 },
+      ]);
+      const stars = res.body.questions.find((q: { questionId: string }) => q.questionId === Q.rating);
+      expect(stars.numeric.trend).toEqual([
+        { date: '2026-03-01', average: 4.5, count: 2 },
+        { date: '2026-03-04', average: 2, count: 1 },
+        { date: '2026-03-05', average: 3, count: 1 },
+      ]);
+    });
+
+    it('filters by date range (inclusive of the last day) in the summary, list, dataset and export', async () => {
+      const q = '?from=2026-03-01&to=2026-03-01';
+      expect((await summary(q)).body.totalResponses).toBe(2);
+      expect((await summary('?from=2026-03-04')).body.totalResponses).toBe(2);
+      expect((await summary('?to=2026-03-03')).body.totalResponses).toBe(2);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/responses${q}`).set(admin())).body).toHaveLength(2);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/dataset${q}`).set(admin())).body.rows).toHaveLength(2);
+      const xlsx = await request(http()).get(`/api/survey/surveys/${id}/responses/export${q}`).set(admin()).buffer(true).parse(bin);
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(xlsx.body as Buffer);
+      expect(wb.worksheets[0].rowCount).toBe(3); // header + 2
+      const all = await request(http()).get(`/api/survey/surveys/${id}/responses/export`).set(admin()).buffer(true).parse(bin);
+      const wb2 = new ExcelJS.Workbook();
+      await wb2.xlsx.load(all.body as Buffer);
+      expect(wb2.worksheets[0].rowCount).toBe(5);
+    });
+
+    it('filters by answer: single choice, multiple choice (contains), rating, and several at once (AND)', async () => {
+      const count = async (query: string) => (await summary(query)).body.totalResponses as number;
+      expect(await count(`?a=${Q.fav}:fic`)).toBe(2);
+      expect(await count(`?a=${Q.multi}:b`)).toBe(2); // [a,b] and [b]
+      expect(await count(`?a=${Q.rating}:5`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:fic&a=${Q.multi}:b`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:his&from=2026-03-05`)).toBe(1);
+      expect(await count(`?a=${Q.fav}:nothing`)).toBe(0);
+      const filtered = await summary(`?a=${Q.fav}:his`);
+      const fav = filtered.body.questions.find((x: { questionId: string }) => x.questionId === Q.fav);
+      expect(fav.optionCounts.find((o: { value: string }) => o.value === 'his').count).toBe(2);
+      expect(fav.optionCounts.find((o: { value: string }) => o.value === 'fic').count).toBe(0);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/responses?a=${Q.multi}:c`).set(admin())).body).toHaveLength(1);
+    });
+
+    it('refuses malformed or unsupported filters with a clear 400', async () => {
+      for (const bad of ['?from=yesterday', '?to=2026-13-40', '?from=2026-03-05&to=2026-03-01', '?a=nope', `?a=${Q.fav}:`, `?a=${uuid(9999)}:x`, `?a=${Q.text}:n`, `?a=${Q.rating}:many`]) {
+        const res = await summary(bad);
+        expect(res.status).toBe(400);
+      }
+      const many = Array.from({ length: 6 }, (_, i) => `a=${Q.fav}:v${i}`).join('&');
+      expect((await summary(`?${many}`)).status).toBe(400);
+    });
+
+    it('filters respect the same permissions as the unfiltered report', async () => {
+      const reader = { Authorization: `Bearer ${(await fixtureForRole(app!, 'reader')).token}` };
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary?a=${Q.fav}:fic`).set(reader)).status).toBe(403);
+      expect((await request(http()).get(`/api/survey/surveys/${id}/report/summary`)).status).toBe(401);
+    });
+  });
+
+  // docs/TESTING_STRATEGY.md §2: every protected endpoint of the second batch (co-owners, audience, invitations,
+  // filtered reports) through the shared helper — all four base roles plus anonymous. Only admin holds these codes by
+  // default, which is itself part of what is asserted (a role gaining access by accident would fail here).
+  describe('permission matrix (ext. G–I endpoints)', () => {
+    let sid: string;
+    let readerEmail: string;
+    let counter = 0;
+    const path = (suffix: string) => () => `/api/survey/surveys/${sid}${suffix}`;
+
+    beforeAll(async () => {
+      sid = (await request(http()).post('/api/survey/surveys').set(admin()).send({ title: 'Matrix' })).body.id as string;
+      const put = await request(http())
+        .put(`/api/survey/surveys/${sid}/structure`)
+        .set(admin())
+        .send({ sections: [{ id: uuid(9501), orderIndex: 0, title: 'S', questions: [{ id: uuid(9502), orderIndex: 0, type: 'short_text', title: 'Q' }] }], logicRules: [] });
+      expect(put.status).toBe(200);
+      readerEmail = (await fixtureForRole(app!, 'reader')).email;
+    });
+
+    const m = (method: 'get' | 'post' | 'patch' | 'put' | 'delete', suffix: string, requiredPermission: string, extra: { validBody?: object | ((r: RoleCode) => object | undefined); expectedSuccessStatus?: number } = {}) =>
+      expectPermissionEnforced({ app: () => app!, method, path: path(suffix), label: `/api/survey/surveys/:id${suffix}`, requiredPermission, ...extra });
+
+    m('patch', '', 'survey.surveys.update', { validBody: { title: 'Matrix renamed' } });
+    m('put', '/structure', 'survey.surveys.update', {
+      validBody: { sections: [{ id: uuid(9501), orderIndex: 0, title: 'S', questions: [{ id: uuid(9502), orderIndex: 0, type: 'short_text', title: 'Q' }] }], logicRules: [] },
+    });
+    m('post', '/publish', 'survey.surveys.publish');
+    m('post', '/close', 'survey.surveys.publish');
+    m('post', '/reopen', 'survey.surveys.publish');
+    m('get', '/audience', 'survey.surveys.update');
+    m('post', '/audience/users', 'survey.surveys.update', { validBody: () => ({ email: readerEmail }) });
+    m('post', '/invitations', 'survey.surveys.update', { validBody: () => ({ emails: [`matrix-${(counter += 1)}@x.io`] }) });
+    m('post', '/invitations/remind', 'survey.surveys.update');
+    m('get', '/collaborators', 'survey.surveys.view');
+    m('get', '/report/summary', 'survey.responses.view');
+    m('get', '/report/dataset', 'survey.responses.view');
+    m('get', '/responses', 'survey.responses.view');
+    m('get', '/responses/export', 'survey.responses.export');
+    m('get', '/export-with-responses', 'survey.responses.export');
+    m('get', '/report/summary?from=2026-01-01&a=00000000-0000-4000-8000-000000000001:x', 'survey.responses.view', { expectedSuccessStatus: 400 });
+    // LAST on purpose: it makes the reader a co-owner of this survey, which (correctly) opens the results endpoints above to them.
+    m('post', '/collaborators', 'survey.surveys.share', { validBody: () => ({ email: readerEmail }) });
+
+    it('the new permission code is declared in the manifest and granted to admin only by default', async () => {
+      const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../manifest.json'), 'utf8')) as {
+        permissions: Array<{ code: string }>;
+        defaultRolePermissions: Record<string, string[]>;
+      };
+      expect(manifest.permissions.map((p) => p.code)).toContain('survey.surveys.share');
+      expect(manifest.defaultRolePermissions.admin).toContain('survey.surveys.share');
+      for (const role of ['library_assistant', 'finance', 'reader']) expect(manifest.defaultRolePermissions[role]).not.toContain('survey.surveys.share');
+    });
+
+    it('a fresh install recorded every migration file (005–008 included) exactly once', async () => {
+      const files = readdirSync(join(dirname(fileURLToPath(import.meta.url)), '../../migrations')).filter((f) => f.endsWith('.sql')).sort();
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ filename: string }>>(`SELECT filename FROM module_migrations WHERE module_key = 'survey' ORDER BY filename`);
+      expect(rows.map((r) => r.filename)).toEqual(files);
     });
   });
 });

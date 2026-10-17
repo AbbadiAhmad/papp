@@ -1,6 +1,8 @@
-import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
-import { useMemo, useState } from 'react';
+import { Alert, Box, Button, Checkbox, FormControlLabel, FormGroup, LinearProgress, Link, MenuItem, Radio, RadioGroup, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { useEffect, useMemo, useState } from 'react';
 import { mediaUrl, type SurveyImage } from '../api';
+import { RichText } from './RichText';
+import { pipeText, resolveOptions, type PipeQuestion } from '../../backend/piping.ts';
 import { useTranslation } from 'react-i18next';
 // Raw .ts imports with explicit extensions: see TakeSurveyPage's history (SURVEY-D8) — the backend's compiled `.js`
 // siblings live next to these files and Vite would otherwise resolve to them.
@@ -255,6 +257,25 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
 
   const visibility = useMemo(() => resolveVisibility(survey.sections, survey.logicRules, enumerationAnswers), [survey, enumerationAnswers]);
 
+  // Piping and carry-forward (survey ext. F): earlier answers feed later text and later choice lists.
+  const pipeQuestions = useMemo(() => {
+    const map = new Map<string, PipeQuestion>();
+    for (const section of survey.sections) {
+      for (const q of section.questions) map.set(q.id, { id: q.id, type: q.type, config: q.config, options: q.options });
+    }
+    return map;
+  }, [survey]);
+  const answerOf = (questionId: string): unknown => (visibility.visibleQuestionIds.has(questionId) ? answers[questionId] : undefined);
+  const pipe = (text: string | null | undefined): string => pipeText(text, pipeQuestions, answerOf);
+  /** The choices the question really offers (null = its own). */
+  const carriedOptions = (question: FillableQuestion) => resolveOptions(pipeQuestions.get(question.id)!, pipeQuestions, answerOf);
+  /** False for a carry-forward question with nothing to choose from: it is skipped, like a hidden one. */
+  const applies = (question: FillableQuestion): boolean => visibility.visibleQuestionIds.has(question.id) && carriedOptions(question)?.length !== 0;
+  const withCarried = (question: FillableQuestion): FillableQuestion => {
+    const carried = carriedOptions(question);
+    return carried ? { ...question, options: carried } : question;
+  };
+
   // `trail` is the sections the respondent has actually visited, so Back
   // returns to exactly where they came from even after a "go to" jump.
   const [trail, setTrail] = useState<string[]>([]);
@@ -266,11 +287,31 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
   const nextSectionId = currentSectionId ? resolveNextSectionId(survey.sections, survey.logicRules, enumerationAnswers, currentSectionId) : null;
   const pageNumber = Math.max(1, visibility.pathSectionIds.indexOf(currentSectionId ?? '') + 1);
 
+  // If the reader goes Back and changes the source answer, drop carried answers that are no longer on offer.
+  const carriedSignature = (currentSection?.questions ?? []).map((q) => `${q.id}:${(carriedOptions(q) ?? []).map((o) => o.value).join('|')}`).join(';');
+  useEffect(() => {
+    for (const q of currentSection?.questions ?? []) {
+      const carried = carriedOptions(q);
+      const value = answers[q.id];
+      if (!carried || isEmptyAnswer(value)) continue;
+      const allowed = new Set(carried.map((o) => o.value));
+      const keep = (v: unknown) => typeof v === 'string' && (allowed.has(v) || isOtherAnswer(v));
+      if (Array.isArray(value)) {
+        const kept = value.filter(keep);
+        if (kept.length !== value.length) onAnswerChange(q.id, kept);
+      } else if (!keep(value)) {
+        onAnswerChange(q.id, undefined);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carriedSignature]);
+
+
   /** Required, currently visible questions of the open page that still have no answer. */
   const findMissingOnPage = (): Set<string> => {
     const result = new Set<string>();
     for (const question of currentSection?.questions ?? []) {
-      if (visibility.visibleQuestionIds.has(question.id) && question.required && isEmptyAnswer(answers[question.id])) result.add(question.id);
+      if (applies(question) && question.required && isEmptyAnswer(answers[question.id])) result.add(question.id);
     }
     return result;
   };
@@ -279,10 +320,10 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
   const problemsOnPage = useMemo(() => {
     const result = new Map<string, RuleProblem>();
     for (const question of currentSection?.questions ?? []) {
-      if (!visibility.visibleQuestionIds.has(question.id)) continue;
+      if (!applies(question)) continue;
       const value = answers[question.id];
       if (isEmptyAnswer(value)) continue;
-      const problem = validateAnswer(question.type as QuestionTypeName, question.config, question.options.map((o) => o.value), value);
+      const problem = validateAnswer(question.type as QuestionTypeName, question.config, withCarried(question).options.map((o) => o.value), value);
       if (problem) result.set(question.id, problem);
     }
     return result;
@@ -336,7 +377,7 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
     for (const section of survey.sections) {
       if (!visibility.visibleSectionIds.has(section.id)) continue;
       for (const question of section.questions) {
-        if (!visibility.visibleQuestionIds.has(question.id)) continue;
+        if (!applies(question)) continue;
         const value = answers[question.id];
         if (isEmptyAnswer(value)) continue;
         payload.push({ questionId: question.id, value });
@@ -351,8 +392,8 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
         <Picture image={survey.headerImage} />
         <Typography variant="h5">{survey.title}</Typography>
         {survey.description ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {survey.description}
+          <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 1 }}>
+            <RichText text={survey.description} component="div" />
           </Typography>
         ) : null}
       </Box>
@@ -374,11 +415,13 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
               <Typography variant="caption" color="text.secondary">
                 {t('survey.take.page_of', { current: pageNumber, total: Math.max(visibility.pathSectionIds.length, pageNumber) })}
               </Typography>
-              <Typography variant="h6">{currentSection.title}</Typography>
+              <Typography variant="h6">
+                <RichText text={pipe(currentSection.title)} />
+              </Typography>
               <Picture image={currentSection.image} />
               {currentSection.description ? (
-                <Typography variant="body2" color="text.secondary">
-                  {currentSection.description}
+                <Typography variant="body2" color="text.secondary" component="div">
+                  <RichText text={pipe(currentSection.description)} component="div" />
                 </Typography>
               ) : null}
             </Box>
@@ -387,26 +430,32 @@ export function SurveyRunner({ survey, answers, onAnswerChange, onSubmit, submit
             <Box>
               <Picture image={currentSection.image} />
               {currentSection.description ? (
-                <Typography variant="body2" color="text.secondary">
-                  {currentSection.description}
+                <Typography variant="body2" color="text.secondary" component="div">
+                  <RichText text={pipe(currentSection.description)} component="div" />
                 </Typography>
               ) : null}
             </Box>
           ) : null}
           {currentSection.questions
-            .filter((question) => visibility.visibleQuestionIds.has(question.id))
+            .filter((question) => applies(question))
+            .map(withCarried)
             .map((question) => (
               <Box key={question.id}>
-                <Typography variant="subtitle1">
-                  {question.title}
+                <Typography variant="subtitle1" component="div">
+                  <RichText text={pipe(question.title)} />
                   {question.required ? ' *' : ''}
                 </Typography>
                 {question.description ? (
-                  <Typography variant="body2" color="text.secondary">
-                    {question.description}
+                  <Typography variant="body2" color="text.secondary" component="div">
+                    <RichText text={pipe(question.description)} component="div" />
                   </Typography>
                 ) : null}
                 <Picture image={question.config?.image as SurveyImage | undefined} />
+                {typeof question.config?.videoUrl === 'string' && question.config.videoUrl ? (
+                  <Link href={question.config.videoUrl} target="_blank" rel="noopener noreferrer nofollow" sx={{ display: 'inline-block', my: 0.5 }}>
+                    {t('survey.take.watch_video')}
+                  </Link>
+                ) : null}
                 <Box sx={{ mt: 1 }}>
                   <QuestionInput
                     question={question}

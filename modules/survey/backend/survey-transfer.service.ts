@@ -8,6 +8,7 @@ import { SurveyStructureDto } from './dto/survey-structure.dto';
 import { SurveyMediaService } from './media.service';
 import { collectMediaIds, extensionForMime, ImageMime, MAX_IMAGE_BYTES, MAX_IMAGES_PER_SURVEY } from './media-rules';
 import { parseImageRef } from './question-rules';
+import { getOptionsFrom, remapTokens } from './piping';
 import { normalizeSettings, validateSurveyOptions } from './survey-settings';
 import { SurveysService } from './surveys.service';
 
@@ -379,8 +380,8 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
                 id: sectionIds.get(section.id)!,
                 surveyId: newSurveyId,
                 orderIndex: section.orderIndex,
-                title: section.title,
-                description: section.description,
+                title: remapTokens(section.title, questionIds) ?? section.title,
+                description: remapTokens(section.description, questionIds),
                 navigation: this.remapNavigation(section.navigation, sectionIds, questionIds),
                 image: (remapImage(section.image) ?? Prisma.DbNull) as Prisma.InputJsonValue,
               },
@@ -393,10 +394,10 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
                   sectionId: sectionIds.get(section.id)!,
                   orderIndex: question.orderIndex,
                   type: question.type,
-                  title: question.title,
-                  description: question.description,
+                  title: remapTokens(question.title, questionIds) ?? question.title,
+                  description: remapTokens(question.description, questionIds),
                   required: question.required ?? false,
-                  config: this.remapQuestionConfig(question.config, remapImage),
+                  config: this.remapQuestionConfig(question.config, remapImage, questionIds),
                 },
               });
               if (question.options?.length) {
@@ -447,11 +448,16 @@ export class SurveyTransferService implements OnModuleInit, OnModuleDestroy {
   private remapQuestionConfig(
     config: Record<string, unknown> | undefined,
     remapImage: (value: unknown) => { mediaId: string; alt: string } | null,
+    questionIds: Map<string, string>,
   ): Prisma.InputJsonValue {
-    const { image, ...rest } = config ?? {};
+    const { image, optionsFrom, ...rest } = config ?? {};
     const mapped = image === undefined ? null : remapImage(image);
+    // Carry-forward points at another question by id: follow it to the copy.
+    const from = getOptionsFrom({ config: { optionsFrom } });
+    const carried = from ? { optionsFrom: { questionId: questionIds.get(from.questionId) ?? from.questionId, mode: from.mode } } : {};
     return {
       ...rest,
+      ...carried,
       ...(mapped ? { image: mapped } : {}),
     } as Prisma.InputJsonValue;
   }

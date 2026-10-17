@@ -40,11 +40,11 @@ let PublicSurveyController = class PublicSurveyController {
     constructor(responses) {
         this.responses = responses;
     }
-    async getForFilling(id) {
-        return this.responses.getForFilling(id, null);
+    async getForFilling(id, invite) {
+        return this.responses.getForFilling(id, null, invite);
     }
-    async submit(id, dto, req) {
-        return this.responses.submitPublic(id, dto.answers, (0, request_meta_1.extractRequestMeta)(req));
+    async submit(id, dto, req, invite) {
+        return this.responses.submitPublic(id, dto.answers, (0, request_meta_1.extractRequestMeta)(req), { inviteToken: invite, copyToEmail: dto.copyToEmail });
     }
     /**
      * `editToken` travels as a query param, not a route segment — no
@@ -60,8 +60,9 @@ __decorate([
     (0, common_1.Get)(':id'),
     (0, platform_1.Public)(),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Query)('invite')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, String]),
     __metadata("design:returntype", Promise)
 ], PublicSurveyController.prototype, "getForFilling", null);
 __decorate([
@@ -71,8 +72,9 @@ __decorate([
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.Req)()),
+    __param(3, (0, common_1.Query)('invite')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, submit_response_dto_1.SubmitResponseDto, Object]),
+    __metadata("design:paramtypes", [String, submit_response_dto_1.SubmitResponseDto, Object, String]),
     __metadata("design:returntype", Promise)
 ], PublicSurveyController.prototype, "submit", null);
 __decorate([

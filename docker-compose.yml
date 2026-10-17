@@ -34,6 +34,9 @@ services:
       # ONLY when this is entirely unset, which no longer matches once
       # WEB_PORT is changed from its own default.
       WEB_ORIGIN: ${WEB_ORIGIN:-}
+      # Public address of the app, used to build personal survey invitation links in emails (SURVEY-D22).
+      # Empty = the first WEB_ORIGIN. In production one of the two must be set.
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
       # Notification Center email channel (all optional — when SMTP_HOST is
       # unset the api logs rendered mail instead of delivering it).

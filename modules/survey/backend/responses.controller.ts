@@ -1,7 +1,9 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Res, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Query, Res, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { Audit, MustChangePasswordGuard, RequirePermission } from './platform';
+import { SurveyAccess, SurveyAccessGuard } from './survey-access';
+import type { ReportFilterQuery } from './report-filter';
 import { ReportsService } from './reports.service';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -25,38 +27,38 @@ const fetchResponseState = (prisma: PrismaClient, req: Request) =>
  * rule BooksController's own `export` route follows.
  */
 @Controller('api/survey/surveys')
-@UseGuards(MustChangePasswordGuard)
+@UseGuards(MustChangePasswordGuard, SurveyAccessGuard)
 export class ResponsesController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get(':id/responses/export')
-  @RequirePermission('survey.responses.export')
-  async export(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
-    const buffer = await this.reports.exportResponsesWorkbook(id);
+  @SurveyAccess('survey.responses.export', { collaborator: true })
+  async export(@Param('id', new ParseUUIDPipe()) id: string, @Query() query: ReportFilterQuery, @Res() res: Response): Promise<void> {
+    const buffer = await this.reports.exportResponsesWorkbook(id, this.reports.parseFilter(query));
     res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="survey-responses-export.xlsx"' });
     res.send(buffer);
   }
 
   @Get(':id/report/summary')
-  @RequirePermission('survey.responses.view')
-  async summary(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.reports.getSummary(id);
+  @SurveyAccess('survey.responses.view', { collaborator: true })
+  async summary(@Param('id', new ParseUUIDPipe()) id: string, @Query() query: ReportFilterQuery) {
+    return this.reports.getSummary(id, this.reports.parseFilter(query));
   }
 
   @Get(':id/report/dataset')
-  @RequirePermission('survey.responses.view')
-  async dataset(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.reports.getDataset(id);
+  @SurveyAccess('survey.responses.view', { collaborator: true })
+  async dataset(@Param('id', new ParseUUIDPipe()) id: string, @Query() query: ReportFilterQuery) {
+    return this.reports.getDataset(id, this.reports.parseFilter(query));
   }
 
   @Get(':id/responses')
-  @RequirePermission('survey.responses.view')
-  async list(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.reports.listResponses(id);
+  @SurveyAccess('survey.responses.view', { collaborator: true })
+  async list(@Param('id', new ParseUUIDPipe()) id: string, @Query() query: ReportFilterQuery) {
+    return this.reports.listResponses(id, this.reports.parseFilter(query));
   }
 
   @Get(':id/responses/:responseId')
-  @RequirePermission('survey.responses.view')
+  @SurveyAccess('survey.responses.view', { collaborator: true })
   async findOne(@Param('id', new ParseUUIDPipe()) id: string, @Param('responseId', new ParseUUIDPipe()) responseId: string) {
     return this.reports.getResponse(id, responseId);
   }

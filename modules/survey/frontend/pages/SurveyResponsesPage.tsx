@@ -20,17 +20,19 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
+import { Allowed } from '../components/Allowed';
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { downloadBlob, surveyApi, type ResponseDetail, type ResponseListItem } from '../api';
+import { ReportFilters } from '../components/ReportFilters';
+import { downloadBlob, NO_FILTER, surveyApi, type QuestionSummary, type ReportFilterState, type ResponseDetail, type ResponseListItem, type SurveyAccessInfo } from '../api';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import { formatAnswerForDisplay } from '../../backend/question-rules.ts';
 
@@ -85,16 +87,39 @@ function ResponseDetailDialog({
   );
 }
 
+/**
+ * Holds the filter; the list below is re-mounted (key) whenever the filter changes so it simply loads afresh, while the
+ * filter controls here keep their focus.
+ */
 export function SurveyResponsesPage() {
+  const { surveyId } = useParams<{ surveyId: string }>();
+  const [filter, setFilter] = useState<ReportFilterState>(NO_FILTER);
+  const [questions, setQuestions] = useState<QuestionSummary[]>([]);
+
+  // Only the question list (with each choice's options) is needed to build filters; the numbers are ignored here.
+  useEffect(() => {
+    if (!surveyId) return;
+    surveyApi
+      .getSummary(surveyId)
+      .then((summary) => setQuestions(summary.questions))
+      .catch(() => setQuestions([]));
+  }, [surveyId]);
+
+  if (!surveyId) return null;
+  return <ResponsesView key={JSON.stringify(filter)} filter={filter} filters={<ReportFilters value={filter} onChange={setFilter} questions={questions} />} />;
+}
+
+function ResponsesView({ filter, filters }: { filter: ReportFilterState; filters: ReactNode }) {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
   const gated = useGatedCall();
   const { status, data: responses, errorMessage, reload } = useGuardedQuery(() =>
-    surveyApi.listResponses(surveyId as string),
+    surveyApi.listResponses(surveyId as string, filter),
   );
 
+  const [access, setAccess] = useState<SurveyAccessInfo | undefined>(undefined);
   const [viewing, setViewing] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ResponseListItem | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
@@ -105,6 +130,7 @@ export function SurveyResponsesPage() {
     surveyApi
       .get(surveyId)
       .then((survey) => {
+        setAccess(survey.access);
         const map = new Map<string, string>();
         for (const section of survey.sections) {
           for (const question of section.questions) map.set(question.id, question.title);
@@ -130,7 +156,7 @@ export function SurveyResponsesPage() {
 
   const handleExport = async () => {
     try {
-      const blob = await gated('survey.responses.export', () => surveyApi.exportResponses(surveyId));
+      const blob = await gated('survey.responses.export', () => surveyApi.exportResponses(surveyId, filter));
       downloadBlob(blob, 'survey-responses-export.xlsx');
     } catch (error) {
       setSnackbar(extractErrorMessage(error));
@@ -143,14 +169,16 @@ export function SurveyResponsesPage() {
         <Typography variant="h5">{t('survey.responses.title')}</Typography>
         <Stack direction="row" spacing={1}>
           <Button onClick={() => navigate(`/survey/surveys/${surveyId}/report`)}>{t('survey.list.report')}</Button>
-          <Can permission="survey.responses.export">
+          <Allowed permission="survey.responses.export" orSurvey={access?.canExportResults}>
             <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport}>
               {t('survey.responses.export')}
             </Button>
-          </Can>
+          </Allowed>
           <Button onClick={() => navigate('/survey/surveys')}>{t('core.common.back')}</Button>
         </Stack>
       </Stack>
+
+      {filters}
 
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         <Paginated items={(responses ?? [])}>

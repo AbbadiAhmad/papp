@@ -70,6 +70,16 @@ export class UpdateSurveyDto {
   @IsBoolean()
   showProgressBar?: boolean;
 
+  /** Only listed users and invited people may respond. Stored in `settings`. */
+  @IsOptional()
+  @IsBoolean()
+  restricted?: boolean;
+
+  /** Email each respondent a copy of their answers. Stored in `settings`. */
+  @IsOptional()
+  @IsBoolean()
+  emailCopy?: boolean;
+
   /** Picture at the top of the survey: `{ mediaId, alt }`; null removes it. Checked in SurveysService. */
   @IsOptional()
   @IsObject()

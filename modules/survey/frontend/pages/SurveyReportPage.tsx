@@ -2,7 +2,10 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
   Paper,
   Stack,
   Table,
@@ -16,12 +19,104 @@ import {
 } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
-import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
-import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
-import { surveyApi, type QuestionSummary, type SurveyDataset } from '../api';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { extractErrorMessage, isForbiddenError } from '../../../../apps/web/src/shared/api/httpClient';
+import { ReportFilters } from '../components/ReportFilters';
+import { NO_FILTER, surveyApi, type QuestionSummary, type ReportFilterState, type SurveyDataset, type SurveyReportSummary } from '../api';
+
+/** Colour-blind-safe series colours (Okabe-Ito); the legend and the counts below each chart carry the same information in text. */
+const SERIES_COLORS = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#56B4E9', '#F0E442', '#999999'];
+type ChartKind = 'bar' | 'pie' | 'stacked';
+
+/** Share of each option among all selections, for the text list under the chart. */
+export function optionShares(counts: Array<{ value: string; label: string; count: number }>): Array<{ value: string; label: string; count: number; percent: number }> {
+  const total = counts.reduce((sum, c) => sum + c.count, 0);
+  return counts.map((c) => ({ ...c, percent: total === 0 ? 0 : Math.round((c.count / total) * 1000) / 10 }));
+}
+
+function ChoiceCharts({ counts }: { counts: Array<{ value: string; label: string; count: number }> }) {
+  const { t } = useTranslation();
+  const [kind, setKind] = useState<ChartKind>('bar');
+  const shares = useMemo(() => optionShares(counts), [counts]);
+  const stackedRow = useMemo(() => Object.fromEntries([['name', ''], ...shares.map((o) => [o.value, o.count])]), [shares]);
+  const total = shares.reduce((sum, o) => sum + o.count, 0);
+
+  return (
+    <Box sx={{ mt: 1 }}>
+      <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_e, next: ChartKind | null) => next && setKind(next)} aria-label={t('survey.report.chart_type')}>
+        <ToggleButton value="bar">{t('survey.report.chart_bar')}</ToggleButton>
+        <ToggleButton value="pie">{t('survey.report.chart_pie')}</ToggleButton>
+        <ToggleButton value="stacked">{t('survey.report.chart_stacked')}</ToggleButton>
+      </ToggleButtonGroup>
+      <Box sx={{ height: kind === 'stacked' ? 120 : 240, mt: 1 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {kind === 'bar' ? (
+            <BarChart data={shares}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill={SERIES_COLORS[0]} />
+            </BarChart>
+          ) : kind === 'pie' ? (
+            <PieChart>
+              <Tooltip />
+              <Legend />
+              <Pie data={shares.filter((o) => o.count > 0)} dataKey="count" nameKey="label" outerRadius="80%" label={(entry: { percent?: number }) => `${entry.percent ?? 0}%`}>
+                {shares
+                  .filter((o) => o.count > 0)
+                  .map((o) => (
+                    <Cell key={o.value} fill={SERIES_COLORS[shares.findIndex((x) => x.value === o.value) % SERIES_COLORS.length]} />
+                  ))}
+              </Pie>
+            </PieChart>
+          ) : (
+            <BarChart layout="vertical" data={[stackedRow]} stackOffset="expand">
+              <XAxis type="number" tickFormatter={(v: number) => `${Math.round(v * 100)}%`} />
+              <YAxis type="category" dataKey="name" hide />
+              <Tooltip />
+              <Legend />
+              {shares.map((o, i) => (
+                <Bar key={o.value} dataKey={o.value} name={o.label} stackId="share" fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+              ))}
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </Box>
+      {/* The same numbers as text, for screen readers and for reading exact values. */}
+      <Stack component="ul" spacing={0.25} sx={{ listStyle: 'none', p: 0, m: 0, mt: 1 }} aria-label={t('survey.report.counts')}>
+        {shares.map((o, i) => (
+          <Typography component="li" key={o.value} variant="body2">
+            <Box component="span" aria-hidden sx={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', bgcolor: SERIES_COLORS[i % SERIES_COLORS.length], mr: 1 }} />
+            {o.label}: {o.count} ({o.percent}%)
+          </Typography>
+        ))}
+        {total === 0 ? (
+          <Typography component="li" variant="body2" color="text.secondary">
+            {t('survey.report.no_answers')}
+          </Typography>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
+function TrendChart({ data, dataKey, color, label }: { data: Array<Record<string, number | string>>; dataKey: string; color: string; label: string }) {
+  return (
+    <Box sx={{ height: 200 }} role="img" aria-label={label}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" />
+          <YAxis allowDecimals={dataKey === 'average'} />
+          <Tooltip />
+          <Line type="monotone" dataKey={dataKey} stroke={color} dot={data.length < 40} />
+        </LineChart>
+      </ResponsiveContainer>
+    </Box>
+  );
+}
 
 const NUMERIC_QUESTION_TYPES = new Set(['linear_scale', 'rating']);
 const TOTAL_COLUMN_KEY = '__total__';
@@ -36,19 +131,7 @@ function QuestionSummaryCard({ summary }: { summary: QuestionSummary }) {
         {t('survey.report.answered_count', { count: summary.totalAnswered })}
       </Typography>
 
-      {summary.optionCounts ? (
-        <Box sx={{ height: 220, mt: 1 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={summary.optionCounts}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#1976d2" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Box>
-      ) : null}
+      {summary.optionCounts ? <ChoiceCharts counts={summary.optionCounts} /> : null}
 
       {summary.otherAnswers && summary.otherAnswers.length > 0 ? (
         <Box sx={{ mt: 1 }}>
@@ -68,6 +151,14 @@ function QuestionSummaryCard({ summary }: { summary: QuestionSummary }) {
           <Typography variant="body2" sx={{ mb: 1 }}>
             {t('survey.report.average')}: {summary.numeric.average.toFixed(2)} ({t('survey.report.min')}: {summary.numeric.min}, {t('survey.report.max')}: {summary.numeric.max})
           </Typography>
+          {summary.numeric.trend.length > 1 ? (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                {t('survey.report.average_over_time')}
+              </Typography>
+              <TrendChart data={summary.numeric.trend} dataKey="average" color={SERIES_COLORS[2]} label={t('survey.report.average_over_time')} />
+            </Box>
+          ) : null}
           <Box sx={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={summary.numeric.distribution}>
@@ -75,7 +166,7 @@ function QuestionSummaryCard({ summary }: { summary: QuestionSummary }) {
                 <XAxis dataKey="value" />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#2e7d32" />
+                <Bar dataKey="count" fill={SERIES_COLORS[2]} />
               </BarChart>
             </ResponsiveContainer>
           </Box>
@@ -240,21 +331,42 @@ export function SurveyReportPage() {
   const { t } = useTranslation();
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
-  const { status, data: summary, errorMessage, reload } = useGuardedQuery(() =>
-    surveyApi.getSummary(surveyId as string),
-  );
+  const [filter, setFilter] = useState<ReportFilterState>(NO_FILTER);
+  const filterKey = JSON.stringify(filter);
+  const [summary, setSummary] = useState<SurveyReportSummary | null>(null);
   const [dataset, setDataset] = useState<SurveyDataset | null>(null);
-  const [datasetError, setDatasetError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
 
+  // The previous numbers stay on screen while a changed filter loads, so the page does not flash empty.
   useEffect(() => {
     if (!surveyId) return;
-    surveyApi
-      .getDataset(surveyId)
-      .then(setDataset)
-      .catch((error: unknown) => setDatasetError(extractErrorMessage(error)));
-  }, [surveyId]);
+    let cancelled = false;
+    const current = JSON.parse(filterKey) as ReportFilterState;
+    const rangeInvalid = Boolean(current.from && current.to && current.to < current.from);
+    if (rangeInvalid) return;
+    Promise.all([surveyApi.getSummary(surveyId, current), surveyApi.getDataset(surveyId, current)])
+      .then(([nextSummary, nextDataset]) => {
+        if (cancelled) return;
+        setSummary(nextSummary);
+        setDataset(nextDataset);
+        setLoadError(null);
+        setLoaded(true);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (isForbiddenError(error)) setForbidden(true);
+        setLoadError(extractErrorMessage(error));
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [surveyId, filterKey]);
 
   if (!surveyId) return null;
+  if (forbidden) return <Navigate to="/forbidden" replace />;
 
   return (
     <Box>
@@ -266,19 +378,33 @@ export function SurveyReportPage() {
         </Stack>
       </Stack>
 
-      <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
-        <Typography variant="body1" sx={{ mb: 2 }}>
-          {t('survey.report.total_responses', { count: summary?.totalResponses ?? 0 })}
-        </Typography>
-        <Stack spacing={2} sx={{ mb: 3 }}>
-          {(summary?.questions ?? []).map((q) => (
-            <QuestionSummaryCard key={q.questionId} summary={q} />
-          ))}
-        </Stack>
+      {loadError ? <Alert severity="error" sx={{ mb: 2 }}>{loadError}</Alert> : null}
+      {summary ? <ReportFilters value={filter} onChange={setFilter} questions={summary.questions} /> : null}
+      {!loaded ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}>
+          <CircularProgress aria-label={t('core.common.loading')} />
+        </Box>
+      ) : null}
 
-        {datasetError ? <Alert severity="error">{datasetError}</Alert> : null}
-        {dataset && dataset.columns.length > 0 ? <PivotTable dataset={dataset} /> : null}
-      </QueryStateGate>
+      {summary ? (
+        <>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {t('survey.report.total_responses', { count: summary.totalResponses })}
+          </Typography>
+          {summary.daily.length > 1 ? (
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Typography variant="subtitle1">{t('survey.report.responses_over_time')}</Typography>
+              <TrendChart data={summary.daily} dataKey="count" color={SERIES_COLORS[0]} label={t('survey.report.responses_over_time')} />
+            </Paper>
+          ) : null}
+          <Stack spacing={2} sx={{ mb: 3 }}>
+            {summary.questions.map((q) => (
+              <QuestionSummaryCard key={q.questionId} summary={q} />
+            ))}
+          </Stack>
+          {dataset && dataset.columns.length > 0 ? <PivotTable dataset={dataset} /> : null}
+        </>
+      ) : null}
     </Box>
   );
 }

@@ -215,8 +215,13 @@ export interface ExpectPermissionEnforcedOptions {
   app: () => INestApplication;
   /** HTTP method of the endpoint under test. */
   method: HttpMethod;
-  /** Request path, e.g. "/users/:id" with concrete values already substituted by the caller. */
-  path: string;
+  /**
+   * Request path, e.g. "/users/:id" with concrete values already substituted by the caller. A function is read when
+   * the test RUNS (not when it is registered), for endpoints whose id only exists after a `beforeAll` created the row.
+   */
+  path: string | (() => string);
+  /** Test title when `path` is a function (its value is not known yet at registration time). */
+  label?: string;
   /** The permission code the endpoint is expected to require, e.g. "users.create". */
   requiredPermission: string;
   /**
@@ -244,8 +249,10 @@ export function expectPermissionEnforced(opts: ExpectPermissionEnforcedOptions):
   const roles = opts.roles ?? ALL_ROLE_CODES;
   const successStatus = opts.expectedSuccessStatus ?? defaultSuccessStatus(opts.method);
 
-  it(`${opts.method.toUpperCase()} ${opts.path} requires permission "${opts.requiredPermission}"`, async () => {
+  const title = typeof opts.path === 'string' ? opts.path : (opts.label ?? '<path resolved at run time>');
+  it(`${opts.method.toUpperCase()} ${title} requires permission "${opts.requiredPermission}"`, async () => {
     const app = opts.app();
+    const path = typeof opts.path === 'function' ? opts.path() : opts.path;
     for (const role of roles) {
       const [hasPerm, token] = await Promise.all([
         roleHasPermission(app, role, opts.requiredPermission),
@@ -254,7 +261,7 @@ export function expectPermissionEnforced(opts: ExpectPermissionEnforcedOptions):
       const body = typeof opts.validBody === 'function' ? opts.validBody(role) : opts.validBody;
 
       const agent = request(app.getHttpServer());
-      let req = agent[opts.method](opts.path).set('Authorization', `Bearer ${token}`);
+      let req = agent[opts.method](path).set('Authorization', `Bearer ${token}`);
       if (body !== undefined) req = req.send(body);
       const res = await req;
 
@@ -266,7 +273,7 @@ export function expectPermissionEnforced(opts: ExpectPermissionEnforcedOptions):
     }
 
     const anonBody = typeof opts.validBody === 'function' ? opts.validBody(roles[0]) : opts.validBody;
-    let anonReq = request(app.getHttpServer())[opts.method](opts.path);
+    let anonReq = request(app.getHttpServer())[opts.method](path);
     if (anonBody !== undefined) anonReq = anonReq.send(anonBody);
     const anonRes = await anonReq;
     expect(anonRes.status).toBe(401);

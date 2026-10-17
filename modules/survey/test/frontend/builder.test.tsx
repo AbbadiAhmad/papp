@@ -14,6 +14,8 @@ vi.mock('../../../../apps/web/src/shared/permissions', () => ({
   useGatedCall: () => async (_code: string, fn: () => Promise<unknown>) => fn(),
 }));
 
+vi.mock('../../../../apps/web/src/app/LanguageContext', () => ({ useLanguage: () => ({ language: 'en', direction: 'ltr' }) }));
+
 const replaceStructure = vi.fn();
 const update = vi.fn();
 const submitPublic = vi.fn();
@@ -25,6 +27,9 @@ vi.mock('../../frontend/api', async (importOriginal) => {
     surveyApi: {
       ...original.surveyApi,
       get: vi.fn(),
+      // The builder also shows the audience and co-owner panels; they load their own lists.
+      getAudience: vi.fn(async () => ({ restricted: false, allowedUsers: [], invitations: [] })),
+      listCoOwners: vi.fn(async () => ({ owner: { userId: 'o', name: 'Owner', email: 'o@x.io' }, coOwners: [] })),
       update: (...args: unknown[]) => update(...args),
       replaceStructure: (...args: unknown[]) => replaceStructure(...args),
       submitPublic: (...args: unknown[]) => submitPublic(...args),
@@ -106,6 +111,9 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+/** The survey settings live on their own tab. */
+const openSettings = async () => fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+
 describe('SurveyBuilderPage: building faster', () => {
   it('duplicates a question right after the original, with a "(copy)" title and its own options', async () => {
     renderBuilder();
@@ -158,6 +166,7 @@ describe('SurveyBuilderPage: unsaved changes', () => {
     await screen.findByDisplayValue('Intro');
     expect(screen.queryByText('Unsaved changes')).toBeNull();
 
+    await openSettings();
     fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'Reader survey v2' } });
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
 
@@ -169,6 +178,7 @@ describe('SurveyBuilderPage: unsaved changes', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderBuilder();
     await screen.findByDisplayValue('Intro');
+    await openSettings();
     fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'Changed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?');
@@ -239,6 +249,7 @@ describe('SurveyBuilderPage: availability and finishing (phase C)', () => {
     update.mockResolvedValue(undefined);
     renderBuilder();
     await screen.findByDisplayValue('Intro');
+    await openSettings();
 
     fireEvent.change(screen.getByLabelText('Opens on (optional)'), { target: { value: '2030-01-10T09:00' } });
     fireEvent.change(screen.getByLabelText('Closes on (optional)'), { target: { value: '2030-02-01T18:30' } });
@@ -259,6 +270,7 @@ describe('SurveyBuilderPage: availability and finishing (phase C)', () => {
     update.mockResolvedValue(undefined);
     renderBuilder();
     await screen.findByDisplayValue('Intro');
+    await openSettings();
     fireEvent.change(screen.getByLabelText('Opens on (optional)'), { target: { value: '2030-02-01T09:00' } });
     fireEvent.change(screen.getByLabelText('Closes on (optional)'), { target: { value: '2030-01-01T09:00' } });
     expect(screen.getAllByText('The closing date must be after the opening date.').length).toBeGreaterThan(0);
@@ -275,6 +287,7 @@ describe('SurveyBuilderPage: availability and finishing (phase C)', () => {
     replaceStructure.mockImplementation(async (_id: string, payload: { sections: unknown; logicRules: unknown[] }) => ({ ...detail(), ...payload }));
     renderBuilder();
     await screen.findByDisplayValue('Intro');
+    await openSettings();
     expect(screen.getByLabelText('Close after this many responses (optional)')).toHaveValue(20);
     expect(screen.getByLabelText('Thank-you message (optional)')).toHaveValue('Cheers');
     expect(screen.getByLabelText(/Show a progress bar/)).toBeChecked();
@@ -283,5 +296,53 @@ describe('SurveyBuilderPage: availability and finishing (phase C)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][1].responseLimit).toBeNull();
+  });
+});
+
+describe('SurveyBuilderPage: tabs and compact conditions', () => {
+  it('opens on Questions; Settings and Sharing are separate tabs, and edits survive switching between them', async () => {
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+    const tabs = screen.getByRole('tablist', { name: 'Survey sections' });
+    expect(within(tabs).getAllByRole('tab').map((x) => x.textContent)).toEqual(['Questions', 'Settings', 'Sharing']);
+    expect(screen.getByRole('tab', { name: 'Questions' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByLabelText(/^Title/)).toBeNull(); // settings are not on the questions tab
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
+    expect(screen.getByText('Basics')).toBeInTheDocument();
+    expect(screen.getByText('How people answer')).toBeInTheDocument();
+    expect(screen.getByText('After they submit')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Intro')).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'Edited' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Sharing' }));
+    expect(await screen.findByText('Who can respond')).toBeInTheDocument();
+    expect(screen.getByText('Co-owners')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
+    expect(screen.getByLabelText(/^Title/)).toHaveValue('Edited');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('marks the Settings tab when the schedule is wrong, even while another tab is open', async () => {
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+    await openSettings();
+    fireEvent.change(screen.getByLabelText('Opens on (optional)'), { target: { value: '2030-02-01T09:00' } });
+    fireEvent.change(screen.getByLabelText('Closes on (optional)'), { target: { value: '2030-01-01T09:00' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Questions' }));
+    expect(screen.getByRole('tab', { name: 'Settings' }).querySelector('svg')).not.toBeNull();
+  });
+
+  it('keeps each section\'s conditions folded away, with their number on the header', async () => {
+    renderBuilder();
+    await screen.findByDisplayValue('Intro');
+    const headers = screen.getAllByRole('button', { name: /^Conditions and flow \(\d+\)$/ });
+    expect(headers.length).toBeGreaterThan(0);
+    expect(headers[0]).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryAllByRole('button', { name: 'Add rule' })).toHaveLength(0); // folded away: not on screen
+    fireEvent.click(headers[0]);
+    expect(headers[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('button', { name: 'Add rule' }).length).toBeGreaterThan(0);
   });
 });

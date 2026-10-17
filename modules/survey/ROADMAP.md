@@ -1,6 +1,6 @@
 # Survey module: feature inventory (Microsoft Forms, Google Forms, SurveyMonkey), gap analysis and plan
 
-Status: **IN PROGRESS.** Phase A built (1.2.4, SURVEY-D15), phase B built (1.2.5, SURVEY-D16), phase C built (1.3.0, SURVEY-D17), phase D built (1.4.0, SURVEY-D18). All four phases are built; section 4 lists what is deliberately deferred. Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
+Status: **IN PROGRESS.** Second batch built on 2026-10-16 (1.4.4 to 1.6.1): safe text formatting, maths and video links (SURVEY-D19), piping and carry-forward (D20), co-owners (D21), restricted audience, invitations, reminders and emailed copies (D22), report filters and pie/stacked/trend charts (D23). Still open from section 4: shuffle, Likert grid, ranking, NPS, quiz mode, templates gallery, printable receipt, file upload, bot protection (owner: skip for now), and the other backlog items. Phase A built (1.2.4, SURVEY-D15), phase B built (1.2.5, SURVEY-D16), phase C built (1.3.0, SURVEY-D17), phase D built (1.4.0, SURVEY-D18). All four phases are built; section 4 lists what is deliberately deferred. Written 2026-10-15 for module version 1.2.0; cross-checked against Google Forms and SurveyMonkey the same day (section 2.11).
 
 ## 1. How this was compiled (read first)
 

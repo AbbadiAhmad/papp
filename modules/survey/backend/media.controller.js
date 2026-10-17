@@ -18,6 +18,7 @@ const platform_express_1 = require("@nestjs/platform-express");
 const media_rules_1 = require("./media-rules");
 const media_service_1 = require("./media.service");
 const platform_1 = require("./platform");
+const survey_access_1 = require("./survey-access");
 /**
  * Survey pictures (phase D, SURVEY-D18). Uploading needs the same permission as editing the
  * survey; viewing is public by an unguessable id (a respondent of a public survey is anonymous),
@@ -55,8 +56,8 @@ exports.SurveyMediaController = SurveyMediaController;
 __decorate([
     (0, common_1.Post)('surveys/:id/media'),
     (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
-    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
-    (0, platform_1.RequirePermission)('survey.surveys.update'),
+    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard, survey_access_1.SurveyAccessGuard),
+    (0, survey_access_1.SurveyAccess)('survey.surveys.update', { collaborator: true }),
     (0, platform_1.Audit)({ category: 'survey.surveys', entityType: 'SurveyMedia', action: 'upload_image' })
     // +1 so an oversize file reaches the service's own, clearer message instead of a generic 413.
     ,

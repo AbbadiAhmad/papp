@@ -218,6 +218,11 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
     expect(await roleHasPermission(app!, 'library_assistant', 'library_catalog.books.delete')).toBe(false);
     expect(await roleHasPermission(app!, 'reader', 'library_catalog.books.view')).toBe(true);
     expect(await roleHasPermission(app!, 'reader', 'library_catalog.books.create')).toBe(false);
+    // books.download (1.3.0, LIBRARY_CATALOG-D28): staff and readers, never finance
+    expect(await roleHasPermission(app!, 'admin', 'library_catalog.books.download')).toBe(true);
+    expect(await roleHasPermission(app!, 'library_assistant', 'library_catalog.books.download')).toBe(true);
+    expect(await roleHasPermission(app!, 'reader', 'library_catalog.books.download')).toBe(true);
+    expect(await roleHasPermission(app!, 'finance', 'library_catalog.books.download')).toBe(false);
     expect(await roleHasPermission(app!, 'finance', 'library_catalog.books.view')).toBe(false);
   });
 
@@ -582,6 +587,62 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       const del = await request(app!.getHttpServer()).delete(`/api/library/books/${id}`).set('Authorization', await tokenOf('admin'));
       expect(del.status).toBe(204);
       expect(existsSync(folder())).toBe(false);
+    });
+  });
+
+  // docs/TESTING_STRATEGY.md §2/§3/§6/§7 for the file endpoints (1.3.0).
+  describe('cover and book files: permission matrix, audit, lifecycle (LIBRARY_CATALOG-D28)', () => {
+    let fid: string;
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16, 3)]);
+    const adminAuth = async () => `Bearer ${(await fixtureForRole(app!, 'admin')).token}`;
+
+    beforeAll(async () => {
+      const created = await request(app!.getHttpServer())
+        .post('/api/library/books')
+        .set('Authorization', await adminAuth())
+        .send({ title: 'Matrix book', copy: { qrCode: `E2E-FM-${Date.now()}`, status: 'available' } });
+      fid = created.body.id as string;
+      for (const [kind, bytes, name] of [['book', Buffer.from('# text book\n'), 'b.md'], ['cover', PNG, 'c.png']] as const) {
+        const res = await request(app!.getHttpServer()).post(`/api/library/books/${fid}/files/${kind}`).set('Authorization', await adminAuth()).attach('file', bytes, name);
+        expect(res.status).toBe(201);
+      }
+    });
+
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'get',
+      path: () => `/api/library/books/${fid}/files/book`,
+      label: '/api/library/books/:id/files/book',
+      requiredPermission: 'library_catalog.books.download',
+    });
+    // library_assistant is left out of the DELETE sweep: the first role to succeed removes the file, so a second
+    // permitted role would (correctly) get 404. Its permission is the same code and is covered by the upload tests.
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'delete',
+      path: () => `/api/library/books/${fid}/files/cover`,
+      label: '/api/library/books/:id/files/cover',
+      requiredPermission: 'library_catalog.books.update',
+      roles: ['admin', 'finance', 'reader'],
+    });
+
+    it('records upload, download and delete in the audit trail without the file contents (§3)', async () => {
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ action: string; new_value: unknown }>>(
+        `SELECT action, new_value FROM audit_log WHERE entity_type = 'LibraryCatalogBookFile'`,
+      );
+      expect(new Set(rows.map((r) => r.action))).toEqual(new Set(['upload_file', 'download_file', 'delete_file']));
+      expect(JSON.stringify(rows.map((r) => r.new_value))).not.toMatch(/PNG|text book/);
+    });
+
+    it('the public cover route is reachable without credentials but is not a way to the book file (§6)', async () => {
+      expect((await request(app!.getHttpServer()).get(`/api/library/public/books/${fid}/cover`)).status).toBe(404); // deleted above
+      expect((await request(app!.getHttpServer()).get(`/api/library/books/${fid}/files/book`)).status).toBe(401);
+    });
+
+    it('a fresh install recorded every migration file (008 included) exactly once (§7)', async () => {
+      const files = readdirSync(join(dirname(fileURLToPath(import.meta.url)), '../../migrations')).filter((f) => f.endsWith('.sql')).sort();
+      const rows = await app!.get(PrismaService).$queryRawUnsafe<Array<{ filename: string }>>(`SELECT filename FROM module_migrations WHERE module_key = 'library_catalog' ORDER BY filename`);
+      expect(rows.map((r) => r.filename)).toEqual(files);
     });
   });
 });

@@ -16,6 +16,10 @@ import { NotificationEmailService } from '../../../apps/api/dist/core/notificati
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsService } from '../../../apps/api/dist/core/notifications/notifications.service';
 import { resolveVisibility, SectionNavigation, SurveyLogicRuleLike } from './logic-engine';
+import { AudienceService, type AudienceDecision } from './audience.service';
+import { buildCopyMail } from './invitations';
+import { answerText, resolveOptions, type PipeQuestion } from './piping';
+import { toPlainText } from './rich-text';
 import { describeProblem, formatAnswerForDisplay, isEmptyAnswer, validateAnswer, type QuestionTypeName } from './question-rules';
 import { computeAvailability, normalizeSettings } from './survey-settings';
 
@@ -58,6 +62,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     private readonly auditLogWriter: AuditLogWriter,
     private readonly notifications: NotificationsService,
     private readonly notificationEmail: NotificationEmailService,
+    private readonly audience: AudienceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -75,8 +80,10 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
    * `oneResponsePerRespondent` is on; when it's off, "the most recent one"
    * isn't a meaningful thing to pre-fill (each submit is independent).
    */
-  async getForFilling(surveyId: string, respondentUserId: string | null) {
+  async getForFilling(surveyId: string, respondentUserId: string | null, inviteToken?: string | null) {
     const survey = await this.getPublishedSurveyWithStructure(surveyId);
+    const decision = await this.audience.check(survey, { userId: respondentUserId, inviteToken });
+    if (decision.invitationId) await this.audience.markOpened(decision.invitationId);
     const existing =
       respondentUserId && survey.oneResponsePerRespondent
         ? await this.prisma.surveyResponse.findFirst({
@@ -103,8 +110,10 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
     respondentSessionId: string,
     answers: AnswerInput[],
     meta: RequestMeta,
+    inviteToken?: string | null,
   ) {
     const survey = await this.getPublishedSurveyWithStructure(surveyId);
+    const decision = await this.audience.check(survey, { userId: respondentUserId, inviteToken });
     const existing = survey.oneResponsePerRespondent
       ? await this.prisma.surveyResponse.findFirst({ where: { surveyId, respondentUserId } })
       : null;
@@ -127,15 +136,31 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
         actor,
       });
     }
-    return this.writeResponse(survey, answers, { respondentUserId, respondentEmail, meta, isEdit: false, actor });
+    return this.writeResponse(survey, answers, {
+      respondentUserId,
+      respondentEmail,
+      meta,
+      isEdit: false,
+      actor,
+      invitationId: decision.invitationId,
+      copyTo: respondentEmail,
+    });
   }
 
   /** Public path: create a brand-new anonymous response. */
-  async submitPublic(surveyId: string, answers: AnswerInput[], meta: RequestMeta): Promise<{ responseId: string; editToken: string | null }> {
+  async submitPublic(
+    surveyId: string,
+    answers: AnswerInput[],
+    meta: RequestMeta,
+    opts: { inviteToken?: string | null; copyToEmail?: string | null } = {},
+  ): Promise<{ responseId: string; editToken: string | null }> {
     const survey = await this.getPublishedSurveyWithStructure(surveyId);
     if (survey.requiresLogin) {
       throw new ForbiddenException('This survey requires you to log in before responding');
     }
+    const decision: AudienceDecision = await this.audience.check(survey, { userId: null, inviteToken: opts.inviteToken });
+    // An invited person's copy goes to the invited address; anyone else may name one (only when the survey offers it).
+    const copyTo = decision.invitationId ? await this.audience.invitationEmail(decision.invitationId) : (opts.copyToEmail ?? null);
 
     let editToken: string | null = null;
     let editTokenHash: string | undefined;
@@ -152,6 +177,8 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       meta,
       isEdit: false,
       actor,
+      invitationId: decision.invitationId,
+      copyTo,
     });
     return { responseId: result.id, editToken };
   }
@@ -238,6 +265,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       // and whether the response cap is reached (so the page can say so up front instead of at Submit).
       thankYouMessage: normalizeSettings(survey.settings).thankYouMessage ?? null,
       showProgressBar: normalizeSettings(survey.settings).showProgressBar === true,
+      emailCopy: normalizeSettings(survey.settings).emailCopy === true,
       headerImage: normalizeSettings(survey.settings).headerImage ?? null,
       isFull: computeAvailability(survey, survey._count.responses) === 'full',
       closedMessage: survey.closedMessage ?? null,
@@ -300,9 +328,21 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       enumerationAnswers,
     );
 
+    // Carry-forward: a question may take its choices from an earlier one, judged on what THIS submission really answered.
+    const pipeQuestions = new Map<string, PipeQuestion>(
+      [...questionsById.values()].map((q) => [
+        q.id,
+        { id: q.id, type: q.type as string, config: (q.config ?? null) as Record<string, unknown> | null, options: q.options.map((o) => ({ value: o.value, label: o.label })) },
+      ]),
+    );
+    const answerOf = (questionId: string) => (visibleQuestionIds.has(questionId) ? answerByQuestionId.get(questionId) : undefined);
+
     const normalized: AnswerInput[] = [];
     for (const [sectionId, question] of survey.sections.flatMap((s) => s.questions.map((q) => [s.id, q] as const))) {
       if (!visibleQuestionIds.has(question.id)) continue; // never visible -> never counted, regardless of what was sent
+      const carried = resolveOptions(pipeQuestions.get(question.id)!, pipeQuestions, answerOf);
+      // Nothing to choose from (e.g. "the ones you ticked" when none were ticked): the question does not apply.
+      if (carried !== null && carried.length === 0) continue;
       const value = answerByQuestionId.get(question.id);
       if (isEmptyAnswer(value)) {
         if (question.required) {
@@ -310,7 +350,7 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
         }
         continue;
       }
-      this.validateAnswerShape(question, value);
+      this.validateAnswerShape(question, value, carried?.map((o) => o.value));
       normalized.push({ questionId: question.id, value });
       void sectionId; // sectionId kept for readability of the destructure above; not otherwise needed here
     }
@@ -318,11 +358,11 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Per-type shape and rule check (selection limits, text validation, "Other", scale range...) from the shared rules file. */
-  private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown): void {
+  private validateAnswerShape(question: SurveyQuestion & { options: SurveyQuestionOption[] }, value: unknown, optionValues?: string[]): void {
     const problem = validateAnswer(
       question.type as QuestionTypeName,
       question.config,
-      question.options.map((o) => o.value),
+      optionValues ?? question.options.map((o) => o.value),
       value,
     );
     if (problem) {
@@ -341,6 +381,10 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       meta: RequestMeta;
       isEdit: boolean;
       actor: { actorType: 'user' | 'anonymous'; actorUserId: string | null; actorSessionId: string | null };
+      /** The personal invitation used for this (new) response: claimed inside the transaction, one answer per invitation. */
+      invitationId?: string;
+      /** Where to email the respondent's copy, when the survey offers one. */
+      copyTo?: string | null;
     },
   ) {
     const answers = this.validateAndNormalizeAnswers(survey, rawAnswers);
@@ -360,6 +404,9 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
         if (taken >= survey.responseLimit) {
           throw new ConflictException({ statusCode: 409, message: 'This survey has reached its maximum number of responses', full: true });
         }
+      }
+      if (!opts.responseId && opts.invitationId && !(await this.audience.claimInvitation(tx, opts.invitationId))) {
+        throw new ConflictException('This invitation has already been used to answer the survey');
       }
       const responseRow = opts.responseId
         ? await tx.surveyResponse.update({
@@ -419,9 +466,28 @@ export class ResponsesService implements OnModuleInit, OnModuleDestroy {
       await this.notifyOnSubmit(survey, resolvedAnswers, opts.respondentEmail ?? 'Anonymous').catch((error) => {
         this.logger.error('Post-submission notification dispatch failed (response itself was saved successfully)', error);
       });
+      if (normalizeSettings(survey.settings).emailCopy === true && opts.copyTo) {
+        await this.sendCopy(survey, resolvedAnswers, response.submittedAt, opts.copyTo).catch((error) => {
+          this.logger.error('Emailing the respondent a copy failed (response itself was saved successfully)', error);
+        });
+      }
     }
 
     return response;
+  }
+
+  /** The respondent's own copy of their answers (survey.settings.emailCopy). NotificationEmailService.send never throws. */
+  private async sendCopy(
+    survey: SurveyWithStructure,
+    answers: Array<{ question: SurveyQuestion & { options: SurveyQuestionOption[] }; value: unknown }>,
+    submittedAt: Date,
+    to: string,
+  ): Promise<void> {
+    const rows = answers.map((a) => ({
+      question: toPlainText(a.question.title),
+      answer: answerText({ id: a.question.id, type: a.question.type as string, options: a.question.options.map((o) => ({ value: o.value, label: o.label })) }, a.value),
+    }));
+    await this.notificationEmail.send({ to, ...buildCopyMail({ title: toPlainText(survey.title), submittedAt, rows }) });
   }
 
   /**

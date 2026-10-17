@@ -46,6 +46,11 @@ __decorate([
  */
 class SubmitResponseDto {
     answers;
+    /**
+     * Where to email a copy of the answers, for an ANONYMOUS respondent of a survey that offers it. Ignored for a
+     * logged-in respondent (their account email is used) and for an invited one (the invited address is used).
+     */
+    copyToEmail;
 }
 exports.SubmitResponseDto = SubmitResponseDto;
 __decorate([
@@ -55,3 +60,9 @@ __decorate([
     (0, class_transformer_1.Type)(() => AnswerInputDto),
     __metadata("design:type", Array)
 ], SubmitResponseDto.prototype, "answers", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEmail)(),
+    (0, class_validator_1.MaxLength)(254),
+    __metadata("design:type", String)
+], SubmitResponseDto.prototype, "copyToEmail", void 0);

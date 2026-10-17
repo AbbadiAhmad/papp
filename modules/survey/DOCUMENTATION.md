@@ -17,6 +17,9 @@ survey_surveys(id, title, description, status(draft|published|closed),
   opens_at, closes_at (editable and ENFORCED since 1.3.0), response_limit int NULL (migration 005), settings jsonb (migration 005: thankYouMessage, showProgressBar),
   created_at, updated_at)
 survey_sections(id, survey_id, order_index, title, description, navigation jsonb (004), image jsonb NULL (006: {mediaId, alt}))
+survey_collaborators(survey_id, user_id, added_by, created_at, PK(survey_id,user_id))   -- migration 007, co-owners (SURVEY-D21)
+survey_allowed_users(survey_id, user_id, added_by, created_at)   -- migration 008
+survey_invitations(id, survey_id, email, invited_by, invited_at, opened_at, responded_at, last_reminder_at, reminder_count)   -- migration 008; the personal link is derived, not stored
 survey_media(id, survey_id, mime, size_bytes, created_by, created_at)   -- migration 006; the file bytes are on disk, see Pictures below
 survey_questions(id, section_id, order_index, type, title, description,
   required, config jsonb)   -- type: short_text|paragraph|single_choice|
@@ -95,6 +98,30 @@ Frontend (`basePath: /survey`):
 - Export includes the pictures (`media/` in the zip); import and duplicate copy them into the new survey.
 - Behind a reverse proxy, allow request bodies of at least 3 MB on `/api/survey/` (the bundled nginx allows 55 MB).
 
+## Text formatting, maths and video links (1.4.4)
+
+Titles and descriptions take a small safe markup (SURVEY-D19): `**bold**`, `*italic*`, `[text](https://link)`, `{red|coloured}` or `{#b00020|hex}`, `$x^2$` for maths, `\*` to show a symbol literally. The builder fields have a toolbar and a live preview. It is not HTML: `backend/rich-text.ts` parses, `frontend/components/RichText.tsx` renders. A question can also carry a video link (`config.videoUrl`), shown as a "Watch the video" link, never embedded.
+
+## Piping and carry-forward (1.4.5)
+
+Put `{{q:<id>}}` in a later section's title/description or a later question's title/description (the builder's "Insert an earlier answer" toolbar button inserts it) and the reader sees their earlier answer there. A choice question can instead take its choices from an earlier choice question (the ones ticked, or the ones not ticked). Source questions must be in an earlier section (SURVEY-D20); `backend/piping.ts` is the one shared rules file, the server re-checks everything.
+
+## Co-owners (1.5.0)
+
+A co-owner can edit, publish/close/reopen and read the results of one survey (not delete, archive, duplicate or manage co-owners). Add them by email in the builder (the creator or anyone with `survey.surveys.share`). They still need `survey.surveys.view` to reach the Surveys page. Mechanism: `backend/survey-access.ts` (`@SurveyAccess` + `SurveyAccessGuard`, SURVEY-D21); routes that allow co-owners use it **instead of** `@RequirePermission`, so a new route must pick one on purpose.
+
+## Who may respond, invitations, emailed copies (1.6.0)
+
+Builder → **Who can respond**: switch on *Only chosen people may respond*, add logged-in users by email and/or paste invited email addresses (they appear as cards that are checked as you type). Invitations are mailed once the survey is published; **Remind** re-sends the same link to those who have not answered (once per day each). A personal link is `/survey/<id>?invite=<token>`; the token is an HMAC of the invitation id keyed with `JWT_SECRET`, so rotating `JWT_SECRET` invalidates outstanding links. Set `APP_PUBLIC_URL` (or `WEB_ORIGIN`) so emails contain the right address. *Email each respondent a copy of their answers* sends the answers after the first submit. See SURVEY-D22 for every rule (one answer per invitation, invitations never linked to responses).
+
+## Report filters and charts (1.6.1)
+
+The report and the responses list can be filtered by date range and by answers (choice, scale, rating questions; conditions combine with AND); the Excel export follows the filter. Choice questions can be shown as bars, a pie or a share bar, each with the numbers as text; the report also draws responses per day and, for scale/rating questions, the average over time. Rules: SURVEY-D23; code: `backend/report-filter.ts` (shared with the page), `ReportsService.whereFor`.
+
+## Builder layout (1.6.2)
+
+Three tabs — Questions, Settings (grouped), Sharing — and a folded "Conditions and flow (n)" panel per section (SURVEY-D24). Tests that edit survey settings first click the Settings tab (`openSettings()` in `builder.test.tsx`); the Playwright spec opens the conditions panel before "Add rule".
+
 ## Known gotchas
 
 - **`AnswerInputDto.value: unknown` needs `@IsDefined()`, or every submitted answer is silently dropped** — the global `ValidationPipe`'s `whitelist: true` strips any DTO field with zero `class-validator` decorators, even a deliberately loosely-typed one. See `SURVEY-D5` / root `D67` for the full story; if you add a new DTO field with a genuinely-any-shape value, decorate it with at least `@IsDefined()`.
@@ -117,7 +144,12 @@ Frontend (`basePath: /survey`):
 - `test/backend/survey-settings.spec.ts` (settings, validation, availability boundaries), `test/frontend/take-survey-states.test.tsx` (not-open / ended / full states, thank-you text, progress bar), `schedule.test.ts`.
 - `test/backend/survey.e2e-spec.ts` (real install + real HTTP + real Postgres): permission matrix on list/create, schedule + response cap (including a concurrent-submission race) + settings + duplicate/export/import round trip, bad settings refused with 400, bad answers refused with the right message, valid answers stored, reports/dataset/export show "Other". `apps/api/test/jest.e2e.config.ts` maps the dist `audit-log.writer` import to source so this module can load under Jest (same technique as the other dist imports).
 - `test/backend/media-rules.spec.ts` (type detection, reference parsing), `test/frontend/images.test.tsx` (upload/describe/remove, respondent rendering); the e2e suite's "images (phase D)" block covers upload/serve headers, rejected files, permissions, ownership, clean-up, duplicate and export/import with pictures.
+- Second batch (SURVEY-A9): unit `rich-text.spec.ts`, `piping.spec.ts`, `audience.spec.ts` (email list, invitation tokens, mails), `report-filter.spec.ts`, `survey-access.spec.ts`, `migrations-down.spec.ts`; component `rich-text`, `piping`, `audience`, `coowners`, `report-filters`, `report-filter-params`, `rtl-digits`, `locale-keys`; e2e blocks "piping and carry-forward", "co-owners", "who may respond, invitations and emailed copies", "report filters and trends", "permission matrix (ext. G–I endpoints)".
 - Browser smoke: `apps/web/tests/e2e/survey.spec.ts`.
+
+## Upgrading an installed instance (read before upgrading from 1.4.x)
+
+The platform never grants new permissions during an upgrade (root D118). After upgrading to 1.5.0 or later: grant **`survey.surveys.share`** to the roles that may manage co-owners (a fresh install gives it to `admin` only). Migrations 005–008 apply automatically. Set `APP_PUBLIC_URL` (or `WEB_ORIGIN`) before sending invitations. Nothing else needs doing: surveys stay unrestricted until someone switches *Only chosen people may respond* on.
 
 ## How to extend
 

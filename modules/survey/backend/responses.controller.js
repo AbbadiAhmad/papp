@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ResponsesController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_1 = require("./platform");
+const survey_access_1 = require("./survey-access");
 const reports_service_1 = require("./reports.service");
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const fetchResponseState = (prisma, req) => prisma.surveyResponse.findUnique({ where: { id: req.params.responseId }, include: { answers: true } });
@@ -38,19 +39,19 @@ let ResponsesController = class ResponsesController {
     constructor(reports) {
         this.reports = reports;
     }
-    async export(id, res) {
-        const buffer = await this.reports.exportResponsesWorkbook(id);
+    async export(id, query, res) {
+        const buffer = await this.reports.exportResponsesWorkbook(id, this.reports.parseFilter(query));
         res.set({ 'Content-Type': XLSX_CONTENT_TYPE, 'Content-Disposition': 'attachment; filename="survey-responses-export.xlsx"' });
         res.send(buffer);
     }
-    async summary(id) {
-        return this.reports.getSummary(id);
+    async summary(id, query) {
+        return this.reports.getSummary(id, this.reports.parseFilter(query));
     }
-    async dataset(id) {
-        return this.reports.getDataset(id);
+    async dataset(id, query) {
+        return this.reports.getDataset(id, this.reports.parseFilter(query));
     }
-    async list(id) {
-        return this.reports.listResponses(id);
+    async list(id, query) {
+        return this.reports.listResponses(id, this.reports.parseFilter(query));
     }
     async findOne(id, responseId) {
         return this.reports.getResponse(id, responseId);
@@ -62,40 +63,44 @@ let ResponsesController = class ResponsesController {
 exports.ResponsesController = ResponsesController;
 __decorate([
     (0, common_1.Get)(':id/responses/export'),
-    (0, platform_1.RequirePermission)('survey.responses.export'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.export', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], ResponsesController.prototype, "export", null);
 __decorate([
     (0, common_1.Get)(':id/report/summary'),
-    (0, platform_1.RequirePermission)('survey.responses.view'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.view', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ResponsesController.prototype, "summary", null);
 __decorate([
     (0, common_1.Get)(':id/report/dataset'),
-    (0, platform_1.RequirePermission)('survey.responses.view'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.view', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ResponsesController.prototype, "dataset", null);
 __decorate([
     (0, common_1.Get)(':id/responses'),
-    (0, platform_1.RequirePermission)('survey.responses.view'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.view', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], ResponsesController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)(':id/responses/:responseId'),
-    (0, platform_1.RequirePermission)('survey.responses.view'),
+    (0, survey_access_1.SurveyAccess)('survey.responses.view', { collaborator: true }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Param)('responseId', new common_1.ParseUUIDPipe())),
     __metadata("design:type", Function),
@@ -115,6 +120,6 @@ __decorate([
 ], ResponsesController.prototype, "remove", null);
 exports.ResponsesController = ResponsesController = __decorate([
     (0, common_1.Controller)('api/survey/surveys'),
-    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
+    (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard, survey_access_1.SurveyAccessGuard),
     __metadata("design:paramtypes", [reports_service_1.ReportsService])
 ], ResponsesController);

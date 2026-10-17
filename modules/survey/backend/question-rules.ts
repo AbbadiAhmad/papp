@@ -101,6 +101,7 @@ const ENGLISH: Record<string, string> = {
   above_max: 'must be at most {max}',
   bad_email: 'must be a valid email address',
   bad_image: '{detail}',
+  bad_video_url: 'the video link must be a web address starting with http:// or https://',
   bad_url: 'must be a valid web address starting with http:// or https://',
   bad_date: 'must be a valid date',
   bad_time: 'must be a valid time',
@@ -203,6 +204,19 @@ export function validateQuestionConfig(type: QuestionTypeName, config: unknown, 
   if (config.image !== undefined && config.image !== null) {
     const parsed = parseImageRef(config.image);
     if ('error' in parsed) return { code: 'bad_image', params: { detail: parsed.error } };
+  }
+  if (config.videoUrl !== undefined && config.videoUrl !== null && config.videoUrl !== '') {
+    // Shown as a plain link, never embedded (survey ext. E): so only the address shape matters.
+    let ok = typeof config.videoUrl === 'string' && config.videoUrl.length <= 2048;
+    if (ok) {
+      try {
+        const protocol = new URL(config.videoUrl as string).protocol;
+        ok = protocol === 'https:' || protocol === 'http:';
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok) return { code: 'bad_video_url' };
   }
   if (typeof config.placeholder === 'string' && config.placeholder.length > MAX_PLACEHOLDER_LENGTH) {
     return { code: 'text_too_long_config', params: { key: 'placeholder', max: MAX_PLACEHOLDER_LENGTH } };

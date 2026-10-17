@@ -6,6 +6,10 @@ import { Module } from '@nestjs/common';
 // ResponsesService.
 // eslint-disable-next-line import/no-unresolved
 import { NotificationsModule } from '../../../apps/api/dist/core/notifications/notifications.module';
+// eslint-disable-next-line import/no-unresolved
+import { PermissionsService } from '../../../apps/api/dist/core/permissions/permissions.service';
+import { AudienceController } from './audience.controller';
+import { AudienceService } from './audience.service';
 import { FillController } from './fill.controller';
 import { SurveyMediaController } from './media.controller';
 import { SurveyMediaService } from './media.service';
@@ -13,6 +17,7 @@ import { PublicSurveyController } from './public-survey.controller';
 import { ReportsService } from './reports.service';
 import { ResponsesController } from './responses.controller';
 import { ResponsesService } from './responses.service';
+import { PERMISSIONS_READER, SurveyAccessGuard, SurveyAccessService } from './survey-access';
 import { SurveyTransferService } from './survey-transfer.service';
 import { SurveysController } from './surveys.controller';
 import { SurveysService } from './surveys.service';
@@ -25,7 +30,12 @@ import { SurveysService } from './surveys.service';
  */
 @Module({
   imports: [NotificationsModule],
-  controllers: [SurveysController, SurveyMediaController, FillController, PublicSurveyController, ResponsesController],
-  providers: [SurveyMediaService, SurveysService, SurveyTransferService, ResponsesService, ReportsService],
+  controllers: [SurveysController, AudienceController, SurveyMediaController, FillController, PublicSurveyController, ResponsesController],
+  providers: [
+    { provide: PERMISSIONS_READER, useExisting: PermissionsService },
+    SurveyAccessService,
+    AudienceService,
+    SurveyAccessGuard,
+    SurveyMediaService, SurveysService, SurveyTransferService, ResponsesService, ReportsService],
 })
 export class SurveyModule {}
