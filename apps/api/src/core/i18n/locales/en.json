@@ -2,7 +2,7 @@
   "core.app.name": "Back-Office Platform",
   "core.roles.admin": "Administrator",
   "core.roles.library_assistant": "Library Assistant",
-  "core.roles.finance": "Finance",
+  "core.roles.finance": "Library Admin",
   "core.roles.reader": "Reader",
 
   "core.perm.users.view": "View users",
