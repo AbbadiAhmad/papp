@@ -2,7 +2,7 @@
   "core.app.name": "منصة الإدارة",
   "core.roles.admin": "مدير النظام",
   "core.roles.library_assistant": "مساعد مكتبة",
-  "core.roles.finance": "المالية",
+  "core.roles.finance": "مدير المكتبة",
   "core.roles.reader": "قارئ",
 
   "core.perm.users.view": "عرض المستخدمين",
