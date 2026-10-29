@@ -454,7 +454,7 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       expect(detail.body.files.book.ext).toBe('pdf');
       const list = await request(app!.getHttpServer()).get('/api/library/books').set('Authorization', await tokenOf('reader'));
       expect(list.body.find((b: { id: string }) => b.id === id).files.book.ext).toBe('pdf');
-      expect(list.body.find((b: { id: string }) => b.id !== id).files).toEqual({ cover: null, book: null });
+      expect(list.body.find((b: { id: string }) => b.id !== id).files).toEqual({ cover: null, book: null, images: [] });
     });
 
     it('serves the cover publicly with safe headers (no login), and never serves the book file that way', async () => {
