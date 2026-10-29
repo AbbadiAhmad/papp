@@ -6,12 +6,14 @@
  * are always called `cover.<ext>` / `book.<ext>` inside the book's folder.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BOOK_FILE_KINDS = exports.MAX_BOOK_FILE_BYTES = exports.MAX_COVER_BYTES = void 0;
+exports.BOOK_FILE_KINDS = exports.MAX_BOOK_FILE_BYTES = exports.MAX_IMAGES_PER_BOOK = exports.MAX_COVER_BYTES = void 0;
 exports.detectCover = detectCover;
 exports.detectBookFile = detectBookFile;
 exports.validateUpload = validateUpload;
 exports.downloadName = downloadName;
 exports.MAX_COVER_BYTES = 5 * 1024 * 1024;
+/** Extra gallery pictures per book (LIBRARY_CATALOG-D30). */
+exports.MAX_IMAGES_PER_BOOK = 10;
 exports.MAX_BOOK_FILE_BYTES = 30 * 1024 * 1024;
 exports.BOOK_FILE_KINDS = ['cover', 'book'];
 const ascii = (bytes, start, text) => {

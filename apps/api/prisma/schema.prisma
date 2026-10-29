@@ -383,6 +383,7 @@ model LibraryCatalogBook {
   copies  LibraryCatalogBookCopy[]
   ratings LibraryCatalogBookRating[]
   files   LibraryCatalogBookFile[]
+  images  LibraryCatalogBookImage[]
 
   @@map("library_catalog_books")
 }
@@ -404,6 +405,22 @@ model LibraryCatalogBookFile {
 
   @@unique([bookId, kind])
   @@map("library_catalog_book_files")
+}
+
+/// An extra gallery picture of a book (migration 009, LIBRARY_CATALOG-D30); the cover is a LibraryCatalogBookFile.
+model LibraryCatalogBookImage {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookId     String   @map("book_id") @db.Uuid
+  ext        String
+  mime       String
+  sizeBytes  Int      @map("size_bytes")
+  uploadedBy String?  @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  book LibraryCatalogBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, createdAt])
+  @@map("library_catalog_book_images")
 }
 
 /// 1-5 star rating + optional written review, one per (book, user), editable

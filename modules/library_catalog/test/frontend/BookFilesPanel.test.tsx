@@ -52,7 +52,7 @@ beforeEach(() => {
 describe('BookFilesPanel', () => {
   it('shows what is stored (type and size) or "None"', () => {
     render(<BookFilesPanel bookId="b1" files={{ cover: null, book: withFiles.book }} onChanged={vi.fn()} />);
-    expect(screen.getByText('None')).toBeInTheDocument();
+    expect(screen.getAllByText('None').length).toBeGreaterThan(0);
     expect(screen.getByText('PDF · 5 MB')).toBeInTheDocument();
   });
 

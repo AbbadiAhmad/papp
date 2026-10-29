@@ -21,7 +21,23 @@ export interface BookFileInfo {
 export interface BookFilesInfo {
   cover: BookFileInfo | null;
   book: BookFileInfo | null;
+  /** Extra gallery pictures, oldest first (LIBRARY_CATALOG-D30). */
+  images?: { id: string; ext: string; sizeBytes: number }[];
 }
+
+export const MAX_GALLERY_IMAGES = 10;
+
+export interface BooksImportReport {
+  rows: { row: number; id: string | null; title: string | null; action: 'create' | 'update' | 'unchanged' | null; changes: string[]; valid: boolean; error: string | null }[];
+  validCount: number;
+  invalidCount: number;
+  allValid: boolean;
+  created?: number;
+  updated?: number;
+}
+
+/** Public URL of one extra gallery picture. */
+export const imageUrl = (bookId: string, imageId: string): string => `${API_BASE_URL}/api/library/public/books/${bookId}/images/${imageId}`;
 
 /** Public cover picture URL (an <img> cannot send the login header); `version` makes the browser reload after a replace. */
 export const coverUrl = (bookId: string, version?: string): string =>
@@ -212,6 +228,22 @@ export const libraryCatalogApi = {
     form.append('file', file);
     return apiClient.post<BookFilesInfo>(`/api/library/books/${id}/files/${kind}`, form).then((r) => r.data);
   },
+  importBooksPreview: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<BooksImportReport>('/api/library/books/import/preview', form).then((r) => r.data);
+  },
+  importBooksCommit: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<BooksImportReport>('/api/library/books/import', form).then((r) => r.data);
+  },
+  uploadBookImage: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return apiClient.post<BookFilesInfo>(`/api/library/books/${id}/files/images`, form).then((r) => r.data);
+  },
+  deleteBookImage: (id: string, imageId: string) => apiClient.delete<void>(`/api/library/books/${id}/files/images/${imageId}`).then((r) => r.data),
   deleteBookFile: (id: string, kind: 'cover' | 'book') => apiClient.delete<void>(`/api/library/books/${id}/files/${kind}`).then((r) => r.data),
   /** The book file as a Blob plus the download name the server chose (from the book's title). */
   downloadBookFile: async (id: string): Promise<{ blob: Blob; filename: string }> => {

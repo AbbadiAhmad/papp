@@ -83,4 +83,22 @@ export class PublicBooksController {
       if (err && !res.headersSent) res.status(404).json({ statusCode: 404, message: 'Cover not found' });
     });
   }
+
+  /** An extra gallery picture of a book; public for the same reason as the cover (<img> cannot send credentials). */
+  @Get(':id/images/:imageId')
+  @Public()
+  async image(@Param('id', new ParseUUIDPipe()) id: string, @Param('imageId', new ParseUUIDPipe()) imageId: string, @Res() res: Response): Promise<void> {
+    const found = await this.files.locateImage(id, imageId);
+    if (!found) throw new NotFoundException('This picture does not exist');
+    res.set({
+      'Content-Type': found.mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.sendFile(found.path, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ statusCode: 404, message: 'Picture not found' });
+    });
+  }
 }

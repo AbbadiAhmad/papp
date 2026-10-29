@@ -82,7 +82,7 @@ let BookFilesService = BookFilesService_1 = class BookFilesService {
         await fs_1.promises.rm(this.folder(bookId), { recursive: true, force: true });
     }
     async summary(bookId) {
-        return (await this.summaries([bookId])).get(bookId) ?? { cover: null, book: null };
+        return (await this.summaries([bookId])).get(bookId) ?? { cover: null, book: null, images: [] };
     }
     async summaries(bookIds) {
         const map = new Map();
@@ -90,11 +90,57 @@ let BookFilesService = BookFilesService_1 = class BookFilesService {
             return map;
         const rows = await this.prisma.libraryCatalogBookFile.findMany({ where: { bookId: { in: bookIds } } });
         for (const row of rows) {
-            const entry = map.get(row.bookId) ?? { cover: null, book: null };
+            const entry = map.get(row.bookId) ?? { cover: null, book: null, images: [] };
             entry[row.kind] = { ext: row.ext, sizeBytes: row.sizeBytes, updatedAt: row.updatedAt };
             map.set(row.bookId, entry);
         }
+        const images = await this.prisma.libraryCatalogBookImage.findMany({ where: { bookId: { in: bookIds } }, orderBy: { createdAt: 'asc' } });
+        for (const image of images) {
+            const entry = map.get(image.bookId) ?? { cover: null, book: null, images: [] };
+            entry.images.push({ id: image.id, ext: image.ext, sizeBytes: image.sizeBytes });
+            map.set(image.bookId, entry);
+        }
         return map;
+    }
+    imagePath(bookId, imageId, ext) {
+        return (0, path_1.join)(this.folder(bookId), 'images', `${imageId}.${ext}`);
+    }
+    /** Adds one gallery picture (same type/size rules as the cover); at most MAX_IMAGES_PER_BOOK per book. */
+    async addImage(bookId, bytes, userId) {
+        const book = await this.prisma.libraryCatalogBook.findUnique({ where: { id: bookId } });
+        if (!book)
+            throw new common_1.NotFoundException('Book not found');
+        const checked = (0, book_file_rules_1.validateUpload)('cover', bytes);
+        if ('error' in checked)
+            throw new common_1.BadRequestException(checked.error);
+        if ((await this.prisma.libraryCatalogBookImage.count({ where: { bookId } })) >= book_file_rules_1.MAX_IMAGES_PER_BOOK) {
+            throw new common_1.BadRequestException(`A book can have at most ${book_file_rules_1.MAX_IMAGES_PER_BOOK} extra pictures`);
+        }
+        const { ext, mime } = checked.file;
+        const row = await this.prisma.libraryCatalogBookImage.create({ data: { bookId, ext, mime, sizeBytes: bytes.length, uploadedBy: userId } });
+        try {
+            await fs_1.promises.mkdir((0, path_1.join)(this.folder(bookId), 'images'), { recursive: true });
+            await fs_1.promises.writeFile(this.imagePath(bookId, row.id, ext), bytes);
+        }
+        catch (err) {
+            await this.prisma.libraryCatalogBookImage.delete({ where: { id: row.id } });
+            throw err;
+        }
+        await this.writeInfo(bookId);
+        return this.summary(bookId);
+    }
+    async removeImage(bookId, imageId) {
+        const row = await this.prisma.libraryCatalogBookImage.findUnique({ where: { id: imageId } });
+        if (!row || row.bookId !== bookId)
+            throw new common_1.NotFoundException('There is no such picture for this book');
+        await this.prisma.libraryCatalogBookImage.delete({ where: { id: imageId } });
+        await fs_1.promises.rm(this.imagePath(bookId, imageId, row.ext), { force: true });
+    }
+    async locateImage(bookId, imageId) {
+        const row = await this.prisma.libraryCatalogBookImage.findUnique({ where: { id: imageId } });
+        if (!row || row.bookId !== bookId)
+            return null;
+        return { path: this.imagePath(bookId, imageId, row.ext), mime: row.mime };
     }
     /** Where a file is, from the DB row only. `downloadAs` is built from the book title, never from the upload. */
     async locate(bookId, kind) {

@@ -14,7 +14,9 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BooksController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const book_files_service_1 = require("./book-files.service");
+const books_import_service_1 = require("./books-import.service");
 const books_service_1 = require("./books.service");
 const create_book_copy_dto_1 = require("./dto/create-book-copy.dto");
 const create_book_dto_1 = require("./dto/create-book.dto");
@@ -49,14 +51,16 @@ const fetchCopyState = (prisma, req) => prisma.libraryCatalogBookCopy.findUnique
 let BooksController = class BooksController {
     books;
     files;
-    constructor(books, files) {
+    importer;
+    constructor(books, files, importer) {
         this.books = books;
         this.files = files;
+        this.importer = importer;
     }
     async list(query) {
         const books = await this.books.list(query);
         const summaries = await this.files.summaries(books.map((b) => b.id));
-        return books.map((b) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null } }));
+        return books.map((b) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null, images: [] } }));
     }
     async export(res) {
         const buffer = await this.books.exportBooksWorkbook();
@@ -65,6 +69,18 @@ let BooksController = class BooksController {
             'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
         });
         res.send(buffer);
+    }
+    // --- Excel import of the exported file (LIBRARY_CATALOG-D31). Declared before any ':id' route. ---
+    /** Validates only — writes nothing. */
+    async importPreview(file) {
+        if (!file)
+            throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
+        return (await this.importer.preview(file.buffer)).report;
+    }
+    async importCommit(file) {
+        if (!file)
+            throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
+        return this.importer.commit(file.buffer);
     }
     // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
     // "The librarian has to approve the comments to publish it" — a separate
@@ -193,6 +209,27 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "export", null);
+__decorate([
+    (0, common_1.Post)('import/preview'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, platform_1.RequirePermission)('library_catalog.books.import'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "importPreview", null);
+__decorate([
+    (0, common_1.Post)('import'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, platform_1.RequirePermission)('library_catalog.books.import'),
+    (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BooksController.prototype, "importCommit", null);
 __decorate([
     (0, common_1.Get)('ratings/pending'),
     (0, platform_1.RequirePermission)('library_catalog.books.moderate_ratings'),
@@ -385,5 +422,6 @@ exports.BooksController = BooksController = __decorate([
     (0, common_1.Controller)('api/library/books'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
     __metadata("design:paramtypes", [books_service_1.BooksService,
-        book_files_service_1.BookFilesService])
+        book_files_service_1.BookFilesService,
+        books_import_service_1.BooksImportService])
 ], BooksController);

@@ -1,6 +1,7 @@
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import EditIcon from '@mui/icons-material/Edit';
 import GridViewIcon from '@mui/icons-material/GridView';
 import TableRowsIcon from '@mui/icons-material/TableRows';
@@ -39,7 +40,8 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { extractErrorMessage, isForbiddenError } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
+import { BooksImportDialog } from './BooksImportDialog';
+import { coverUrl, downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 import { BookCard, CardGrid, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
@@ -127,6 +129,7 @@ export function BooksListPage() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const reload = () => setReloadToken((n) => n + 1);
+  const [importOpen, setImportOpen] = useState(false);
   const [view, setViewState] = useState<BooksView>(getStoredView);
   const setView = (next: BooksView) => {
     setViewState(next);
@@ -240,6 +243,11 @@ export function BooksListPage() {
               {t('library_catalog.actions.export')}
             </Button>
           </Can>
+          <Can permission="library_catalog.books.import">
+            <Button startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)} variant="outlined">
+              {t('library_catalog.import.button')}
+            </Button>
+          </Can>
           <Can permission="library_catalog.books.create">
             <Button startIcon={<AddIcon />} onClick={openCreate} variant="contained">
               {t('library_catalog.actions.add_book')}
@@ -301,6 +309,7 @@ export function BooksListPage() {
                     key={book.id}
                     title={book.title}
                     author={book.author}
+                    imageUrl={book.files?.cover ? coverUrl(book.id, book.files.cover.updatedAt) : null}
                     to={`/library/books/${book.id}`}
                     status={
                       <StatusPill
@@ -334,6 +343,7 @@ export function BooksListPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell sx={{ width: 64 }}>{t('library_catalog.list.cover')}</TableCell>
                 <TableCell>{t('library_catalog.fields.title')}</TableCell>
                 <TableCell>{t('library_catalog.fields.author')}</TableCell>
                 <TableCell>{t('library_catalog.fields.category')}</TableCell>
@@ -348,13 +358,24 @@ export function BooksListPage() {
             <TableBody>
               {(books ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('library_catalog.filters.no_results')}
                   </TableCell>
                 </TableRow>
               ) : null}
               {pageRows.map((book) => (
                 <TableRow key={book.id} hover>
+                  <TableCell>
+                    {book.files?.cover ? (
+                      <Box
+                        component="img"
+                        src={coverUrl(book.id, book.files.cover.updatedAt)}
+                        alt={t('library_catalog.files.cover_alt', { title: book.title })}
+                        loading="lazy"
+                        sx={{ display: 'block', width: 40, height: 56, objectFit: 'cover', borderRadius: 0.5 }}
+                      />
+                    ) : null}
+                  </TableCell>
                   <TableCell>
                     <RouterLink to={`/library/books/${book.id}`}>{book.title}</RouterLink>
                   </TableCell>
@@ -420,6 +441,7 @@ export function BooksListPage() {
         )}
       </QueryStateGate>
 
+      <BooksImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
       <BookFormDialog open={formOpen} book={editingBook} onClose={() => setFormOpen(false)} onSubmit={handleSubmit} />
 
       <ConfirmDialog

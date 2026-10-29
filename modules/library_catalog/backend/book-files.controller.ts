@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { BOOK_FILE_KINDS, BookFileKind, MAX_BOOK_FILE_BYTES } from './book-file-rules';
+import { BOOK_FILE_KINDS, BookFileKind, MAX_BOOK_FILE_BYTES, MAX_COVER_BYTES } from './book-file-rules';
 import { BookFilesService } from './book-files.service';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
@@ -34,6 +34,24 @@ function parseKind(kind: string): BookFileKind {
 @UseGuards(MustChangePasswordGuard)
 export class BookFilesController {
   constructor(private readonly files: BookFilesService) {}
+
+  // Declared before ':kind' so "images" is never read as a file kind.
+  @Post('images')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermission('library_catalog.books.update')
+  @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBookImage', action: 'upload_image' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_COVER_BYTES + 1 } }))
+  async addImage(@Param('id', new ParseUUIDPipe()) id: string, @UploadedFile() file: { buffer: Buffer } | undefined, @CurrentUser() user: AuthenticatedUser) {
+    return this.files.addImage(id, file?.buffer, user.userId);
+  }
+
+  @Delete('images/:imageId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('library_catalog.books.update')
+  @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBookImage', action: 'delete_image' })
+  async removeImage(@Param('id', new ParseUUIDPipe()) id: string, @Param('imageId', new ParseUUIDPipe()) imageId: string): Promise<void> {
+    await this.files.removeImage(id, imageId);
+  }
 
   @Post(':kind')
   @HttpCode(HttpStatus.CREATED)

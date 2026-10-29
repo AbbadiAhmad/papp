@@ -79,6 +79,12 @@ library_catalog_book_ratings(
 - **Backup**: these files are NOT in the database backup. Use the admin **Backup → Export files** button (an encrypted zip of every directory in `BACKUP_FILE_DIRS`) and restore with `./scripts/manageDB.sh restore-files <zip>` after restoring the database (root D116). Because `./books_files` is an ordinary host folder you can also copy it directly.
 - Behind a reverse proxy, allow request bodies of at least 35 MB on `/api/library/` (the bundled nginx allows 55 MB); a proxy refusal shows a plain-language message in the UI.
 
+## Extra pictures and Excel import (1.4.0, LIBRARY_CATALOG-D30/D31)
+
+- Table `library_catalog_book_images` (migration 009; auto-applied at install/upgrade, platform D47): up to 10 gallery pictures per book, on disk under `<BOOK_FILES_DIR>/<book id>/images/`. Routes: `POST/DELETE /api/library/books/:id/files/images[/:imageId]` (`books.update`), `GET /api/library/public/books/:id/images/:imageId` (public).
+- Pictures are shrunk in the browser (`frontend/compressImage.ts`) before upload; the server only validates.
+- Books import: `POST /api/library/books/import/preview|import` (`books.import`). Format = the export file; rule details in `backend/books-import-rules.ts`. After upgrading, an admin must grant `books.import` to any role besides admin that needs it.
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):

@@ -33,6 +33,13 @@ let BookFilesController = class BookFilesController {
     constructor(files) {
         this.files = files;
     }
+    // Declared before ':kind' so "images" is never read as a file kind.
+    async addImage(id, file, user) {
+        return this.files.addImage(id, file?.buffer, user.userId);
+    }
+    async removeImage(id, imageId) {
+        await this.files.removeImage(id, imageId);
+    }
     async upload(id, kind, file, user) {
         return this.files.upload(id, parseKind(kind), file?.buffer, user.userId);
     }
@@ -58,6 +65,30 @@ let BookFilesController = class BookFilesController {
     }
 };
 exports.BookFilesController = BookFilesController;
+__decorate([
+    (0, common_1.Post)('images'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
+    (0, platform_1.RequirePermission)('library_catalog.books.update'),
+    (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBookImage', action: 'upload_image' }),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', { limits: { fileSize: book_file_rules_1.MAX_COVER_BYTES + 1 } })),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, platform_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], BookFilesController.prototype, "addImage", null);
+__decorate([
+    (0, common_1.Delete)('images/:imageId'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, platform_1.RequirePermission)('library_catalog.books.update'),
+    (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBookImage', action: 'delete_image' }),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('imageId', new common_1.ParseUUIDPipe())),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], BookFilesController.prototype, "removeImage", null);
 __decorate([
     (0, common_1.Post)(':kind'),
     (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),

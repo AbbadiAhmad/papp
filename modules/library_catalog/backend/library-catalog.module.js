@@ -10,6 +10,7 @@ exports.LibraryCatalogModule = void 0;
 const common_1 = require("@nestjs/common");
 const book_files_controller_1 = require("./book-files.controller");
 const book_files_service_1 = require("./book-files.service");
+const books_import_service_1 = require("./books-import.service");
 const books_controller_1 = require("./books.controller");
 const books_service_1 = require("./books.service");
 const public_controller_1 = require("./public.controller");
@@ -36,6 +37,6 @@ exports.LibraryCatalogModule = LibraryCatalogModule;
 exports.LibraryCatalogModule = LibraryCatalogModule = __decorate([
     (0, common_1.Module)({
         controllers: [public_controller_1.PublicBooksController, books_controller_1.BooksController, book_files_controller_1.BookFilesController, settings_controller_1.SettingsController],
-        providers: [books_service_1.BooksService, book_files_service_1.BookFilesService, settings_service_1.SettingsService],
+        providers: [books_service_1.BooksService, books_import_service_1.BooksImportService, book_files_service_1.BookFilesService, settings_service_1.SettingsService],
     })
 ], LibraryCatalogModule);

@@ -87,6 +87,23 @@ let PublicBooksController = class PublicBooksController {
                 res.status(404).json({ statusCode: 404, message: 'Cover not found' });
         });
     }
+    /** An extra gallery picture of a book; public for the same reason as the cover (<img> cannot send credentials). */
+    async image(id, imageId, res) {
+        const found = await this.files.locateImage(id, imageId);
+        if (!found)
+            throw new common_1.NotFoundException('This picture does not exist');
+        res.set({
+            'Content-Type': found.mime,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+            'Cache-Control': 'public, max-age=86400',
+        });
+        res.sendFile(found.path, (err) => {
+            if (err && !res.headersSent)
+                res.status(404).json({ statusCode: 404, message: 'Picture not found' });
+        });
+    }
 };
 exports.PublicBooksController = PublicBooksController;
 __decorate([
@@ -112,6 +129,16 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], PublicBooksController.prototype, "cover", null);
+__decorate([
+    (0, common_1.Get)(':id/images/:imageId'),
+    (0, platform_1.Public)(),
+    __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
+    __param(1, (0, common_1.Param)('imageId', new common_1.ParseUUIDPipe())),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], PublicBooksController.prototype, "image", null);
 exports.PublicBooksController = PublicBooksController = __decorate([
     (0, common_1.Controller)('api/library/public/books'),
     __metadata("design:paramtypes", [books_service_1.BooksService,

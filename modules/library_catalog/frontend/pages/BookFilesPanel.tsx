@@ -1,7 +1,7 @@
 import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/UploadFile';
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, IconButton, Paper, Stack, Typography } from '@mui/material';
 import axios from 'axios';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,8 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { formatNumber } from '../../../../apps/web/src/shared/format';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { downloadBlob, libraryCatalogApi, type BookFilesInfo } from '../api';
+import { downloadBlob, imageUrl, libraryCatalogApi, MAX_GALLERY_IMAGES, type BookFilesInfo } from '../api';
+import { compressImage } from '../compressImage';
 
 // The server is the authority on type and size; these only avoid sending an obviously wrong file.
 const MAX_COVER_BYTES = 5 * 1024 * 1024;
@@ -42,6 +43,8 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
   const pick = async (kind: Kind, file: File | undefined) => {
     if (!file) return;
     setError(null);
+    // Pictures are shrunk in the browser first, so a large phone photo fits the limit and loads fast.
+    if (kind === 'cover') file = await compressImage(file);
     if (file.size > (kind === 'cover' ? MAX_COVER_BYTES : MAX_BOOK_BYTES)) {
       setError(t(kind === 'cover' ? 'library_catalog.files.cover_too_large' : 'library_catalog.files.book_too_large'));
       return;
@@ -69,6 +72,41 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
     if (!kind) return;
     try {
       await gated('library_catalog.books.update', () => libraryCatalogApi.deleteBookFile(bookId, kind));
+      onChanged();
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    }
+  };
+
+  const galleryInput = useRef<HTMLInputElement>(null);
+  const images = files?.images ?? [];
+
+  const addImages = async (list: FileList | null) => {
+    const chosen = list ? Array.from(list) : [];
+    if (chosen.length === 0) return;
+    setError(null);
+    setBusy('cover');
+    try {
+      for (const original of chosen.slice(0, MAX_GALLERY_IMAGES - images.length)) {
+        const file = await compressImage(original);
+        if (file.size > MAX_COVER_BYTES) {
+          setError(t('library_catalog.files.cover_too_large'));
+          continue;
+        }
+        await gated('library_catalog.books.update', () => libraryCatalogApi.uploadBookImage(bookId, file));
+      }
+      onChanged();
+    } catch (err) {
+      setError(axios.isAxiosError(err) && err.response?.status === 413 ? t('library_catalog.files.proxy_too_large') : extractErrorMessage(err) || t('library_catalog.files.upload_failed'));
+    } finally {
+      setBusy(null);
+      if (galleryInput.current) galleryInput.current.value = '';
+    }
+  };
+
+  const removeImage = async (imageId: string) => {
+    try {
+      await gated('library_catalog.books.update', () => libraryCatalogApi.deleteBookImage(bookId, imageId));
       onChanged();
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -146,6 +184,30 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
         {row('cover', coverInput, COVER_ACCEPT)}
         {row('book', bookInput, BOOK_ACCEPT)}
       </Stack>
+      <Box sx={{ mt: 3 }}>
+        <input ref={galleryInput} type="file" multiple accept={COVER_ACCEPT} hidden data-testid="gallery-input" aria-label={t('library_catalog.files.gallery')} onChange={(e) => void addImages(e.target.files)} />
+        <Typography variant="subtitle2">{t('library_catalog.files.gallery')}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {images.length ? t('library_catalog.files.gallery_count', { count: images.length, max: MAX_GALLERY_IMAGES }) : t('library_catalog.files.none')}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+          {images.map((image) => (
+            <Box key={image.id} sx={{ position: 'relative', width: 96, height: 96 }}>
+              <Box component="img" src={imageUrl(bookId, image.id)} alt={t('library_catalog.files.gallery_alt')} loading="lazy" sx={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 1 }} />
+              <Can permission="library_catalog.books.update">
+                <IconButton size="small" aria-label={t('library_catalog.files.remove')} onClick={() => void removeImage(image.id)} sx={{ position: 'absolute', top: 2, insetInlineEnd: 2, bgcolor: 'background.paper' }}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Can>
+            </Box>
+          ))}
+        </Stack>
+        <Can permission="library_catalog.books.update">
+          <Button size="small" startIcon={<UploadIcon />} disabled={busy !== null || images.length >= MAX_GALLERY_IMAGES} onClick={() => galleryInput.current?.click()} sx={{ mt: 1 }}>
+            {t('library_catalog.files.add_pictures')}
+          </Button>
+        </Can>
+      </Box>
       <ConfirmDialog
         open={confirmRemove !== null}
         title={t('library_catalog.files.remove')}

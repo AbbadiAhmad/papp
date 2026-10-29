@@ -6,6 +6,8 @@
  */
 
 export const MAX_COVER_BYTES = 5 * 1024 * 1024;
+/** Extra gallery pictures per book (LIBRARY_CATALOG-D30). */
+export const MAX_IMAGES_PER_BOOK = 10;
 export const MAX_BOOK_FILE_BYTES = 30 * 1024 * 1024;
 
 export type BookFileKind = 'cover' | 'book';

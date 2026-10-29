@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { BookFilesService } from './book-files.service';
+import { BooksImportService } from './books-import.service';
 import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
@@ -45,6 +47,7 @@ export class BooksController {
   constructor(
     private readonly books: BooksService,
     private readonly files: BookFilesService,
+    private readonly importer: BooksImportService,
   ) {}
 
   @Get()
@@ -52,7 +55,7 @@ export class BooksController {
   async list(@Query() query: ListBooksDto) {
     const books = await this.books.list(query);
     const summaries = await this.files.summaries(books.map((b: { id: string }) => b.id));
-    return books.map((b: { id: string }) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null } }));
+    return books.map((b: { id: string }) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null, images: [] } }));
   }
 
   @Get('export')
@@ -64,6 +67,28 @@ export class BooksController {
       'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
     });
     res.send(buffer);
+  }
+
+  // --- Excel import of the exported file (LIBRARY_CATALOG-D31). Declared before any ':id' route. ---
+
+  /** Validates only — writes nothing. */
+  @Post('import/preview')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('library_catalog.books.import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importPreview(@UploadedFile() file?: { buffer: Buffer }) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
+    return (await this.importer.preview(file.buffer)).report;
+  }
+
+  @Post('import')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('library_catalog.books.import')
+  @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' })
+  @UseInterceptors(FileInterceptor('file'))
+  async importCommit(@UploadedFile() file?: { buffer: Buffer }) {
+    if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
+    return this.importer.commit(file.buffer);
   }
 
   // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
