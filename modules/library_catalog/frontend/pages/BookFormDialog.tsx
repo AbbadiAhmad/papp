@@ -59,6 +59,9 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
   // with that SAME suggested code so the librarian sees/can edit it before
   // saving, rather than a blank field with no code visible until after.
   const [copyQrCode, setCopyQrCode] = useState('');
+  // The pre-filled suggestion; if the librarian leaves it untouched we send NO code so the
+  // server takes the next sequence value itself (two devices adding at once never collide).
+  const [suggestedCode, setSuggestedCode] = useState('');
   const [copyCondition, setCopyCondition] = useState('');
   const [copyLocation, setCopyLocation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,13 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
 
   useEffect(() => {
     if (isEdit) return;
-    libraryCatalogApi.peekNextCopyCode().then(setCopyQrCode).catch(() => undefined);
+    libraryCatalogApi
+      .peekNextCopyCode()
+      .then((code) => {
+        setSuggestedCode(code);
+        setCopyQrCode(code);
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only peek; `isEdit` is stable for this component's lifetime (see the key={book?.id ?? 'new'} remount in BookFormDialog above).
   }, []);
 
@@ -91,7 +100,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
                 // treats a present-but-empty qrCode as a validation error
                 // (@MinLength(1)), auto-generating only on a truly OMITTED
                 // field (LIBRARY_CATALOG-D22).
-                qrCode: copyQrCode.trim() || undefined,
+                qrCode: copyQrCode.trim() && copyQrCode.trim() !== suggestedCode ? copyQrCode.trim() : undefined,
                 condition: copyCondition || undefined,
                 location: copyLocation || undefined,
               },

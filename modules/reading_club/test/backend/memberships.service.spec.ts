@@ -8,7 +8,7 @@ interface MockPrisma {
   readingClubMembership: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock; update: jest.Mock };
   readingClubStageCompletion: { findMany: jest.Mock };
   readingClubPresent: { findMany: jest.Mock };
-  readingClubStageBookEntry: { findMany: jest.Mock; create: jest.Mock };
+  readingClubStageBookEntry: { findMany: jest.Mock; findFirst: jest.Mock; create: jest.Mock };
   libraryStudent: { findUnique: jest.Mock; findMany: jest.Mock };
   user: { findUnique: jest.Mock; findMany: jest.Mock };
   libraryBorrowing: { count: jest.Mock; findMany: jest.Mock };
@@ -23,7 +23,7 @@ function createMockPrisma(): MockPrisma {
     readingClubMembership: { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn() },
     readingClubStageCompletion: { findMany: jest.fn(() => Promise.resolve([])) },
     readingClubPresent: { findMany: jest.fn(() => Promise.resolve([])) },
-    readingClubStageBookEntry: { findMany: jest.fn(() => Promise.resolve([])), create: jest.fn() },
+    readingClubStageBookEntry: { findMany: jest.fn(() => Promise.resolve([])), findFirst: jest.fn(() => Promise.resolve(null)), create: jest.fn() },
     libraryStudent: { findUnique: jest.fn(), findMany: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
     libraryBorrowing: { count: jest.fn(), findMany: jest.fn(() => Promise.resolve([])) },

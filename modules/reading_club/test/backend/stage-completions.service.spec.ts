@@ -68,6 +68,7 @@ describe('StageCompletionsService', () => {
       const membership = { studentId: 'student-1', episodeId: 'ep-1', groupId: 'g1', currentStageId: 's1', stageStartedAt: new Date(), manualProgressAmount: 0 };
       const memberships: Partial<MembershipsService> = {
         getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+        syncReaderEntries: jest.fn(async () => undefined) as unknown as MembershipsService['syncReaderEntries'],
         computeStageProgress: jest.fn(async () => ({ targetType: 'books', targetAmount: 4, progressAmount: 3, isComplete: false })) as unknown as MembershipsService['computeStageProgress'],
       };
       const service = buildService(prisma, memberships);
@@ -83,6 +84,7 @@ describe('StageCompletionsService', () => {
       const nextStage = { id: 's2', groupId: 'g1', stageOrder: 2, name: 'Stage 2' };
       const memberships: Partial<MembershipsService> = {
         getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+        syncReaderEntries: jest.fn(async () => undefined) as unknown as MembershipsService['syncReaderEntries'],
         computeStageProgress: jest.fn(async () => ({ targetType: 'books', targetAmount: 5, progressAmount: 5, isComplete: true })) as unknown as MembershipsService['computeStageProgress'],
       };
       const service = buildService(prisma, memberships);
@@ -123,6 +125,7 @@ describe('StageCompletionsService', () => {
       const lastStage = { id: 's2', groupId: 'g1', stageOrder: 2, name: 'Stage 2', targetAmount: 10, rewardDescription: null };
       const memberships: Partial<MembershipsService> = {
         getMembershipOrThrow: jest.fn(async () => membership) as unknown as MembershipsService['getMembershipOrThrow'],
+        syncReaderEntries: jest.fn(async () => undefined) as unknown as MembershipsService['syncReaderEntries'],
         computeStageProgress: jest.fn(async () => ({ targetType: 'books', targetAmount: 10, progressAmount: 10, isComplete: true })) as unknown as MembershipsService['computeStageProgress'],
       };
       const service = buildService(prisma, memberships);

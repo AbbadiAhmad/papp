@@ -56,6 +56,7 @@ let StageCompletionsService = StageCompletionsService_1 = class StageCompletions
         const stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
         if (!stage)
             throw new common_1.NotFoundException('Current stage not found');
+        await this.memberships.syncReaderEntries(studentId, markedBy);
         const progress = await this.memberships.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
         // READING_CLUB-D22: a stage can only be finished once its books/pages goal is reached.
         if (!progress.isComplete) {

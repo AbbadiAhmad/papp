@@ -258,7 +258,18 @@ export class UsersService {
     await this.findById(id);
     await this.prisma.$transaction(async (tx) => {
       await this.roles.assertNotLastActiveAdmin(tx, id);
-      await tx.user.delete({ where: { id } });
+      try {
+        await tx.user.delete({ where: { id } });
+      } catch (error) {
+        // The user is referenced by history rows (loans, fines, club records, surveys, ...): those
+        // must keep their author, so deletion is refused with a readable 409 instead of an opaque 500.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          throw new ConflictException(
+            'This user has linked records (e.g. loans, payments, club activity) and cannot be deleted. Deactivate the account instead.',
+          );
+        }
+        throw error;
+      }
     });
   }
 

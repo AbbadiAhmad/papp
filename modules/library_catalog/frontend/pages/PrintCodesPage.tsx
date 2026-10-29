@@ -32,8 +32,8 @@ import { Paginated } from '../../../../apps/web/src/shared/components/Paginated'
  * copy-number and the QR for the copies ... the aim is to print the book
  * stickers" (LIBRARY_CATALOG-D22). `bookTitle` is shown in the on-screen
  * preview table and the Excel export ONLY, for the librarian to validate
- * the filtered set before printing — it is deliberately never part of the
- * sticker itself (confirmed with the user). Each sticker shows: the
+ * the filtered set before printing — since LIBRARY_CATALOG-D29 it is also
+ * printed on the sticker (user request). Each sticker shows: the
  * configured header text (e.g. the school/library name, a per-installation
  * setting below), the copy's QR code image, its code as text, and its
  * location.
@@ -239,6 +239,7 @@ export function PrintCodesPage() {
             {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
             <Box className="print-codes-sticker-side">
               <QrCodeImage value={copy.qrCode} size={110} />
+              {copy.bookTitle ? <Typography className="print-codes-sticker-title">{copy.bookTitle}</Typography> : null}
               {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
             </Box>
             <Typography className="print-codes-sticker-code">{copy.qrCode}</Typography>
@@ -294,8 +295,9 @@ export function PrintCodesPage() {
             break-inside: avoid;
           }
           .print-codes-sticker-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1mm; }
-          .print-codes-sticker img { width: 28mm !important; height: 28mm !important; flex: none; }
+          .print-codes-sticker img { width: 24mm !important; height: 24mm !important; flex: none; }
           .print-codes-sticker-header { writing-mode: vertical-rl; font-size: 8pt; line-height: 1.2; font-weight: bold; margin: 0; flex: none; align-self: center; max-height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .print-codes-sticker-title { font-size: 7pt; line-height: 1.1; font-weight: bold; margin: 0; max-width: 100%; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
           .print-codes-sticker-location { font-size: 8pt; line-height: 1.1; color: #000; margin: 0; max-width: 100%; text-align: center; overflow: hidden; word-break: break-word; }
           .print-codes-sticker-code { writing-mode: vertical-rl; font-size: 12pt; font-weight: bold; margin: 0; white-space: nowrap; flex: none; align-self: center; letter-spacing: 0.5pt; }
         }

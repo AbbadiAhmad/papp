@@ -148,10 +148,16 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
       if (membership.currentStageId) {
         stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
         if (stage) {
-          progress = await this.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
           if (actingUserId) {
-            await this.syncStageBookEntries(membership, stage, actingUserId);
+            try {
+              await this.syncStageBookEntries(membership, stage, actingUserId);
+            } catch (error) {
+              // The entries are bookkeeping; a failed sync must never hide the reader's page / progress.
+              this.logger.error(`Book-entry sync failed for reader ${studentId}`, error instanceof Error ? error.stack : String(error));
+            }
           }
+          // Computed AFTER the sync: pages progress is summed from the synced book entries, so computing first showed the previous state.
+          progress = await this.computeStageProgress(studentId, membership.stageStartedAt, membership.manualProgressAmount, stage);
         }
       }
     }
@@ -218,6 +224,18 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Brings the reader's stage book entries up to date with their returned borrowings. Called before any
+   * decision that depends on pages progress (finishing a stage), because that progress is summed from
+   * the entries and they are otherwise only created when the reader page is opened.
+   */
+  async syncReaderEntries(studentId: string, actingUserId: string): Promise<void> {
+    const membership = await this.prisma.readingClubMembership.findUnique({ where: { studentId } });
+    if (!membership?.currentStageId) return;
+    const stage = await this.prisma.readingClubStage.findUnique({ where: { id: membership.currentStageId } });
+    if (stage) await this.syncStageBookEntries(membership, stage, actingUserId);
+  }
+
+  /**
    * Auto-populates `reading_club_stage_book_entries` from returned
    * borrowings inside the reader's current stage window — the SAME window
    * `computeStageProgress` uses for books-type stages (`returnedAt >=
@@ -248,6 +266,10 @@ export class MembershipsService implements OnModuleInit, OnModuleDestroy {
     for (const borrowing of toSync) {
       const copy = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { id: borrowing.bookCopyId } });
       const book = copy ? await this.prisma.libraryCatalogBook.findUnique({ where: { id: copy.bookId } }) : null;
+      // Two overlapping reader-page loads (e.g. the Scan page right after a return) can both reach
+      // here; re-check just before inserting so the second one never creates a duplicate entry.
+      const exists = await this.prisma.readingClubStageBookEntry.findFirst({ where: { borrowingId: borrowing.id }, select: { id: true } });
+      if (exists) continue;
       await this.prisma.readingClubStageBookEntry.create({
         data: {
           studentId: membership.studentId,

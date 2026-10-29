@@ -131,6 +131,7 @@ describe('StageCompletionsService events', () => {
     };
     const memberships = {
       getMembershipOrThrow: async () => ({ episodeId: 'ep', currentStageId: 's1', groupId: 'g1', groupName: 'Group A', stageStartedAt: new Date(), manualProgressAmount: 0 }),
+      syncReaderEntries: jest.fn(async () => undefined) as unknown as MembershipsService['syncReaderEntries'],
       computeStageProgress: async () => ({ progressAmount: 3, targetAmount: 3, targetType: 'books', isComplete: true }),
     } as unknown as MembershipsService;
     const service = withPrisma(new StageCompletionsService(memberships, currentEpisode, { send: jest.fn(async () => undefined) }, events), prisma);

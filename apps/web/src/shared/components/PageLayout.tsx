@@ -521,7 +521,7 @@ export function TopBar() {
   const tabsShell = shell === 'tabs';
   const headerShell = shell === 'header';
   // The header shell switches to the drawer below `md` (a dropdown bar needs the width); other shells below `sm`.
-  const isMobile = useMediaQuery(theme.breakpoints.down(headerShell ? 'md' : 'sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down(headerShell || tabsShell ? 'md' : 'sm'));
   const { branding } = useBranding();
   const onPublicPage = useOnPublicModulePage();
   const appTitle = language === 'ar' ? branding.titleAr : branding.titleEn;
@@ -547,7 +547,7 @@ export function TopBar() {
             the mobile overlay drawer, or folds the desktop sidebar. Not shown
             for the tabs shell on platform pages, which has no sidebar. */}
         {status === 'authenticated' && onPublicPage ? <PlatformMenuButton /> : null}
-        {status === 'authenticated' && !onPublicPage && !tabsShell && (!headerShell || isMobile) ? (
+        {status === 'authenticated' && !onPublicPage && ((!headerShell && !tabsShell) || isMobile) ? (
           <Tooltip title={t('core.common.menu')}>
             <IconButton
               color="inherit"
@@ -710,11 +710,28 @@ export function PageLayout({ children }: { children: ReactNode }) {
 
   if (tabsShell) {
     return (
+      <>
+        {/* Below `md` the tab strip needs sideways scrolling to reach every page, so phones get the nested drawer instead. */}
+        <Drawer
+          variant="temporary"
+          anchor="left"
+          open={mobileNavOpen}
+          onClose={closeMobileNav}
+          ModalProps={{ keepMounted: true }}
+          slotProps={{ paper: { 'data-app-shell': 'drawer' } as Record<string, string> }}
+          sx={{ display: { xs: 'block', md: 'none' }, [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: 'border-box' } }}
+        >
+          <Toolbar />
+          <NavList onNavigate={closeMobileNav} />
+        </Drawer>
       <Box component="main" data-app-shell="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, minWidth: 0 }}>
         <Toolbar data-app-shell="main-spacer" />
-        <TabsNav />
+        <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+          <TabsNav />
+        </Box>
         {children}
       </Box>
+      </>
     );
   }
 

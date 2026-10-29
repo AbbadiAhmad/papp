@@ -559,6 +559,7 @@ function AddCopyDialog({
   const [condition, setCondition] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const [suggestedCode, setSuggestedCode] = useState('');
   const isEditing = !!copy;
 
   const handleOpen = () => {
@@ -572,7 +573,14 @@ function AddCopyDialog({
       // sequence) rather than leaving the field blank with no code visible
       // until after saving. The librarian can still edit or clear it.
       setQrCode('');
-      libraryCatalogApi.peekNextCopyCode().then(setQrCode).catch(() => undefined);
+      setSuggestedCode('');
+      libraryCatalogApi
+        .peekNextCopyCode()
+        .then((code) => {
+          setSuggestedCode(code);
+          setQrCode(code);
+        })
+        .catch(() => undefined);
       setLocation('');
       setCondition('');
     }
@@ -587,7 +595,7 @@ function AddCopyDialog({
         // Sent as undefined (never '') when cleared — a present-but-empty
         // qrCode fails @MinLength(1); only a truly OMITTED field triggers
         // server-side auto-generation.
-        await onSubmit({ qrCode: qrCode.trim() || undefined, location: location || undefined, condition: condition || undefined });
+        await onSubmit({ qrCode: qrCode.trim() && qrCode.trim() !== suggestedCode ? qrCode.trim() : undefined, location: location || undefined, condition: condition || undefined });
       }
       setQrCode('');
       setLocation('');

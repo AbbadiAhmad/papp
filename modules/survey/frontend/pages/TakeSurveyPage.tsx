@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useEffect, useState } from 'react';
 import { isValidEmail } from '../../backend/email-list.ts';
 import { useTranslation } from 'react-i18next';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../../apps/web/src/app/AuthContext';
 import { extractErrorMessage, isForbiddenError, isNotFoundError } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateTime } from '../../../../apps/web/src/shared/format';
@@ -67,6 +68,9 @@ export function TakeSurveyPage() {
   const invite = searchParams.get('invite');
   const [copyEmail, setCopyEmail] = useState('');
   const { status: authStatus, mustChangePassword } = useAuth();
+  const navigate = useNavigate();
+  // Back to where the respondent came from; opened directly from a link (no history) -> the site root.
+  const handleBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/'));
   // A forced-password-change account is technically "authenticated" per
   // AuthContext's own status model, but FillController's
   // MustChangePasswordGuard would 403 it just like an anonymous caller —
@@ -209,6 +213,9 @@ export function TakeSurveyPage() {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', p: { xs: 2, sm: 4 } }}>
       <Paper sx={{ p: 4, maxWidth: 640, width: '100%' }} elevation={3}>
+        <Button startIcon={<ArrowBackIcon sx={{ transform: i18n.dir() === 'rtl' ? 'scaleX(-1)' : undefined }} />} onClick={handleBack} sx={{ mb: 2 }}>
+          {t('core.common.back')}
+        </Button>
         {pageState === 'loading' ? (
           <Stack sx={{ alignItems: 'center', p: 4 }}>
             <CircularProgress />
