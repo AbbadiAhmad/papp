@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.copyToCells = exports.bookToCells = exports.isUuid = exports.COPY_STATUSES = exports.COPY_FIELDS = exports.BOOK_FIELDS = exports.COPY_COLUMNS = exports.BOOK_COLUMNS = void 0;
+exports.copyToCells = exports.bookToCells = exports.isUuid = exports.COPY_STATUSES = exports.withoutNotes = exports.NOTE_FIELDS = exports.COPY_FIELDS = exports.BOOK_FIELDS = exports.COPY_COLUMNS = exports.BOOK_COLUMNS = void 0;
 exports.toBookValues = toBookValues;
 exports.toCopyValues = toCopyValues;
 exports.planImport = planImport;
@@ -14,11 +14,15 @@ exports.planImport = planImport;
  * copy, what would be created/updated, the field-by-field differences (current vs incoming) and any
  * inconsistencies — it never writes anything. The user then decides what to apply (see the service).
  */
-exports.BOOK_COLUMNS = ['id', 'title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count'];
-exports.COPY_COLUMNS = ['copy_id', 'copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date'];
+exports.BOOK_COLUMNS = ['id', 'title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count', 'book_note'];
+exports.COPY_COLUMNS = ['copy_id', 'copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date', 'copy_note'];
 /** Book fields a user can change through the import (the id never changes). */
-exports.BOOK_FIELDS = ['title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count'];
-exports.COPY_FIELDS = ['copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date'];
+exports.BOOK_FIELDS = ['title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count', 'book_note'];
+exports.COPY_FIELDS = ['copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date', 'copy_note'];
+/** The internal-note columns (LIBRARY_CATALOG-D35): only read, compared and written for a caller who may see notes. */
+exports.NOTE_FIELDS = ['book_note', 'copy_note'];
+const withoutNotes = (fields) => fields.filter((f) => !exports.NOTE_FIELDS.includes(f));
+exports.withoutNotes = withoutNotes;
 exports.COPY_STATUSES = ['available', 'borrowed', 'lost', 'damaged', 'maintenance', 'reserved'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID.test(value);
@@ -49,6 +53,7 @@ function toBookValues(cells) {
             language: orNull(cells.language),
             description: orNull(cells.description),
             pageCount,
+            internalNote: orNull(cells.book_note),
         },
     };
 }
@@ -60,7 +65,7 @@ function toCopyValues(cells, blankStatus) {
     const date = text(cells.copy_acquisition_date);
     if (date && (!DATE.test(date) || Number.isNaN(new Date(date).getTime())))
         return { error: 'copy_acquisition_date must be a date written YYYY-MM-DD' };
-    return { values: { code: orNull(cells.copy_code), status, condition: orNull(cells.copy_condition), location: orNull(cells.copy_location), acquisitionDate: date || null } };
+    return { values: { code: orNull(cells.copy_code), status, condition: orNull(cells.copy_condition), location: orNull(cells.copy_location), acquisitionDate: date || null, internalNote: orNull(cells.copy_note) } };
 }
 const bookToCells = (book) => ({
     title: book.title,
@@ -71,6 +76,7 @@ const bookToCells = (book) => ({
     language: book.language ?? '',
     description: book.description ?? '',
     page_count: book.pageCount == null ? '' : String(book.pageCount),
+    book_note: book.internalNote ?? '',
 });
 exports.bookToCells = bookToCells;
 const copyToCells = (copy) => ({
@@ -79,6 +85,7 @@ const copyToCells = (copy) => ({
     copy_condition: copy.condition ?? '',
     copy_location: copy.location ?? '',
     copy_acquisition_date: copy.acquisitionDate ?? '',
+    copy_note: copy.internalNote ?? '',
 });
 exports.copyToCells = copyToCells;
 const hasCopyData = (cells) => exports.COPY_COLUMNS.some((c) => text(cells[c]));
@@ -90,7 +97,10 @@ function diffFields(fields, current, incoming, locked = []) {
     });
 }
 /** Groups the file's rows into books and compares everything with the catalog. Pure: writes nothing. */
-function planImport(rows, db) {
+function planImport(rows, db, options = { notes: true }) {
+    // A caller who may not see internal notes neither sees, compares nor changes them.
+    const bookFields = options.notes ? exports.BOOK_FIELDS : (0, exports.withoutNotes)(exports.BOOK_FIELDS);
+    const copyFields = options.notes ? exports.COPY_FIELDS : (0, exports.withoutNotes)(exports.COPY_FIELDS);
     const booksById = new Map(db.books.map((b) => [b.id.toLowerCase(), b]));
     const copiesById = new Map(db.copies.map((c) => [c.id.toLowerCase(), c]));
     const copiesByCode = new Map(db.copies.map((c) => [c.qrCode, c]));
@@ -117,10 +127,10 @@ function planImport(rows, db) {
         const first = groupRows[0];
         const issues = [];
         const incoming = {};
-        for (const f of exports.BOOK_FIELDS)
+        for (const f of bookFields)
             incoming[f] = text(first.cells[f]);
         // The same book on several rows must agree; if it doesn't, the first row wins and the user is told.
-        for (const f of exports.BOOK_FIELDS) {
+        for (const f of bookFields) {
             const clashing = groupRows.filter((r) => norm(r.cells[f]) !== norm(first.cells[f]));
             if (clashing.length) {
                 issues.push({ level: 'warning', message: `${f} differs between rows ${[first.row, ...clashing.map((r) => r.row)].join(', ')} of the same book; the value from row ${first.row} is used — edit it below if needed` });
@@ -153,7 +163,7 @@ function planImport(rows, db) {
                 issues.push({ level: 'warning', message: `a book with the same title, author and publisher already exists (id ${twin.id}); importing would create a duplicate — put its id in the id column to update it instead` });
         }
         const current = dbBook ? (0, exports.bookToCells)(dbBook) : null;
-        const fields = diffFields(exports.BOOK_FIELDS, current, incoming);
+        const fields = diffFields(bookFields, current, incoming);
         if (action !== 'error')
             action = dbBook ? (fields.some((f) => f.differs) ? 'update' : 'unchanged') : 'create';
         const copies = [];
@@ -164,7 +174,7 @@ function planImport(rows, db) {
             copyIndex += 1;
             const cIssues = [];
             const cIncoming = {};
-            for (const f of exports.COPY_FIELDS)
+            for (const f of copyFields)
                 cIncoming[f] = text(r.cells[f]);
             const rawCopyId = text(r.cells.copy_id);
             const code = text(r.cells.copy_code);
@@ -242,7 +252,7 @@ function planImport(rows, db) {
             }
             if ('values' in cParsed)
                 cIncoming.copy_status = cParsed.values.status;
-            const cFields = diffFields(exports.COPY_FIELDS, cCurrent, cIncoming, locked);
+            const cFields = diffFields(copyFields, cCurrent, cIncoming, locked);
             if (cAction !== 'error')
                 cAction = dbCopy ? (cFields.some((f) => f.differs && !f.locked) ? 'update' : 'unchanged') : 'create';
             copies.push({ key: `${key}c${copyIndex}`, rows: [r.row], action: cAction, copyId: dbCopy?.id ?? null, code: code || dbCopy?.qrCode || null, fields: cFields, issues: cIssues, incoming: cIncoming });

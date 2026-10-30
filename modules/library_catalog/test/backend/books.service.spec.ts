@@ -1153,3 +1153,28 @@ describe('BooksService', () => {
     });
   });
 });
+
+describe('BooksService — internal notes (LIBRARY_CATALOG-D35)', () => {
+  it('list opts in to the note only when asked, and never otherwise', async () => {
+    const prisma = createMockPrisma();
+    const service = buildService(prisma);
+    prisma.libraryCatalogBook.findMany.mockResolvedValue([]);
+    await service.list({} as never);
+    expect(prisma.libraryCatalogBook.findMany.mock.calls[0][0].omit).toBeUndefined();
+    await service.list({} as never, true);
+    expect(prisma.libraryCatalogBook.findMany.mock.calls[1][0].omit).toEqual({ internalNote: false });
+  });
+
+  it('a blank note is stored as NULL and a real one trimmed; no note field leaves the stored note alone', async () => {
+    const prisma = createMockPrisma();
+    const service = buildService(prisma);
+    prisma.libraryCatalogBook.findUnique.mockResolvedValue({ id: 'b1' });
+    prisma.libraryCatalogBook.update.mockResolvedValue({});
+    await service.update('b1', { internalNote: '  ' } as never);
+    expect(prisma.libraryCatalogBook.update).toHaveBeenLastCalledWith({ where: { id: 'b1' }, data: { internalNote: null } });
+    await service.update('b1', { internalNote: ' needs repair ' } as never);
+    expect(prisma.libraryCatalogBook.update).toHaveBeenLastCalledWith({ where: { id: 'b1' }, data: { internalNote: 'needs repair' } });
+    await service.update('b1', { title: 'Only title' } as never);
+    expect(prisma.libraryCatalogBook.update).toHaveBeenLastCalledWith({ where: { id: 'b1' }, data: { title: 'Only title' } });
+  });
+});

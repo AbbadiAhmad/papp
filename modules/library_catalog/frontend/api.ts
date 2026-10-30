@@ -92,6 +92,8 @@ export interface LibraryBook {
   coverImage: string | null;
   /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across a reader's stage book entries to auto-compute a `pages`-type stage's progress. */
   pageCount: number | null;
+  /** Present only for a user with `library_catalog.notes.view` (LIBRARY_CATALOG-D35). */
+  internalNote?: string | null;
   createdAt: string;
   updatedAt: string;
   files?: BookFilesInfo;
@@ -159,6 +161,8 @@ export interface LibraryBookCopy {
   condition: string | null;
   location: string | null;
   acquisitionDate: string | null;
+  /** Present only for a user with `library_catalog.notes.view` (LIBRARY_CATALOG-D35). */
+  internalNote?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -170,6 +174,8 @@ export interface CreateBookCopyInlineInput {
   condition?: string;
   location?: string;
   acquisitionDate?: string;
+  /** Staff-only note (LIBRARY_CATALOG-D35); only sent by a user with `notes.view`. */
+  internalNote?: string;
 }
 
 export interface CreateBookInput {
@@ -183,6 +189,8 @@ export interface CreateBookInput {
   coverImage?: string;
   /** Optional (LIBRARY_CATALOG-D24) — see LibraryBook's own docblock. */
   pageCount?: number;
+  /** Staff-only note (LIBRARY_CATALOG-D35); only sent by a user with `notes.view`. */
+  internalNote?: string;
   /** Mandatory server-side (CreateBookDto.copy, LIBRARY_CATALOG-D11) — every book is created with its first copy in the same transaction. */
   copy: CreateBookCopyInlineInput;
 }
@@ -195,6 +203,7 @@ export interface UpdateBookCopyDto {
   condition?: string;
   location?: string;
   acquisitionDate?: string;
+  internalNote?: string;
 }
 
 export interface CreateBookCopyInput {
@@ -204,6 +213,7 @@ export interface CreateBookCopyInput {
   condition?: string;
   location?: string;
   acquisitionDate?: string;
+  internalNote?: string;
 }
 
 export interface BookAvailability {

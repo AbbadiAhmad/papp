@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsPositive, IsString, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsPositive, IsString, MinLength, MaxLength } from 'class-validator';
 
 /** Every field optional — a PATCH only ever touches what's supplied. */
 export class UpdateBookDto {
@@ -42,4 +42,10 @@ export class UpdateBookDto {
   @IsInt()
   @IsPositive()
   pageCount?: number;
+  /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  internalNote?: string;
+
 }

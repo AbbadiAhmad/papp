@@ -8,11 +8,14 @@
  * copy, what would be created/updated, the field-by-field differences (current vs incoming) and any
  * inconsistencies — it never writes anything. The user then decides what to apply (see the service).
  */
-export const BOOK_COLUMNS = ['id', 'title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count'] as const;
-export const COPY_COLUMNS = ['copy_id', 'copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date'] as const;
+export const BOOK_COLUMNS = ['id', 'title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count', 'book_note'] as const;
+export const COPY_COLUMNS = ['copy_id', 'copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date', 'copy_note'] as const;
 /** Book fields a user can change through the import (the id never changes). */
-export const BOOK_FIELDS = ['title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count'] as const;
-export const COPY_FIELDS = ['copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date'] as const;
+export const BOOK_FIELDS = ['title', 'author', 'publisher', 'category', 'reading_level', 'language', 'description', 'page_count', 'book_note'] as const;
+export const COPY_FIELDS = ['copy_code', 'copy_status', 'copy_condition', 'copy_location', 'copy_acquisition_date', 'copy_note'] as const;
+/** The internal-note columns (LIBRARY_CATALOG-D35): only read, compared and written for a caller who may see notes. */
+export const NOTE_FIELDS: readonly string[] = ['book_note', 'copy_note'];
+export const withoutNotes = (fields: readonly string[]): string[] => fields.filter((f) => !NOTE_FIELDS.includes(f));
 export const COPY_STATUSES = ['available', 'borrowed', 'lost', 'damaged', 'maintenance', 'reserved'] as const;
 
 export interface RawImportRow {
@@ -29,6 +32,7 @@ export interface BookValues {
   language: string | null;
   description: string | null;
   pageCount: number | null;
+  internalNote: string | null;
 }
 
 export interface CopyValues {
@@ -37,6 +41,7 @@ export interface CopyValues {
   condition: string | null;
   location: string | null;
   acquisitionDate: string | null;
+  internalNote: string | null;
 }
 
 export interface DbBook {
@@ -49,6 +54,8 @@ export interface DbBook {
   language: string | null;
   description: string | null;
   pageCount: number | null;
+  /** Present only when the caller may see notes. */
+  internalNote?: string | null;
 }
 
 export interface DbCopy {
@@ -60,6 +67,8 @@ export interface DbCopy {
   location: string | null;
   /** YYYY-MM-DD */
   acquisitionDate: string | null;
+  /** Present only when the caller may see notes. */
+  internalNote?: string | null;
 }
 
 export interface Issue {
@@ -132,6 +141,7 @@ export function toBookValues(cells: Record<string, string>): { values: BookValue
       language: orNull(cells.language),
       description: orNull(cells.description),
       pageCount,
+      internalNote: orNull(cells.book_note),
     },
   };
 }
@@ -142,7 +152,7 @@ export function toCopyValues(cells: Record<string, string>, blankStatus: string)
   if (!(COPY_STATUSES as readonly string[]).includes(status)) return { error: `copy_status "${cells.copy_status}" is not one of ${COPY_STATUSES.join(', ')}` };
   const date = text(cells.copy_acquisition_date);
   if (date && (!DATE.test(date) || Number.isNaN(new Date(date).getTime()))) return { error: 'copy_acquisition_date must be a date written YYYY-MM-DD' };
-  return { values: { code: orNull(cells.copy_code), status, condition: orNull(cells.copy_condition), location: orNull(cells.copy_location), acquisitionDate: date || null } };
+  return { values: { code: orNull(cells.copy_code), status, condition: orNull(cells.copy_condition), location: orNull(cells.copy_location), acquisitionDate: date || null, internalNote: orNull(cells.copy_note) } };
 }
 
 export const bookToCells = (book: DbBook): Record<string, string> => ({
@@ -154,6 +164,7 @@ export const bookToCells = (book: DbBook): Record<string, string> => ({
   language: book.language ?? '',
   description: book.description ?? '',
   page_count: book.pageCount == null ? '' : String(book.pageCount),
+  book_note: book.internalNote ?? '',
 });
 
 export const copyToCells = (copy: DbCopy): Record<string, string> => ({
@@ -162,6 +173,7 @@ export const copyToCells = (copy: DbCopy): Record<string, string> => ({
   copy_condition: copy.condition ?? '',
   copy_location: copy.location ?? '',
   copy_acquisition_date: copy.acquisitionDate ?? '',
+  copy_note: copy.internalNote ?? '',
 });
 
 const hasCopyData = (cells: Record<string, string>): boolean => COPY_COLUMNS.some((c) => text(cells[c]));
@@ -180,7 +192,10 @@ export interface ImportSnapshot {
 }
 
 /** Groups the file's rows into books and compares everything with the catalog. Pure: writes nothing. */
-export function planImport(rows: RawImportRow[], db: ImportSnapshot): BookPlan[] {
+export function planImport(rows: RawImportRow[], db: ImportSnapshot, options: { notes: boolean } = { notes: true }): BookPlan[] {
+  // A caller who may not see internal notes neither sees, compares nor changes them.
+  const bookFields: readonly string[] = options.notes ? BOOK_FIELDS : withoutNotes(BOOK_FIELDS);
+  const copyFields: readonly string[] = options.notes ? COPY_FIELDS : withoutNotes(COPY_FIELDS);
   const booksById = new Map(db.books.map((b) => [b.id.toLowerCase(), b]));
   const copiesById = new Map(db.copies.map((c) => [c.id.toLowerCase(), c]));
   const copiesByCode = new Map(db.copies.map((c) => [c.qrCode, c]));
@@ -208,10 +223,10 @@ export function planImport(rows: RawImportRow[], db: ImportSnapshot): BookPlan[]
     const first = groupRows[0];
     const issues: Issue[] = [];
     const incoming: Record<string, string> = {};
-    for (const f of BOOK_FIELDS) incoming[f] = text(first.cells[f]);
+    for (const f of bookFields) incoming[f] = text(first.cells[f]);
 
     // The same book on several rows must agree; if it doesn't, the first row wins and the user is told.
-    for (const f of BOOK_FIELDS) {
+    for (const f of bookFields) {
       const clashing = groupRows.filter((r) => norm(r.cells[f]) !== norm(first.cells[f]));
       if (clashing.length) {
         issues.push({ level: 'warning', message: `${f} differs between rows ${[first.row, ...clashing.map((r) => r.row)].join(', ')} of the same book; the value from row ${first.row} is used — edit it below if needed` });
@@ -244,7 +259,7 @@ export function planImport(rows: RawImportRow[], db: ImportSnapshot): BookPlan[]
     }
 
     const current = dbBook ? bookToCells(dbBook) : null;
-    const fields = diffFields(BOOK_FIELDS, current, incoming);
+    const fields = diffFields(bookFields, current, incoming);
     if (action !== 'error') action = dbBook ? (fields.some((f) => f.differs) ? 'update' : 'unchanged') : 'create';
 
     const copies: CopyPlan[] = [];
@@ -254,7 +269,7 @@ export function planImport(rows: RawImportRow[], db: ImportSnapshot): BookPlan[]
       copyIndex += 1;
       const cIssues: Issue[] = [];
       const cIncoming: Record<string, string> = {};
-      for (const f of COPY_FIELDS) cIncoming[f] = text(r.cells[f]);
+      for (const f of copyFields) cIncoming[f] = text(r.cells[f]);
       const rawCopyId = text(r.cells.copy_id);
       const code = text(r.cells.copy_code);
       let dbCopy: DbCopy | undefined;
@@ -327,7 +342,7 @@ export function planImport(rows: RawImportRow[], db: ImportSnapshot): BookPlan[]
       }
       if ('values' in cParsed) cIncoming.copy_status = cParsed.values.status;
 
-      const cFields = diffFields(COPY_FIELDS, cCurrent, cIncoming, locked);
+      const cFields = diffFields(copyFields, cCurrent, cIncoming, locked);
       if (cAction !== 'error') cAction = dbCopy ? (cFields.some((f) => f.differs && !f.locked) ? 'update' : 'unchanged') : 'create';
       copies.push({ key: `${key}c${copyIndex}`, rows: [r.row], action: cAction, copyId: dbCopy?.id ?? null, code: code || dbCopy?.qrCode || null, fields: cFields, issues: cIssues, incoming: cIncoming });
     }

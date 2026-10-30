@@ -47,7 +47,8 @@ function ageInYears(dateOfBirth, now) {
  */
 let StatisticsService = class StatisticsService {
     episodes;
-    prisma = new client_1.PrismaClient();
+    // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     constructor(episodes) {
         this.episodes = episodes;
     }

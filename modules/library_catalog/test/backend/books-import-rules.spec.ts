@@ -8,10 +8,10 @@ const C2 = '6f2b8c1e-9a4d-4b7e-8c21-0d5e6f7a8b9c';
 const C3 = '7f2b8c1e-9a4d-4b7e-8c21-0d5e6f7a8b9c';
 
 const book = (id: string, title: string, extra: Partial<DbBook> = {}): DbBook => ({
-  id, title, author: 'Author', publisher: null, category: null, readingLevel: null, language: null, description: null, pageCount: 100, ...extra,
+  id, title, author: 'Author', publisher: null, category: null, readingLevel: null, language: null, description: null, pageCount: 100, internalNote: null, ...extra,
 });
 const copy = (id: string, bookId: string, qrCode: string, extra: Partial<DbCopy> = {}): DbCopy => ({
-  id, bookId, qrCode, status: 'available', condition: null, location: null, acquisitionDate: null, ...extra,
+  id, bookId, qrCode, status: 'available', condition: null, location: null, acquisitionDate: null, internalNote: null, ...extra,
 });
 const row = (n: number, cells: Record<string, string>): RawImportRow => ({ row: n, cells });
 const db = {
@@ -99,17 +99,47 @@ describe('planImport', () => {
   });
 });
 
+describe('internal notes (LIBRARY_CATALOG-D35)', () => {
+  const noted = {
+    books: [book(B1, 'Alpha', { internalNote: 'rebind in 2027' })],
+    copies: [copy(C1, B1, 'B000001', { internalNote: 'cover torn' })],
+  };
+  const fileRow = row(2, { id: B1, title: 'Alpha', author: 'Author', page_count: '100', book_note: 'rebind in 2028', copy_id: C1, copy_code: 'B000001', copy_status: 'available', copy_note: '' });
+
+  it('shows current vs new for the book note and the copy note, for a caller who may see notes', () => {
+    const [plan] = planImport([fileRow], noted, { notes: true });
+    expect(plan.fields.find((f) => f.field === 'book_note')).toMatchObject({ current: 'rebind in 2027', incoming: 'rebind in 2028', differs: true });
+    expect(plan.copies[0].fields.find((f) => f.field === 'copy_note')).toMatchObject({ current: 'cover torn', incoming: null, differs: true });
+    expect(plan.action).toBe('update');
+  });
+
+  it('a caller without notes permission neither sees, compares nor changes notes', () => {
+    const [plan] = planImport([fileRow], { books: noted.books.map(({ internalNote: _n, ...b }) => b), copies: noted.copies.map(({ internalNote: _n, ...c }) => c) }, { notes: false });
+    expect(plan.fields.map((f) => f.field)).not.toContain('book_note');
+    expect(plan.copies[0].fields.map((f) => f.field)).not.toContain('copy_note');
+    expect(plan.action).toBe('unchanged');
+    expect(plan.copies[0].action).toBe('unchanged');
+    expect(JSON.stringify(plan)).not.toContain('rebind');
+    expect(JSON.stringify(plan)).not.toContain('cover torn');
+  });
+
+  it('parses the notes into the values written', () => {
+    expect(toBookValues({ title: 'A', book_note: '  keep  ' })).toEqual({ values: expect.objectContaining({ internalNote: 'keep' }) });
+    expect(toCopyValues({ copy_note: '' }, 'available')).toEqual({ values: expect.objectContaining({ internalNote: null }) });
+  });
+});
+
 describe('value parsing', () => {
   it('requires a title and a whole page count of at least 1', () => {
     expect(toBookValues({ title: '  ' })).toEqual({ error: 'title is required' });
     expect(toBookValues({ title: 'A', page_count: '0' })).toHaveProperty('error');
     expect(toBookValues({ title: 'A', page_count: '120', description: 'd' })).toEqual({
-      values: { title: 'A', author: null, publisher: null, category: null, readingLevel: null, language: null, description: 'd', pageCount: 120 },
+      values: { title: 'A', author: null, publisher: null, category: null, readingLevel: null, language: null, description: 'd', pageCount: 120, internalNote: null },
     });
   });
 
   it('parses copy status and date', () => {
-    expect(toCopyValues({}, 'available')).toEqual({ values: { code: null, status: 'available', condition: null, location: null, acquisitionDate: null } });
+    expect(toCopyValues({}, 'available')).toEqual({ values: { code: null, status: 'available', condition: null, location: null, acquisitionDate: null, internalNote: null } });
     expect(toCopyValues({ copy_status: 'Lost', copy_acquisition_date: '2026-02-03' }, 'available')).toEqual({ values: expect.objectContaining({ status: 'lost', acquisitionDate: '2026-02-03' }) });
     expect(toCopyValues({ copy_status: 'x' }, 'available')).toHaveProperty('error');
     expect(toCopyValues({ copy_acquisition_date: '2026-13-40' }, 'available')).toHaveProperty('error');

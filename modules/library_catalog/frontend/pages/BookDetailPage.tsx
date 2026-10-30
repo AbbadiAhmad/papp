@@ -40,7 +40,7 @@ import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/
 import { useGuardedQuery } from '../../../../apps/web/src/shared/hooks/useGuardedQuery';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
-import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
+import { usePermission, useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { PrintStickerDialog } from './PrintStickerDialog';
@@ -78,6 +78,7 @@ export function BookDetailPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const gated = useGatedCall();
+  const canSeeNotes = usePermission('library_catalog.notes.view');
   const { status, data: book, errorMessage, reload } = useGuardedQuery(() =>
     libraryCatalogApi.getBook(bookId as string),
   );
@@ -367,6 +368,14 @@ export function BookDetailPage() {
               </Stack>
             </Paper>
 
+            {canSeeNotes && book.internalNote ? (
+              <Paper sx={{ p: 2, borderInlineStart: 4, borderColor: 'warning.main', borderInlineStartStyle: 'solid' }}>
+                <Typography variant="subtitle2">{t('library_catalog.fields.internal_note')}</Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{book.internalNote}</Typography>
+                <Typography variant="caption" color="text.secondary">{t('library_catalog.fields.internal_note_hint')}</Typography>
+              </Paper>
+            ) : null}
+
             <Typography variant="h6">{t('library_catalog.copies.title')}</Typography>
             <Paginated items={(book.copies ?? [])}>
             {(pageRows) => (
@@ -379,6 +388,7 @@ export function BookDetailPage() {
                     <TableCell>{t('library_catalog.copies.condition')}</TableCell>
                     <TableCell>{t('library_catalog.copies.location')}</TableCell>
                     <TableCell>{t('library_catalog.copies.acquisition_date')}</TableCell>
+                    {canSeeNotes ? <TableCell>{t('library_catalog.copies.internal_note')}</TableCell> : null}
                     <TableCell align="right">{t('core.common.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
@@ -404,6 +414,7 @@ export function BookDetailPage() {
                       <TableCell>
                         {copy.acquisitionDate ? formatDateOnly(copy.acquisitionDate, language) : '—'}
                       </TableCell>
+                      {canSeeNotes ? <TableCell sx={{ maxWidth: 240, whiteSpace: 'pre-wrap' }}>{copy.internalNote ?? '—'}</TableCell> : null}
                       <TableCell align="right">
                         <IconButton
                           size="small"
@@ -575,6 +586,8 @@ function AddCopyDialog({
   const [qrCode, setQrCode] = useState('');
   const [location, setLocation] = useState('');
   const [condition, setCondition] = useState('');
+  const [internalNote, setInternalNote] = useState('');
+  const canSeeNotes = usePermission('library_catalog.notes.view');
   const [submitting, setSubmitting] = useState(false);
 
   const [suggestedCode, setSuggestedCode] = useState('');
@@ -585,6 +598,7 @@ function AddCopyDialog({
       setQrCode(copy.qrCode);
       setLocation(copy.location ?? '');
       setCondition(copy.condition ?? '');
+      setInternalNote(copy.internalNote ?? '');
     } else if (open && !copy) {
       // qrCode is optional (LIBRARY_CATALOG-D22) — pre-fill with the
       // suggested next Bxxxxxx code (read-only peek, doesn't consume the
@@ -601,6 +615,7 @@ function AddCopyDialog({
         .catch(() => undefined);
       setLocation('');
       setCondition('');
+      setInternalNote('');
     }
   };
 
@@ -608,16 +623,19 @@ function AddCopyDialog({
     setSubmitting(true);
     try {
       if (isEditing) {
-        await onSubmit({ location: location || undefined, condition: condition || undefined });
+        // The note is sent only by a user who may see it, and only when it changed (blank clears it).
+        const noteChanged = canSeeNotes && internalNote !== (copy?.internalNote ?? '');
+        await onSubmit({ location: location || undefined, condition: condition || undefined, ...(noteChanged ? { internalNote } : {}) });
       } else {
         // Sent as undefined (never '') when cleared — a present-but-empty
         // qrCode fails @MinLength(1); only a truly OMITTED field triggers
         // server-side auto-generation.
-        await onSubmit({ qrCode: qrCode.trim() && qrCode.trim() !== suggestedCode ? qrCode.trim() : undefined, location: location || undefined, condition: condition || undefined });
+        await onSubmit({ qrCode: qrCode.trim() && qrCode.trim() !== suggestedCode ? qrCode.trim() : undefined, location: location || undefined, condition: condition || undefined, ...(canSeeNotes && internalNote.trim() ? { internalNote } : {}) });
       }
       setQrCode('');
       setLocation('');
       setCondition('');
+      setInternalNote('');
     } finally {
       setSubmitting(false);
     }
@@ -645,6 +663,17 @@ function AddCopyDialog({
             value={location}
             onChange={(e) => setLocation(e.target.value)}
           />
+          {canSeeNotes ? (
+            <TextField
+              label={t('library_catalog.copies.internal_note')}
+              value={internalNote}
+              onChange={(e) => setInternalNote(e.target.value)}
+              helperText={t('library_catalog.fields.internal_note_hint')}
+              multiline
+              minRows={2}
+              slotProps={{ htmlInput: { maxLength: 5000 } }}
+            />
+          ) : null}
         </Stack>
       </DialogContent>
       <DialogActions>

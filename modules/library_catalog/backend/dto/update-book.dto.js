@@ -24,6 +24,8 @@ class UpdateBookDto {
     coverImage;
     /** Optional (LIBRARY_CATALOG-D24) — see CreateBookDto's own docblock. */
     pageCount;
+    /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+    internalNote;
 }
 exports.UpdateBookDto = UpdateBookDto;
 __decorate([
@@ -74,3 +76,9 @@ __decorate([
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
 ], UpdateBookDto.prototype, "pageCount", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5000),
+    __metadata("design:type", String)
+], UpdateBookDto.prototype, "internalNote", void 0);

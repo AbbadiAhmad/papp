@@ -34,9 +34,13 @@ const COPY_CODE_DIGITS = 6;
  * access goes through that module's own service") applied to infrastructure,
  * not just data: this module owns its own Prisma lifecycle end to end.
  */
+/** Opt-in to the staff-only internal note (the client omits it by default). `undefined` keeps the default. */
+const notesOmit = (withNotes) => (withNotes ? { internalNote: false } : undefined);
 let BooksService = BooksService_1 = class BooksService {
     logger = new common_1.Logger(BooksService_1.name);
-    prisma = new client_1.PrismaClient();
+    // Internal notes are staff-only (LIBRARY_CATALOG-D35): this client leaves them out of EVERY query unless a method
+    // opts in with `omit: { internalNote: false }` for a caller who holds `notes.view`.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     async onModuleInit() {
         await this.prisma.$connect();
         this.logger.log('library_catalog Prisma client connected');
@@ -44,7 +48,7 @@ let BooksService = BooksService_1 = class BooksService {
     async onModuleDestroy() {
         await this.prisma.$disconnect();
     }
-    async list(query) {
+    async list(query, withNotes = false) {
         const where = {};
         if (query.search) {
             where.OR = [
@@ -62,6 +66,7 @@ let BooksService = BooksService_1 = class BooksService {
         const books = await this.prisma.libraryCatalogBook.findMany({
             where,
             orderBy: { title: 'asc' },
+            omit: notesOmit(withNotes),
             include: {
                 _count: { select: { copies: true } },
                 copies: true,
@@ -102,10 +107,11 @@ let BooksService = BooksService_1 = class BooksService {
             };
         });
     }
-    async findById(id, currentUserId) {
+    async findById(id, currentUserId, withNotes = false) {
         const book = await this.prisma.libraryCatalogBook.findUnique({
             where: { id },
-            include: { copies: { orderBy: { createdAt: 'asc' } } },
+            omit: notesOmit(withNotes),
+            include: { copies: { orderBy: { createdAt: 'asc' }, omit: notesOmit(withNotes) } },
         });
         if (!book) {
             throw new common_1.NotFoundException(`Book "${id}" not found`);
@@ -144,7 +150,7 @@ let BooksService = BooksService_1 = class BooksService {
     async create(dto) {
         const { copy, ...bookData } = dto;
         return this.prisma.$transaction(async (tx) => {
-            const book = await tx.libraryCatalogBook.create({ data: bookData });
+            const book = await tx.libraryCatalogBook.create({ data: { ...bookData, ...(bookData.internalNote !== undefined ? { internalNote: this.noteValue(bookData.internalNote) } : {}) } });
             // Every copy created — whether auto-assigned or typed in by hand —
             // advances `library_catalog_copy_code_seq` (see `nextCopyCode()` and
             // `reconcileCopyCodeSequence()` below for why a manually-typed code
@@ -162,6 +168,7 @@ let BooksService = BooksService_1 = class BooksService {
                     condition: copy.condition,
                     location: copy.location,
                     acquisitionDate: copy.acquisitionDate ? new Date(copy.acquisitionDate) : null,
+                    ...(copy.internalNote !== undefined ? { internalNote: this.noteValue(copy.internalNote) } : {}),
                 },
             });
             return book;
@@ -169,7 +176,7 @@ let BooksService = BooksService_1 = class BooksService {
     }
     async update(id, dto) {
         await this.ensureBookExists(id);
-        return this.prisma.libraryCatalogBook.update({ where: { id }, data: dto });
+        return this.prisma.libraryCatalogBook.update({ where: { id }, data: { ...dto, ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}) } });
     }
     async remove(id) {
         const book = await this.prisma.libraryCatalogBook.findUnique({
@@ -186,9 +193,9 @@ let BooksService = BooksService_1 = class BooksService {
         await this.prisma.libraryCatalogBook.delete({ where: { id } });
     }
     // --- Copies --------------------------------------------------------------
-    async listCopies(bookId) {
+    async listCopies(bookId, withNotes = false) {
         await this.ensureBookExists(bookId);
-        return this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, orderBy: { createdAt: 'asc' } });
+        return this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, orderBy: { createdAt: 'asc' }, omit: notesOmit(withNotes) });
     }
     async createCopy(bookId, dto) {
         await this.ensureBookExists(bookId);
@@ -214,6 +221,7 @@ let BooksService = BooksService_1 = class BooksService {
                 condition: dto.condition,
                 location: dto.location,
                 acquisitionDate: dto.acquisitionDate ? new Date(dto.acquisitionDate) : undefined,
+                ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}),
             },
         });
     }
@@ -240,7 +248,7 @@ let BooksService = BooksService_1 = class BooksService {
         const updatedHistory = historyEntry ? [...history, historyEntry].slice(-100) : history;
         return this.prisma.libraryCatalogBookCopy.update({
             where: { id: copy.id },
-            data: { ...dto, history: updatedHistory },
+            data: { ...dto, ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}), history: updatedHistory },
         });
     }
     async removeCopy(bookId, copyId) {
@@ -380,7 +388,7 @@ let BooksService = BooksService_1 = class BooksService {
      * One row per copy (LIBRARY_CATALOG-D32): the book's columns repeat on every row of its copies, a book with no
      * copies has a single row with blank copy columns. Column order/names match what the import reads.
      */
-    async exportBooksWorkbook(filter = {}) {
+    async exportBooksWorkbook(filter = {}, withNotes = false) {
         // The inventory page filters the same export (LIBRARY_CATALOG-D34): only copies matching status/location, and
         // only books matching the title search, are included. No filter = the whole catalog.
         const copyWhere = {};
@@ -397,12 +405,14 @@ let BooksService = BooksService_1 = class BooksService {
         const books = await this.prisma.libraryCatalogBook.findMany({
             where: bookWhere,
             orderBy: { title: 'asc' },
-            include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' } } },
+            omit: notesOmit(withNotes),
+            include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' }, omit: notesOmit(withNotes) } },
         });
         const workbook = new exceljs_1.default.Workbook();
         const worksheet = workbook.addWorksheet('Books');
         const widths = { id: 38, copy_id: 38, title: 32, author: 24, publisher: 24, description: 40 };
-        worksheet.columns = [...books_import_rules_1.BOOK_COLUMNS, ...books_import_rules_1.COPY_COLUMNS].map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
+        // The internal-note columns exist only in an export made by someone who may see notes (LIBRARY_CATALOG-D35).
+        worksheet.columns = [...books_import_rules_1.BOOK_COLUMNS, ...books_import_rules_1.COPY_COLUMNS].filter((c) => withNotes || !books_import_rules_1.NOTE_FIELDS.includes(c)).map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
         worksheet.getRow(1).font = { bold: true };
         worksheet.views = [{ state: 'frozen', ySplit: 1 }];
         for (const book of books) {
@@ -416,6 +426,7 @@ let BooksService = BooksService_1 = class BooksService {
                 language: book.language ?? '',
                 description: book.description ?? '',
                 page_count: book.pageCount ?? '',
+                ...(withNotes ? { book_note: book.internalNote ?? '' } : {}),
             };
             if (book.copies.length === 0) {
                 worksheet.addRow(bookCells);
@@ -430,6 +441,7 @@ let BooksService = BooksService_1 = class BooksService {
                     copy_condition: copy.condition ?? '',
                     copy_location: copy.location ?? '',
                     copy_acquisition_date: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+                    ...(withNotes ? { copy_note: copy.internalNote ?? '' } : {}),
                 });
             }
         }
@@ -527,8 +539,8 @@ let BooksService = BooksService_1 = class BooksService {
         }));
     }
     /** The inventory page's export is the books export (one row per copy, importable) limited to the page's filters. */
-    async exportCopiesForInventoryWorkbook(filter) {
-        return this.exportBooksWorkbook(filter);
+    async exportCopiesForInventoryWorkbook(filter, withNotes = false) {
+        return this.exportBooksWorkbook(filter, withNotes);
     }
     // --- Helpers -----------------------------------------------------------
     /**
@@ -600,6 +612,11 @@ let BooksService = BooksService_1 = class BooksService {
         // the high-water mark already (e.g. an older/reused low number), so it
         // can never move the sequence backwards.
         await client.$queryRawUnsafe("SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)", enteredValue);
+    }
+    /** A blank note means "no note": stored as NULL. */
+    noteValue(value) {
+        const text = (value ?? '').trim();
+        return text ? text : null;
     }
     async ensureBookExists(id) {
         const exists = await this.prisma.libraryCatalogBook.findUnique({ where: { id }, select: { id: true } });

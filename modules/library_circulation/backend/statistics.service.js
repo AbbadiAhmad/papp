@@ -50,7 +50,8 @@ exports.OVERDUE_BUCKETS = [
  * tables directly like the rest of this module does.
  */
 let StatisticsService = class StatisticsService {
-    prisma = new client_1.PrismaClient();
+    // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     async onModuleInit() {
         await this.prisma.$connect();
     }

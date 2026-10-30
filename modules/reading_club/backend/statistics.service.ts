@@ -123,7 +123,8 @@ export function ageInYears(dateOfBirth: Date, now: Date): number {
  */
 @Injectable()
 export class StatisticsService implements OnModuleInit, OnModuleDestroy {
-  private readonly prisma = new PrismaClient();
+  // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+  private readonly prisma = new PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
 
   constructor(private readonly episodes: EpisodesService) {}
 

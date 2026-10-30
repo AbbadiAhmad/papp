@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common';
+// The REAL core service, imported from apps/api's BUILT output (same D57/D64/D74 exception category as library_circulation's
+// binding of this token). PermissionsModule is @Global, so it is injectable here without importing its module.
+// eslint-disable-next-line import/no-unresolved
+import { PermissionsService } from '../../../apps/api/dist/core/permissions/permissions.service';
 import { BookFilesController } from './book-files.controller';
 import { BookFilesService } from './book-files.service';
 import { BooksImportService } from './books-import.service';
 import { BooksController } from './books.controller';
 import { BooksService } from './books.service';
+import { PERMISSION_CHECKER } from './permission-checker';
 import { PublicBooksController } from './public.controller';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
@@ -25,6 +30,6 @@ import { SettingsService } from './settings.service';
  */
 @Module({
   controllers: [PublicBooksController, BooksController, BookFilesController, SettingsController],
-  providers: [BooksService, BooksImportService, BookFilesService, SettingsService],
+  providers: [BooksService, BooksImportService, BookFilesService, SettingsService, { provide: PERMISSION_CHECKER, useExisting: PermissionsService }],
 })
 export class LibraryCatalogModule {}

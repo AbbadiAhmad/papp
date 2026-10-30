@@ -16,6 +16,8 @@ class UpdateBookCopyDto {
     status;
     condition;
     location;
+    /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+    internalNote;
 }
 exports.UpdateBookCopyDto = UpdateBookCopyDto;
 __decorate([
@@ -33,3 +35,9 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], UpdateBookCopyDto.prototype, "location", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5000),
+    __metadata("design:type", String)
+], UpdateBookCopyDto.prototype, "internalNote", void 0);

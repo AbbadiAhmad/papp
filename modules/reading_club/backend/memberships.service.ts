@@ -35,7 +35,8 @@ export interface StageProgress {
 @Injectable()
 export class MembershipsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MembershipsService.name);
-  private readonly prisma = new PrismaClient();
+  // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+  private readonly prisma = new PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
 
   constructor(
     private readonly episodes: EpisodesService,

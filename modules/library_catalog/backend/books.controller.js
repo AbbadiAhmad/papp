@@ -26,6 +26,7 @@ const list_copies_for_print_dto_1 = require("./dto/list-copies-for-print.dto");
 const rate_book_dto_1 = require("./dto/rate-book.dto");
 const update_book_copy_dto_1 = require("./dto/update-book-copy.dto");
 const update_book_dto_1 = require("./dto/update-book.dto");
+const permission_checker_1 = require("./permission-checker");
 const platform_1 = require("./platform");
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const fetchBookState = (prisma, req) => prisma.libraryCatalogBook.findUnique({ where: { id: req.params.id } });
@@ -52,18 +53,30 @@ let BooksController = class BooksController {
     books;
     files;
     importer;
-    constructor(books, files, importer) {
+    permissions;
+    constructor(books, files, importer, permissions) {
         this.books = books;
         this.files = files;
         this.importer = importer;
+        this.permissions = permissions;
     }
-    async list(query) {
-        const books = await this.books.list(query);
+    /** Staff-only internal notes (LIBRARY_CATALOG-D35): only for callers who also hold `notes.view`. */
+    async canSeeNotes(user) {
+        return (await this.permissions.getEffectivePermissionCodes(user.userId)).has(permission_checker_1.NOTES_VIEW_PERMISSION);
+    }
+    /** Writing a note needs `notes.view` too (so nobody overwrites a note they cannot read); the route's own books.create/update still applies. */
+    async assertMayWriteNote(user, ...notes) {
+        if (notes.some((n) => n !== undefined) && !(await this.canSeeNotes(user))) {
+            throw new common_1.ForbiddenException('Changing internal notes needs the "library_catalog.notes.view" permission');
+        }
+    }
+    async list(query, user) {
+        const books = await this.books.list(query, await this.canSeeNotes(user));
         const summaries = await this.files.summaries(books.map((b) => b.id));
         return books.map((b) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null, images: [] } }));
     }
-    async export(res) {
-        const buffer = await this.books.exportBooksWorkbook();
+    async export(res, user) {
+        const buffer = await this.books.exportBooksWorkbook({}, await this.canSeeNotes(user));
         res.set({
             'Content-Type': XLSX_CONTENT_TYPE,
             'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
@@ -72,12 +85,12 @@ let BooksController = class BooksController {
     }
     // --- Excel import of the exported file (LIBRARY_CATALOG-D31). Declared before any ':id' route. ---
     /** Validates only — writes nothing. */
-    async importPreview(file) {
+    async importPreview(user, file) {
         if (!file)
             throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
-        return this.importer.preview(file.buffer);
+        return this.importer.preview(file.buffer, await this.canSeeNotes(user));
     }
-    async importCommit(file, decisionsJson) {
+    async importCommit(user, file, decisionsJson) {
         if (!file)
             throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
         let decisions;
@@ -89,7 +102,7 @@ let BooksController = class BooksController {
         }
         if (!decisions || typeof decisions !== 'object' || typeof decisions.books !== 'object')
             throw new common_1.BadRequestException('"decisions.books" is required');
-        return this.importer.commit(file.buffer, decisions);
+        return this.importer.commit(file.buffer, decisions, await this.canSeeNotes(user));
     }
     // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
     // "The librarian has to approve the comments to publish it" — a separate
@@ -105,13 +118,15 @@ let BooksController = class BooksController {
         return this.books.rejectReview(ratingId, user.userId);
     }
     async findById(id, user) {
-        const book = await this.books.findById(id, user.userId);
+        const book = await this.books.findById(id, user.userId, await this.canSeeNotes(user));
         return { ...book, files: await this.files.summary(id) };
     }
-    async create(dto) {
+    async create(dto, user) {
+        await this.assertMayWriteNote(user, dto.internalNote, dto.copy?.internalNote);
         return this.books.create(dto);
     }
-    async update(id, dto) {
+    async update(id, dto, user) {
+        await this.assertMayWriteNote(user, dto.internalNote);
         const updated = await this.books.update(id, dto);
         await this.files.writeInfo(id); // keeps info.txt (title/author) in step with the record
         return updated;
@@ -149,8 +164,8 @@ let BooksController = class BooksController {
     async listCopiesForInventory(query) {
         return this.books.listCopiesForInventory(query);
     }
-    async exportCopiesForInventory(query, res) {
-        const buffer = await this.books.exportCopiesForInventoryWorkbook(query);
+    async exportCopiesForInventory(query, res, user) {
+        const buffer = await this.books.exportCopiesForInventoryWorkbook(query, await this.canSeeNotes(user));
         res.set({
             'Content-Type': XLSX_CONTENT_TYPE,
             'Content-Disposition': 'attachment; filename="library-catalog-inventory-export.xlsx"',
@@ -172,17 +187,19 @@ let BooksController = class BooksController {
     async peekNextCopyCode() {
         return { qrCode: await this.books.peekNextCopyCode() };
     }
-    async listCopies(bookId) {
-        return this.books.listCopies(bookId);
+    async listCopies(bookId, user) {
+        return this.books.listCopies(bookId, await this.canSeeNotes(user));
     }
     async getCopyHistory(bookId, copyId, limit) {
         const limitNumber = limit ? Math.min(parseInt(limit, 10), 100) : 10;
         return this.books.getCopyHistory(copyId, limitNumber);
     }
-    async createCopy(bookId, dto) {
+    async createCopy(bookId, dto, user) {
+        await this.assertMayWriteNote(user, dto.internalNote);
         return this.books.createCopy(bookId, dto);
     }
-    async updateCopy(bookId, id, dto) {
+    async updateCopy(bookId, id, dto, user) {
+        await this.assertMayWriteNote(user, dto.internalNote);
         return this.books.updateCopy(bookId, id, dto);
     }
     async removeCopy(bookId, id) {
@@ -206,16 +223,18 @@ __decorate([
     (0, common_1.Get)(),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
     __param(0, (0, common_1.Query)()),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [list_books_dto_1.ListBooksDto]),
+    __metadata("design:paramtypes", [list_books_dto_1.ListBooksDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "list", null);
 __decorate([
     (0, common_1.Get)('export'),
     (0, platform_1.RequirePermission)('library_catalog.books.export'),
     __param(0, (0, common_1.Res)()),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "export", null);
 __decorate([
@@ -223,9 +242,10 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, platform_1.RequirePermission)('library_catalog.books.import'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
-    __param(0, (0, common_1.UploadedFile)()),
+    __param(0, (0, platform_1.CurrentUser)()),
+    __param(1, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "importPreview", null);
 __decorate([
@@ -234,10 +254,11 @@ __decorate([
     (0, platform_1.RequirePermission)('library_catalog.books.import'),
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' }),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
-    __param(0, (0, common_1.UploadedFile)()),
-    __param(1, (0, common_1.Body)('decisions')),
+    __param(0, (0, platform_1.CurrentUser)()),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, common_1.Body)('decisions')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:paramtypes", [Object, Object, String]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "importCommit", null);
 __decorate([
@@ -281,8 +302,9 @@ __decorate([
     (0, platform_1.RequirePermission)('library_catalog.books.create'),
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'create' }),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [create_book_dto_1.CreateBookDto]),
+    __metadata("design:paramtypes", [create_book_dto_1.CreateBookDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "create", null);
 __decorate([
@@ -291,8 +313,9 @@ __decorate([
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'update', fetchState: fetchBookState }),
     __param(0, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
+    __param(2, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, update_book_dto_1.UpdateBookDto]),
+    __metadata("design:paramtypes", [String, update_book_dto_1.UpdateBookDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "update", null);
 __decorate([
@@ -335,8 +358,9 @@ __decorate([
     (0, platform_1.RequirePermission)('library_catalog.copies.inventory'),
     __param(0, (0, common_1.Query)()),
     __param(1, (0, common_1.Res)()),
+    __param(2, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [list_copies_for_inventory_dto_1.ListCopiesForInventoryDto, Object]),
+    __metadata("design:paramtypes", [list_copies_for_inventory_dto_1.ListCopiesForInventoryDto, Object, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "exportCopiesForInventory", null);
 __decorate([
@@ -350,8 +374,9 @@ __decorate([
     (0, common_1.Get)(':bookId/copies'),
     (0, platform_1.RequirePermission)('library_catalog.books.view'),
     __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
+    __param(1, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "listCopies", null);
 __decorate([
@@ -370,8 +395,9 @@ __decorate([
     (0, platform_1.Audit)({ category: 'library_catalog.copies', entityType: 'LibraryCatalogBookCopy', action: 'create' }),
     __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Body)()),
+    __param(2, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, create_book_copy_dto_1.CreateBookCopyDto]),
+    __metadata("design:paramtypes", [String, create_book_copy_dto_1.CreateBookCopyDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "createCopy", null);
 __decorate([
@@ -386,8 +412,9 @@ __decorate([
     __param(0, (0, common_1.Param)('bookId', new common_1.ParseUUIDPipe())),
     __param(1, (0, common_1.Param)('id', new common_1.ParseUUIDPipe())),
     __param(2, (0, common_1.Body)()),
+    __param(3, (0, platform_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, update_book_copy_dto_1.UpdateBookCopyDto]),
+    __metadata("design:paramtypes", [String, String, update_book_copy_dto_1.UpdateBookCopyDto, Object]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "updateCopy", null);
 __decorate([
@@ -431,7 +458,8 @@ __decorate([
 exports.BooksController = BooksController = __decorate([
     (0, common_1.Controller)('api/library/books'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),
+    __param(3, (0, common_1.Inject)(permission_checker_1.PERMISSION_CHECKER)),
     __metadata("design:paramtypes", [books_service_1.BooksService,
         book_files_service_1.BookFilesService,
-        books_import_service_1.BooksImportService])
+        books_import_service_1.BooksImportService, Object])
 ], BooksController);

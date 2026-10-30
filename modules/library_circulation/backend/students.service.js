@@ -80,7 +80,8 @@ function parseDateOfBirth(value) {
 let StudentsService = class StudentsService {
     static { StudentsService_1 = this; }
     logger = new common_1.Logger(StudentsService_1.name);
-    prisma = new client_1.PrismaClient();
+    // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     async onModuleInit() {
         await this.prisma.$connect();
         this.logger.log('library_circulation (students) Prisma client connected');

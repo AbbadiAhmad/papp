@@ -31,7 +31,8 @@ const KNOWN_COLUMNS = new Set([...books_import_rules_1.BOOK_COLUMNS, ...books_im
 let BooksImportService = class BooksImportService {
     books;
     files;
-    prisma = new client_1.PrismaClient();
+    // Internal notes are opted into per query, only for a caller who may see them (LIBRARY_CATALOG-D35).
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     constructor(books, files) {
         this.books = books;
         this.files = files;
@@ -96,12 +97,14 @@ let BooksImportService = class BooksImportService {
         }
         return String(value).trim();
     }
-    async snapshot() {
+    async snapshot(notes) {
         const [books, copies] = await Promise.all([
             this.prisma.libraryCatalogBook.findMany({
-                select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true },
+                select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true, ...(notes ? { internalNote: true } : {}) },
             }),
-            this.prisma.libraryCatalogBookCopy.findMany({ select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true } }),
+            this.prisma.libraryCatalogBookCopy.findMany({
+                select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true, ...(notes ? { internalNote: true } : {}) },
+            }),
         ]);
         return {
             books,
@@ -117,11 +120,13 @@ let BooksImportService = class BooksImportService {
         };
     }
     /** Validates and compares only — writes nothing. */
-    async preview(buffer) {
-        return this.report((0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot()));
+    async preview(buffer, notes = false) {
+        return this.report((0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot(notes), { notes }));
     }
-    async commit(buffer, decisions) {
-        const plans = (0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot());
+    async commit(buffer, decisions, notes = false) {
+        const plans = (0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot(notes), { notes });
+        const bookFields = notes ? books_import_rules_1.BOOK_FIELDS : (0, books_import_rules_1.withoutNotes)(books_import_rules_1.BOOK_FIELDS);
+        const copyFields = notes ? books_import_rules_1.COPY_FIELDS : (0, books_import_rules_1.withoutNotes)(books_import_rules_1.COPY_FIELDS);
         const renamed = [];
         const result = { booksCreated: 0, booksUpdated: 0, copiesCreated: 0, copiesUpdated: 0, skipped: 0 };
         // Only the cells the user ticked are written; the rest stay as stored (update) or as in the file (create).
@@ -141,11 +146,13 @@ let BooksImportService = class BooksImportService {
                     if (bookDecision?.apply && plan.action !== 'unchanged') {
                         if (plan.action === 'error')
                             throw new common_1.BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}" has errors and cannot be imported`);
-                        const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, books_import_rules_1.BOOK_FIELDS, []) : merged(plan.current, bookDecision, books_import_rules_1.BOOK_FIELDS, []);
+                        const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, bookFields, []) : merged(plan.current, bookDecision, bookFields, []);
                         const parsed = (0, books_import_rules_1.toBookValues)(cells);
                         if ('error' in parsed)
                             throw new common_1.BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}": ${parsed.error}`);
-                        const data = parsed.values;
+                        // Without notes permission the note is never written (a blank would otherwise wipe an existing one).
+                        const { internalNote, ...withoutNote } = parsed.values;
+                        const data = notes ? { ...withoutNote, internalNote } : withoutNote;
                         if (plan.action === 'create') {
                             bookId = (await tx.libraryCatalogBook.create({ data })).id;
                             result.booksCreated += 1;
@@ -171,7 +178,7 @@ let BooksImportService = class BooksImportService {
                             continue;
                         }
                         const locked = copyPlan.fields.filter((f) => f.locked).map((f) => f.field);
-                        let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId } }) : null;
+                        let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId }, omit: notes ? { internalNote: false } : undefined }) : null;
                         const currentCells = existing
                             ? {
                                 copy_code: existing.qrCode,
@@ -179,9 +186,10 @@ let BooksImportService = class BooksImportService {
                                 copy_condition: existing.condition ?? '',
                                 copy_location: existing.location ?? '',
                                 copy_acquisition_date: existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : '',
+                                copy_note: notes ? (existing.internalNote ?? '') : '',
                             }
                             : null;
-                        const cells = merged(currentCells ?? copyPlan.incoming, decision, books_import_rules_1.COPY_FIELDS, locked);
+                        const cells = merged(currentCells ?? copyPlan.incoming, decision, copyFields, locked);
                         const parsed = (0, books_import_rules_1.toCopyValues)(cells, existing?.status ?? 'available');
                         if ('error' in parsed)
                             throw new common_1.BadRequestException(`Row ${copyPlan.rows[0]} (copy): ${parsed.error}`);
@@ -198,6 +206,7 @@ let BooksImportService = class BooksImportService {
                                     condition: v.condition,
                                     location: v.location,
                                     acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                                    ...(notes ? { internalNote: v.internalNote } : {}),
                                 },
                             });
                             result.copiesCreated += 1;
@@ -228,6 +237,7 @@ let BooksImportService = class BooksImportService {
                                     condition: v.condition,
                                     location: v.location,
                                     acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                                    ...(notes ? { internalNote: v.internalNote } : {}),
                                     history: nextHistory,
                                 },
                             });

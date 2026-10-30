@@ -263,6 +263,64 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       expect(get.body.elements[0]).toMatchObject({ kind: 'text', source: 'title', maxChars: 20 });
     });
 
+    it('internal notes (D35): saved by staff, never returned to a reader, and carried in the export for staff', async () => {
+      const bearer = async (role: RoleCode) => `Bearer ${await tokenFor(app!, role)}`;
+      expect(await roleHasPermission(app!, 'admin', 'library_catalog.notes.view')).toBe(true);
+      expect(await roleHasPermission(app!, 'reader', 'library_catalog.notes.view')).toBe(false);
+
+      const created = await request(app!.getHttpServer())
+        .post('/api/library/books')
+        .set('Authorization', await bearer('admin'))
+        .send({ title: `Noted ${Date.now()}`, internalNote: 'BOOK-SECRET', copy: { qrCode: `E2E-NOTE-${Date.now()}`, internalNote: 'COPY-SECRET' } });
+      expect(created.status).toBe(201);
+      const noteBookId = created.body.id as string;
+      // The create response itself does not echo the note.
+      expect(JSON.stringify(created.body)).not.toContain('BOOK-SECRET');
+
+      const staff = await request(app!.getHttpServer()).get(`/api/library/books/${noteBookId}`).set('Authorization', await bearer('admin'));
+      expect(staff.body.internalNote).toBe('BOOK-SECRET');
+      expect(staff.body.copies[0].internalNote).toBe('COPY-SECRET');
+
+      const reader = await request(app!.getHttpServer()).get(`/api/library/books/${noteBookId}`).set('Authorization', await bearer('reader'));
+      expect(reader.status).toBe(200);
+      expect(JSON.stringify(reader.body)).not.toContain('SECRET');
+      const readerList = await request(app!.getHttpServer()).get('/api/library/books').set('Authorization', await bearer('reader'));
+      expect(JSON.stringify(readerList.body)).not.toContain('SECRET');
+      const readerCopies = await request(app!.getHttpServer()).get(`/api/library/books/${noteBookId}/copies`).set('Authorization', await bearer('reader'));
+      expect(JSON.stringify(readerCopies.body)).not.toContain('SECRET');
+      const publicView = await request(app!.getHttpServer()).get(`/api/library/public/books/${noteBookId}/availability`);
+      expect(JSON.stringify(publicView.body)).not.toContain('SECRET');
+
+      // A reader cannot write one either (no update permission at all), and clearing as staff works.
+      const readerWrite = await request(app!.getHttpServer()).patch(`/api/library/books/${noteBookId}`).set('Authorization', await bearer('reader')).send({ internalNote: 'x' });
+      expect(readerWrite.status).toBe(403);
+      const cleared = await request(app!.getHttpServer()).patch(`/api/library/books/${noteBookId}`).set('Authorization', await bearer('admin')).send({ internalNote: '' });
+      expect(cleared.status).toBe(200);
+      const after = await request(app!.getHttpServer()).get(`/api/library/books/${noteBookId}`).set('Authorization', await bearer('admin'));
+      expect(after.body.internalNote).toBeNull();
+
+      // The export has the note columns for staff.
+      const exported = await request(app!.getHttpServer())
+        .get('/api/library/books/export')
+        .set('Authorization', await bearer('admin'))
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(exported.body as Buffer);
+      const header = (wb.worksheets[0].getRow(1).values as unknown[]).map(String);
+      expect(header).toEqual(expect.arrayContaining(['book_note', 'copy_note']));
+      let copyNoteSeen = false;
+      wb.worksheets[0].eachRow((row, n) => {
+        if (n > 1 && String(row.getCell(header.indexOf('copy_note')).value) === 'COPY-SECRET') copyNoteSeen = true;
+      });
+      expect(copyNoteSeen).toBe(true);
+    });
+
     it('GET /api/library/books/:id requires library_catalog.books.view', async () => {
       for (const role of ALL_ROLE_CODES) {
         const hasPerm = await roleHasPermission(app!, role, 'library_catalog.books.view');

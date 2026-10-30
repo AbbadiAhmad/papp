@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
+import { usePermission } from '../../../../apps/web/src/shared/permissions';
 import { libraryCatalogApi, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 
 interface Props {
@@ -41,6 +42,9 @@ export function BookFormDialog({ open, book, onClose, onSubmit }: Props) {
 function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null; onClose: () => void; onSubmit: Props['onSubmit'] }) {
   const { t } = useTranslation();
   const isEdit = book !== null;
+  const canSeeNotes = usePermission('library_catalog.notes.view');
+  const [internalNote, setInternalNote] = useState(book?.internalNote ?? '');
+  const [copyNote, setCopyNote] = useState('');
   const [title, setTitle] = useState(book?.title ?? '');
   const [author, setAuthor] = useState(book?.author ?? '');
   const [publisher, setPublisher] = useState(book?.publisher ?? '');
@@ -92,6 +96,8 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
         language: language || undefined,
         description: description || undefined,
         pageCount: pageCount.trim() ? Number(pageCount) : undefined,
+        // Internal notes go out only from a user who may see them; on edit only when changed (blank clears it).
+        ...(canSeeNotes && (isEdit ? internalNote !== (book?.internalNote ?? '') : internalNote.trim()) ? { internalNote } : {}),
         ...(isEdit
           ? {}
           : {
@@ -103,6 +109,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
                 qrCode: copyQrCode.trim() && copyQrCode.trim() !== suggestedCode ? copyQrCode.trim() : undefined,
                 condition: copyCondition || undefined,
                 location: copyLocation || undefined,
+                ...(canSeeNotes && copyNote.trim() ? { internalNote: copyNote } : {}),
               },
             }),
       });
@@ -162,6 +169,17 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
             multiline
             minRows={2}
           />
+          {canSeeNotes ? (
+            <TextField
+              label={t('library_catalog.fields.internal_note')}
+              value={internalNote}
+              onChange={(e) => setInternalNote(e.target.value)}
+              helperText={t('library_catalog.fields.internal_note_hint')}
+              multiline
+              minRows={2}
+              slotProps={{ htmlInput: { maxLength: 5000 } }}
+            />
+          ) : null}
 
           {isEdit ? null : (
             <Accordion defaultExpanded disableGutters>
@@ -189,6 +207,16 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
                     value={copyLocation}
                     onChange={(e) => setCopyLocation(e.target.value)}
                   />
+                  {canSeeNotes ? (
+                    <TextField
+                      label={t('library_catalog.copies.internal_note')}
+                      value={copyNote}
+                      onChange={(e) => setCopyNote(e.target.value)}
+                      multiline
+                      minRows={2}
+                      slotProps={{ htmlInput: { maxLength: 5000 } }}
+                    />
+                  ) : null}
                 </Stack>
               </AccordionDetails>
             </Accordion>

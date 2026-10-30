@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ForbiddenException, Inject, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
@@ -14,6 +14,7 @@ import { ListCopiesForPrintDto } from './dto/list-copies-for-print.dto';
 import { RateBookDto } from './dto/rate-book.dto';
 import { UpdateBookCopyDto } from './dto/update-book-copy.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
+import { NOTES_VIEW_PERMISSION, PERMISSION_CHECKER, PermissionChecker } from './permission-checker';
 import { Audit, AuthenticatedUser, CurrentUser, MustChangePasswordGuard, RequirePermission } from './platform';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -49,20 +50,33 @@ export class BooksController {
     private readonly books: BooksService,
     private readonly files: BookFilesService,
     private readonly importer: BooksImportService,
+    @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionChecker,
   ) {}
+
+  /** Staff-only internal notes (LIBRARY_CATALOG-D35): only for callers who also hold `notes.view`. */
+  private async canSeeNotes(user: AuthenticatedUser): Promise<boolean> {
+    return (await this.permissions.getEffectivePermissionCodes(user.userId)).has(NOTES_VIEW_PERMISSION);
+  }
+
+  /** Writing a note needs `notes.view` too (so nobody overwrites a note they cannot read); the route's own books.create/update still applies. */
+  private async assertMayWriteNote(user: AuthenticatedUser, ...notes: Array<string | undefined>): Promise<void> {
+    if (notes.some((n) => n !== undefined) && !(await this.canSeeNotes(user))) {
+      throw new ForbiddenException('Changing internal notes needs the "library_catalog.notes.view" permission');
+    }
+  }
 
   @Get()
   @RequirePermission('library_catalog.books.view')
-  async list(@Query() query: ListBooksDto) {
-    const books = await this.books.list(query);
+  async list(@Query() query: ListBooksDto, @CurrentUser() user: AuthenticatedUser) {
+    const books = await this.books.list(query, await this.canSeeNotes(user));
     const summaries = await this.files.summaries(books.map((b: { id: string }) => b.id));
     return books.map((b: { id: string }) => ({ ...b, files: summaries.get(b.id) ?? { cover: null, book: null, images: [] } }));
   }
 
   @Get('export')
   @RequirePermission('library_catalog.books.export')
-  async export(@Res() res: Response): Promise<void> {
-    const buffer = await this.books.exportBooksWorkbook();
+  async export(@Res() res: Response, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    const buffer = await this.books.exportBooksWorkbook({}, await this.canSeeNotes(user));
     res.set({
       'Content-Type': XLSX_CONTENT_TYPE,
       'Content-Disposition': 'attachment; filename="library-catalog-books-export.xlsx"',
@@ -77,9 +91,9 @@ export class BooksController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('library_catalog.books.import')
   @UseInterceptors(FileInterceptor('file'))
-  async importPreview(@UploadedFile() file?: { buffer: Buffer }) {
+  async importPreview(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file?: { buffer: Buffer }) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
-    return this.importer.preview(file.buffer);
+    return this.importer.preview(file.buffer, await this.canSeeNotes(user));
   }
 
   @Post('import')
@@ -87,7 +101,7 @@ export class BooksController {
   @RequirePermission('library_catalog.books.import')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' })
   @UseInterceptors(FileInterceptor('file'))
-  async importCommit(@UploadedFile() file: { buffer: Buffer } | undefined, @Body('decisions') decisionsJson?: string) {
+  async importCommit(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: { buffer: Buffer } | undefined, @Body('decisions') decisionsJson?: string) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
     let decisions: ImportDecisions;
     try {
@@ -96,7 +110,7 @@ export class BooksController {
       throw new BadRequestException('"decisions" must be a JSON object (expected multipart field "decisions")');
     }
     if (!decisions || typeof decisions !== 'object' || typeof decisions.books !== 'object') throw new BadRequestException('"decisions.books" is required');
-    return this.importer.commit(file.buffer, decisions);
+    return this.importer.commit(file.buffer, decisions, await this.canSeeNotes(user));
   }
 
   // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
@@ -127,21 +141,23 @@ export class BooksController {
   @Get(':id')
   @RequirePermission('library_catalog.books.view')
   async findById(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
-    const book = await this.books.findById(id, user.userId);
+    const book = await this.books.findById(id, user.userId, await this.canSeeNotes(user));
     return { ...book, files: await this.files.summary(id) };
   }
 
   @Post()
   @RequirePermission('library_catalog.books.create')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'create' })
-  async create(@Body() dto: CreateBookDto) {
+  async create(@Body() dto: CreateBookDto, @CurrentUser() user: AuthenticatedUser) {
+    await this.assertMayWriteNote(user, dto.internalNote, dto.copy?.internalNote);
     return this.books.create(dto);
   }
 
   @Patch(':id')
   @RequirePermission('library_catalog.books.update')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'update', fetchState: fetchBookState })
-  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookDto) {
+  async update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookDto, @CurrentUser() user: AuthenticatedUser) {
+    await this.assertMayWriteNote(user, dto.internalNote);
     const updated = await this.books.update(id, dto);
     await this.files.writeInfo(id); // keeps info.txt (title/author) in step with the record
     return updated;
@@ -198,8 +214,8 @@ export class BooksController {
 
   @Get('copies/inventory/export')
   @RequirePermission('library_catalog.copies.inventory')
-  async exportCopiesForInventory(@Query() query: ListCopiesForInventoryDto, @Res() res: Response): Promise<void> {
-    const buffer = await this.books.exportCopiesForInventoryWorkbook(query);
+  async exportCopiesForInventory(@Query() query: ListCopiesForInventoryDto, @Res() res: Response, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    const buffer = await this.books.exportCopiesForInventoryWorkbook(query, await this.canSeeNotes(user));
     res.set({
       'Content-Type': XLSX_CONTENT_TYPE,
       'Content-Disposition': 'attachment; filename="library-catalog-inventory-export.xlsx"',
@@ -228,8 +244,8 @@ export class BooksController {
 
   @Get(':bookId/copies')
   @RequirePermission('library_catalog.books.view')
-  async listCopies(@Param('bookId', new ParseUUIDPipe()) bookId: string) {
-    return this.books.listCopies(bookId);
+  async listCopies(@Param('bookId', new ParseUUIDPipe()) bookId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.books.listCopies(bookId, await this.canSeeNotes(user));
   }
 
   @Get(':bookId/copies/:copyId/catalog-history')
@@ -242,7 +258,8 @@ export class BooksController {
   @Post(':bookId/copies')
   @RequirePermission('library_catalog.books.create')
   @Audit({ category: 'library_catalog.copies', entityType: 'LibraryCatalogBookCopy', action: 'create' })
-  async createCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Body() dto: CreateBookCopyDto) {
+  async createCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Body() dto: CreateBookCopyDto, @CurrentUser() user: AuthenticatedUser) {
+    await this.assertMayWriteNote(user, dto.internalNote);
     return this.books.createCopy(bookId, dto);
   }
 
@@ -254,7 +271,8 @@ export class BooksController {
     action: 'update',
     fetchState: fetchCopyState,
   })
-  async updateCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookCopyDto) {
+  async updateCopy(@Param('bookId', new ParseUUIDPipe()) bookId: string, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateBookCopyDto, @CurrentUser() user: AuthenticatedUser) {
+    await this.assertMayWriteNote(user, dto.internalNote);
     return this.books.updateCopy(bookId, id, dto);
   }
 

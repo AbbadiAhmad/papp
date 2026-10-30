@@ -31,7 +31,8 @@ const LATE_FINE_TYPE_CODE = 'FINE-LATE';
 let FinesService = FinesService_1 = class FinesService {
     notifications;
     logger = new common_1.Logger(FinesService_1.name);
-    prisma = new client_1.PrismaClient();
+    // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     constructor(notifications) {
         this.notifications = notifications;
     }

@@ -234,5 +234,11 @@
   "library_catalog.print_codes.first_sheet": "الورقة الأولى (اضغط خلية للبدء منها)",
   "library_catalog.print_sticker.menu": "طباعة ملصق",
   "library_catalog.print_sticker.title": "طباعة ملصق — {{code}}",
-  "library_catalog.print_sticker.hint": "اختر خلية هذا الملصق ({{columns}} أعمدة × {{rows}} صفوف)؛ باقي الخلايا تبقى فارغة."
+  "library_catalog.print_sticker.hint": "اختر خلية هذا الملصق ({{columns}} أعمدة × {{rows}} صفوف)؛ باقي الخلايا تبقى فارغة.",
+  "library_catalog.perm.notes.view": "عرض وتعديل الملاحظات الداخلية للكتب والنسخ",
+  "library_catalog.fields.internal_note": "ملاحظة داخلية",
+  "library_catalog.fields.internal_note_hint": "يراها فقط الموظفون أصحاب الصلاحية. لا تظهر للقرّاء ولا للعامة.",
+  "library_catalog.copies.internal_note": "ملاحظة داخلية",
+  "library_catalog.import.field.book_note": "الملاحظة الداخلية للكتاب",
+  "library_catalog.import.field.copy_note": "الملاحظة الداخلية للنسخة"
 }

@@ -91,6 +91,11 @@ library_catalog_book_ratings(
 - Print Codes prints on that layout as exact-size sheets; "Start row/column" continues a part-used sheet. A copy's menu has "Print sticker" to put one sticker in a chosen cell.
 - All geometry, text shortening and paging live in `backend/sticker-layout.ts` (pure, tested); rendering is in `frontend/stickers.tsx`.
 
+## Internal notes (1.6.0, LIBRARY_CATALOG-D35)
+
+- `internal_note` columns (migration 011) on books and copies; permission `library_catalog.notes.view` (admin, library_assistant by migration). Without it nothing about notes is returned, exported, previewed or imported, and writing one is a 403. Rule of thumb for new code: the catalog clients omit `internalNote` by default — never add it to a response without the `notes.view` check in the controller.
+- Export/import columns: `book_note`, `copy_note` (present only for callers with `notes.view`).
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):

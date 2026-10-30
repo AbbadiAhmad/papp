@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LibraryCatalogBookCopyStatus, Prisma, PrismaClient } from '@prisma/client';
 import ExcelJS from 'exceljs';
-import { BOOK_COLUMNS, COPY_COLUMNS } from './books-import-rules';
+import { BOOK_COLUMNS, COPY_COLUMNS, NOTE_FIELDS } from './books-import-rules';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
@@ -38,10 +38,15 @@ export interface BookAvailability {
  * access goes through that module's own service") applied to infrastructure,
  * not just data: this module owns its own Prisma lifecycle end to end.
  */
+/** Opt-in to the staff-only internal note (the client omits it by default). `undefined` keeps the default. */
+const notesOmit = (withNotes: boolean): { internalNote?: boolean } | undefined => (withNotes ? { internalNote: false } : undefined);
+
 @Injectable()
 export class BooksService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BooksService.name);
-  private readonly prisma = new PrismaClient();
+  // Internal notes are staff-only (LIBRARY_CATALOG-D35): this client leaves them out of EVERY query unless a method
+  // opts in with `omit: { internalNote: false }` for a caller who holds `notes.view`.
+  private readonly prisma = new PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -52,7 +57,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$disconnect();
   }
 
-  async list(query: ListBooksDto) {
+  async list(query: ListBooksDto, withNotes = false) {
     const where: Prisma.LibraryCatalogBookWhereInput = {};
     if (query.search) {
       where.OR = [
@@ -70,6 +75,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const books = await this.prisma.libraryCatalogBook.findMany({
       where,
       orderBy: { title: 'asc' },
+      omit: notesOmit(withNotes),
       include: {
         _count: { select: { copies: true } },
         copies: true,
@@ -112,10 +118,11 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async findById(id: string, currentUserId?: string) {
+  async findById(id: string, currentUserId?: string, withNotes = false) {
     const book = await this.prisma.libraryCatalogBook.findUnique({
       where: { id },
-      include: { copies: { orderBy: { createdAt: 'asc' } } },
+      omit: notesOmit(withNotes),
+      include: { copies: { orderBy: { createdAt: 'asc' }, omit: notesOmit(withNotes) } },
     });
     if (!book) {
       throw new NotFoundException(`Book "${id}" not found`);
@@ -158,7 +165,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   async create(dto: CreateBookDto) {
     const { copy, ...bookData } = dto;
     return this.prisma.$transaction(async (tx) => {
-      const book = await tx.libraryCatalogBook.create({ data: bookData });
+      const book = await tx.libraryCatalogBook.create({ data: { ...bookData, ...(bookData.internalNote !== undefined ? { internalNote: this.noteValue(bookData.internalNote) } : {}) } });
       // Every copy created — whether auto-assigned or typed in by hand —
       // advances `library_catalog_copy_code_seq` (see `nextCopyCode()` and
       // `reconcileCopyCodeSequence()` below for why a manually-typed code
@@ -176,6 +183,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
           condition: copy.condition,
           location: copy.location,
           acquisitionDate: copy.acquisitionDate ? new Date(copy.acquisitionDate) : null,
+          ...(copy.internalNote !== undefined ? { internalNote: this.noteValue(copy.internalNote) } : {}),
         },
       });
       return book;
@@ -184,7 +192,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
   async update(id: string, dto: UpdateBookDto) {
     await this.ensureBookExists(id);
-    return this.prisma.libraryCatalogBook.update({ where: { id }, data: dto });
+    return this.prisma.libraryCatalogBook.update({ where: { id }, data: { ...dto, ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}) } });
   }
 
   async remove(id: string): Promise<void> {
@@ -206,9 +214,9 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
   // --- Copies --------------------------------------------------------------
 
-  async listCopies(bookId: string) {
+  async listCopies(bookId: string, withNotes = false) {
     await this.ensureBookExists(bookId);
-    return this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, orderBy: { createdAt: 'asc' } });
+    return this.prisma.libraryCatalogBookCopy.findMany({ where: { bookId }, orderBy: { createdAt: 'asc' }, omit: notesOmit(withNotes) });
   }
 
   async createCopy(bookId: string, dto: CreateBookCopyDto) {
@@ -235,6 +243,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         condition: dto.condition,
         location: dto.location,
         acquisitionDate: dto.acquisitionDate ? new Date(dto.acquisitionDate) : undefined,
+        ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}),
       },
     });
   }
@@ -266,7 +275,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
     return this.prisma.libraryCatalogBookCopy.update({
       where: { id: copy.id },
-      data: { ...dto, history: updatedHistory as unknown as Prisma.InputJsonValue },
+      data: { ...dto, ...(dto.internalNote !== undefined ? { internalNote: this.noteValue(dto.internalNote) } : {}), history: updatedHistory as unknown as Prisma.InputJsonValue },
     });
   }
 
@@ -422,7 +431,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
    * One row per copy (LIBRARY_CATALOG-D32): the book's columns repeat on every row of its copies, a book with no
    * copies has a single row with blank copy columns. Column order/names match what the import reads.
    */
-  async exportBooksWorkbook(filter: ListCopiesForInventoryDto = {}): Promise<Buffer> {
+  async exportBooksWorkbook(filter: ListCopiesForInventoryDto = {}, withNotes = false): Promise<Buffer> {
     // The inventory page filters the same export (LIBRARY_CATALOG-D34): only copies matching status/location, and
     // only books matching the title search, are included. No filter = the whole catalog.
     const copyWhere: Prisma.LibraryCatalogBookCopyWhereInput = {};
@@ -435,13 +444,15 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const books = await this.prisma.libraryCatalogBook.findMany({
       where: bookWhere,
       orderBy: { title: 'asc' },
-      include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' } } },
+      omit: notesOmit(withNotes),
+      include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' }, omit: notesOmit(withNotes) } },
     });
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Books');
     const widths: Record<string, number> = { id: 38, copy_id: 38, title: 32, author: 24, publisher: 24, description: 40 };
-    worksheet.columns = [...BOOK_COLUMNS, ...COPY_COLUMNS].map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
+    // The internal-note columns exist only in an export made by someone who may see notes (LIBRARY_CATALOG-D35).
+    worksheet.columns = [...BOOK_COLUMNS, ...COPY_COLUMNS].filter((c) => withNotes || !NOTE_FIELDS.includes(c)).map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
     worksheet.getRow(1).font = { bold: true };
     worksheet.views = [{ state: 'frozen', ySplit: 1 }];
     for (const book of books) {
@@ -455,6 +466,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         language: book.language ?? '',
         description: book.description ?? '',
         page_count: book.pageCount ?? '',
+        ...(withNotes ? { book_note: (book as { internalNote?: string | null }).internalNote ?? '' } : {}),
       };
       if (book.copies.length === 0) {
         worksheet.addRow(bookCells);
@@ -469,6 +481,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
           copy_condition: copy.condition ?? '',
           copy_location: copy.location ?? '',
           copy_acquisition_date: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+          ...(withNotes ? { copy_note: (copy as { internalNote?: string | null }).internalNote ?? '' } : {}),
         });
       }
     }
@@ -570,8 +583,8 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The inventory page's export is the books export (one row per copy, importable) limited to the page's filters. */
-  async exportCopiesForInventoryWorkbook(filter: ListCopiesForInventoryDto): Promise<Buffer> {
-    return this.exportBooksWorkbook(filter);
+  async exportCopiesForInventoryWorkbook(filter: ListCopiesForInventoryDto, withNotes = false): Promise<Buffer> {
+    return this.exportBooksWorkbook(filter, withNotes);
   }
 
   // --- Helpers -----------------------------------------------------------
@@ -654,6 +667,12 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       "SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)",
       enteredValue,
     );
+  }
+
+  /** A blank note means "no note": stored as NULL. */
+  private noteValue(value: string | null | undefined): string | null {
+    const text = (value ?? '').trim();
+    return text ? text : null;
   }
 
   private async ensureBookExists(id: string): Promise<void> {

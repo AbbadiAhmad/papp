@@ -12,6 +12,7 @@ import {
   ItemDecision,
   RawImportRow,
   planImport,
+  withoutNotes,
   toBookValues,
   toCopyValues,
 } from './books-import-rules';
@@ -38,7 +39,8 @@ const KNOWN_COLUMNS = new Set<string>([...BOOK_COLUMNS, ...COPY_COLUMNS]);
  */
 @Injectable()
 export class BooksImportService implements OnModuleInit, OnModuleDestroy {
-  private readonly prisma = new PrismaClient();
+  // Internal notes are opted into per query, only for a caller who may see them (LIBRARY_CATALOG-D35).
+  private readonly prisma = new PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
 
   constructor(
     private readonly books: BooksService,
@@ -98,12 +100,14 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
     return String(value).trim();
   }
 
-  private async snapshot(): Promise<ImportSnapshot> {
+  private async snapshot(notes: boolean): Promise<ImportSnapshot> {
     const [books, copies] = await Promise.all([
       this.prisma.libraryCatalogBook.findMany({
-        select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true },
+        select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true, ...(notes ? { internalNote: true } : {}) },
       }),
-      this.prisma.libraryCatalogBookCopy.findMany({ select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true } }),
+      this.prisma.libraryCatalogBookCopy.findMany({
+        select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true, ...(notes ? { internalNote: true } : {}) },
+      }),
     ]);
     return {
       books,
@@ -121,12 +125,14 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Validates and compares only — writes nothing. */
-  async preview(buffer: Buffer): Promise<BooksImportReport> {
-    return this.report(planImport(await this.parseWorkbook(buffer), await this.snapshot()));
+  async preview(buffer: Buffer, notes = false): Promise<BooksImportReport> {
+    return this.report(planImport(await this.parseWorkbook(buffer), await this.snapshot(notes), { notes }));
   }
 
-  async commit(buffer: Buffer, decisions: ImportDecisions): Promise<BooksImportReport> {
-    const plans = planImport(await this.parseWorkbook(buffer), await this.snapshot());
+  async commit(buffer: Buffer, decisions: ImportDecisions, notes = false): Promise<BooksImportReport> {
+    const plans = planImport(await this.parseWorkbook(buffer), await this.snapshot(notes), { notes });
+    const bookFields: readonly string[] = notes ? BOOK_FIELDS : withoutNotes(BOOK_FIELDS);
+    const copyFields: readonly string[] = notes ? COPY_FIELDS : withoutNotes(COPY_FIELDS);
     const renamed: string[] = [];
     const result = { booksCreated: 0, booksUpdated: 0, copiesCreated: 0, copiesUpdated: 0, skipped: 0 };
 
@@ -147,10 +153,12 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
             let bookId = plan.bookId;
             if (bookDecision?.apply && plan.action !== 'unchanged') {
               if (plan.action === 'error') throw new BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}" has errors and cannot be imported`);
-              const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, BOOK_FIELDS, []) : merged(plan.current!, bookDecision, BOOK_FIELDS, []);
+              const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, bookFields, []) : merged(plan.current!, bookDecision, bookFields, []);
               const parsed = toBookValues(cells);
               if ('error' in parsed) throw new BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}": ${parsed.error}`);
-              const data = parsed.values;
+              // Without notes permission the note is never written (a blank would otherwise wipe an existing one).
+              const { internalNote, ...withoutNote } = parsed.values;
+              const data = notes ? { ...withoutNote, internalNote } : withoutNote;
               if (plan.action === 'create') {
                 bookId = (await tx.libraryCatalogBook.create({ data })).id;
                 result.booksCreated += 1;
@@ -172,7 +180,7 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
                 continue;
               }
               const locked = copyPlan.fields.filter((f) => f.locked).map((f) => f.field);
-              let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId } }) : null;
+              let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId }, omit: notes ? { internalNote: false } : undefined }) : null;
               const currentCells = existing
                 ? {
                     copy_code: existing.qrCode,
@@ -180,9 +188,10 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
                     copy_condition: existing.condition ?? '',
                     copy_location: existing.location ?? '',
                     copy_acquisition_date: existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : '',
+                    copy_note: notes ? ((existing as { internalNote?: string | null }).internalNote ?? '') : '',
                   }
                 : null;
-              const cells = merged(currentCells ?? copyPlan.incoming, decision, COPY_FIELDS, locked);
+              const cells = merged(currentCells ?? copyPlan.incoming, decision, copyFields, locked);
               const parsed = toCopyValues(cells, existing?.status ?? 'available');
               if ('error' in parsed) throw new BadRequestException(`Row ${copyPlan.rows[0]} (copy): ${parsed.error}`);
               const v = parsed.values;
@@ -198,6 +207,7 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
                     condition: v.condition,
                     location: v.location,
                     acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                    ...(notes ? { internalNote: v.internalNote } : {}),
                   },
                 });
                 result.copiesCreated += 1;
@@ -221,6 +231,7 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
                     condition: v.condition,
                     location: v.location,
                     acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                    ...(notes ? { internalNote: v.internalNote } : {}),
                     history: nextHistory as unknown as Prisma.InputJsonValue,
                   },
                 });

@@ -40,7 +40,8 @@ let MembershipsService = MembershipsService_1 = class MembershipsService {
     episodes;
     events;
     logger = new common_1.Logger(MembershipsService_1.name);
-    prisma = new client_1.PrismaClient();
+    // The library catalog's staff-only internal notes (LIBRARY_CATALOG-D35) must never ride along in this module's responses.
+    prisma = new client_1.PrismaClient({ omit: { libraryCatalogBook: { internalNote: true }, libraryCatalogBookCopy: { internalNote: true } } });
     constructor(episodes, events) {
         this.episodes = episodes;
         this.events = events;

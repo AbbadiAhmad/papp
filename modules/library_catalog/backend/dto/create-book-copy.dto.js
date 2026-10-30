@@ -25,6 +25,8 @@ class CreateBookCopyDto {
     condition;
     location;
     acquisitionDate;
+    /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+    internalNote;
 }
 exports.CreateBookCopyDto = CreateBookCopyDto;
 __decorate([
@@ -53,3 +55,9 @@ __decorate([
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], CreateBookCopyDto.prototype, "acquisitionDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5000),
+    __metadata("design:type", String)
+], CreateBookCopyDto.prototype, "internalNote", void 0);

@@ -234,5 +234,11 @@
   "library_catalog.print_codes.first_sheet": "First sheet (click a cell to start there)",
   "library_catalog.print_sticker.menu": "Print sticker",
   "library_catalog.print_sticker.title": "Print sticker — {{code}}",
-  "library_catalog.print_sticker.hint": "Choose the cell ({{columns}} columns × {{rows}} rows) for this sticker; all other cells stay empty."
+  "library_catalog.print_sticker.hint": "Choose the cell ({{columns}} columns × {{rows}} rows) for this sticker; all other cells stay empty.",
+  "library_catalog.perm.notes.view": "See and edit internal notes on books and copies",
+  "library_catalog.fields.internal_note": "Internal note",
+  "library_catalog.fields.internal_note_hint": "Only staff with permission see this note. It is never shown to readers or the public.",
+  "library_catalog.copies.internal_note": "Internal note",
+  "library_catalog.import.field.book_note": "Book internal note",
+  "library_catalog.import.field.copy_note": "Copy internal note"
 }

@@ -392,6 +392,9 @@ model LibraryCatalogBook {
   /// before this column existed or not yet filled in; reading_club treats
   /// that the same as 0 toward a pages-type stage's progress, never an error.
   pageCount    Int?     @map("page_count")
+  /// Staff-only note (migration 011, LIBRARY_CATALOG-D35). Every module client omits it by default; only
+  /// callers with `library_catalog.notes.view` ever get it back.
+  internalNote String?  @map("internal_note")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -482,6 +485,8 @@ model LibraryCatalogBookCopy {
   condition       String?
   location        String?
   acquisitionDate DateTime?                     @map("acquisition_date") @db.Date
+  /// Staff-only note (migration 011, LIBRARY_CATALOG-D35) — see LibraryCatalogBook.internalNote.
+  internalNote    String?                       @map("internal_note")
   createdAt       DateTime                      @default(now()) @map("created_at")
   updatedAt       DateTime                      @updatedAt @map("updated_at")
   history         Json                          @default("[]")

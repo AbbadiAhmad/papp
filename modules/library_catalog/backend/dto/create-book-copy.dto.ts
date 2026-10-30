@@ -1,5 +1,5 @@
 import { LibraryCatalogBookCopyStatus } from '@prisma/client';
-import { IsDateString, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 
 /**
  * docs/LIBRARY_MODULE_REQUIREMENTS.md §5. `status` defaults to 'available'
@@ -29,4 +29,10 @@ export class CreateBookCopyDto {
   @IsOptional()
   @IsDateString()
   acquisitionDate?: string;
+  /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  internalNote?: string;
+
 }

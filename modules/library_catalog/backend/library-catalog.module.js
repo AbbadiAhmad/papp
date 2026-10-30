@@ -8,11 +8,16 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LibraryCatalogModule = void 0;
 const common_1 = require("@nestjs/common");
+// The REAL core service, imported from apps/api's BUILT output (same D57/D64/D74 exception category as library_circulation's
+// binding of this token). PermissionsModule is @Global, so it is injectable here without importing its module.
+// eslint-disable-next-line import/no-unresolved
+const permissions_service_1 = require("../../../apps/api/dist/core/permissions/permissions.service");
 const book_files_controller_1 = require("./book-files.controller");
 const book_files_service_1 = require("./book-files.service");
 const books_import_service_1 = require("./books-import.service");
 const books_controller_1 = require("./books.controller");
 const books_service_1 = require("./books.service");
+const permission_checker_1 = require("./permission-checker");
 const public_controller_1 = require("./public.controller");
 const settings_controller_1 = require("./settings.controller");
 const settings_service_1 = require("./settings.service");
@@ -37,6 +42,6 @@ exports.LibraryCatalogModule = LibraryCatalogModule;
 exports.LibraryCatalogModule = LibraryCatalogModule = __decorate([
     (0, common_1.Module)({
         controllers: [public_controller_1.PublicBooksController, books_controller_1.BooksController, book_files_controller_1.BookFilesController, settings_controller_1.SettingsController],
-        providers: [books_service_1.BooksService, books_import_service_1.BooksImportService, book_files_service_1.BookFilesService, settings_service_1.SettingsService],
+        providers: [books_service_1.BooksService, books_import_service_1.BooksImportService, book_files_service_1.BookFilesService, settings_service_1.SettingsService, { provide: permission_checker_1.PERMISSION_CHECKER, useExisting: permissions_service_1.PermissionsService }],
     })
 ], LibraryCatalogModule);

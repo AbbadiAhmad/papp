@@ -33,6 +33,8 @@ class CreateBookCopyInlineDto {
     condition;
     location;
     acquisitionDate;
+    /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+    internalNote;
 }
 exports.CreateBookCopyInlineDto = CreateBookCopyInlineDto;
 __decorate([
@@ -61,6 +63,12 @@ __decorate([
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], CreateBookCopyInlineDto.prototype, "acquisitionDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5000),
+    __metadata("design:type", String)
+], CreateBookCopyInlineDto.prototype, "internalNote", void 0);
 class CreateBookDto {
     title;
     author;
@@ -73,6 +81,8 @@ class CreateBookDto {
     /** Optional (LIBRARY_CATALOG-D24) — reading_club sums this across a reader's stage book entries to auto-compute a `pages`-type stage's progress. */
     pageCount;
     copy;
+    /** Staff-only note (LIBRARY_CATALOG-D35); empty clears it. Needs `library_catalog.notes.view`, checked in the controller. */
+    internalNote;
 }
 exports.CreateBookDto = CreateBookDto;
 __decorate([
@@ -128,3 +138,9 @@ __decorate([
     (0, class_validator_1.ValidateNested)(),
     __metadata("design:type", CreateBookCopyInlineDto)
 ], CreateBookDto.prototype, "copy", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5000),
+    __metadata("design:type", String)
+], CreateBookDto.prototype, "internalNote", void 0);
