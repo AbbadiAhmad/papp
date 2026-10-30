@@ -7,10 +7,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 var SettingsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SettingsService = exports.STICKER_SETTINGS_FALLBACK = exports.STICKER_SETTINGS_KEY = void 0;
+exports.SettingsService = exports.STICKER_SETTINGS_FALLBACK = exports.STICKER_LAYOUT_KEY = exports.STICKER_SETTINGS_KEY = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
+const sticker_layout_1 = require("./sticker-layout");
 exports.STICKER_SETTINGS_KEY = 'library_catalog.sticker_header_text';
+exports.STICKER_LAYOUT_KEY = 'library_catalog.sticker_layout';
 exports.STICKER_SETTINGS_FALLBACK = { headerText: '' };
 /**
  * This module's first `system_settings`-backed value (LIBRARY_CATALOG-D22) —
@@ -50,6 +52,20 @@ let SettingsService = SettingsService_1 = class SettingsService {
             create: { key: exports.STICKER_SETTINGS_KEY, value: value },
         });
         return value;
+    }
+    /** The saved sticker layout (LIBRARY_CATALOG-D33), or the built-in default that reproduces the original sticker. */
+    async getStickerLayout() {
+        const row = await this.prisma.systemSetting.findUnique({ where: { key: exports.STICKER_LAYOUT_KEY } });
+        return row ? (0, sticker_layout_1.normalizeLayout)(row.value) : sticker_layout_1.DEFAULT_LAYOUT;
+    }
+    async updateStickerLayout(raw) {
+        const layout = (0, sticker_layout_1.normalizeLayout)(raw);
+        await this.prisma.systemSetting.upsert({
+            where: { key: exports.STICKER_LAYOUT_KEY },
+            update: { value: layout },
+            create: { key: exports.STICKER_LAYOUT_KEY, value: layout },
+        });
+        return layout;
     }
 };
 exports.SettingsService = SettingsService;

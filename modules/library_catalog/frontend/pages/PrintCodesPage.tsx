@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardContent,
+  Link,
   Stack,
   Table,
   TableBody,
@@ -17,26 +18,23 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
-import { downloadBlob, libraryCatalogApi, type CopyForPrint } from '../api';
-import { QrCodeImage } from './QrCodeImage';
+import { downloadBlob, libraryCatalogApi, stickerDataFromCopy, type CopyForPrint, type StickerLayout } from '../api';
+import { DEFAULT_LAYOUT, computeGrid, paginate } from '../../backend/sticker-layout.ts';
+import { PageGridPreview, StickerPrintPortal } from '../stickers';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
- * "filter the books entered last period ... export the book names,
- * copy-number and the QR for the copies ... the aim is to print the book
- * stickers" (LIBRARY_CATALOG-D22). `bookTitle` is shown in the on-screen
- * preview table and the Excel export ONLY, for the librarian to validate
- * the filtered set before printing — since LIBRARY_CATALOG-D29 it is also
- * printed on the sticker (user request). Each sticker shows: the
- * configured header text (e.g. the school/library name, a per-installation
- * setting below), the copy's QR code image, its code as text, and its
- * location.
+ * Print the copy stickers (LIBRARY_CATALOG-D22, reworked in D33): filter copies by acquisition date, then print them
+ * on the sheet layout saved by the sticker designer. Sheets are exact-size pages, so a sticker is never split
+ * across two pages; the first sticker can start at any row/column of the first sheet (to continue on a sheet that
+ * is already partly used).
  */
 export function PrintCodesPage() {
   const { t } = useTranslation();
@@ -47,9 +45,17 @@ export function PrintCodesPage() {
   const [copies, setCopies] = useState<CopyForPrint[]>([]);
   const [headerText, setHeaderText] = useState('');
   const [headerTextDraft, setHeaderTextDraft] = useState('');
+  const [layout, setLayout] = useState<StickerLayout>(DEFAULT_LAYOUT);
+  // Where the first sticker goes on the first sheet (0-based cell index): lets the librarian continue on a part-used sheet.
+  const [startCell, setStartCell] = useState(0);
+  const [printing, setPrinting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    libraryCatalogApi.getStickerLayout().then(setLayout).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     libraryCatalogApi
@@ -93,7 +99,19 @@ export function PrintCodesPage() {
     }
   };
 
-  const handlePrint = () => window.print();
+  const grid = computeGrid(layout);
+  const pages = useMemo(
+    () => paginate(copies.map((copy) => stickerDataFromCopy(copy, headerText)), grid.perPage, startCell),
+    [copies, headerText, grid.perPage, startCell],
+  );
+  const handlePrint = () => setPrinting(true);
+  const startRow = Math.floor(startCell / Math.max(1, grid.columns)) + 1;
+  const startColumn = (startCell % Math.max(1, grid.columns)) + 1;
+  const setStart = (row: number, column: number) => {
+    const r = Math.min(Math.max(1, row), Math.max(1, grid.rows));
+    const c = Math.min(Math.max(1, column), Math.max(1, grid.columns));
+    setStartCell((r - 1) * grid.columns + (c - 1));
+  };
 
   const handleSaveHeaderText = async () => {
     setError(null);
@@ -171,10 +189,61 @@ export function PrintCodesPage() {
               <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport} disabled={copies.length === 0}>
                 {t('library_catalog.actions.export')}
               </Button>
-              <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint} disabled={copies.length === 0}>
+              <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint} disabled={copies.length === 0 || grid.perPage < 1 || printing}>
                 {t('library_catalog.print_codes.print_button')}
               </Button>
             </Stack>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, mb: 1 }}>
+              <Typography variant="subtitle2">{t('library_catalog.print_codes.sheet_title')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {grid.perPage > 0
+                  ? t('library_catalog.print_codes.sheet_summary', { width: layout.page.widthMm, height: layout.page.heightMm, columns: grid.columns, rows: grid.rows, count: grid.perPage, pages: pages.length })
+                  : t('library_catalog.designer.fits_none')}
+              </Typography>
+              <Can permission="library_catalog.settings.update">
+                <Link component={RouterLink} to="/library/copies/sticker-designer">
+                  {t('library_catalog.print_codes.open_designer')}
+                </Link>
+              </Can>
+            </Stack>
+            {grid.perPage > 0 ? (
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ alignItems: 'flex-start' }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="body2" color="text.secondary">{t('library_catalog.print_codes.start_hint')}</Typography>
+                  <Stack direction="row" spacing={1.5}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      label={t('library_catalog.print_codes.start_row')}
+                      value={startRow}
+                      onChange={(e) => setStart(Number(e.target.value) || 1, startColumn)}
+                      slotProps={{ htmlInput: { min: 1, max: grid.rows, inputMode: 'numeric' } }}
+                      sx={{ width: 110 }}
+                    />
+                    <TextField
+                      size="small"
+                      type="number"
+                      label={t('library_catalog.print_codes.start_column')}
+                      value={startColumn}
+                      onChange={(e) => setStart(startRow, Number(e.target.value) || 1)}
+                      slotProps={{ htmlInput: { min: 1, max: grid.columns, inputMode: 'numeric' } }}
+                      sx={{ width: 110 }}
+                    />
+                  </Stack>
+                </Stack>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    {t('library_catalog.print_codes.first_sheet')}
+                  </Typography>
+                  <PageGridPreview layout={layout} cells={pages[0] ?? []} maxWidthPx={300} selectedCell={startCell} onSelectCell={setStartCell} />
+                </Box>
+              </Stack>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -221,87 +290,7 @@ export function PrintCodesPage() {
         </Paginated>
       </Box>
 
-      {/* The actual sticker sheet — present at all times (so Ctrl+P / browser
-          print-preview also works, not just the Print button), hidden on
-          screen and shown only inside @media print via the stylesheet
-          below. Fixed label-grid layout, not admin-configurable (confirmed
-          with the user) — 3 stickers per row, a plain CSS grid wrap.
-          This page's own print rule only reaches content INSIDE this page
-          — the app shell (sidebar/top bar) that used to print alongside it
-          is hidden by a separate, platform-level rule in App.tsx's
-          GlobalStyles (reported bug: "when printing the stickers the menu
-          is shown to the side of the page"). See that file's own comment
-          for why a per-page rule alone can never reach the shell. */}
-      <Box className="print-codes-sheet">
-        {copies.map((copy) => (
-          <Box key={copy.id} className="print-codes-sticker">
-            {/* Left: custom header text, printed vertically. Middle: QR + location. Right: code printed vertically (LIBRARY_CATALOG-D23). */}
-            {headerText ? <Typography className="print-codes-sticker-header">{headerText}</Typography> : null}
-            <Box className="print-codes-sticker-side">
-              <QrCodeImage value={copy.qrCode} size={110} />
-              {copy.bookTitle ? <Typography className="print-codes-sticker-title">{copy.bookTitle}</Typography> : null}
-              {copy.location ? <Typography className="print-codes-sticker-location">{copy.location}</Typography> : null}
-            </Box>
-            <Typography className="print-codes-sticker-code">{copy.qrCode}</Typography>
-          </Box>
-        ))}
-      </Box>
-
-      <style>{`
-        .print-codes-sheet { display: none; }
-        @media print {
-          /*
-           * Bug fix (user-reported): the old grid used
-           * \`grid-template-columns: repeat(3, 1fr)\` — \`1fr\` columns
-           * stretch/shrink to fill whatever width the grid CONTAINER ends
-           * up with, which is NOT the same as the page's real printable
-           * width unless \`@page\` pins it explicitly (the first row could
-           * still look fine purely because the browser's print-preview
-           * layout pass hadn't yet reconciled the container against the
-           * actual page box). Each \`.print-codes-sticker\` also had its own
-           * FIXED \`width: 63.5mm\` — 3 of those (190.5mm) already barely fit
-           * a page's usable width with margins, so asking for 4 made the
-           * mismatch between the elastic \`1fr\` columns and the sticker's
-           * own fixed width worse, squeezing the code text into a narrower
-           * box than it needed and wrapping it.
-           *
-           * Fix: an explicit \`@page\` size/margin (so the printable area is
-           * deterministic, not browser-default-dependent) + FIXED-width
-           * grid columns sized to actually fit 4 across that printable
-           * width with margins (A4's ~190mm usable width / 4 columns ≈
-           * 46mm each, same arithmetic for Letter) — the sticker itself
-           * shrunk to 45mm × 30mm to fit cleanly, confirmed with the user
-           * as an acceptable trade-off over keeping the old 63.5mm size at
-           * only 3 per row.
-           */
-          @page { size: A4; margin: 10mm; }
-          .print-codes-controls { display: none; }
-          .print-codes-sheet {
-            display: grid;
-            grid-template-columns: repeat(3, 62mm);
-            gap: 3mm;
-          }
-          .print-codes-sticker {
-            box-sizing: border-box;
-            border: 1px solid #000;
-            padding: 2mm;
-            width: 62mm;
-            height: 40mm;
-            display: flex;
-            flex-direction: row;
-            align-items: stretch;
-            gap: 2mm;
-            overflow: hidden;
-            break-inside: avoid;
-          }
-          .print-codes-sticker-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1mm; }
-          .print-codes-sticker img { width: 24mm !important; height: 24mm !important; flex: none; }
-          .print-codes-sticker-header { writing-mode: vertical-rl; font-size: 8pt; line-height: 1.2; font-weight: bold; margin: 0; flex: none; align-self: center; max-height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-          .print-codes-sticker-title { font-size: 7pt; line-height: 1.1; font-weight: bold; margin: 0; max-width: 100%; text-align: center; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
-          .print-codes-sticker-location { font-size: 8pt; line-height: 1.1; color: #000; margin: 0; max-width: 100%; text-align: center; overflow: hidden; word-break: break-word; }
-          .print-codes-sticker-code { writing-mode: vertical-rl; font-size: 12pt; font-weight: bold; margin: 0; white-space: nowrap; flex: none; align-self: center; letter-spacing: 0.5pt; }
-        }
-      `}</style>
+      {printing ? <StickerPrintPortal layout={layout} pages={pages} onDone={() => setPrinting(false)} /> : null}
     </Box>
   );
 }

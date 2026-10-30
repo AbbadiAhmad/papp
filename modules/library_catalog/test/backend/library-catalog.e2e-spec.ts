@@ -241,6 +241,28 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       }),
     });
 
+    expectPermissionEnforced({ app: () => app!, method: 'get', path: '/api/library/settings/sticker-layout', requiredPermission: 'library_catalog.copies.print_codes' });
+    expectPermissionEnforced({
+      app: () => app!,
+      method: 'put',
+      path: '/api/library/settings/sticker-layout',
+      requiredPermission: 'library_catalog.settings.update',
+      validBody: () => ({ layout: { sticker: { widthMm: 50, heightMm: 30 } } }),
+    });
+
+    it('the saved sticker layout is completed and clamped by the server, and read back', async () => {
+      const put = await request(app!.getHttpServer())
+        .put('/api/library/settings/sticker-layout')
+        .set('Authorization', await tokenOf('admin'))
+        .send({ layout: { page: { widthMm: 9999 }, sticker: { widthMm: 50, heightMm: 30 }, elements: [{ kind: 'text', source: 'title', maxChars: 20, wMm: 40, hMm: 6 }] } });
+      expect(put.status).toBe(200);
+      expect(put.body.page.widthMm).toBe(1000);
+      expect(put.body.page.marginTopMm).toBe(8);
+      const get = await request(app!.getHttpServer()).get('/api/library/settings/sticker-layout').set('Authorization', await tokenOf('admin'));
+      expect(get.body.sticker).toMatchObject({ widthMm: 50, heightMm: 30 });
+      expect(get.body.elements[0]).toMatchObject({ kind: 'text', source: 'title', maxChars: 20 });
+    });
+
     it('GET /api/library/books/:id requires library_catalog.books.view', async () => {
       for (const role of ALL_ROLE_CODES) {
         const hasPerm = await roleHasPermission(app!, role, 'library_catalog.books.view');

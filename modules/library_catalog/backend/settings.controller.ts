@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { UpdateStickerLayoutDto } from './dto/update-sticker-layout.dto';
 import { UpdateStickerSettingsDto } from './dto/update-sticker-settings.dto';
 import { Audit, MustChangePasswordGuard, RequirePermission } from './platform';
 import { SettingsService } from './settings.service';
@@ -23,5 +24,20 @@ export class SettingsController {
   @Audit({ category: 'library_catalog.settings', entityType: 'SystemSetting', action: 'update' })
   async updateStickerSettings(@Body() dto: UpdateStickerSettingsDto) {
     return this.settings.updateStickerSettings(dto);
+  }
+
+  // The sticker designer's layout (LIBRARY_CATALOG-D33). Read by everyone who may print (the preview and the print
+  // sheet need it), changed only with `settings.update`.
+  @Get('sticker-layout')
+  @RequirePermission('library_catalog.copies.print_codes')
+  async getStickerLayout() {
+    return this.settings.getStickerLayout();
+  }
+
+  @Put('sticker-layout')
+  @RequirePermission('library_catalog.settings.update')
+  @Audit({ category: 'library_catalog.settings', entityType: 'SystemSetting', action: 'update' })
+  async updateStickerLayout(@Body() dto: UpdateStickerLayoutDto) {
+    return this.settings.updateStickerLayout(dto.layout);
   }
 }

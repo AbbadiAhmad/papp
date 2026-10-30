@@ -85,6 +85,12 @@ library_catalog_book_ratings(
 - Pictures are shrunk in the browser (`frontend/compressImage.ts`) before upload; the server only validates.
 - Books export/import (LIBRARY_CATALOG-D32): the export has one row per copy (book columns repeat, copy columns follow). `POST /api/library/books/import/preview` (file) returns the per-book/per-copy comparison and inconsistencies; `POST /api/library/books/import` (file + `decisions` JSON) applies the user's choices in one transaction. Permission `books.import`. All planning rules are pure functions in `backend/books-import-rules.ts` (`planImport`). After upgrading, an admin must grant `books.import` to any role besides admin that needs it.
 
+## Sticker designer (1.4.2, LIBRARY_CATALOG-D33)
+
+- `/library/copies/sticker-designer` (permission `settings.update`) edits ONE layout for the library: paper, sticker size/gaps, and elements (QR, Code 128 barcode, text placeholders with max length). Saved in `system_settings` as `library_catalog.sticker_layout` through `GET/PUT /api/library/settings/sticker-layout` (read needs `copies.print_codes`).
+- Print Codes prints on that layout as exact-size sheets; "Start row/column" continues a part-used sheet. A copy's menu has "Print sticker" to put one sticker in a chosen cell.
+- All geometry, text shortening and paging live in `backend/sticker-layout.ts` (pure, tested); rendering is in `frontend/stickers.tsx`.
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):

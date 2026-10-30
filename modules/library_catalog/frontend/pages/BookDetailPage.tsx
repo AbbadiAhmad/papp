@@ -3,6 +3,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import HistoryIcon from '@mui/icons-material/History';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import PrintIcon from '@mui/icons-material/Print';
 import {
   Alert,
   Box,
@@ -42,6 +43,7 @@ import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { PrintStickerDialog } from './PrintStickerDialog';
 import { BookFilesPanel } from './BookFilesPanel';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import {
@@ -91,6 +93,7 @@ export function BookDetailPage() {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuCopy, setMenuCopy] = useState<LibraryBookCopy | null>(null);
   const [historyCopy, setHistoryCopy] = useState<LibraryBookCopy | null>(null);
+  const [stickerCopy, setStickerCopy] = useState<LibraryBookCopy | null>(null);
   const [historyEntries, setHistoryEntries] = useState<CopyHistoryEntry[] | null>(null);
   const [pendingRemoveCopy, setPendingRemoveCopy] = useState<LibraryBookCopy | null>(null);
 
@@ -426,6 +429,19 @@ export function BookDetailPage() {
           <HistoryIcon fontSize="small" sx={{ me: 1 }} />
           {t('library_catalog.copies.view_history')}
         </MenuItem>
+        <Can permission="library_catalog.copies.print_codes">
+          <MenuItem
+            onClick={() => {
+              if (!menuCopy) return;
+              const target = menuCopy;
+              handleCloseMenu();
+              setStickerCopy(target);
+            }}
+          >
+            <PrintIcon fontSize="small" sx={{ me: 1 }} />
+            {t('library_catalog.print_sticker.menu')}
+          </MenuItem>
+        </Can>
         <Can permission="library_catalog.books.update">
           <MenuItem
             onClick={() => {
@@ -464,6 +480,8 @@ export function BookDetailPage() {
           </MenuItem>
         </Can>
       </Menu>
+
+      {book ? <PrintStickerDialog open={stickerCopy !== null} book={book} copy={stickerCopy} onClose={() => setStickerCopy(null)} /> : null}
 
       <Dialog open={historyCopy !== null} onClose={() => setHistoryCopy(null)} maxWidth="sm" fullWidth>
         <DialogTitle>

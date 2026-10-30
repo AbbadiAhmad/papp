@@ -1,7 +1,7 @@
 {
   "key": "library_catalog",
   "name": "Library Catalog",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Book catalog: titles, physical copies, categories, and a public shareable availability check. D44: stands alone — borrowing/returning/fines are a separate, future library_circulation+library_finance module that will dependsOn this one.",
@@ -69,6 +69,13 @@
       "default": { "headerText": "" },
       "labelKey": "library_catalog.settings.sticker_header_text_label",
       "requiredPermission": "library_catalog.settings.update"
+    },
+    {
+      "key": "library_catalog.sticker_layout",
+      "type": "json",
+      "default": {},
+      "labelKey": "library_catalog.settings.sticker_layout_label",
+      "requiredPermission": "library_catalog.settings.update"
     }
   ],
 
@@ -108,6 +115,14 @@
       "requiredPermission": "library_catalog.copies.print_codes"
     },
     {
+      "id": "library_catalog.copies.sticker_designer",
+      "labelKey": "library_catalog.menu.sticker_designer",
+      "parentId": "library_catalog.root",
+      "order": 5,
+      "route": "/library/copies/sticker-designer",
+      "requiredPermission": "library_catalog.settings.update"
+    },
+    {
       "id": "library_catalog.copies.inventory",
       "labelKey": "library_catalog.menu.inventory",
       "icon": "Inventory",
@@ -119,6 +134,12 @@
   ],
 
   "routes": [
+    {
+      "pattern": "/library/copies/sticker-designer",
+      "access": "authenticated",
+      "requiredPermission": "library_catalog.settings.update",
+      "component": "frontend/pages/StickerDesignerPage.tsx"
+    },
     {
       "pattern": "/library/books",
       "access": "authenticated",

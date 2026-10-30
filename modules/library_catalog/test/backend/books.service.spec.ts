@@ -773,7 +773,7 @@ describe('BooksService', () => {
   describe('listCopiesForPrint / exportCopiesForPrintWorkbook (LIBRARY_CATALOG-D22)', () => {
     it('filters by acquisitionDate within [from, to] inclusive and joins the book title', async () => {
       prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
-        { ...copyRow({ qrCode: 'B000001', location: 'Shelf A' }), book: { title: 'Kalila wa Dimna' } },
+        { ...copyRow({ qrCode: 'B000001', location: 'Shelf A' }), book: { title: 'Kalila wa Dimna', author: 'Ibn al-Muqaffa', publisher: null, category: null, language: 'ar', readingLevel: null } },
       ]);
 
       const result = await service.listCopiesForPrint({ from: '2026-09-01', to: '2026-09-30' });
@@ -781,10 +781,10 @@ describe('BooksService', () => {
       expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith({
         where: { acquisitionDate: { gte: new Date('2026-09-01'), lte: new Date('2026-09-30') } },
         orderBy: { acquisitionDate: 'asc' },
-        include: { book: { select: { title: true } } },
+        include: { book: { select: { title: true, author: true, publisher: true, category: true, language: true, readingLevel: true } } },
       });
       expect(result).toEqual([
-        { id: 'copy-1', qrCode: 'B000001', location: 'Shelf A', acquisitionDate: null, bookTitle: 'Kalila wa Dimna' },
+        expect.objectContaining({ id: 'copy-1', qrCode: 'B000001', location: 'Shelf A', acquisitionDate: null, bookTitle: 'Kalila wa Dimna', author: 'Ibn al-Muqaffa', language: 'ar', publisher: null }),
       ]);
     });
 

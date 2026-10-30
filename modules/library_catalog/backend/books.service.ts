@@ -485,14 +485,21 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     const copies = await this.prisma.libraryCatalogBookCopy.findMany({
       where,
       orderBy: { acquisitionDate: 'asc' },
-      include: { book: { select: { title: true } } },
+      include: { book: { select: { title: true, author: true, publisher: true, category: true, language: true, readingLevel: true } } },
     });
+    // The extra book/copy fields feed the sticker designer's placeholders (LIBRARY_CATALOG-D33).
     return copies.map((copy) => ({
       id: copy.id,
       qrCode: copy.qrCode,
       location: copy.location,
+      condition: copy.condition,
       acquisitionDate: copy.acquisitionDate,
       bookTitle: copy.book.title,
+      author: copy.book.author,
+      publisher: copy.book.publisher,
+      category: copy.book.category,
+      language: copy.book.language,
+      readingLevel: copy.book.readingLevel,
     }));
   }
 

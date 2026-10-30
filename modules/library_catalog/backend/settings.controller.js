@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const common_1 = require("@nestjs/common");
+const update_sticker_layout_dto_1 = require("./dto/update-sticker-layout.dto");
 const update_sticker_settings_dto_1 = require("./dto/update-sticker-settings.dto");
 const platform_1 = require("./platform");
 const settings_service_1 = require("./settings.service");
@@ -31,6 +32,14 @@ let SettingsController = class SettingsController {
     }
     async updateStickerSettings(dto) {
         return this.settings.updateStickerSettings(dto);
+    }
+    // The sticker designer's layout (LIBRARY_CATALOG-D33). Read by everyone who may print (the preview and the print
+    // sheet need it), changed only with `settings.update`.
+    async getStickerLayout() {
+        return this.settings.getStickerLayout();
+    }
+    async updateStickerLayout(dto) {
+        return this.settings.updateStickerLayout(dto.layout);
     }
 };
 exports.SettingsController = SettingsController;
@@ -50,6 +59,22 @@ __decorate([
     __metadata("design:paramtypes", [update_sticker_settings_dto_1.UpdateStickerSettingsDto]),
     __metadata("design:returntype", Promise)
 ], SettingsController.prototype, "updateStickerSettings", null);
+__decorate([
+    (0, common_1.Get)('sticker-layout'),
+    (0, platform_1.RequirePermission)('library_catalog.copies.print_codes'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], SettingsController.prototype, "getStickerLayout", null);
+__decorate([
+    (0, common_1.Put)('sticker-layout'),
+    (0, platform_1.RequirePermission)('library_catalog.settings.update'),
+    (0, platform_1.Audit)({ category: 'library_catalog.settings', entityType: 'SystemSetting', action: 'update' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [update_sticker_layout_dto_1.UpdateStickerLayoutDto]),
+    __metadata("design:returntype", Promise)
+], SettingsController.prototype, "updateStickerLayout", null);
 exports.SettingsController = SettingsController = __decorate([
     (0, common_1.Controller)('api/library/settings'),
     (0, common_1.UseGuards)(platform_1.MustChangePasswordGuard),

@@ -8,6 +8,7 @@
 // — Vite resolves and bundles the whole module graph at build/dev-serve
 // time, exactly like any other same-repo TypeScript import.
 import { API_BASE_URL, apiClient } from '../../../apps/web/src/shared/api/httpClient';
+import type { StickerData, StickerLayout } from '../backend/sticker-layout.ts';
 
 export type BookCopyStatus = 'available' | 'borrowed' | 'lost' | 'damaged' | 'maintenance' | 'reserved';
 
@@ -229,8 +230,33 @@ export interface CopyForPrint {
   id: string;
   qrCode: string;
   location: string | null;
+  condition: string | null;
   acquisitionDate: string | null;
   bookTitle: string;
+  author: string | null;
+  publisher: string | null;
+  category: string | null;
+  language: string | null;
+  readingLevel: string | null;
+}
+
+export type { StickerData, StickerElement, StickerLayout } from '../backend/sticker-layout.ts';
+
+/** The values a sticker's placeholders show for one copy (LIBRARY_CATALOG-D33). */
+export function stickerDataFromCopy(copy: CopyForPrint, headerText: string): StickerData {
+  return {
+    code: copy.qrCode,
+    title: copy.bookTitle,
+    author: copy.author,
+    publisher: copy.publisher,
+    category: copy.category,
+    language: copy.language,
+    reading_level: copy.readingLevel,
+    location: copy.location,
+    condition: copy.condition,
+    acquisition_date: copy.acquisitionDate ? copy.acquisitionDate.slice(0, 10) : null,
+    header: headerText,
+  };
 }
 
 export interface StickerSettings {
@@ -332,6 +358,9 @@ export const libraryCatalogApi = {
     apiClient.get<CopyForPrint[]>('/api/library/books/copies/stickers', { params }).then((r) => r.data),
   exportCopiesForPrint: (params?: ListCopiesForPrintParams) =>
     apiClient.get<Blob>('/api/library/books/copies/stickers/export', { params, responseType: 'blob' }).then((r) => r.data),
+  getStickerLayout: () => apiClient.get<StickerLayout>('/api/library/settings/sticker-layout').then((r) => r.data),
+  updateStickerLayout: (layout: StickerLayout) =>
+    apiClient.put<StickerLayout>('/api/library/settings/sticker-layout', { layout }).then((r) => r.data),
   getStickerSettings: () => apiClient.get<StickerSettings>('/api/library/settings/sticker').then((r) => r.data),
   updateStickerSettings: (dto: StickerSettings) =>
     apiClient.put<StickerSettings>('/api/library/settings/sticker', dto).then((r) => r.data),

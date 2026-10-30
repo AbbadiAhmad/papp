@@ -1,8 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { UpdateStickerSettingsDto } from './dto/update-sticker-settings.dto';
+import { DEFAULT_LAYOUT, StickerLayout, normalizeLayout } from './sticker-layout';
 
 export const STICKER_SETTINGS_KEY = 'library_catalog.sticker_header_text';
+export const STICKER_LAYOUT_KEY = 'library_catalog.sticker_layout';
 export const STICKER_SETTINGS_FALLBACK: StickerSettings = { headerText: '' };
 
 export interface StickerSettings {
@@ -52,5 +54,21 @@ export class SettingsService implements OnModuleInit, OnModuleDestroy {
       create: { key: STICKER_SETTINGS_KEY, value: value as unknown as Prisma.InputJsonValue },
     });
     return value;
+  }
+
+  /** The saved sticker layout (LIBRARY_CATALOG-D33), or the built-in default that reproduces the original sticker. */
+  async getStickerLayout(): Promise<StickerLayout> {
+    const row = await this.prisma.systemSetting.findUnique({ where: { key: STICKER_LAYOUT_KEY } });
+    return row ? normalizeLayout(row.value) : DEFAULT_LAYOUT;
+  }
+
+  async updateStickerLayout(raw: unknown): Promise<StickerLayout> {
+    const layout = normalizeLayout(raw);
+    await this.prisma.systemSetting.upsert({
+      where: { key: STICKER_LAYOUT_KEY },
+      update: { value: layout as unknown as Prisma.InputJsonValue },
+      create: { key: STICKER_LAYOUT_KEY, value: layout as unknown as Prisma.InputJsonValue },
+    });
+    return layout;
   }
 }
