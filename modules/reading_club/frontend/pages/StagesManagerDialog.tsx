@@ -19,6 +19,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,7 +29,10 @@ import { Can } from '../../../../apps/web/src/shared/permissions';
 import { readingClubApi, type ReadingClubGroup, type ReadingClubStage, type StageTargetType } from '../api';
 import { TypeToConfirmDialog } from './TypeToConfirmDialog';
 
-const emptyForm = { stageOrder: 1, name: '', targetType: 'books' as StageTargetType, targetAmount: 5, rewardDescription: '' };
+// Numbers are kept as text while typing: a number state coerced on every key (Number('') === 0) made the
+// field impossible to clear and misbehaved with phone keyboards. They are parsed once, on save.
+const emptyForm = { stageOrder: '1', name: '', targetType: 'books' as StageTargetType, targetAmount: '5', rewardDescription: '' };
+const toPositiveInt = (value: string): number | null => (/^\d+$/.test(value.trim()) && Number(value) >= 1 ? Number(value) : null);
 
 /** "The librarian defines the stages, the amount in every stage, the present after every stage, the stage order" — this dialog IS that configuration surface for one group. */
 export function StagesManagerDialog({
@@ -42,6 +47,9 @@ export function StagesManagerDialog({
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
+  const theme = useTheme();
+  // A phone gets a full-screen dialog and a one-column form (the 5-field row did not fit and pushed the Add button out of reach).
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [stages, setStages] = useState<ReadingClubStage[]>([]);
   const [editingStage, setEditingStage] = useState<ReadingClubStage | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -77,16 +85,16 @@ export function StagesManagerDialog({
 
   const resetForm = (existingCount: number) => {
     setEditingStage(null);
-    setForm({ ...emptyForm, stageOrder: existingCount + 1 });
+    setForm({ ...emptyForm, stageOrder: String(existingCount + 1) });
   };
 
   const startEdit = (stage: ReadingClubStage) => {
     setEditingStage(stage);
     setForm({
-      stageOrder: stage.stageOrder,
+      stageOrder: String(stage.stageOrder),
       name: stage.name,
       targetType: stage.targetType,
-      targetAmount: stage.targetAmount,
+      targetAmount: String(stage.targetAmount),
       rewardDescription: stage.rewardDescription ?? '',
     });
   };
@@ -98,16 +106,19 @@ export function StagesManagerDialog({
     onChanged();
   };
 
+  const stageOrderValue = toPositiveInt(form.stageOrder);
+  const targetAmountValue = toPositiveInt(form.targetAmount);
+
   const handleSave = async () => {
-    if (!group) return;
+    if (!group || stageOrderValue === null || targetAmountValue === null) return;
     setSaving(true);
     setError(null);
     try {
       const dto = {
-        stageOrder: form.stageOrder,
-        name: form.name,
+        stageOrder: stageOrderValue,
+        name: form.name.trim(),
         targetType: form.targetType,
-        targetAmount: form.targetAmount,
+        targetAmount: targetAmountValue,
         rewardDescription: form.rewardDescription || undefined,
       };
       if (editingStage) {
@@ -138,7 +149,7 @@ export function StagesManagerDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={fullScreen}>
       <DialogTitle>
         {t('reading_club.stages.manage_title')} — {group?.name}
       </DialogTitle>
@@ -201,46 +212,48 @@ export function StagesManagerDialog({
             <Typography variant="subtitle2" gutterBottom>
               {editingStage ? t('reading_club.stages.edit_title') : t('reading_club.stages.add_title')}
             </Typography>
-            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ flexWrap: 'wrap', gap: 2 }}>
               <TextField
                 label={t('reading_club.fields.stage_order')}
-                type="number"
                 value={form.stageOrder}
-                onChange={(e) => setForm({ ...form, stageOrder: Number(e.target.value) })}
-                sx={{ width: 140 }}
+                onChange={(e) => setForm({ ...form, stageOrder: e.target.value })}
+                error={stageOrderValue === null}
+                slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]*' } }}
+                sx={{ width: { xs: '100%', sm: 140 } }}
               />
               <TextField
                 label={t('reading_club.fields.name')}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                sx={{ flex: 1, minWidth: 200 }}
+                sx={{ flex: 1, minWidth: { xs: '100%', sm: 200 } }}
               />
               <TextField
                 select
                 label={t('reading_club.fields.target_type')}
                 value={form.targetType}
                 onChange={(e) => setForm({ ...form, targetType: e.target.value as StageTargetType })}
-                sx={{ width: 160 }}
+                sx={{ width: { xs: '100%', sm: 160 } }}
               >
                 <MenuItem value="books">{t('reading_club.target_type.books')}</MenuItem>
                 <MenuItem value="pages">{t('reading_club.target_type.pages')}</MenuItem>
               </TextField>
               <TextField
                 label={t('reading_club.fields.target_amount')}
-                type="number"
                 value={form.targetAmount}
-                onChange={(e) => setForm({ ...form, targetAmount: Number(e.target.value) })}
-                sx={{ width: 160 }}
+                onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
+                error={targetAmountValue === null}
+                slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]*' } }}
+                sx={{ width: { xs: '100%', sm: 160 } }}
               />
               <TextField
                 label={t('reading_club.fields.reward_description')}
                 value={form.rewardDescription}
                 onChange={(e) => setForm({ ...form, rewardDescription: e.target.value })}
-                sx={{ flex: 1, minWidth: 220 }}
+                sx={{ flex: 1, minWidth: { xs: '100%', sm: 220 } }}
               />
             </Stack>
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              <Button variant="contained" onClick={handleSave} disabled={saving || !form.name.trim() || form.targetAmount < 1}>
+              <Button variant="contained" onClick={handleSave} disabled={saving || !form.name.trim() || stageOrderValue === null || targetAmountValue === null}>
                 {editingStage ? t('core.common.save') : t('reading_club.stages.add_button')}
               </Button>
               {editingStage ? <Button onClick={() => resetForm(stages.length)}>{t('core.common.cancel')}</Button> : null}

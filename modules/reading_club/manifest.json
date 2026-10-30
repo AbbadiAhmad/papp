@@ -1,7 +1,7 @@
 {
   "key": "reading_club",
   "name": "Reading Club",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": ["library_circulation"],
   "description": "Reading groups made of ordered stages (books or pages), reader assignment/progress tracking, and stage-completion rewards — built on library_circulation's students/borrowing history.",
