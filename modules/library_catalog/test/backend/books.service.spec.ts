@@ -856,15 +856,26 @@ describe('BooksService', () => {
       expect(prisma.libraryCatalogBookCopy.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
     });
 
-    it('exportCopiesForInventoryWorkbook produces an xlsx buffer covering the same filtered rows', async () => {
-      prisma.libraryCatalogBookCopy.findMany.mockResolvedValue([
-        { ...copyRow({ qrCode: 'B000004', location: 'Shelf C' }), book: { title: 'Inventory Export Title' } },
+    it('exportCopiesForInventoryWorkbook is the books export limited to the same filters (one row per matching copy)', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([
+        { ...bookRow({ id: 'book-1', title: 'Inventory Export Title' }), copies: [copyRow({ qrCode: 'B000004', location: 'Shelf C' })] },
       ]);
 
-      const buffer = await service.exportCopiesForInventoryWorkbook({});
+      const buffer = await service.exportCopiesForInventoryWorkbook({ status: LibraryCatalogBookCopyStatus.lost, location: 'Shelf', bookSearch: 'Inventory' });
 
-      expect(Buffer.isBuffer(buffer) || buffer instanceof Uint8Array).toBe(true);
-      expect(buffer.length).toBeGreaterThan(0);
+      const copyWhere = { status: LibraryCatalogBookCopyStatus.lost, location: { contains: 'Shelf', mode: 'insensitive' } };
+      expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
+        where: { title: { contains: 'Inventory', mode: 'insensitive' }, copies: { some: copyWhere } },
+        orderBy: { title: 'asc' },
+        include: { copies: { where: copyWhere, orderBy: { qrCode: 'asc' } } },
+      });
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer as never);
+      const sheet = wb.worksheets[0];
+      expect(sheet.getRow(1).values).toEqual(expect.arrayContaining(['id', 'title', 'copy_id', 'copy_code', 'copy_status']));
+      expect(sheet.rowCount).toBe(2);
+      expect(String(sheet.getRow(2).getCell(2).value)).toBe('Inventory Export Title');
     });
   });
 

@@ -215,6 +215,27 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  // Kept BEFORE the register block: its burst test lowers the public per-IP limit, after which these public calls would 429.
+  describe('forgot / reset password (D122)', () => {
+    it('answers 200 for an unknown address (no account enumeration) and 400 for an invalid email', async () => {
+      const unknown = await request(server()).post('/auth/forgot-password').send({ email: 'nobody-here@example.test' });
+      expect(unknown.status).toBe(200);
+      expect(unknown.body).toEqual({ ok: true });
+      const invalid = await request(server()).post('/auth/forgot-password').send({ email: 'not-an-email' });
+      expect(invalid.status).toBe(400);
+    });
+
+    it('answers 200 for a real account too, and rejects a wrong or missing reset token', async () => {
+      const fixture = await fixtureForRole(app!, 'reader');
+      const real = await request(server()).post('/auth/forgot-password').send({ email: fixture.email });
+      expect(real.status).toBe(200);
+      const bad = await request(server()).post('/auth/reset-password').send({ token: 'x'.repeat(43), newPassword: 'Brand-new-Passw0rd!' });
+      expect(bad.status).toBe(400);
+      const missing = await request(server()).post('/auth/reset-password').send({ newPassword: 'Brand-new-Passw0rd!' });
+      expect(missing.status).toBe(400);
+    });
+  });
+
   describe('POST /auth/register (D41/D91 self-registration)', () => {
     /**
      * D91: `selfRegistrationRoleCode` is now admin-configurable, never a
@@ -337,24 +358,5 @@ describe('Auth (e2e)', () => {
       expect(statuses.some((s) => s === 429)).toBe(true);
       await setSelfRegistration(false);
     }, 30_000);
-  });
-  describe('forgot / reset password (D122)', () => {
-    it('answers 200 for an unknown address (no account enumeration) and 400 for an invalid email', async () => {
-      const unknown = await request(server()).post('/auth/forgot-password').send({ email: 'nobody-here@example.test' });
-      expect(unknown.status).toBe(200);
-      expect(unknown.body).toEqual({ ok: true });
-      const invalid = await request(server()).post('/auth/forgot-password').send({ email: 'not-an-email' });
-      expect(invalid.status).toBe(400);
-    });
-
-    it('answers 200 for a real account too, and rejects a wrong or missing reset token', async () => {
-      const fixture = await fixtureForRole(app!, 'reader');
-      const real = await request(server()).post('/auth/forgot-password').send({ email: fixture.email });
-      expect(real.status).toBe(200);
-      const bad = await request(server()).post('/auth/reset-password').send({ token: 'x'.repeat(43), newPassword: 'Brand-new-Passw0rd!' });
-      expect(bad.status).toBe(400);
-      const missing = await request(server()).post('/auth/reset-password').send({ newPassword: 'Brand-new-Passw0rd!' });
-      expect(missing.status).toBe(400);
-    });
   });
 });

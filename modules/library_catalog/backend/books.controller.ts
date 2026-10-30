@@ -202,7 +202,7 @@ export class BooksController {
     const buffer = await this.books.exportCopiesForInventoryWorkbook(query);
     res.set({
       'Content-Type': XLSX_CONTENT_TYPE,
-      'Content-Disposition': 'attachment; filename="library-catalog-copies-inventory-export.xlsx"',
+      'Content-Disposition': 'attachment; filename="library-catalog-inventory-export.xlsx"',
     });
     res.send(buffer);
   }

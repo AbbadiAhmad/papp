@@ -422,10 +422,20 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
    * One row per copy (LIBRARY_CATALOG-D32): the book's columns repeat on every row of its copies, a book with no
    * copies has a single row with blank copy columns. Column order/names match what the import reads.
    */
-  async exportBooksWorkbook(): Promise<Buffer> {
+  async exportBooksWorkbook(filter: ListCopiesForInventoryDto = {}): Promise<Buffer> {
+    // The inventory page filters the same export (LIBRARY_CATALOG-D34): only copies matching status/location, and
+    // only books matching the title search, are included. No filter = the whole catalog.
+    const copyWhere: Prisma.LibraryCatalogBookCopyWhereInput = {};
+    if (filter.status) copyWhere.status = filter.status;
+    if (filter.location) copyWhere.location = { contains: filter.location, mode: 'insensitive' };
+    const filteredCopies = Object.keys(copyWhere).length > 0;
+    const bookWhere: Prisma.LibraryCatalogBookWhereInput = {};
+    if (filter.bookSearch) bookWhere.title = { contains: filter.bookSearch, mode: 'insensitive' };
+    if (filteredCopies) bookWhere.copies = { some: copyWhere };
     const books = await this.prisma.libraryCatalogBook.findMany({
+      where: bookWhere,
       orderBy: { title: 'asc' },
-      include: { copies: { orderBy: { qrCode: 'asc' } } },
+      include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' } } },
     });
 
     const workbook = new ExcelJS.Workbook();
@@ -559,28 +569,9 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
+  /** The inventory page's export is the books export (one row per copy, importable) limited to the page's filters. */
   async exportCopiesForInventoryWorkbook(filter: ListCopiesForInventoryDto): Promise<Buffer> {
-    const copies = await this.listCopiesForInventory(filter);
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Inventory');
-    worksheet.columns = [
-      { header: 'book_title', key: 'bookTitle', width: 32 },
-      { header: 'copy_code', key: 'qrCode', width: 16 },
-      { header: 'location', key: 'location', width: 20 },
-      { header: 'status', key: 'status', width: 14 },
-      { header: 'condition', key: 'condition', width: 20 },
-    ];
-    for (const copy of copies) {
-      worksheet.addRow({
-        bookTitle: copy.bookTitle,
-        qrCode: copy.qrCode,
-        location: copy.location ?? '',
-        status: copy.status,
-        condition: copy.condition ?? '',
-      });
-    }
-    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    return this.exportBooksWorkbook(filter);
   }
 
   // --- Helpers -----------------------------------------------------------

@@ -100,7 +100,7 @@ export function CopiesInventoryPage() {
           location: location || undefined,
         }),
       );
-      downloadBlob(blob, 'library-catalog-copies-inventory-export.xlsx');
+      downloadBlob(blob, 'library-catalog-inventory-export.xlsx');
     } catch (err) {
       setError(extractErrorMessage(err));
     }
