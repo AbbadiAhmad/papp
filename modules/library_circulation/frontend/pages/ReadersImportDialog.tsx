@@ -19,6 +19,7 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
+import { EXCEL_ACCEPT, VISUALLY_HIDDEN_INPUT, toStableFile } from '../../../../apps/web/src/shared/stableFile';
 import { libraryCirculationApi, type StudentImportReport } from '../api';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
@@ -44,9 +45,11 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
     onClose();
   };
 
-  const handleFile = async (selected: File | undefined) => {
-    if (!selected) return;
+  const handleFile = async (picked: File | undefined) => {
+    if (!picked) return;
     reset();
+    const selected = await toStableFile(picked);
+    if (inputRef.current) inputRef.current.value = ''; // lets the same file be picked again; we hold our own copy now
     setFile(selected);
     setBusy(true);
     try {
@@ -85,9 +88,10 @@ export function ReadersImportDialog({ open, onClose, onImported }: { open: boole
             {t('library_circulation.students.import_help')}
           </Typography>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <input ref={inputRef} type="file" accept=".xlsx" hidden onChange={(e) => handleFile(e.target.files?.[0])} />
-          <Button variant="outlined" onClick={() => inputRef.current?.click()} disabled={busy} sx={{ alignSelf: 'flex-start' }}>
+          {/* A <label> button: the tap opens the picker natively (a script-clicked hidden input fails on some phones). */}
+          <Button component="label" variant="outlined" disabled={busy} sx={{ alignSelf: 'flex-start' }}>
             {file ? file.name : t('library_circulation.students.import_choose_file')}
+            <input ref={inputRef} type="file" accept={EXCEL_ACCEPT} style={VISUALLY_HIDDEN_INPUT} onChange={(e) => void handleFile(e.target.files?.[0])} />
           </Button>
           {report ? (
             <>

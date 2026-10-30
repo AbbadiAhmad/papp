@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EXCEL_ACCEPT, VISUALLY_HIDDEN_INPUT, toStableFile } from '../../shared/stableFile';
 import { useNavigate } from 'react-router-dom';
 import { extractErrorMessage } from '../../shared/api/httpClient';
 import { usersApi } from '../../shared/api/users';
@@ -83,15 +84,22 @@ export function UsersImportPage() {
       </Typography>
 
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 2 }}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx"
-          hidden
-          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-        />
-        <Button startIcon={<UploadFileIcon />} variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+        {/* A <label> button: the tap opens the picker natively (a script-clicked hidden input fails on some phones). */}
+        <Button component="label" startIcon={<UploadFileIcon />} variant="outlined" disabled={busy}>
           {t('core.users.choose_file')}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={EXCEL_ACCEPT}
+            style={VISUALLY_HIDDEN_INPUT}
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null;
+              void (picked ? toStableFile(picked) : Promise.resolve(null)).then((stable) => {
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                handleFileChange(stable);
+              });
+            }}
+          />
         </Button>
         {file ? <Typography variant="body2">{file.name}</Typography> : null}
         <Button onClick={() => navigate('/users')}>{t('core.common.cancel')}</Button>

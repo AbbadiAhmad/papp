@@ -240,5 +240,9 @@
   "library_catalog.fields.internal_note_hint": "يراها فقط الموظفون أصحاب الصلاحية. لا تظهر للقرّاء ولا للعامة.",
   "library_catalog.copies.internal_note": "ملاحظة داخلية",
   "library_catalog.import.field.book_note": "الملاحظة الداخلية للكتاب",
-  "library_catalog.import.field.copy_note": "الملاحظة الداخلية للنسخة"
+  "library_catalog.import.field.copy_note": "الملاحظة الداخلية للنسخة",
+  "library_catalog.print_codes.pdf_button": "حفظ كملف PDF",
+  "library_catalog.print_codes.pdf_busy": "جارٍ تجهيز PDF…",
+  "library_catalog.print_codes.popup_blocked": "منع المتصفح نافذة الطباعة. اسمح بالنوافذ المنبثقة لهذا الموقع أو استخدم \"حفظ كملف PDF\".",
+  "library_catalog.print_codes.print_hint": "الورقة {{width}} × {{height}} مم. اختر \"الحجم الفعلي\" / مقياس 100% وبلا هوامش في نافذة الطباعة."
 }

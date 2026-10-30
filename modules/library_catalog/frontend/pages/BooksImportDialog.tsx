@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 import { useGatedCall } from '../../../../apps/web/src/shared/permissions';
+import { EXCEL_ACCEPT, VISUALLY_HIDDEN_INPUT, toStableFile } from '../../../../apps/web/src/shared/stableFile';
 import {
   libraryCatalogApi,
   type BooksImportReport,
@@ -221,9 +222,10 @@ export function BooksImportDialog({ open, onClose, onImported }: { open: boolean
     onClose();
   };
 
-  const handleFile = async (selected: File | undefined) => {
-    if (!selected) return;
+  const handleFile = async (picked: File | undefined) => {
+    if (!picked) return;
     reset();
+    const selected = await toStableFile(picked);
     setFile(selected);
     setBusy(true);
     try {
@@ -282,9 +284,10 @@ export function BooksImportDialog({ open, onClose, onImported }: { open: boolean
             {t('library_catalog.import.help')}
           </Typography>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <input ref={inputRef} type="file" accept=".xlsx" hidden data-testid="books-import-input" aria-label={t('library_catalog.import.choose_file')} onChange={(e) => void handleFile(e.target.files?.[0])} />
-          <Button variant="outlined" onClick={() => inputRef.current?.click()} disabled={busy} sx={{ alignSelf: 'flex-start' }}>
+          {/* A <label> button: the tap opens the picker natively (a script-clicked hidden input fails on some phones). */}
+          <Button component="label" variant="outlined" disabled={busy} sx={{ alignSelf: 'flex-start' }}>
             {file ? file.name : t('library_catalog.import.choose_file')}
+            <input ref={inputRef} type="file" accept={EXCEL_ACCEPT} style={VISUALLY_HIDDEN_INPUT} data-testid="books-import-input" aria-label={t('library_catalog.import.choose_file')} onChange={(e) => void handleFile(e.target.files?.[0])} />
           </Button>
           {report && committed ? (
             <Alert severity="success">

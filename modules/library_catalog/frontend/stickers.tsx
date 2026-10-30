@@ -1,8 +1,10 @@
 import { Box } from '@mui/material';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import { useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   cellOrigin,
   computeGrid,
@@ -83,25 +85,37 @@ function ElementView({ element, data, unit, selected, onPointerDown }: { element
   if (element.kind === 'qr') body = <QrSvg value={value} />;
   else if (element.kind === 'barcode') body = <BarcodeSvg value={value} />;
   else {
-    body = (
+    const align = element.align === 'start' ? 'flex-start' : element.align === 'end' ? 'flex-end' : 'center';
+    const textStyle: CSSProperties = {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: align,
+      textAlign: element.align === 'start' ? 'start' : element.align === 'end' ? 'end' : 'center',
+      fontSize: fontLen(unit, element.fontSizePt),
+      fontWeight: element.bold ? 700 : 400,
+      lineHeight: 1.15,
+      wordBreak: 'break-word',
+      color: '#000',
+    };
+    // Vertical text is the box turned 90 degrees (reads top to bottom), not `writing-mode`: that is dropped by the
+    // PDF renderer and by several mobile print engines.
+    body = element.vertical ? (
       <div
         style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: element.align === 'start' ? 'flex-start' : element.align === 'end' ? 'flex-end' : 'center',
-          textAlign: element.align === 'start' ? 'start' : element.align === 'end' ? 'end' : 'center',
-          fontSize: fontLen(unit, element.fontSizePt),
-          fontWeight: element.bold ? 700 : 400,
-          lineHeight: 1.15,
-          wordBreak: 'break-word',
-          writingMode: element.vertical ? 'vertical-rl' : undefined,
-          color: '#000',
+          ...textStyle,
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: len(unit, element.hMm),
+          height: len(unit, element.wMm),
+          transformOrigin: 'top left',
+          transform: `translateX(${len(unit, element.wMm)}) rotate(90deg)`,
         }}
       >
         {value}
       </div>
+    ) : (
+      <div style={{ ...textStyle, width: '100%', height: '100%' }}>{value}</div>
     );
   }
   return (
@@ -209,65 +223,87 @@ export function PageSheet({
   );
 }
 
-/**
- * Prints sheets at the exact paper size with no browser margins, one `.sticker-page` per sheet, never splitting a
- * sticker across pages. Everything else on the screen is hidden while printing. Mount it only while printing.
- */
-export function StickerPrintPortal({ layout, pages, onDone }: { layout: StickerLayout; pages: (StickerData | null)[][]; onDone: () => void }) {
-  const host = useMemo(() => {
-    const node = document.createElement('div');
-    node.id = 'sticker-print-root';
-    return node;
-  }, []);
+const escapeHtml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  useEffect(() => {
-    document.body.appendChild(host);
-    document.body.classList.add('printing-stickers');
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      window.removeEventListener('afterprint', finish);
-      document.body.classList.remove('printing-stickers');
-      host.remove();
-      onDone();
-    };
-    window.addEventListener('afterprint', finish);
-    // Let React paint the sheets first; print() blocks until the dialog closes in most browsers.
-    const timer = window.setTimeout(() => {
-      window.print();
-      // Browsers that don't block (some mobile ones) still end up here; afterprint cleans up when it fires.
-      window.setTimeout(finish, 1500);
-    }, 150);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('afterprint', finish);
-      document.body.classList.remove('printing-stickers');
-      host.remove();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount; the sheets are fixed for this print job.
-  }, []);
+export interface PrintLabels {
+  title: string;
+  print: string;
+  hint: string;
+}
 
-  return createPortal(
+/** A standalone page holding ONLY the sheets, sized to the paper with no browser margins. */
+export function stickersDocument(layout: StickerLayout, pages: (StickerData | null)[][], labels: PrintLabels): string {
+  const sheets = renderToStaticMarkup(
     <>
-      <style>{`
-        @page { size: ${layout.page.widthMm}mm ${layout.page.heightMm}mm; margin: 0; }
-        #sticker-print-root { display: none; }
-        @media print {
-          body.printing-stickers > *:not(#sticker-print-root) { display: none !important; }
-          body.printing-stickers { background: #fff !important; margin: 0 !important; }
-          #sticker-print-root { display: block !important; }
-          #sticker-print-root .sticker-page { break-after: page; page-break-after: always; }
-          #sticker-print-root .sticker-page:last-child { break-after: auto; page-break-after: auto; }
-          #sticker-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      `}</style>
       {pages.map((cells, index) => (
         <PageSheet key={index} layout={layout} cells={cells} unit={{ kind: 'mm' }} showEmptyCells={false} />
       ))}
     </>,
-    host,
   );
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(labels.title)}</title><style>
+@page { size: ${layout.page.widthMm}mm ${layout.page.heightMm}mm; margin: 0; }
+html, body { margin: 0; padding: 0; }
+body { background: #d9d9d9; font-family: system-ui, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; padding: 10px 14px; background: #fff; border-bottom: 1px solid #bbb; }
+.bar button { font: inherit; font-weight: 700; padding: 10px 22px; border-radius: 999px; border: 0; background: #1976d2; color: #fff; }
+.bar span { color: #555; font-size: 14px; }
+.sticker-page { font-family: system-ui, "Segoe UI", Arial, sans-serif; margin: 10px auto; box-shadow: 0 1px 6px rgba(0,0,0,.35); }
+@media print {
+  body { background: #fff; }
+  .bar { display: none; }
+  .sticker-page { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
+  .sticker-page:last-child { break-after: auto; page-break-after: auto; }
+}
+</style></head><body><div class="bar"><button type="button" onclick="window.print()">${escapeHtml(labels.print)}</button><span>${escapeHtml(labels.hint)}</span></div>${sheets}<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 500); });</script></body></html>`;
+}
+
+/**
+ * Prints the sheets from their own window that contains nothing else, so phones and desktops print exactly the
+ * stickers (printing the app page itself printed the whole screen on phones). MUST be called straight from a click
+ * (the window is opened before anything async, or pop-up blockers refuse it). Returns false if the browser blocked it.
+ */
+export function printStickers(layout: StickerLayout, pages: (StickerData | null)[][], labels: PrintLabels): boolean {
+  const win = window.open('', '_blank');
+  if (!win) return false;
+  win.document.open();
+  win.document.write(stickersDocument(layout, pages, labels));
+  win.document.close();
+  return true;
+}
+
+/** Saves the sheets as a PDF at the exact paper size (works everywhere, incl. phones; share/print it from there). */
+export async function downloadStickersPdf(layout: StickerLayout, pages: (StickerData | null)[][], fileName = 'stickers.pdf'): Promise<void> {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+  const pxPerMm = 96 / 25.4;
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-100000px;top:0;pointer-events:none;';
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    flushSync(() =>
+      root.render(
+        <>
+          {pages.map((cells, index) => (
+            <PageSheet key={index} layout={layout} cells={cells} unit={{ kind: 'px', pxPerMm }} showEmptyCells={false} />
+          ))}
+        </>,
+      ),
+    );
+    if (document.fonts?.ready) await document.fonts.ready;
+    const { widthMm, heightMm } = layout.page;
+    const pdf = new jsPDF({ unit: 'mm', format: [widthMm, heightMm], orientation: widthMm > heightMm ? 'landscape' : 'portrait', compress: true });
+    const sheets = Array.from(host.querySelectorAll<HTMLElement>('.sticker-page'));
+    for (let i = 0; i < sheets.length; i += 1) {
+      // 2.5x of 96 dpi = 240 dpi: sharp QR codes while staying inside phone canvas-size limits.
+      const canvas = await html2canvas(sheets[i], { scale: 2.5, backgroundColor: '#ffffff', logging: false });
+      if (i > 0) pdf.addPage([widthMm, heightMm], widthMm > heightMm ? 'landscape' : 'portrait');
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, widthMm, heightMm);
+    }
+    pdf.save(fileName);
+  } finally {
+    root.unmount();
+    host.remove();
+  }
 }
 
 /** Small on-screen picture of one sheet that fits `maxWidthPx`; clickable cells when `onSelectCell` is given. */

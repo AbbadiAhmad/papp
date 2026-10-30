@@ -1,10 +1,12 @@
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_LAYOUT, computeGrid, paginate, type StickerData } from '../../backend/sticker-layout.ts';
+import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { libraryCatalogApi, type LibraryBook, type LibraryBookCopy, type StickerLayout } from '../api';
-import { PageGridPreview, StickerPrintPortal } from '../stickers';
+import { PageGridPreview, downloadStickersPdf, printStickers } from '../stickers';
 
 /**
  * Print ONE copy's sticker into a chosen cell of the sticker sheet (LIBRARY_CATALOG-D33): pick the row/column (or click
@@ -16,7 +18,7 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
   const [layout, setLayout] = useState<StickerLayout>(DEFAULT_LAYOUT);
   const [headerText, setHeaderText] = useState('');
   const [cell, setCell] = useState(0);
-  const [printing, setPrinting] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,6 +59,27 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
     setCell((rr - 1) * grid.columns + (cc - 1));
   };
 
+  const handlePrint = () => {
+    setError(null);
+    const ok = printStickers(layout, pages, {
+      title: t('library_catalog.print_sticker.title', { code: copy?.qrCode ?? '' }),
+      print: t('library_catalog.print_codes.print_button'),
+      hint: t('library_catalog.print_codes.print_hint', { width: layout.page.widthMm, height: layout.page.heightMm }),
+    });
+    if (!ok) setError(t('library_catalog.print_codes.popup_blocked'));
+  };
+  const handlePdf = async () => {
+    setError(null);
+    setPdfBusy(true);
+    try {
+      await downloadStickersPdf(layout, pages, `sticker-${copy?.qrCode ?? 'copy'}.pdf`);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{t('library_catalog.print_sticker.title', { code: copy?.qrCode ?? '' })}</DialogTitle>
@@ -83,11 +106,13 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{t('core.common.close')}</Button>
-        <Button variant="contained" startIcon={<PrintIcon />} disabled={!data || grid.perPage < 1 || printing} onClick={() => setPrinting(true)}>
+        <Button startIcon={<PictureAsPdfIcon />} disabled={!data || grid.perPage < 1 || pdfBusy} onClick={() => void handlePdf()}>
+          {pdfBusy ? t('library_catalog.print_codes.pdf_busy') : t('library_catalog.print_codes.pdf_button')}
+        </Button>
+        <Button variant="contained" startIcon={<PrintIcon />} disabled={!data || grid.perPage < 1} onClick={handlePrint}>
           {t('library_catalog.print_codes.print_button')}
         </Button>
       </DialogActions>
-      {printing ? <StickerPrintPortal layout={layout} pages={pages} onDone={() => setPrinting(false)} /> : null}
     </Dialog>
   );
 }

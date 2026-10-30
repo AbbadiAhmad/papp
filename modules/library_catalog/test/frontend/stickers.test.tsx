@@ -13,7 +13,7 @@ vi.mock('../../../../apps/web/src/shared/permissions', () => ({
 
 import { PrintStickerDialog } from '../../frontend/pages/PrintStickerDialog';
 import { StickerDesignerPage } from '../../frontend/pages/StickerDesignerPage';
-import { BarcodeSvg, PageSheet, QrSvg } from '../../frontend/stickers';
+import { BarcodeSvg, PageSheet, QrSvg, stickersDocument } from '../../frontend/stickers';
 
 const book = { id: 'b1', title: 'Hobbit', author: 'Tolkien', publisher: null, category: null, language: null, readingLevel: null } as never;
 const copy = { id: 'c1', bookId: 'b1', qrCode: 'B000042', status: 'available', condition: null, location: 'Shelf 1', acquisitionDate: null } as never;
@@ -46,6 +46,30 @@ describe('sticker building blocks', () => {
     expect(container.querySelectorAll('.sticker-cell-empty').length).toBe(grid.perPage - 1);
     fireEvent.click(container.querySelector('[data-cell="0"]')!);
     expect(onSelect).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('stickersDocument (what the print window contains)', () => {
+  const grid = computeGrid(DEFAULT_LAYOUT);
+  const items = Array.from({ length: grid.perPage + 2 }, (_, i) => ({ ...SAMPLE_DATA, code: `B${String(i + 1).padStart(6, '0')}` }));
+  const html = stickersDocument(DEFAULT_LAYOUT, paginate(items, grid.perPage, 4), { title: 'Stickers', print: 'Print', hint: 'Use 100%' });
+
+  it('is a standalone page with exact paper size, no margins, and one block per sheet', () => {
+    expect(html).toContain('@page { size: 210mm 297mm; margin: 0; }');
+    expect((html.match(/class="sticker-page"/g) ?? []).length).toBe(2);
+    expect(html).toContain('break-after: page');
+    expect(html).toContain('Use 100%');
+  });
+
+  it('contains only the stickers (no app screen), with empty cells left out and vertical text rotated, not writing-mode', () => {
+    expect((html.match(/B0000\d\d/g) ?? []).length).toBeGreaterThanOrEqual(items.length);
+    expect(html).not.toContain('sticker-cell-empty');
+    expect(html).not.toContain('writing-mode');
+    expect(html).toContain('rotate(90deg)');
+  });
+
+  it('escapes the labels it is given', () => {
+    expect(stickersDocument(DEFAULT_LAYOUT, [[SAMPLE_DATA]], { title: '<b>x</b>', print: 'P', hint: 'h' })).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
 });
 

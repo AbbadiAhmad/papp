@@ -134,7 +134,17 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       MuiCard: { defaultProps: { variant: 'outlined' }, styleOverrides: { root: { borderRadius: radius, border } } },
       MuiDialog: { styleOverrides: { paper: { borderRadius: radius + 2 } } },
       MuiOutlinedInput: { styleOverrides: { root: { borderRadius: Math.max(radius - 2, 4), backgroundColor: c.surface } } },
-      MuiButton: { styleOverrides: { root: { borderRadius: Math.max(radius - 4, 4) } } },
+      MuiButton: { styleOverrides: { root: { borderRadius: Math.max(radius - 4, 4), whiteSpace: 'nowrap' } } },
+      // Phones: a row of buttons/controls wraps onto the next line instead of running off the screen (and being
+      // clipped on the reading-start edge). `useFlexGap` keeps the spacing right when it wraps.
+      MuiStack: {
+        defaultProps: { useFlexGap: true },
+        styleOverrides: {
+          root: ({ ownerState, theme }) => ({
+            ...(typeof ownerState.direction === 'string' && ownerState.direction.startsWith('row') ? { [theme.breakpoints.down('sm')]: { flexWrap: 'wrap' } } : {}),
+          }),
+        },
+      },
       MuiChip: { styleOverrides: { root: { fontWeight: 700 } } },
       MuiDrawer: { styleOverrides: { paper: { backgroundColor: c.surface, borderColor: c.border } } },
       MuiTableContainer: { styleOverrides: { root: { border, borderRadius: radius } } },
@@ -168,18 +178,21 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
             // Child-friendly: chunky pill buttons with a "pressed" edge, soft colored card shadows, roomy tabs.
             MuiButton: {
               styleOverrides: {
-                root: {
+                root: ({ theme }) => ({
                   borderRadius: 999,
                   minHeight: 44,
                   paddingInline: 22,
                   fontSize: '1rem',
                   fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  // Phones: slimmer pills so several fit on a line.
+                  [theme.breakpoints.down('sm')]: { minHeight: 40, paddingInline: 14, fontSize: '0.95rem' },
                   '&.MuiButton-contained.MuiButton-colorPrimary': {
                     boxShadow: `0 4px 0 ${darken(c.primary, dark ? 0.35 : 0.25)}`,
                     '&:hover': { boxShadow: `0 4px 0 ${darken(c.primary, dark ? 0.35 : 0.25)}`, filter: 'brightness(1.06)' },
                     '&:active': { boxShadow: 'none', transform: 'translateY(3px)' },
                   },
-                },
+                }),
                 sizeSmall: { minHeight: 34, paddingInline: 14, fontSize: '0.875rem' },
               },
             },

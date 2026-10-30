@@ -240,5 +240,9 @@
   "library_catalog.fields.internal_note_hint": "Only staff with permission see this note. It is never shown to readers or the public.",
   "library_catalog.copies.internal_note": "Internal note",
   "library_catalog.import.field.book_note": "Book internal note",
-  "library_catalog.import.field.copy_note": "Copy internal note"
+  "library_catalog.import.field.copy_note": "Copy internal note",
+  "library_catalog.print_codes.pdf_button": "Save as PDF",
+  "library_catalog.print_codes.pdf_busy": "Preparing PDF…",
+  "library_catalog.print_codes.popup_blocked": "The browser blocked the print window. Allow pop-ups for this site, or use \"Save as PDF\".",
+  "library_catalog.print_codes.print_hint": "Paper {{width}} × {{height}} mm. Choose \"Actual size\" / scale 100% and no margins in the print dialog."
 }

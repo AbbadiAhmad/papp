@@ -111,7 +111,10 @@ describe('<UsersImportPage /> preview-then-commit wizard', () => {
     // Re-validation, not "trust the preview": the commit call receives the
     // same File the browser read, not the ImportReport object from preview.
     const commitArg = mockedImportCommit.mock.calls[0][0];
-    expect(commitArg).toBe(file);
+    // An in-memory copy of the same file (phones can invalidate the picked File), not the preview report.
+    expect(commitArg).toBeInstanceOf(File);
+    expect((commitArg as File).name).toBe(file.name);
+    expect((commitArg as File).size).toBe(file.size);
     expect(commitArg).not.toBe(invalidReport);
   });
 

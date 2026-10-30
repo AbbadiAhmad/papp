@@ -1,4 +1,5 @@
 import DownloadIcon from '@mui/icons-material/Download';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PrintIcon from '@mui/icons-material/Print';
 import SaveIcon from '@mui/icons-material/Save';
 import {
@@ -27,7 +28,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, libraryCatalogApi, stickerDataFromCopy, type CopyForPrint, type StickerLayout } from '../api';
 import { DEFAULT_LAYOUT, computeGrid, paginate } from '../../backend/sticker-layout.ts';
-import { PageGridPreview, StickerPrintPortal } from '../stickers';
+import { PageGridPreview, downloadStickersPdf, printStickers } from '../stickers';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
@@ -48,7 +49,7 @@ export function PrintCodesPage() {
   const [layout, setLayout] = useState<StickerLayout>(DEFAULT_LAYOUT);
   // Where the first sticker goes on the first sheet (0-based cell index): lets the librarian continue on a part-used sheet.
   const [startCell, setStartCell] = useState(0);
-  const [printing, setPrinting] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -104,7 +105,27 @@ export function PrintCodesPage() {
     () => paginate(copies.map((copy) => stickerDataFromCopy(copy, headerText)), grid.perPage, startCell),
     [copies, headerText, grid.perPage, startCell],
   );
-  const handlePrint = () => setPrinting(true);
+  // Printing opens a window that holds only the stickers (printing this page itself printed the whole screen on phones).
+  const handlePrint = () => {
+    setError(null);
+    const ok = printStickers(layout, pages, {
+      title: t('library_catalog.menu.print_codes'),
+      print: t('library_catalog.print_codes.print_button'),
+      hint: t('library_catalog.print_codes.print_hint', { width: layout.page.widthMm, height: layout.page.heightMm }),
+    });
+    if (!ok) setError(t('library_catalog.print_codes.popup_blocked'));
+  };
+  const handlePdf = async () => {
+    setError(null);
+    setPdfBusy(true);
+    try {
+      await downloadStickersPdf(layout, pages);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
   const startRow = Math.floor(startCell / Math.max(1, grid.columns)) + 1;
   const startColumn = (startCell % Math.max(1, grid.columns)) + 1;
   const setStart = (row: number, column: number) => {
@@ -189,7 +210,10 @@ export function PrintCodesPage() {
               <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport} disabled={copies.length === 0}>
                 {t('library_catalog.actions.export')}
               </Button>
-              <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint} disabled={copies.length === 0 || grid.perPage < 1 || printing}>
+              <Button startIcon={<PictureAsPdfIcon />} variant="outlined" onClick={() => void handlePdf()} disabled={copies.length === 0 || grid.perPage < 1 || pdfBusy}>
+                {pdfBusy ? t('library_catalog.print_codes.pdf_busy') : t('library_catalog.print_codes.pdf_button')}
+              </Button>
+              <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint} disabled={copies.length === 0 || grid.perPage < 1}>
                 {t('library_catalog.print_codes.print_button')}
               </Button>
             </Stack>
@@ -290,7 +314,6 @@ export function PrintCodesPage() {
         </Paginated>
       </Box>
 
-      {printing ? <StickerPrintPortal layout={layout} pages={pages} onDone={() => setPrinting(false)} /> : null}
     </Box>
   );
 }
