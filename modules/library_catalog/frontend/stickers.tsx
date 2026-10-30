@@ -27,8 +27,22 @@ export function QrSvg({ value }: { value: string }) {
       const qr = QRCode.create(value || ' ', { errorCorrectionLevel: 'M' });
       const size = qr.modules.size;
       const data = qr.modules.data;
+      // One rectangle per horizontal run of dark modules (about a third of the markup of one per module): a job of
+      // hundreds of stickers is otherwise a document large enough to freeze a phone.
       let d = '';
-      for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) if (data[y * size + x]) d += `M${x} ${y}h1v1h-1z`;
+      for (let y = 0; y < size; y += 1) {
+        let x = 0;
+        while (x < size) {
+          if (!data[y * size + x]) {
+            x += 1;
+            continue;
+          }
+          let run = 1;
+          while (x + run < size && data[y * size + x + run]) run += 1;
+          d += `M${x} ${y}h${run}v1h-${run}z`;
+          x += run;
+        }
+      }
       return { size, d };
     } catch {
       return null;

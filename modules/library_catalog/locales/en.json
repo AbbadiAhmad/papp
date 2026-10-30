@@ -244,5 +244,9 @@
   "library_catalog.print_codes.pdf_button": "Save as PDF",
   "library_catalog.print_codes.pdf_busy": "Preparing PDF…",
   "library_catalog.print_codes.popup_blocked": "The browser blocked the print window. Allow pop-ups for this site, or use \"Save as PDF\".",
-  "library_catalog.print_codes.print_hint": "Paper {{width}} × {{height}} mm. Choose \"Actual size\" / scale 100% and no margins in the print dialog."
+  "library_catalog.print_codes.print_hint": "Paper {{width}} × {{height}} mm. Choose \"Actual size\" / scale 100% and no margins in the print dialog.",
+  "library_catalog.print_codes.sheet_from": "From sheet",
+  "library_catalog.print_codes.sheet_to": "To sheet",
+  "library_catalog.print_codes.batch_hint": "Printing sheets {{from}}–{{to}} of {{total}} (at most {{max}} sheets per print, so phones and printers do not freeze).",
+  "library_catalog.print_codes.next_batch": "Next batch"
 }

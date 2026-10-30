@@ -37,6 +37,9 @@ import { Paginated } from '../../../../apps/web/src/shared/components/Paginated'
  * across two pages; the first sticker can start at any row/column of the first sheet (to continue on a sheet that
  * is already partly used).
  */
+/** At most this many sheets in one print/PDF job (about 18 stickers each on A4). */
+const MAX_SHEETS_PER_JOB = 12;
+
 export function PrintCodesPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -50,6 +53,9 @@ export function PrintCodesPage() {
   // Where the first sticker goes on the first sheet (0-based cell index): lets the librarian continue on a part-used sheet.
   const [startCell, setStartCell] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
+  // Big jobs freeze phones and printers, so a job covers a range of sheets (a batch) rather than everything at once.
+  const [fromSheet, setFromSheet] = useState(1);
+  const [toSheet, setToSheet] = useState(MAX_SHEETS_PER_JOB);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -105,10 +111,18 @@ export function PrintCodesPage() {
     () => paginate(copies.map((copy) => stickerDataFromCopy(copy, headerText)), grid.perPage, startCell),
     [copies, headerText, grid.perPage, startCell],
   );
+  const totalSheets = pages.length;
+  const firstSheet = Math.min(Math.max(1, fromSheet), Math.max(1, totalSheets));
+  const lastSheet = Math.min(Math.max(firstSheet, toSheet), totalSheets, firstSheet + MAX_SHEETS_PER_JOB - 1);
+  const jobPages = useMemo(() => pages.slice(firstSheet - 1, lastSheet), [pages, firstSheet, lastSheet]);
+  const nextBatch = () => {
+    setFromSheet(lastSheet + 1);
+    setToSheet(lastSheet + MAX_SHEETS_PER_JOB);
+  };
   // Printing opens a window that holds only the stickers (printing this page itself printed the whole screen on phones).
   const handlePrint = () => {
     setError(null);
-    const ok = printStickers(layout, pages, {
+    const ok = printStickers(layout, jobPages, {
       title: t('library_catalog.menu.print_codes'),
       print: t('library_catalog.print_codes.print_button'),
       hint: t('library_catalog.print_codes.print_hint', { width: layout.page.widthMm, height: layout.page.heightMm }),
@@ -119,7 +133,7 @@ export function PrintCodesPage() {
     setError(null);
     setPdfBusy(true);
     try {
-      await downloadStickersPdf(layout, pages);
+      await downloadStickersPdf(layout, jobPages);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -235,6 +249,20 @@ export function PrintCodesPage() {
                 </Link>
               </Can>
             </Stack>
+            {totalSheets > 1 ? (
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, mb: 1.5 }}>
+                <TextField size="small" type="number" label={t('library_catalog.print_codes.sheet_from')} value={firstSheet} onChange={(e) => setFromSheet(Number(e.target.value) || 1)} slotProps={{ htmlInput: { min: 1, max: totalSheets, inputMode: 'numeric' } }} sx={{ width: 110 }} />
+                <TextField size="small" type="number" label={t('library_catalog.print_codes.sheet_to')} value={lastSheet} onChange={(e) => setToSheet(Number(e.target.value) || firstSheet)} slotProps={{ htmlInput: { min: firstSheet, max: Math.min(totalSheets, firstSheet + MAX_SHEETS_PER_JOB - 1), inputMode: 'numeric' } }} sx={{ width: 110 }} />
+                <Typography variant="body2" color="text.secondary">
+                  {t('library_catalog.print_codes.batch_hint', { from: firstSheet, to: lastSheet, total: totalSheets, max: MAX_SHEETS_PER_JOB })}
+                </Typography>
+                {lastSheet < totalSheets ? (
+                  <Button size="small" onClick={nextBatch}>
+                    {t('library_catalog.print_codes.next_batch')}
+                  </Button>
+                ) : null}
+              </Stack>
+            ) : null}
             {grid.perPage > 0 ? (
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ alignItems: 'flex-start' }}>
                 <Stack spacing={1.5}>

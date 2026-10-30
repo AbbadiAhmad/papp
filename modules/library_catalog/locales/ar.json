@@ -244,5 +244,9 @@
   "library_catalog.print_codes.pdf_button": "حفظ كملف PDF",
   "library_catalog.print_codes.pdf_busy": "جارٍ تجهيز PDF…",
   "library_catalog.print_codes.popup_blocked": "منع المتصفح نافذة الطباعة. اسمح بالنوافذ المنبثقة لهذا الموقع أو استخدم \"حفظ كملف PDF\".",
-  "library_catalog.print_codes.print_hint": "الورقة {{width}} × {{height}} مم. اختر \"الحجم الفعلي\" / مقياس 100% وبلا هوامش في نافذة الطباعة."
+  "library_catalog.print_codes.print_hint": "الورقة {{width}} × {{height}} مم. اختر \"الحجم الفعلي\" / مقياس 100% وبلا هوامش في نافذة الطباعة.",
+  "library_catalog.print_codes.sheet_from": "من الورقة",
+  "library_catalog.print_codes.sheet_to": "إلى الورقة",
+  "library_catalog.print_codes.batch_hint": "طباعة الأوراق {{from}}–{{to}} من {{total}} (بحد أقصى {{max}} ورقة في كل طباعة حتى لا يتجمّد الهاتف أو الطابعة).",
+  "library_catalog.print_codes.next_batch": "الدفعة التالية"
 }
