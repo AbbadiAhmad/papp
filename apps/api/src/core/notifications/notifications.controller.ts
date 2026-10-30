@@ -47,7 +47,7 @@ export class NotificationsController {
   async send(
     @Body() dto: SendNotificationDto,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ id: string; recipientCount: number; emailedCount: number }> {
+  ): Promise<{ id: string; recipientCount: number; emailedCount: number; externalEmails: string[] }> {
     const result = await this.notificationsService.send({
       category: dto.category,
       title: dto.title,
@@ -55,6 +55,8 @@ export class NotificationsController {
       targetType: dto.targetType,
       targetId: dto.targetId ?? null,
       targetIds: dto.targetIds,
+      extraUserIds: dto.extraUserIds,
+      extraEmails: dto.extraEmails,
       sentBy: user.userId, // a person composed this send — never null here
       confirmation: dto.requiresConfirmation
         ? { type: dto.confirmationType ?? 'receipt', allowComment: dto.confirmationAllowComment }
@@ -62,7 +64,7 @@ export class NotificationsController {
     });
     // `id` at the top level is what AuditInterceptor's entityId fallback
     // reads for the create row.
-    return { id: result.notification.id, recipientCount: result.recipientCount, emailedCount: result.emailedCount };
+    return { id: result.notification.id, recipientCount: result.recipientCount, emailedCount: result.emailedCount, externalEmails: result.externalEmails };
   }
 
   // --- D119: confirmation evidence (admin) ---------------------------------

@@ -9,6 +9,10 @@ export interface SendNotificationInput {
   targetId?: string;
   /** role targets: several roles at once (union of holders). */
   targetIds?: string[];
+  /** Extra platform users added to the target's recipients. */
+  extraUserIds?: string[];
+  /** External addresses (no account): emailed only; not combinable with confirmation. */
+  extraEmails?: string[];
   /** Ask each recipient to confirm through a personal emailed link (evidence is stored). */
   requiresConfirmation?: boolean;
   confirmationType?: string;
@@ -59,7 +63,7 @@ export interface ConfirmationDetail {
 export const notificationsApi = {
   send: (dto: SendNotificationInput) =>
     apiClient
-      .post<{ id: string; recipientCount: number; emailedCount: number }>('/notifications', dto)
+      .post<{ id: string; recipientCount: number; emailedCount: number; externalEmails: string[] }>('/notifications', dto)
       .then((r) => r.data),
   getInbox: () => apiClient.get<InboxResponse>('/notifications/me').then((r) => r.data),
   listConfirmationRequests: () => apiClient.get<ConfirmationRequestRow[]>('/notifications/confirmations').then((r) => r.data),

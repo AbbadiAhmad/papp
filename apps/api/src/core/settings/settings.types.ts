@@ -60,6 +60,11 @@ export const PASSWORD_POLICY_KEY = 'auth.password_policy';
 export const TOKEN_LIFETIMES_KEY = 'auth.token_lifetimes';
 export const NOTIFICATION_CATEGORIES_KEY = 'notifications.categories';
 /** D119: `{ linkTtlDays }` — how long an emailed confirmation link stays valid (seeded by 0021). */
+/** D122: `{ linkTtlMinutes }` — how long an emailed password-reset link stays valid (seeded by 0022). */
+export const PASSWORD_RESET_KEY = 'auth.password_reset';
+export interface PasswordResetConfig {
+  linkTtlMinutes: number;
+}
 export const NOTIFICATION_CONFIRMATION_KEY = 'notifications.confirmation';
 export interface NotificationConfirmationConfig {
   linkTtlDays: number;

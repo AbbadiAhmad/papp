@@ -70,3 +70,13 @@ export async function getLandingStatus(): Promise<string | null> {
   const response = await apiClient.get<{ landingPage: string | null }>('/auth/landing-status');
   return response.data.landingPage;
 }
+
+/** POST /auth/forgot-password — @Public(). Always succeeds the same way, whether or not the address has an account. */
+export async function forgotPassword(email: string): Promise<void> {
+  await apiClient.post('/auth/forgot-password', { email });
+}
+
+/** POST /auth/reset-password — @Public(). The emailed single-use token is the credential. */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  await apiClient.post('/auth/reset-password', { token, newPassword });
+}

@@ -246,5 +246,22 @@
   "core.notifications.confirm.expired": "This confirmation link has expired. Please ask for a new one.",
   "core.notifications.confirm.not_found": "This confirmation link is not valid.",
   "core.notifications.confirm.already": "This was already confirmed.",
-  "core.notifications.confirmations.view": "View evidence"
+  "core.notifications.confirmations.view": "View evidence",
+  "core.notifications.extra_people": "Add people",
+  "core.notifications.extra_people_hint": "Also send to these users, in addition to the target above. Each person gets it once.",
+  "core.notifications.extra_emails": "Add email addresses",
+  "core.notifications.extra_emails_hint": "People without an account. Type an address and press Enter. They receive the email only.",
+  "core.notifications.extra_emails_no_confirmation": "Not available with a confirmation link: it needs an account.",
+  "core.notifications.invalid_emails": "Not a valid email address: {{emails}}",
+  "core.notifications.sent_external": "{{count}} external email(s) sent.",
+  "core.auth.forgot_password": "Forgot your password?",
+  "core.auth.forgot_password_title": "Reset your password",
+  "core.auth.forgot_password_help": "Enter your account email. If it matches an account we will send a link to set a new password.",
+  "core.auth.forgot_password_send": "Send reset link",
+  "core.auth.forgot_password_sent": "If that email belongs to an account, a reset link has been sent. Check your inbox (and spam).",
+  "core.auth.back_to_login": "Back to login",
+  "core.auth.reset_password_title": "Choose a new password",
+  "core.auth.reset_password_no_token": "This page needs the link from the reset email.",
+  "core.auth.reset_password_done": "Your password was changed. All your devices were signed out; log in with the new password.",
+  "core.auth.reset_password_submit": "Change password"
 }

@@ -88,6 +88,11 @@ export function LoginPage() {
               <Button type="submit" variant="contained" size="large" disabled={submitting} fullWidth>
                 {t('core.auth.login')}
               </Button>
+              <Typography variant="body2" sx={{ textAlign: 'center' }}>
+                <Link component={RouterLink} to="/forgot-password">
+                  {t('core.auth.forgot_password')}
+                </Link>
+              </Typography>
               {registrationOpen ? (
                 <Typography variant="body2" sx={{ textAlign: 'center' }}>
                   {t('core.auth.no_account_yet')}{' '}

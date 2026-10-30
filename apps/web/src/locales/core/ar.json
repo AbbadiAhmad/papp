@@ -246,5 +246,22 @@
   "core.notifications.confirm.expired": "انتهت صلاحية رابط التأكيد. يرجى طلب رابط جديد.",
   "core.notifications.confirm.not_found": "رابط التأكيد غير صالح.",
   "core.notifications.confirm.already": "تم التأكيد مسبقًا.",
-  "core.notifications.confirmations.view": "عرض الأدلة"
+  "core.notifications.confirmations.view": "عرض الأدلة",
+  "core.notifications.extra_people": "إضافة أشخاص",
+  "core.notifications.extra_people_hint": "يُرسل أيضاً إلى هؤلاء المستخدمين إضافة إلى الهدف أعلاه. يصل التنبيه لكل شخص مرة واحدة.",
+  "core.notifications.extra_emails": "إضافة عناوين بريد",
+  "core.notifications.extra_emails_hint": "لأشخاص ليس لديهم حساب. اكتب العنوان واضغط Enter. يصلهم البريد فقط.",
+  "core.notifications.extra_emails_no_confirmation": "غير متاح مع رابط التأكيد لأنه يحتاج حساباً.",
+  "core.notifications.invalid_emails": "عنوان بريد غير صالح: {{emails}}",
+  "core.notifications.sent_external": "أُرسل {{count}} بريداً خارجياً.",
+  "core.auth.forgot_password": "نسيت كلمة المرور؟",
+  "core.auth.forgot_password_title": "استعادة كلمة المرور",
+  "core.auth.forgot_password_help": "أدخل البريد الإلكتروني لحسابك. إن كان مرتبطاً بحساب سنرسل رابطاً لتعيين كلمة مرور جديدة.",
+  "core.auth.forgot_password_send": "إرسال رابط الاستعادة",
+  "core.auth.forgot_password_sent": "إن كان هذا البريد مرتبطاً بحساب فقد أُرسل إليه رابط الاستعادة. تحقق من صندوق الوارد (والرسائل غير المرغوبة).",
+  "core.auth.back_to_login": "العودة لتسجيل الدخول",
+  "core.auth.reset_password_title": "اختر كلمة مرور جديدة",
+  "core.auth.reset_password_no_token": "هذه الصفحة تحتاج الرابط الموجود في رسالة الاستعادة.",
+  "core.auth.reset_password_done": "تم تغيير كلمة المرور وتسجيل الخروج من كل أجهزتك. سجّل الدخول بكلمة المرور الجديدة.",
+  "core.auth.reset_password_submit": "تغيير كلمة المرور"
 }

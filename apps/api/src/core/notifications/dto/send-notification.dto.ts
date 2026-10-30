@@ -1,5 +1,5 @@
 import { NotificationTargetType } from '@prisma/client';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 /**
  * POST /notifications body (D21): target is a platform user, a role (its
@@ -41,6 +41,27 @@ export class SendNotificationDto {
   @ArrayMaxSize(100)
   @IsUUID('all', { each: true })
   targetIds?: string[];
+
+  /**
+   * Extra platform users added on top of the target (any target type): the final
+   * recipients are the union, each user once. Named explicitly, so inactive users are honored.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  extraUserIds?: string[];
+
+  /**
+   * External addresses (people with no account) added on top of the target. They are
+   * emailed only — no inbox row, no confirmation link — so they cannot be combined with
+   * `requiresConfirmation`.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsEmail({}, { each: true })
+  extraEmails?: string[];
 
   /**
    * D119: when true, every recipient is emailed a personal link to confirm

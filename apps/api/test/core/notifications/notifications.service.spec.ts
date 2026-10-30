@@ -227,6 +227,51 @@ describe('NotificationsService.send', () => {
     });
   });
 
+  describe('extra people and external emails', () => {
+    it('adds named users on top of the target, each user once', async () => {
+      prisma.user.findMany.mockResolvedValueOnce([alice, bob]).mockResolvedValueOnce([carol]);
+
+      const result = await service.send(baseInput({ targetType: 'all_users', targetId: null, extraUserIds: ['u2', 'u3', 'u3'] }));
+
+      // u2 is already in the target, so only u3 is looked up and added.
+      expect(prisma.user.findMany).toHaveBeenLastCalledWith({ where: { id: { in: ['u3'] } }, select: { id: true, email: true, name: true } });
+      expect(result.recipientCount).toBe(3);
+      expect(tx.notificationRecipient.createMany).toHaveBeenCalledWith({
+        data: [
+          { notificationId: 'notif-1', userId: 'u1' },
+          { notificationId: 'notif-1', userId: 'u2' },
+          { notificationId: 'notif-1', userId: 'u3' },
+        ],
+      });
+    });
+
+    it('404s when an extra user does not exist, before creating anything', async () => {
+      prisma.user.findUnique.mockResolvedValue(alice);
+      prisma.user.findMany.mockResolvedValue([]);
+      await expect(service.send(baseInput({ extraUserIds: ['missing'] }))).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('emails external addresses only (no inbox row), once each, even when the category sends no email', async () => {
+      prisma.user.findUnique.mockResolvedValue(alice);
+
+      const result = await service.send(baseInput({ extraEmails: ['Guest@Example.com', 'guest@example.com', 'other@example.org'] }));
+
+      expect(result.recipientCount).toBe(1);
+      expect(result.externalEmails).toEqual(['guest@example.com', 'other@example.org']);
+      expect(email.send).toHaveBeenCalledTimes(2);
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'guest@example.com', subject: 'Hello guest@example.com' }));
+      expect(tx.notificationRecipient.createMany).toHaveBeenCalledWith({ data: [{ notificationId: 'notif-1', userId: 'u1' }] });
+    });
+
+    it('refuses external addresses together with a confirmation link', async () => {
+      await expect(
+        service.send(baseInput({ extraEmails: ['guest@example.com'], confirmation: { type: 'receipt' } })),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('atomicity shape', () => {
     it('creates the notification AND its recipient rows through the same $transaction client', async () => {
       prisma.user.findUnique.mockResolvedValue(alice);

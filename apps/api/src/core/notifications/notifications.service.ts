@@ -19,6 +19,10 @@ export interface SendNotificationInput {
   targetId?: string | null;
   /** 'role' targets only: several roles; recipients are the union of holders. */
   targetIds?: string[];
+  /** Extra platform users added to the target's recipients (union, each once). */
+  extraUserIds?: string[];
+  /** External addresses, emailed only (no inbox row, no confirmation). */
+  extraEmails?: string[];
   /** null = system-generated (ARCHITECTURE.md §12.1). */
   sentBy?: string | null;
   /**
@@ -41,6 +45,8 @@ export interface SendResult {
   notification: Notification;
   recipientCount: number;
   emailedCount: number;
+  /** External addresses that were handed to the mail transport. */
+  externalEmails: string[];
 }
 
 /** One inbox entry, rendered for display (§12.1 — never stored this way). */
@@ -98,6 +104,10 @@ export class NotificationsService {
       if (!input.confirmation.type.trim()) {
         throw new BadRequestException('confirmation.type is required');
       }
+    }
+    const extraEmails = Array.from(new Set((input.extraEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean)));
+    if (extraEmails.length > 0 && input.confirmation) {
+      throw new BadRequestException('Confirmation links need an account; remove the external email addresses or turn confirmation off');
     }
     const recipients = await this.resolveRecipients(input);
 
@@ -170,7 +180,8 @@ export class NotificationsService {
       ? await this.emailRecipients(notification, recipients)
       : 0;
 
-    return { notification, recipientCount: recipients.length, emailedCount };
+    const externalEmails = await this.emailExternal(notification, extraEmails);
+    return { notification, recipientCount: recipients.length, emailedCount, externalEmails };
   }
 
   /**
@@ -255,7 +266,36 @@ export class NotificationsService {
     }
   }
 
+  /** The target's recipients plus the extra named users, each once. */
   private async resolveRecipients(input: SendNotificationInput): Promise<Array<{ id: string; email: string; name: string }>> {
+    const base = await this.resolveTargetRecipients(input);
+    const extraIds = Array.from(new Set(input.extraUserIds ?? [])).filter((id) => !base.some((r) => r.id === id));
+    if (extraIds.length === 0) return base;
+    const extra = await this.prisma.user.findMany({ where: { id: { in: extraIds } }, select: { id: true, email: true, name: true } });
+    if (extra.length !== extraIds.length) {
+      throw new NotFoundException('One of the extra users was not found');
+    }
+    return [...base, ...extra];
+  }
+
+  /** External addresses: email only. Returns the addresses the transport accepted. */
+  private async emailExternal(notification: Notification, addresses: string[]): Promise<string[]> {
+    const sent: string[] = [];
+    for (const address of addresses) {
+      const values = { name: address };
+      const bodyMarkdown = applyPlaceholders(notification.bodyMarkdown, values);
+      const delivered = await this.email.send({
+        to: address,
+        subject: applyPlaceholders(notification.title, values),
+        text: bodyMarkdown,
+        html: renderMarkdownToSafeHtml(bodyMarkdown),
+      });
+      if (delivered) sent.push(address);
+    }
+    return sent;
+  }
+
+  private async resolveTargetRecipients(input: SendNotificationInput): Promise<Array<{ id: string; email: string; name: string }>> {
     const select = { id: true, email: true, name: true } as const;
 
     switch (input.targetType) {

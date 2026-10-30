@@ -11,7 +11,10 @@ import { LandingService } from '../settings/landing.service';
 import { AuthService, IssuedTokens, RegisteredUser } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForcePasswordChangeDto } from './dto/force-password-change.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { PasswordResetService } from './password-reset.service';
 import { RegisterDto } from './dto/register.dto';
 import { SetupCreateAdminDto } from './dto/setup.dto';
 import { REFRESH_TOKEN_COOKIE_NAME } from './jwt.constants';
@@ -39,6 +42,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly auditLogWriter: AuditLogWriter,
     private readonly landing: LandingService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   @Post('login')
@@ -66,6 +70,25 @@ export class AuthController {
 
     this.setRefreshCookie(res, tokens);
     return { accessToken: tokens.accessToken };
+  }
+
+  /** Same answer whether or not the address has an account (no account enumeration). */
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @UseGuards(PublicThrottlerGuard)
+  async forgotPassword(@Body() body: ForgotPasswordDto, @Req() req: Request): Promise<{ ok: true }> {
+    await this.passwordReset.request(body.email, extractRequestMeta(req).ipAddress);
+    return { ok: true };
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @UseGuards(PublicThrottlerGuard)
+  async resetPassword(@Body() body: ResetPasswordDto, @Req() req: Request): Promise<{ ok: true }> {
+    await this.passwordReset.complete(body.token, body.newPassword, extractRequestMeta(req).ipAddress);
+    return { ok: true };
   }
 
   @Post('refresh')

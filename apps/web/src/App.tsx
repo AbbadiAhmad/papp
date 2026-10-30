@@ -13,8 +13,10 @@ import { TopBar, PageLayout, MobileNavProvider } from './shared/components/PageL
 import { RequirePermissionRoute } from './shared/components/RequirePermissionRoute';
 import { RouteErrorBoundary } from './shared/components/ErrorBoundary';
 import * as authApi from './shared/api/auth';
+import { ForgotPasswordPage } from './core/auth/ForgotPasswordPage';
 import { LoginPage } from './core/auth/LoginPage';
 import { RegisterPage } from './core/auth/RegisterPage';
+import { ResetPasswordPage } from './core/auth/ResetPasswordPage';
 import { SetupPage } from './core/auth/SetupPage';
 import { ForcePasswordChangePage } from './core/auth/ForcePasswordChangePage';
 import { DashboardPage } from './core/DashboardPage';
@@ -192,6 +194,9 @@ function AppRoutes() {
             setting itself and 403s if it's off, surfaced via RegisterPage's
             own error state. */}
         <Route path="/register" element={<RegisterPage />} />
+        {/* D122: "forgot password" by email — public; the emailed single-use token is the credential. */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         {/* D119: emailed confirmation link — public, the token is the credential. */}
         <Route path="/notifications/confirm/:token" element={<PublicRouteFrame><NotificationConfirmPage /></PublicRouteFrame>} />
         {/* MODULE_SPEC.md §7.1: a public route "never redirects to the login

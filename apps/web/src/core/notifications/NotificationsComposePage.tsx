@@ -9,6 +9,8 @@ import { usersApi } from '../../shared/api/users';
 import { useGatedCall } from '../../shared/permissions';
 import type { NotificationTargetType, PublicRole, PublicUser } from '../../shared/api/types';
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function NotificationsComposePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -22,6 +24,8 @@ export function NotificationsComposePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [roles, setRoles] = useState<PublicRole[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
+  const [extraUserIds, setExtraUserIds] = useState<string[]>([]);
+  const [extraEmails, setExtraEmails] = useState<string[]>([]);
   const [requiresConfirmation, setRequiresConfirmation] = useState(false);
   const [confirmationType, setConfirmationType] = useState('receipt');
   const [allowComment, setAllowComment] = useState(true);
@@ -35,7 +39,8 @@ export function NotificationsComposePage() {
     if (targetType === 'role' && roles.length === 0) {
       rolesApi.list().then(setRoles).catch(() => undefined);
     }
-    if (targetType === 'user' && users.length === 0) {
+    // The user list also feeds the "add people" picker, so it is loaded for every target type.
+    if (users.length === 0) {
       usersApi.list().then(setUsers).catch(() => undefined);
     }
   }, [targetType, roles.length, users.length]);
@@ -55,6 +60,8 @@ export function NotificationsComposePage() {
         targetType,
         targetId: targetType === 'user' ? (userId ?? '') : undefined,
         targetIds: targetType === 'role' ? roleIds : undefined,
+        ...(extraUserIds.length ? { extraUserIds } : {}),
+        ...(extraEmails.length && !requiresConfirmation ? { extraEmails } : {}),
         ...(requiresConfirmation
           ? { requiresConfirmation: true, confirmationType, confirmationAllowComment: allowComment }
           : {}),
@@ -69,8 +76,19 @@ export function NotificationsComposePage() {
         setSubmitting(false);
         return;
       }
+      const invalid = extraEmails.filter((e) => !EMAIL_PATTERN.test(e));
+      if (!requiresConfirmation && invalid.length > 0) {
+        setError(t('core.notifications.invalid_emails', { emails: invalid.join(', ') }));
+        setSubmitting(false);
+        return;
+      }
       const result = await gated('notifications.send', () => notificationsApi.send(dto));
-      setSuccess(t('core.notifications.sent', { recipients: result.recipientCount }));
+      setSuccess(
+        t('core.notifications.sent', { recipients: result.recipientCount }) +
+          (result.externalEmails.length ? ` ${t('core.notifications.sent_external', { count: result.externalEmails.length })}` : ''),
+      );
+      setExtraEmails([]);
+      setExtraUserIds([]);
       setTitle('');
       setBodyMarkdown('');
     } catch (err) {
@@ -147,6 +165,38 @@ export function NotificationsComposePage() {
               renderInput={(params) => <TextField {...params} label={t('core.notifications.user')} required />}
             />
           ) : null}
+          <Autocomplete
+            multiple
+            disableCloseOnSelect
+            options={users}
+            value={users.filter((u) => extraUserIds.includes(u.id))}
+            getOptionLabel={(u) => `${u.name} (${u.email})`}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            onChange={(_, value) => setExtraUserIds(value.map((u) => u.id))}
+            renderInput={(params) => <TextField {...params} label={t('core.notifications.extra_people')} helperText={t('core.notifications.extra_people_hint')} />}
+          />
+          <Autocomplete
+            multiple
+            freeSolo
+            options={[] as string[]}
+            value={extraEmails}
+            disabled={requiresConfirmation}
+            onChange={(_, value) => setExtraEmails(value.map((v) => v.trim()).filter(Boolean))}
+            renderValue={(value, getItemProps) =>
+              value.map((option, index) => {
+                const { key, ...itemProps } = getItemProps({ index });
+                return <Chip {...itemProps} key={key} label={option} size="small" color={EMAIL_PATTERN.test(option) ? 'default' : 'error'} />;
+              })
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                type="email"
+                label={t('core.notifications.extra_emails')}
+                helperText={requiresConfirmation ? t('core.notifications.extra_emails_no_confirmation') : t('core.notifications.extra_emails_hint')}
+              />
+            )}
+          />
           <FormControlLabel
             control={<Checkbox checked={requiresConfirmation} onChange={(e) => setRequiresConfirmation(e.target.checked)} />}
             label={t('core.notifications.requires_confirmation')}
