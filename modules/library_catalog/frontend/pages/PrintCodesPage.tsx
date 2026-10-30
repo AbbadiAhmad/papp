@@ -28,7 +28,7 @@ import { formatDateOnly } from '../../../../apps/web/src/shared/format';
 import { Can, useGatedCall } from '../../../../apps/web/src/shared/permissions';
 import { downloadBlob, libraryCatalogApi, stickerDataFromCopy, type CopyForPrint, type StickerLayout } from '../api';
 import { DEFAULT_LAYOUT, computeGrid, paginate } from '../../backend/sticker-layout.ts';
-import { PageGridPreview, downloadStickersPdf, printStickers } from '../stickers';
+import { PageGridPreview, downloadStickersPdf, prefersPdfPrinting, printStickers } from '../stickers';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
 /**
@@ -53,6 +53,8 @@ export function PrintCodesPage() {
   // Where the first sticker goes on the first sheet (0-based cell index): lets the librarian continue on a part-used sheet.
   const [startCell, setStartCell] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
+  // Phones/tablets: the PDF is the way to print (see prefersPdfPrinting).
+  const phonePrinting = prefersPdfPrinting();
   // Big jobs freeze phones and printers, so a job covers a range of sheets (a batch) rather than everything at once.
   const [fromSheet, setFromSheet] = useState(1);
   const [toSheet, setToSheet] = useState(MAX_SHEETS_PER_JOB);
@@ -224,13 +226,20 @@ export function PrintCodesPage() {
               <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport} disabled={copies.length === 0}>
                 {t('library_catalog.actions.export')}
               </Button>
-              <Button startIcon={<PictureAsPdfIcon />} variant="outlined" onClick={() => void handlePdf()} disabled={copies.length === 0 || grid.perPage < 1 || pdfBusy}>
+              <Button startIcon={<PictureAsPdfIcon />} variant={phonePrinting ? 'contained' : 'outlined'} onClick={() => void handlePdf()} disabled={copies.length === 0 || grid.perPage < 1 || pdfBusy}>
                 {pdfBusy ? t('library_catalog.print_codes.pdf_busy') : t('library_catalog.print_codes.pdf_button')}
               </Button>
+              {phonePrinting ? null : (
               <Button startIcon={<PrintIcon />} variant="contained" onClick={handlePrint} disabled={copies.length === 0 || grid.perPage < 1}>
                 {t('library_catalog.print_codes.print_button')}
               </Button>
+              )}
             </Stack>
+            {phonePrinting ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                {t('library_catalog.print_codes.phone_hint')}
+              </Typography>
+            ) : null}
           </CardContent>
         </Card>
 

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { DEFAULT_LAYOUT, computeGrid, paginate, type StickerData } from '../../backend/sticker-layout.ts';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { libraryCatalogApi, type LibraryBook, type LibraryBookCopy, type StickerLayout } from '../api';
-import { PageGridPreview, downloadStickersPdf, printStickers } from '../stickers';
+import { PageGridPreview, downloadStickersPdf, prefersPdfPrinting, printStickers } from '../stickers';
 
 /**
  * Print ONE copy's sticker into a chosen cell of the sticker sheet (LIBRARY_CATALOG-D33): pick the row/column (or click
@@ -19,6 +19,7 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
   const [headerText, setHeaderText] = useState('');
   const [cell, setCell] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const phonePrinting = prefersPdfPrinting();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +98,7 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
                 <TextField size="small" type="number" label={t('library_catalog.print_codes.start_row')} value={row} onChange={(e) => setPosition(Number(e.target.value) || 1, column)} slotProps={{ htmlInput: { min: 1, max: grid.rows, inputMode: 'numeric' } }} sx={{ width: 110 }} />
                 <TextField size="small" type="number" label={t('library_catalog.print_codes.start_column')} value={column} onChange={(e) => setPosition(row, Number(e.target.value) || 1)} slotProps={{ htmlInput: { min: 1, max: grid.columns, inputMode: 'numeric' } }} sx={{ width: 110 }} />
               </Stack>
+              {phonePrinting ? <Typography variant="body2" color="text.secondary">{t('library_catalog.print_codes.phone_hint')}</Typography> : null}
               <Box sx={{ textAlign: 'center' }}>
                 <PageGridPreview layout={layout} cells={pages[0] ?? []} maxWidthPx={320} selectedCell={cell} onSelectCell={setCell} />
               </Box>
@@ -106,12 +108,14 @@ export function PrintStickerDialog({ open, book, copy, onClose }: { open: boolea
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{t('core.common.close')}</Button>
-        <Button startIcon={<PictureAsPdfIcon />} disabled={!data || grid.perPage < 1 || pdfBusy} onClick={() => void handlePdf()}>
+        <Button startIcon={<PictureAsPdfIcon />} variant={phonePrinting ? 'contained' : 'text'} disabled={!data || grid.perPage < 1 || pdfBusy} onClick={() => void handlePdf()}>
           {pdfBusy ? t('library_catalog.print_codes.pdf_busy') : t('library_catalog.print_codes.pdf_button')}
         </Button>
-        <Button variant="contained" startIcon={<PrintIcon />} disabled={!data || grid.perPage < 1} onClick={handlePrint}>
-          {t('library_catalog.print_codes.print_button')}
-        </Button>
+        {phonePrinting ? null : (
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!data || grid.perPage < 1} onClick={handlePrint}>
+            {t('library_catalog.print_codes.print_button')}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );

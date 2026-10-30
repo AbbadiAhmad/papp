@@ -237,6 +237,13 @@ export function PageSheet({
   );
 }
 
+/**
+ * Phones and tablets (touch-only devices) print through the PDF instead of the HTML print window: iOS Safari's print
+ * preview stays on "Loading Preview…" and the page freezes on the stickers document, while the PDF opens in the
+ * system viewer where Share → Print always works.
+ */
+export const prefersPdfPrinting = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches && !window.matchMedia?.('(any-pointer: fine)').matches;
+
 const escapeHtml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export interface PrintLabels {
