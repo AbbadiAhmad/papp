@@ -75,12 +75,21 @@ let BooksController = class BooksController {
     async importPreview(file) {
         if (!file)
             throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
-        return (await this.importer.preview(file.buffer)).report;
+        return this.importer.preview(file.buffer);
     }
-    async importCommit(file) {
+    async importCommit(file, decisionsJson) {
         if (!file)
             throw new common_1.BadRequestException('No file uploaded (expected multipart field "file")');
-        return this.importer.commit(file.buffer);
+        let decisions;
+        try {
+            decisions = JSON.parse(decisionsJson ?? '');
+        }
+        catch {
+            throw new common_1.BadRequestException('"decisions" must be a JSON object (expected multipart field "decisions")');
+        }
+        if (!decisions || typeof decisions !== 'object' || typeof decisions.books !== 'object')
+            throw new common_1.BadRequestException('"decisions.books" is required');
+        return this.importer.commit(file.buffer, decisions);
     }
     // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------
     // "The librarian has to approve the comments to publish it" — a separate
@@ -226,8 +235,9 @@ __decorate([
     (0, platform_1.Audit)({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' }),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
     __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Body)('decisions')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], BooksController.prototype, "importCommit", null);
 __decorate([

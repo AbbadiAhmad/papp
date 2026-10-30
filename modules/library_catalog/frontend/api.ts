@@ -27,13 +27,49 @@ export interface BookFilesInfo {
 
 export const MAX_GALLERY_IMAGES = 10;
 
+export interface ImportIssue {
+  level: 'error' | 'warning' | 'info';
+  message: string;
+}
+export interface ImportFieldDiff {
+  field: string;
+  current: string | null;
+  incoming: string | null;
+  differs: boolean;
+  locked: boolean;
+}
+export type ImportAction = 'create' | 'update' | 'unchanged' | 'error';
+export interface ImportCopyPlan {
+  key: string;
+  rows: number[];
+  action: ImportAction;
+  copyId: string | null;
+  code: string | null;
+  fields: ImportFieldDiff[];
+  issues: ImportIssue[];
+}
+export interface ImportBookPlan {
+  key: string;
+  rows: number[];
+  action: ImportAction;
+  bookId: string | null;
+  title: string | null;
+  fields: ImportFieldDiff[];
+  issues: ImportIssue[];
+  copies: ImportCopyPlan[];
+}
 export interface BooksImportReport {
-  rows: { row: number; id: string | null; title: string | null; action: 'create' | 'update' | 'unchanged' | null; changes: string[]; valid: boolean; error: string | null }[];
-  validCount: number;
-  invalidCount: number;
-  allValid: boolean;
-  created?: number;
-  updated?: number;
+  books: ImportBookPlan[];
+  errorCount: number;
+  warningCount: number;
+  result?: { booksCreated: number; booksUpdated: number; copiesCreated: number; copiesUpdated: number; skipped: number };
+}
+export interface ImportItemDecision {
+  apply: boolean;
+  fields?: Record<string, string>;
+}
+export interface ImportDecisions {
+  books: Record<string, ImportItemDecision & { copies?: Record<string, ImportItemDecision> }>;
 }
 
 /** Public URL of one extra gallery picture. */
@@ -233,9 +269,10 @@ export const libraryCatalogApi = {
     form.append('file', file);
     return apiClient.post<BooksImportReport>('/api/library/books/import/preview', form).then((r) => r.data);
   },
-  importBooksCommit: (file: File) => {
+  importBooksCommit: (file: File, decisions: ImportDecisions) => {
     const form = new FormData();
     form.append('file', file);
+    form.append('decisions', JSON.stringify(decisions));
     return apiClient.post<BooksImportReport>('/api/library/books/import', form).then((r) => r.data);
   },
   uploadBookImage: (id: string, file: File) => {

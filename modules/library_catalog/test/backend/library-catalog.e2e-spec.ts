@@ -564,6 +564,77 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       expect(ids).toContain(id);
     });
 
+    it('the books import requires library_catalog.books.import (preview and commit)', async () => {
+      for (const path of ['/api/library/books/import/preview', '/api/library/books/import']) {
+        for (const role of ALL_ROLE_CODES) {
+          const hasPerm = await roleHasPermission(app!, role, 'library_catalog.books.import');
+          const res = await request(app!.getHttpServer()).post(path).set('Authorization', `Bearer ${await tokenFor(app!, role)}`);
+          // Allowed roles pass the guard and fail on the missing file (400); the others never get that far.
+          expect({ role, path, status: res.status }).toEqual({ role, path, status: hasPerm ? 400 : 403 });
+        }
+        expect((await request(app!.getHttpServer()).post(path)).status).toBe(401);
+      }
+    });
+
+    it('a file produced by the export previews cleanly, imports back as "unchanged", and a commit applies only what was chosen', async () => {
+      const exported = await request(app!.getHttpServer())
+        .get('/api/library/books/export')
+        .set('Authorization', await tokenOf('admin'))
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+      const preview = await request(app!.getHttpServer())
+        .post('/api/library/books/import/preview')
+        .set('Authorization', await tokenOf('admin'))
+        .attach('file', exported.body as Buffer, 'books.xlsx');
+      expect(preview.status).toBe(200);
+      expect(preview.body.errorCount).toBe(0);
+      const plan = preview.body.books.find((b: { bookId: string }) => b.bookId === id);
+      expect(plan.action).toBe('unchanged');
+      expect(plan.copies.every((c: { action: string }) => c.action === 'unchanged')).toBe(true);
+
+      // Edit the title in the file, then commit with the change declined: nothing is written.
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(exported.body as Buffer);
+      const sheet = wb.worksheets[0];
+      let edited = false;
+      sheet.eachRow((row, n) => {
+        if (n > 1 && String(row.getCell(1).value) === id && !edited) {
+          row.getCell(2).value = 'Edited through import';
+          edited = true;
+        }
+      });
+      const editedBuffer = Buffer.from(await wb.xlsx.writeBuffer());
+      const editedPreview = await request(app!.getHttpServer())
+        .post('/api/library/books/import/preview')
+        .set('Authorization', await tokenOf('admin'))
+        .attach('file', editedBuffer, 'books.xlsx');
+      const editedPlan = editedPreview.body.books.find((b: { bookId: string }) => b.bookId === id);
+      expect(editedPlan.action).toBe('update');
+      expect(editedPlan.fields.find((f: { field: string }) => f.field === 'title')).toMatchObject({ incoming: 'Edited through import', differs: true });
+
+      const declined = await commitWith(false);
+      expect(declined.status).toBe(200);
+      expect(declined.body.result.booksUpdated).toBe(0);
+      const applied = await commitWith(true);
+      expect(applied.status).toBe(200);
+      expect(applied.body.result.booksUpdated).toBe(1);
+      const after = await request(app!.getHttpServer()).get(`/api/library/books/${id}`).set('Authorization', await tokenOf('admin'));
+      expect(after.body.title).toBe('Edited through import (final)');
+
+      async function commitWith(apply: boolean) {
+        return request(app!.getHttpServer())
+          .post('/api/library/books/import')
+          .set('Authorization', await tokenOf('admin'))
+          .field('decisions', JSON.stringify({ books: { [editedPlan.key]: { apply, fields: { title: 'Edited through import (final)' } } } }))
+          .attach('file', editedBuffer, 'books.xlsx');
+      }
+    });
+
     it('removing one file keeps the other; removing the last file removes the folder; a missing file is 404', async () => {
       const del = (kind: string, role: RoleCode = 'admin') =>
         request(app!.getHttpServer()).delete(`/api/library/books/${id}/files/${kind}`);

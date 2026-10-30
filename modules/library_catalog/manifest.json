@@ -1,7 +1,7 @@
 {
   "key": "library_catalog",
   "name": "Library Catalog",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "compatibleAppVersion": ">=0.1.0 <1.0.0",
   "dependsOn": [],
   "description": "Book catalog: titles, physical copies, categories, and a public shareable availability check. D44: stands alone — borrowing/returning/fines are a separate, future library_circulation+library_finance module that will dependsOn this one.",

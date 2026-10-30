@@ -11,26 +11,30 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var BooksImportService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BooksImportService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const exceljs_1 = __importDefault(require("exceljs"));
 const books_import_rules_1 = require("./books-import-rules");
+const book_files_service_1 = require("./book-files.service");
 const books_service_1 = require("./books.service");
-const MAX_ROWS = 5000;
-const FIELD_ORDER = { readingLevel: 'reading_level', pageCount: 'page_count' };
+const MAX_ROWS = 20000;
+const KNOWN_COLUMNS = new Set([...books_import_rules_1.BOOK_COLUMNS, ...books_import_rules_1.COPY_COLUMNS]);
 /**
- * Imports the Excel file the books export produces (LIBRARY_CATALOG-D31): preview first (writes nothing), then
- * an all-or-nothing commit — any invalid row stops the whole import, same flow as core's Users import (D42).
+ * Imports the one-row-per-copy Excel file the export produces (LIBRARY_CATALOG-D32). Two steps:
+ *  - `preview`: groups rows into books, compares with the catalog and flags inconsistencies; writes nothing.
+ *  - `commit`: the same file plus the user's decisions (which books/copies to apply, and the final text of each
+ *    field they chose to write). The plan is recomputed from the file, every final value is validated again, and
+ *    everything is written in ONE transaction — a failure leaves the catalog untouched.
  */
-let BooksImportService = BooksImportService_1 = class BooksImportService {
+let BooksImportService = class BooksImportService {
     books;
-    logger = new common_1.Logger(BooksImportService_1.name);
+    files;
     prisma = new client_1.PrismaClient();
-    constructor(books) {
+    constructor(books, files) {
         this.books = books;
+        this.files = files;
     }
     async onModuleInit() {
         await this.prisma.$connect();
@@ -52,7 +56,7 @@ let BooksImportService = BooksImportService_1 = class BooksImportService {
         const columns = new Map();
         sheet.getRow(1).eachCell((cell, col) => {
             const name = this.cellText(cell.value).toLowerCase();
-            if (name)
+            if (KNOWN_COLUMNS.has(name))
                 columns.set(name, col);
         });
         if (!columns.has('title'))
@@ -65,19 +69,22 @@ let BooksImportService = BooksImportService_1 = class BooksImportService {
             const cells = {};
             let any = false;
             for (const [name, col] of columns) {
-                const text = this.cellText(excelRow.getCell(col).value);
-                cells[name] = text;
-                if (text)
+                const value = excelRow.getCell(col).value;
+                const cellText = name === 'copy_acquisition_date' && value instanceof Date ? value.toISOString().slice(0, 10) : this.cellText(value);
+                cells[name] = cellText;
+                if (cellText)
                     any = true;
             }
             if (any)
-                rows.push({ row: r, id: (cells.id ?? '').trim(), cells });
+                rows.push({ row: r, cells });
         }
         return rows;
     }
     cellText(value) {
         if (value === null || value === undefined)
             return '';
+        if (value instanceof Date)
+            return value.toISOString();
         if (typeof value === 'object') {
             if ('richText' in value)
                 return value.richText.map((part) => part.text).join('').trim();
@@ -85,94 +92,165 @@ let BooksImportService = BooksImportService_1 = class BooksImportService {
                 return value.text.trim();
             if ('result' in value && value.result !== undefined)
                 return String(value.result).trim();
-            if (value instanceof Date)
-                return value.toISOString();
             return '';
         }
         return String(value).trim();
     }
-    /** Validates every row against the current catalog; writes nothing. */
-    async preview(buffer) {
-        const raw = await this.parseWorkbook(buffer);
-        const ids = raw.map((r) => r.id).filter((id) => (0, books_import_rules_1.isUuid)(id));
-        const existing = ids.length ? await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: ids } } }) : [];
-        const byId = new Map(existing.map((book) => [book.id, book]));
-        const seen = new Set();
-        const plan = raw.map((r) => {
-            const base = { row: r.row, id: r.id || null, changes: [] };
-            const parsed = (0, books_import_rules_1.toBookValues)(r.cells);
-            const title = (r.cells.title ?? '').trim() || null;
-            const fail = (error) => ({ ...base, title, action: null, valid: false, error, values: null });
-            if ('error' in parsed)
-                return fail(parsed.error);
-            if (r.id) {
-                if (!(0, books_import_rules_1.isUuid)(r.id))
-                    return fail('id is not a valid book id (leave it blank to add a new book)');
-                if (seen.has(r.id))
-                    return fail('this id appears more than once in the file');
-                seen.add(r.id);
-                const book = byId.get(r.id);
-                if (!book)
-                    return fail('no book with this id exists');
-                const current = {
-                    title: book.title,
-                    author: book.author,
-                    publisher: book.publisher,
-                    category: book.category,
-                    readingLevel: book.readingLevel,
-                    language: book.language,
-                    pageCount: book.pageCount,
-                };
-                const changes = (0, books_import_rules_1.changedFields)(current, parsed.values).map((key) => FIELD_ORDER[key] ?? key);
-                return { ...base, title: parsed.values.title, changes, action: changes.length ? 'update' : 'unchanged', valid: true, error: null, values: parsed.values };
-            }
-            return { ...base, title: parsed.values.title, action: 'create', valid: true, error: null, values: parsed.values };
-        });
-        const validCount = plan.filter((p) => p.valid).length;
-        const report = {
-            rows: plan.map(({ values: _values, ...rest }) => rest),
-            validCount,
-            invalidCount: plan.length - validCount,
-            allValid: plan.length > 0 && validCount === plan.length,
+    async snapshot() {
+        const [books, copies] = await Promise.all([
+            this.prisma.libraryCatalogBook.findMany({
+                select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true },
+            }),
+            this.prisma.libraryCatalogBookCopy.findMany({ select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true } }),
+        ]);
+        return {
+            books,
+            copies: copies.map((c) => ({ ...c, acquisitionDate: c.acquisitionDate ? c.acquisitionDate.toISOString().slice(0, 10) : null })),
         };
-        return { report, plan };
     }
-    async commit(buffer) {
-        const { report, plan } = await this.preview(buffer);
-        if (!report.allValid)
-            return report;
-        let created = 0;
-        let updated = 0;
-        for (const row of plan) {
-            const v = row.values;
-            if (row.action === 'update') {
-                await this.prisma.libraryCatalogBook.update({
-                    where: { id: row.id },
-                    data: { title: v.title, author: v.author, publisher: v.publisher, category: v.category, readingLevel: v.readingLevel, language: v.language, pageCount: v.pageCount },
-                });
-                updated += 1;
+    report(plans) {
+        const issues = plans.flatMap((b) => [...b.issues, ...b.copies.flatMap((c) => c.issues)]);
+        return {
+            books: plans,
+            errorCount: issues.filter((i) => i.level === 'error').length,
+            warningCount: issues.filter((i) => i.level === 'warning').length,
+        };
+    }
+    /** Validates and compares only — writes nothing. */
+    async preview(buffer) {
+        return this.report((0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot()));
+    }
+    async commit(buffer, decisions) {
+        const plans = (0, books_import_rules_1.planImport)(await this.parseWorkbook(buffer), await this.snapshot());
+        const renamed = [];
+        const result = { booksCreated: 0, booksUpdated: 0, copiesCreated: 0, copiesUpdated: 0, skipped: 0 };
+        // Only the cells the user ticked are written; the rest stay as stored (update) or as in the file (create).
+        const merged = (base, decision, allowed, locked) => {
+            const out = { ...base };
+            for (const [field, value] of Object.entries(decision.fields ?? {})) {
+                if (allowed.includes(field) && !locked.includes(field))
+                    out[field] = String(value ?? '').trim();
             }
-            else if (row.action === 'create') {
-                // Same rule as the Add Book form: every book comes with its first copy; no code given, so the server numbers it.
-                await this.books.create({
-                    title: v.title,
-                    author: v.author ?? undefined,
-                    publisher: v.publisher ?? undefined,
-                    category: v.category ?? undefined,
-                    readingLevel: v.readingLevel ?? undefined,
-                    language: v.language ?? undefined,
-                    pageCount: v.pageCount ?? undefined,
-                    copy: {},
-                });
-                created += 1;
-            }
+            return out;
+        };
+        try {
+            await this.prisma.$transaction(async (tx) => {
+                for (const plan of plans) {
+                    const bookDecision = decisions.books?.[plan.key];
+                    let bookId = plan.bookId;
+                    if (bookDecision?.apply && plan.action !== 'unchanged') {
+                        if (plan.action === 'error')
+                            throw new common_1.BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}" has errors and cannot be imported`);
+                        const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, books_import_rules_1.BOOK_FIELDS, []) : merged(plan.current, bookDecision, books_import_rules_1.BOOK_FIELDS, []);
+                        const parsed = (0, books_import_rules_1.toBookValues)(cells);
+                        if ('error' in parsed)
+                            throw new common_1.BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}": ${parsed.error}`);
+                        const data = parsed.values;
+                        if (plan.action === 'create') {
+                            bookId = (await tx.libraryCatalogBook.create({ data })).id;
+                            result.booksCreated += 1;
+                        }
+                        else {
+                            await tx.libraryCatalogBook.update({ where: { id: plan.bookId }, data });
+                            renamed.push(plan.bookId);
+                            result.booksUpdated += 1;
+                        }
+                    }
+                    else if (plan.action === 'create' || plan.action === 'update' || plan.action === 'error') {
+                        if (plan.action !== 'update')
+                            result.skipped += 1;
+                    }
+                    for (const copyPlan of plan.copies) {
+                        const decision = bookDecision?.copies?.[copyPlan.key];
+                        if (!decision?.apply || copyPlan.action === 'unchanged')
+                            continue;
+                        if (copyPlan.action === 'error')
+                            throw new common_1.BadRequestException(`Row ${copyPlan.rows[0]} (copy) has errors and cannot be imported`);
+                        if (!bookId) {
+                            result.skipped += 1; // its new book was not applied, so there is nothing to attach the copy to
+                            continue;
+                        }
+                        const locked = copyPlan.fields.filter((f) => f.locked).map((f) => f.field);
+                        let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId } }) : null;
+                        const currentCells = existing
+                            ? {
+                                copy_code: existing.qrCode,
+                                copy_status: existing.status,
+                                copy_condition: existing.condition ?? '',
+                                copy_location: existing.location ?? '',
+                                copy_acquisition_date: existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : '',
+                            }
+                            : null;
+                        const cells = merged(currentCells ?? copyPlan.incoming, decision, books_import_rules_1.COPY_FIELDS, locked);
+                        const parsed = (0, books_import_rules_1.toCopyValues)(cells, existing?.status ?? 'available');
+                        if ('error' in parsed)
+                            throw new common_1.BadRequestException(`Row ${copyPlan.rows[0]} (copy): ${parsed.error}`);
+                        const v = parsed.values;
+                        if (!existing) {
+                            const qrCode = v.code ?? (await this.books.nextCopyCode(tx));
+                            if (v.code)
+                                await this.books.reconcileCopyCodeSequence(tx, v.code);
+                            await tx.libraryCatalogBookCopy.create({
+                                data: {
+                                    bookId,
+                                    qrCode,
+                                    status: v.status,
+                                    condition: v.condition,
+                                    location: v.location,
+                                    acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                                },
+                            });
+                            result.copiesCreated += 1;
+                        }
+                        else {
+                            const code = v.code ?? existing.qrCode;
+                            const changes = {};
+                            if (v.status !== existing.status)
+                                changes.status = { before: existing.status, after: v.status };
+                            if (v.condition !== existing.condition)
+                                changes.condition = { before: existing.condition, after: v.condition };
+                            if (v.location !== existing.location)
+                                changes.location = { before: existing.location, after: v.location };
+                            if (code !== existing.qrCode)
+                                changes.qrCode = { before: existing.qrCode, after: code };
+                            const before = existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : null;
+                            if (v.acquisitionDate !== before)
+                                changes.acquisitionDate = { before, after: v.acquisitionDate };
+                            const history = (Array.isArray(existing.history) ? existing.history : []);
+                            const nextHistory = Object.keys(changes).length ? [...history, { timestamp: new Date().toISOString(), changes, source: 'import' }].slice(-100) : history;
+                            if (code !== existing.qrCode)
+                                await this.books.reconcileCopyCodeSequence(tx, code);
+                            existing = await tx.libraryCatalogBookCopy.update({
+                                where: { id: existing.id },
+                                data: {
+                                    qrCode: code,
+                                    status: v.status,
+                                    condition: v.condition,
+                                    location: v.location,
+                                    acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                                    history: nextHistory,
+                                },
+                            });
+                            result.copiesUpdated += 1;
+                        }
+                    }
+                }
+            }, { timeout: 120_000, maxWait: 10_000 });
         }
-        this.logger.log(`books import: ${created} created, ${updated} updated`);
-        return { ...report, created, updated };
+        catch (error) {
+            if (error instanceof client_1.Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                throw new common_1.ConflictException('A copy code in the file is already used by another copy — nothing was imported. Run the preview again.');
+            }
+            throw error;
+        }
+        for (const id of renamed)
+            await this.files.writeInfo(id); // keeps each book folder's info.txt (title/author) in step
+        return { ...this.report(plans), result };
     }
 };
 exports.BooksImportService = BooksImportService;
-exports.BooksImportService = BooksImportService = BooksImportService_1 = __decorate([
+exports.BooksImportService = BooksImportService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [books_service_1.BooksService])
+    __metadata("design:paramtypes", [books_service_1.BooksService,
+        book_files_service_1.BookFilesService])
 ], BooksImportService);

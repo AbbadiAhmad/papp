@@ -14,6 +14,7 @@ exports.BooksService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const exceljs_1 = __importDefault(require("exceljs"));
+const books_import_rules_1 = require("./books-import-rules");
 /** `Bxxxxxx` — zero-padded to 6 digits (LIBRARY_CATALOG-D22). */
 const COPY_CODE_PREFIX = 'B';
 const COPY_CODE_DIGITS = 6;
@@ -375,36 +376,48 @@ let BooksService = BooksService_1 = class BooksService {
         };
     }
     // --- Export ----------------------------------------------------------------
+    /**
+     * One row per copy (LIBRARY_CATALOG-D32): the book's columns repeat on every row of its copies, a book with no
+     * copies has a single row with blank copy columns. Column order/names match what the import reads.
+     */
     async exportBooksWorkbook() {
         const books = await this.prisma.libraryCatalogBook.findMany({
             orderBy: { title: 'asc' },
-            include: { _count: { select: { copies: true } } },
+            include: { copies: { orderBy: { qrCode: 'asc' } } },
         });
         const workbook = new exceljs_1.default.Workbook();
         const worksheet = workbook.addWorksheet('Books');
-        worksheet.columns = [
-            { header: 'id', key: 'id', width: 38 },
-            { header: 'title', key: 'title', width: 32 },
-            { header: 'author', key: 'author', width: 24 },
-            { header: 'publisher', key: 'publisher', width: 24 },
-            { header: 'category', key: 'category', width: 18 },
-            { header: 'reading_level', key: 'readingLevel', width: 14 },
-            { header: 'language', key: 'language', width: 12 },
-            { header: 'page_count', key: 'pageCount', width: 12 },
-            { header: 'total_copies', key: 'totalCopies', width: 12 },
-        ];
+        const widths = { id: 38, copy_id: 38, title: 32, author: 24, publisher: 24, description: 40 };
+        worksheet.columns = [...books_import_rules_1.BOOK_COLUMNS, ...books_import_rules_1.COPY_COLUMNS].map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.views = [{ state: 'frozen', ySplit: 1 }];
         for (const book of books) {
-            worksheet.addRow({
+            const bookCells = {
                 id: book.id,
                 title: book.title,
                 author: book.author ?? '',
                 publisher: book.publisher ?? '',
                 category: book.category ?? '',
-                readingLevel: book.readingLevel ?? '',
+                reading_level: book.readingLevel ?? '',
                 language: book.language ?? '',
-                pageCount: book.pageCount ?? '',
-                totalCopies: book._count.copies,
-            });
+                description: book.description ?? '',
+                page_count: book.pageCount ?? '',
+            };
+            if (book.copies.length === 0) {
+                worksheet.addRow(bookCells);
+                continue;
+            }
+            for (const copy of book.copies) {
+                worksheet.addRow({
+                    ...bookCells,
+                    copy_id: copy.id,
+                    copy_code: copy.qrCode,
+                    copy_status: copy.status,
+                    copy_condition: copy.condition ?? '',
+                    copy_location: copy.location ?? '',
+                    copy_acquisition_date: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+                });
+            }
         }
         return workbook.xlsx.writeBuffer();
     }

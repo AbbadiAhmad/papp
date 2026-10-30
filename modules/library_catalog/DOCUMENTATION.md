@@ -83,7 +83,7 @@ library_catalog_book_ratings(
 
 - Table `library_catalog_book_images` (migration 009; auto-applied at install/upgrade, platform D47): up to 10 gallery pictures per book, on disk under `<BOOK_FILES_DIR>/<book id>/images/`. Routes: `POST/DELETE /api/library/books/:id/files/images[/:imageId]` (`books.update`), `GET /api/library/public/books/:id/images/:imageId` (public).
 - Pictures are shrunk in the browser (`frontend/compressImage.ts`) before upload; the server only validates.
-- Books import: `POST /api/library/books/import/preview|import` (`books.import`). Format = the export file; rule details in `backend/books-import-rules.ts`. After upgrading, an admin must grant `books.import` to any role besides admin that needs it.
+- Books export/import (LIBRARY_CATALOG-D32): the export has one row per copy (book columns repeat, copy columns follow). `POST /api/library/books/import/preview` (file) returns the per-book/per-copy comparison and inconsistencies; `POST /api/library/books/import` (file + `decisions` JSON) applies the user's choices in one transaction. Permission `books.import`. All planning rules are pure functions in `backend/books-import-rules.ts` (`planImport`). After upgrading, an admin must grant `books.import` to any role besides admin that needs it.
 
 ## Routes
 

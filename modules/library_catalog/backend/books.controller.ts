@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { PrismaClient } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { BookFilesService } from './book-files.service';
+import { ImportDecisions } from './books-import-rules';
 import { BooksImportService } from './books-import.service';
 import { BooksService } from './books.service';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
@@ -78,7 +79,7 @@ export class BooksController {
   @UseInterceptors(FileInterceptor('file'))
   async importPreview(@UploadedFile() file?: { buffer: Buffer }) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
-    return (await this.importer.preview(file.buffer)).report;
+    return this.importer.preview(file.buffer);
   }
 
   @Post('import')
@@ -86,9 +87,16 @@ export class BooksController {
   @RequirePermission('library_catalog.books.import')
   @Audit({ category: 'library_catalog.books', entityType: 'LibraryCatalogBook', action: 'import' })
   @UseInterceptors(FileInterceptor('file'))
-  async importCommit(@UploadedFile() file?: { buffer: Buffer }) {
+  async importCommit(@UploadedFile() file: { buffer: Buffer } | undefined, @Body('decisions') decisionsJson?: string) {
     if (!file) throw new BadRequestException('No file uploaded (expected multipart field "file")');
-    return this.importer.commit(file.buffer);
+    let decisions: ImportDecisions;
+    try {
+      decisions = JSON.parse(decisionsJson ?? '') as ImportDecisions;
+    } catch {
+      throw new BadRequestException('"decisions" must be a JSON object (expected multipart field "decisions")');
+    }
+    if (!decisions || typeof decisions !== 'object' || typeof decisions.books !== 'object') throw new BadRequestException('"decisions.books" is required');
+    return this.importer.commit(file.buffer, decisions);
   }
 
   // --- Review moderation (LIBRARY_CATALOG-D21) -----------------------------

@@ -1,43 +1,49 @@
-import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { LibraryCatalogBookCopyStatus, Prisma, PrismaClient } from '@prisma/client';
 import ExcelJS from 'exceljs';
-import { BookValues, ImportAction, RawImportRow, changedFields, isUuid, toBookValues } from './books-import-rules';
+import {
+  BOOK_COLUMNS,
+  BOOK_FIELDS,
+  BookPlan,
+  COPY_COLUMNS,
+  COPY_FIELDS,
+  ImportDecisions,
+  ImportSnapshot,
+  ItemDecision,
+  RawImportRow,
+  planImport,
+  toBookValues,
+  toCopyValues,
+} from './books-import-rules';
+import { BookFilesService } from './book-files.service';
 import { BooksService } from './books.service';
 
-export interface BooksImportRowReport {
-  row: number;
-  id: string | null;
-  title: string | null;
-  action: ImportAction | null;
-  /** Which fields would change (updates only). */
-  changes: string[];
-  valid: boolean;
-  error: string | null;
-}
-
 export interface BooksImportReport {
-  rows: BooksImportRowReport[];
-  validCount: number;
-  invalidCount: number;
-  allValid: boolean;
+  books: BookPlan[];
+  errorCount: number;
+  warningCount: number;
   /** Filled by a commit only. */
-  created?: number;
-  updated?: number;
+  result?: { booksCreated: number; booksUpdated: number; copiesCreated: number; copiesUpdated: number; skipped: number };
 }
 
-const MAX_ROWS = 5000;
-const FIELD_ORDER: Record<string, string> = { readingLevel: 'reading_level', pageCount: 'page_count' };
+const MAX_ROWS = 20000;
+const KNOWN_COLUMNS = new Set<string>([...BOOK_COLUMNS, ...COPY_COLUMNS]);
 
 /**
- * Imports the Excel file the books export produces (LIBRARY_CATALOG-D31): preview first (writes nothing), then
- * an all-or-nothing commit — any invalid row stops the whole import, same flow as core's Users import (D42).
+ * Imports the one-row-per-copy Excel file the export produces (LIBRARY_CATALOG-D32). Two steps:
+ *  - `preview`: groups rows into books, compares with the catalog and flags inconsistencies; writes nothing.
+ *  - `commit`: the same file plus the user's decisions (which books/copies to apply, and the final text of each
+ *    field they chose to write). The plan is recomputed from the file, every final value is validated again, and
+ *    everything is written in ONE transaction — a failure leaves the catalog untouched.
  */
 @Injectable()
 export class BooksImportService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(BooksImportService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly books: BooksService) {}
+  constructor(
+    private readonly books: BooksService,
+    private readonly files: BookFilesService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.prisma.$connect();
@@ -59,7 +65,7 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
     const columns = new Map<string, number>();
     sheet.getRow(1).eachCell((cell, col) => {
       const name = this.cellText(cell.value).toLowerCase();
-      if (name) columns.set(name, col);
+      if (KNOWN_COLUMNS.has(name)) columns.set(name, col);
     });
     if (!columns.has('title')) throw new BadRequestException('The first row must contain a "title" column (use the file produced by the export)');
     if (sheet.rowCount - 1 > MAX_ROWS) throw new BadRequestException(`At most ${MAX_ROWS} rows can be imported at once`);
@@ -70,105 +76,168 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
       const cells: Record<string, string> = {};
       let any = false;
       for (const [name, col] of columns) {
-        const text = this.cellText(excelRow.getCell(col).value);
-        cells[name] = text;
-        if (text) any = true;
+        const value = excelRow.getCell(col).value;
+        const cellText = name === 'copy_acquisition_date' && value instanceof Date ? value.toISOString().slice(0, 10) : this.cellText(value);
+        cells[name] = cellText;
+        if (cellText) any = true;
       }
-      if (any) rows.push({ row: r, id: (cells.id ?? '').trim(), cells });
+      if (any) rows.push({ row: r, cells });
     }
     return rows;
   }
 
   private cellText(value: ExcelJS.CellValue): string {
     if (value === null || value === undefined) return '';
+    if (value instanceof Date) return value.toISOString();
     if (typeof value === 'object') {
       if ('richText' in value) return value.richText.map((part) => part.text).join('').trim();
       if ('text' in value && typeof value.text === 'string') return value.text.trim();
       if ('result' in value && value.result !== undefined) return String(value.result).trim();
-      if (value instanceof Date) return value.toISOString();
       return '';
     }
     return String(value).trim();
   }
 
-  /** Validates every row against the current catalog; writes nothing. */
-  async preview(buffer: Buffer): Promise<{ report: BooksImportReport; plan: PlannedRow[] }> {
-    const raw = await this.parseWorkbook(buffer);
-    const ids = raw.map((r) => r.id).filter((id) => isUuid(id));
-    const existing = ids.length ? await this.prisma.libraryCatalogBook.findMany({ where: { id: { in: ids } } }) : [];
-    const byId = new Map(existing.map((book) => [book.id, book]));
-    const seen = new Set<string>();
-
-    const plan: PlannedRow[] = raw.map((r) => {
-      const base = { row: r.row, id: r.id || null, changes: [] as string[] };
-      const parsed = toBookValues(r.cells);
-      const title = (r.cells.title ?? '').trim() || null;
-      const fail = (error: string): PlannedRow => ({ ...base, title, action: null, valid: false, error, values: null });
-      if ('error' in parsed) return fail(parsed.error);
-      if (r.id) {
-        if (!isUuid(r.id)) return fail('id is not a valid book id (leave it blank to add a new book)');
-        if (seen.has(r.id)) return fail('this id appears more than once in the file');
-        seen.add(r.id);
-        const book = byId.get(r.id);
-        if (!book) return fail('no book with this id exists');
-        const current: BookValues = {
-          title: book.title,
-          author: book.author,
-          publisher: book.publisher,
-          category: book.category,
-          readingLevel: book.readingLevel,
-          language: book.language,
-          pageCount: book.pageCount,
-        };
-        const changes = changedFields(current, parsed.values).map((key) => FIELD_ORDER[key] ?? key);
-        return { ...base, title: parsed.values.title, changes, action: changes.length ? 'update' : 'unchanged', valid: true, error: null, values: parsed.values };
-      }
-      return { ...base, title: parsed.values.title, action: 'create', valid: true, error: null, values: parsed.values };
-    });
-
-    const validCount = plan.filter((p) => p.valid).length;
-    const report: BooksImportReport = {
-      rows: plan.map(({ values: _values, ...rest }) => rest),
-      validCount,
-      invalidCount: plan.length - validCount,
-      allValid: plan.length > 0 && validCount === plan.length,
+  private async snapshot(): Promise<ImportSnapshot> {
+    const [books, copies] = await Promise.all([
+      this.prisma.libraryCatalogBook.findMany({
+        select: { id: true, title: true, author: true, publisher: true, category: true, readingLevel: true, language: true, description: true, pageCount: true },
+      }),
+      this.prisma.libraryCatalogBookCopy.findMany({ select: { id: true, bookId: true, qrCode: true, status: true, condition: true, location: true, acquisitionDate: true } }),
+    ]);
+    return {
+      books,
+      copies: copies.map((c) => ({ ...c, acquisitionDate: c.acquisitionDate ? c.acquisitionDate.toISOString().slice(0, 10) : null })),
     };
-    return { report, plan };
   }
 
-  async commit(buffer: Buffer): Promise<BooksImportReport> {
-    const { report, plan } = await this.preview(buffer);
-    if (!report.allValid) return report;
-    let created = 0;
-    let updated = 0;
-    for (const row of plan) {
-      const v = row.values!;
-      if (row.action === 'update') {
-        await this.prisma.libraryCatalogBook.update({
-          where: { id: row.id! },
-          data: { title: v.title, author: v.author, publisher: v.publisher, category: v.category, readingLevel: v.readingLevel, language: v.language, pageCount: v.pageCount },
-        });
-        updated += 1;
-      } else if (row.action === 'create') {
-        // Same rule as the Add Book form: every book comes with its first copy; no code given, so the server numbers it.
-        await this.books.create({
-          title: v.title,
-          author: v.author ?? undefined,
-          publisher: v.publisher ?? undefined,
-          category: v.category ?? undefined,
-          readingLevel: v.readingLevel ?? undefined,
-          language: v.language ?? undefined,
-          pageCount: v.pageCount ?? undefined,
-          copy: {},
-        } as Parameters<BooksService['create']>[0]);
-        created += 1;
+  private report(plans: BookPlan[]): BooksImportReport {
+    const issues = plans.flatMap((b) => [...b.issues, ...b.copies.flatMap((c) => c.issues)]);
+    return {
+      books: plans,
+      errorCount: issues.filter((i) => i.level === 'error').length,
+      warningCount: issues.filter((i) => i.level === 'warning').length,
+    };
+  }
+
+  /** Validates and compares only — writes nothing. */
+  async preview(buffer: Buffer): Promise<BooksImportReport> {
+    return this.report(planImport(await this.parseWorkbook(buffer), await this.snapshot()));
+  }
+
+  async commit(buffer: Buffer, decisions: ImportDecisions): Promise<BooksImportReport> {
+    const plans = planImport(await this.parseWorkbook(buffer), await this.snapshot());
+    const renamed: string[] = [];
+    const result = { booksCreated: 0, booksUpdated: 0, copiesCreated: 0, copiesUpdated: 0, skipped: 0 };
+
+    // Only the cells the user ticked are written; the rest stay as stored (update) or as in the file (create).
+    const merged = (base: Record<string, string>, decision: ItemDecision, allowed: readonly string[], locked: string[]) => {
+      const out = { ...base };
+      for (const [field, value] of Object.entries(decision.fields ?? {})) {
+        if (allowed.includes(field) && !locked.includes(field)) out[field] = String(value ?? '').trim();
       }
-    }
-    this.logger.log(`books import: ${created} created, ${updated} updated`);
-    return { ...report, created, updated };
-  }
-}
+      return out;
+    };
 
-export interface PlannedRow extends BooksImportRowReport {
-  values: BookValues | null;
+    try {
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const plan of plans) {
+            const bookDecision = decisions.books?.[plan.key];
+            let bookId = plan.bookId;
+            if (bookDecision?.apply && plan.action !== 'unchanged') {
+              if (plan.action === 'error') throw new BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}" has errors and cannot be imported`);
+              const cells = plan.action === 'create' ? merged(plan.incoming, bookDecision, BOOK_FIELDS, []) : merged(plan.current!, bookDecision, BOOK_FIELDS, []);
+              const parsed = toBookValues(cells);
+              if ('error' in parsed) throw new BadRequestException(`"${plan.title ?? `row ${plan.rows[0]}`}": ${parsed.error}`);
+              const data = parsed.values;
+              if (plan.action === 'create') {
+                bookId = (await tx.libraryCatalogBook.create({ data })).id;
+                result.booksCreated += 1;
+              } else {
+                await tx.libraryCatalogBook.update({ where: { id: plan.bookId! }, data });
+                renamed.push(plan.bookId!);
+                result.booksUpdated += 1;
+              }
+            } else if (plan.action === 'create' || plan.action === 'update' || plan.action === 'error') {
+              if (plan.action !== 'update') result.skipped += 1;
+            }
+
+            for (const copyPlan of plan.copies) {
+              const decision = bookDecision?.copies?.[copyPlan.key];
+              if (!decision?.apply || copyPlan.action === 'unchanged') continue;
+              if (copyPlan.action === 'error') throw new BadRequestException(`Row ${copyPlan.rows[0]} (copy) has errors and cannot be imported`);
+              if (!bookId) {
+                result.skipped += 1; // its new book was not applied, so there is nothing to attach the copy to
+                continue;
+              }
+              const locked = copyPlan.fields.filter((f) => f.locked).map((f) => f.field);
+              let existing = copyPlan.copyId ? await tx.libraryCatalogBookCopy.findUnique({ where: { id: copyPlan.copyId } }) : null;
+              const currentCells = existing
+                ? {
+                    copy_code: existing.qrCode,
+                    copy_status: existing.status,
+                    copy_condition: existing.condition ?? '',
+                    copy_location: existing.location ?? '',
+                    copy_acquisition_date: existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : '',
+                  }
+                : null;
+              const cells = merged(currentCells ?? copyPlan.incoming, decision, COPY_FIELDS, locked);
+              const parsed = toCopyValues(cells, existing?.status ?? 'available');
+              if ('error' in parsed) throw new BadRequestException(`Row ${copyPlan.rows[0]} (copy): ${parsed.error}`);
+              const v = parsed.values;
+
+              if (!existing) {
+                const qrCode = v.code ?? (await this.books.nextCopyCode(tx as unknown as Pick<PrismaClient, '$queryRawUnsafe'>));
+                if (v.code) await this.books.reconcileCopyCodeSequence(tx as unknown as Pick<PrismaClient, '$queryRawUnsafe'>, v.code);
+                await tx.libraryCatalogBookCopy.create({
+                  data: {
+                    bookId,
+                    qrCode,
+                    status: v.status as LibraryCatalogBookCopyStatus,
+                    condition: v.condition,
+                    location: v.location,
+                    acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                  },
+                });
+                result.copiesCreated += 1;
+              } else {
+                const code = v.code ?? existing.qrCode;
+                const changes: Record<string, { before: unknown; after: unknown }> = {};
+                if (v.status !== existing.status) changes.status = { before: existing.status, after: v.status };
+                if (v.condition !== existing.condition) changes.condition = { before: existing.condition, after: v.condition };
+                if (v.location !== existing.location) changes.location = { before: existing.location, after: v.location };
+                if (code !== existing.qrCode) changes.qrCode = { before: existing.qrCode, after: code };
+                const before = existing.acquisitionDate ? existing.acquisitionDate.toISOString().slice(0, 10) : null;
+                if (v.acquisitionDate !== before) changes.acquisitionDate = { before, after: v.acquisitionDate };
+                const history = (Array.isArray(existing.history) ? existing.history : []) as Record<string, unknown>[];
+                const nextHistory = Object.keys(changes).length ? [...history, { timestamp: new Date().toISOString(), changes, source: 'import' }].slice(-100) : history;
+                if (code !== existing.qrCode) await this.books.reconcileCopyCodeSequence(tx as unknown as Pick<PrismaClient, '$queryRawUnsafe'>, code);
+                existing = await tx.libraryCatalogBookCopy.update({
+                  where: { id: existing.id },
+                  data: {
+                    qrCode: code,
+                    status: v.status as LibraryCatalogBookCopyStatus,
+                    condition: v.condition,
+                    location: v.location,
+                    acquisitionDate: v.acquisitionDate ? new Date(v.acquisitionDate) : null,
+                    history: nextHistory as unknown as Prisma.InputJsonValue,
+                  },
+                });
+                result.copiesUpdated += 1;
+              }
+            }
+          }
+        },
+        { timeout: 120_000, maxWait: 10_000 },
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A copy code in the file is already used by another copy — nothing was imported. Run the preview again.');
+      }
+      throw error;
+    }
+    for (const id of renamed) await this.files.writeInfo(id); // keeps each book folder's info.txt (title/author) in step
+    return { ...this.report(plans), result };
+  }
 }

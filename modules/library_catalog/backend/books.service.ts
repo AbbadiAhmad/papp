@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LibraryCatalogBookCopyStatus, Prisma, PrismaClient } from '@prisma/client';
 import ExcelJS from 'exceljs';
+import { BOOK_COLUMNS, COPY_COLUMNS } from './books-import-rules';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { ListBooksDto } from './dto/list-books.dto';
@@ -417,37 +418,49 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
 
   // --- Export ----------------------------------------------------------------
 
+  /**
+   * One row per copy (LIBRARY_CATALOG-D32): the book's columns repeat on every row of its copies, a book with no
+   * copies has a single row with blank copy columns. Column order/names match what the import reads.
+   */
   async exportBooksWorkbook(): Promise<Buffer> {
     const books = await this.prisma.libraryCatalogBook.findMany({
       orderBy: { title: 'asc' },
-      include: { _count: { select: { copies: true } } },
+      include: { copies: { orderBy: { qrCode: 'asc' } } },
     });
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Books');
-    worksheet.columns = [
-      { header: 'id', key: 'id', width: 38 },
-      { header: 'title', key: 'title', width: 32 },
-      { header: 'author', key: 'author', width: 24 },
-      { header: 'publisher', key: 'publisher', width: 24 },
-      { header: 'category', key: 'category', width: 18 },
-      { header: 'reading_level', key: 'readingLevel', width: 14 },
-      { header: 'language', key: 'language', width: 12 },
-      { header: 'page_count', key: 'pageCount', width: 12 },
-      { header: 'total_copies', key: 'totalCopies', width: 12 },
-    ];
+    const widths: Record<string, number> = { id: 38, copy_id: 38, title: 32, author: 24, publisher: 24, description: 40 };
+    worksheet.columns = [...BOOK_COLUMNS, ...COPY_COLUMNS].map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
     for (const book of books) {
-      worksheet.addRow({
+      const bookCells = {
         id: book.id,
         title: book.title,
         author: book.author ?? '',
         publisher: book.publisher ?? '',
         category: book.category ?? '',
-        readingLevel: book.readingLevel ?? '',
+        reading_level: book.readingLevel ?? '',
         language: book.language ?? '',
-        pageCount: book.pageCount ?? '',
-        totalCopies: book._count.copies,
-      });
+        description: book.description ?? '',
+        page_count: book.pageCount ?? '',
+      };
+      if (book.copies.length === 0) {
+        worksheet.addRow(bookCells);
+        continue;
+      }
+      for (const copy of book.copies) {
+        worksheet.addRow({
+          ...bookCells,
+          copy_id: copy.id,
+          copy_code: copy.qrCode,
+          copy_status: copy.status,
+          copy_condition: copy.condition ?? '',
+          copy_location: copy.location ?? '',
+          copy_acquisition_date: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
+        });
+      }
     }
     return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
@@ -575,7 +588,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
    * same hardcoded literal below, never user input, so `$queryRawUnsafe` is
    * safe here (identical justification to `FinesService.nextNumber()`).
    */
-  private async nextCopyCode(client: Pick<PrismaClient, '$queryRawUnsafe'>): Promise<string> {
+  async nextCopyCode(client: Pick<PrismaClient, '$queryRawUnsafe'>): Promise<string> {
     const rows = await client.$queryRawUnsafe<Array<{ nextval: bigint }>>(
       "SELECT nextval('library_catalog_copy_code_seq') AS nextval",
     );
@@ -628,7 +641,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
    * (free text, pre-D22 legacy codes) has no numeric value to reconcile and
    * is left alone, same as before.
    */
-  private async reconcileCopyCodeSequence(client: Pick<PrismaClient, '$queryRawUnsafe'>, enteredCode: string): Promise<void> {
+  async reconcileCopyCodeSequence(client: Pick<PrismaClient, '$queryRawUnsafe'>, enteredCode: string): Promise<void> {
     const match = new RegExp(`^${COPY_CODE_PREFIX}(\\d{${COPY_CODE_DIGITS}})$`).exec(enteredCode);
     if (!match) return;
     const enteredValue = BigInt(match[1]);
