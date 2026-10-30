@@ -47,7 +47,7 @@ import {
   type UpdateStudentInput,
 } from '../api';
 import { QrCodeImage } from './QrCodeImage';
-import { PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { PageActions, PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { ReaderFormDialog } from './ReaderFormDialog';
 import { ReadersImportDialog } from './ReadersImportDialog';
 
@@ -187,28 +187,14 @@ export function ReadersListPage() {
         <PageHero title={t('library_circulation.menu.students')} subtitle={t('library_circulation.students.subtitle')} />
       </Box>
       <Stack direction="row" sx={{ justifyContent: 'flex-end', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-        <Stack direction="row" spacing={1}>
-          <Can permission="library_circulation.students.export">
-            <Button startIcon={<DownloadIcon />} variant="outlined" onClick={handleExport}>
-              {t('library_circulation.students.export')}
-            </Button>
-          </Can>
-          <Can permission="library_circulation.students.print_cards">
-            <Button startIcon={<BadgeIcon />} variant="outlined" component={RouterLink} to="/library-circulation/readers/print-cards">
-              {t('library_circulation.reader_cards.open_button')}
-            </Button>
-          </Can>
-          <Can permission="library_circulation.students.import">
-            <Button startIcon={<UploadFileIcon />} variant="outlined" onClick={() => setImportOpen(true)}>
-              {t('library_circulation.students.import')}
-            </Button>
-          </Can>
-          <Can permission="library_circulation.students.create">
-            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>
-              {t('library_circulation.students.create_button')}
-            </Button>
-          </Can>
-        </Stack>
+        <PageActions
+          actions={[
+            { key: 'export', label: t('library_circulation.students.export'), icon: <DownloadIcon />, onClick: handleExport, permission: 'library_circulation.students.export' },
+            { key: 'cards', label: t('library_circulation.reader_cards.open_button'), icon: <BadgeIcon />, to: '/library-circulation/readers/print-cards', permission: 'library_circulation.students.print_cards' },
+            { key: 'import', label: t('library_circulation.students.import'), icon: <UploadFileIcon />, onClick: () => setImportOpen(true), permission: 'library_circulation.students.import' },
+            { key: 'add', label: t('library_circulation.students.create_button'), icon: <AddIcon />, onClick: openCreate, permission: 'library_circulation.students.create', primary: true },
+          ]}
+        />
       </Stack>
 
       <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 2, alignItems: 'center' }}>

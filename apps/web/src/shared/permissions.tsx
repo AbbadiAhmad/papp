@@ -36,6 +36,11 @@ export function usePermission(code: string): boolean {
   return hasPermission(code);
 }
 
+/** The caller's permission check as a plain function, for code that must filter a LIST of things by permission (a hook per item is not possible). */
+export function useHasPermission(): (code: string) => boolean {
+  return useAuth().hasPermission;
+}
+
 /** `true` once the caller's real permission set has loaded — lets a route guard distinguish "still loading" from "loaded and denied" (see `RequirePermissionRoute`). */
 export function usePermissionsLoaded(): boolean {
   const { permissions } = useAuth();

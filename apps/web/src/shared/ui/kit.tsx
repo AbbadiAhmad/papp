@@ -1,4 +1,8 @@
-import { alpha, Box, Card, CardActionArea, Typography, type SxProps, type Theme } from '@mui/material';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { alpha, Box, Button, Card, CardActionArea, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Typography, useMediaQuery, useTheme, type SxProps, type Theme } from '@mui/material';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useHasPermission } from '../permissions';
 import { Link as RouterLink } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
@@ -177,5 +181,74 @@ export function BookCard({ title, author, imageUrl, to, status, actions }: { tit
       {to ? <CardActionArea component={RouterLink} to={to} sx={{ flexGrow: 1 }}>{top}</CardActionArea> : <Box sx={{ flexGrow: 1 }}>{top}</Box>}
       {actions ? <Box sx={{ px: 1.5, pb: 1.5, display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>{actions}</Box> : null}
     </Card>
+  );
+}
+
+export interface PageAction {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  onClick?: () => void;
+  /** Navigate instead of calling `onClick`. */
+  to?: string;
+  /** Hidden unless the caller holds this permission. */
+  permission?: string;
+  /** The page's main action: stays a button on phones, everything else goes into the "\u22ee" menu. */
+  primary?: boolean;
+  disabled?: boolean;
+}
+
+/**
+ * A page's action buttons. Desktop/tablet: the usual row of buttons (the primary one filled). Phone: ONLY the primary
+ * action stays a button and the rest move into a "\u22ee" menu, so the toolbar is one short line instead of a clipped,
+ * wrapping row of wide pills.
+ */
+export function PageActions({ actions }: { actions: PageAction[] }) {
+  const { t } = useTranslation();
+  const hasPermission = useHasPermission();
+  const theme = useTheme();
+  const phone = useMediaQuery(theme.breakpoints.down('sm'));
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const visible = actions.filter((a) => !a.permission || hasPermission(a.permission));
+  if (visible.length === 0) return null;
+
+  const link = (a: PageAction) => (a.to ? { component: RouterLink, to: a.to } : {});
+  const button = (a: PageAction) => (
+    <Button key={a.key} startIcon={a.icon} variant={a.primary ? 'contained' : 'outlined'} onClick={a.onClick} disabled={a.disabled} {...link(a)}>
+      {a.label}
+    </Button>
+  );
+
+  if (!phone) return <>{visible.map(button)}</>;
+
+  const primary = visible.filter((a) => a.primary);
+  const overflow = visible.filter((a) => !a.primary);
+  return (
+    <>
+      {primary.map(button)}
+      {overflow.length > 0 ? (
+        <>
+          <IconButton aria-label={t('core.common.actions')} aria-haspopup="menu" aria-expanded={anchor !== null} onClick={(e) => setAnchor(e.currentTarget)} sx={{ border: 1, borderColor: 'divider' }}>
+            <MoreVertIcon />
+          </IconButton>
+          <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+            {overflow.map((a) => (
+              <MenuItem
+                key={a.key}
+                disabled={a.disabled}
+                onClick={() => {
+                  setAnchor(null);
+                  a.onClick?.();
+                }}
+                {...link(a)}
+              >
+                {a.icon ? <ListItemIcon>{a.icon}</ListItemIcon> : null}
+                <ListItemText>{a.label}</ListItemText>
+              </MenuItem>
+            ))}
+          </Menu>
+        </>
+      ) : null}
+    </>
   );
 }

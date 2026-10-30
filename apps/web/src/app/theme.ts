@@ -152,6 +152,8 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
       MuiTableCell: { styleOverrides: { root: { borderColor: c.border }, head: { fontWeight: 800, color: c.text } } },
       MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { backgroundColor: tint } } } },
       MuiTab: { styleOverrides: { root: { fontWeight: 700 } } },
+      // Phones: in-page tabs show ALL their choices as wrapping pills (no sideways scrolling to find one).
+      MuiTabs: { styleOverrides: { root: phoneTabs(c, radius) } },
       // Side menu: compact rows, a clear accent bar on the current page, quiet icons. The bar uses a logical
       // inline-start border so it stays on the reading edge in RTL (the emotion RTL plugin mirrors it).
       MuiListItemButton: {
@@ -198,10 +200,32 @@ export function createAppTheme(direction: 'rtl' | 'ltr', pack: ThemePack | null 
             },
             MuiCard: { defaultProps: { variant: 'outlined' }, styleOverrides: { root: { borderRadius: radius, border, boxShadow: `0 6px 16px ${alpha(c.primary, dark ? 0.0 : 0.1)}` } } },
             MuiTab: { styleOverrides: { root: { fontWeight: 800, fontSize: '1rem', minHeight: 52, borderRadius: 999 } } },
-            MuiTabs: { styleOverrides: { indicator: { height: 4, borderRadius: 4 } } },
+            MuiTabs: { styleOverrides: { root: phoneTabs(c, radius), indicator: { height: 4, borderRadius: 4 } } },
             MuiChip: { styleOverrides: { root: { fontWeight: 800, borderWidth: 2 } } },
           }
         : {}),
+    },
+  });
+}
+
+/** Tabs below `sm`: a wrapping set of pills instead of a scrolling strip with an underline. */
+function phoneTabs(c: { primary: string; border: string }, _radius: number) {
+  return ({ theme }: { theme: Theme }) => ({
+    [theme.breakpoints.down('sm')]: {
+      minHeight: 0,
+      overflow: 'visible',
+      '& .MuiTabs-scroller': { overflow: 'visible !important', marginBottom: '0 !important', flex: '1 1 100%', width: '100%', display: 'block', whiteSpace: 'normal' },
+      '& .MuiTabs-list, & .MuiTabs-flexContainer': { flexWrap: 'wrap', gap: 8, width: '100%' },
+      '& .MuiTabs-indicator': { display: 'none' },
+      '& .MuiTabs-scrollButtons': { display: 'none' },
+      '& .MuiTab-root': {
+        minHeight: 38,
+        minWidth: 0,
+        padding: '6px 14px',
+        borderRadius: 999,
+        border: `1px solid ${c.border}`,
+        '&.Mui-selected': { backgroundColor: alpha(c.primary, 0.14), borderColor: c.primary },
+      },
     },
   });
 }

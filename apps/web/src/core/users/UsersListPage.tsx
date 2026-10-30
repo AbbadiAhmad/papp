@@ -6,7 +6,6 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import {
   Alert,
   Box,
-  Button,
   Chip,
   IconButton,
   Paper,
@@ -22,7 +21,7 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link as RouterLink } from 'react-router-dom';
+import { PageActions } from '../../shared/ui/kit';
 import { useLanguage } from '../../app/LanguageContext';
 import { QueryStateGate } from '../../shared/components/QueryStateGate';
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog';
@@ -92,21 +91,13 @@ export function UsersListPage() {
           {t('core.menu.users')}
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Can permission="users.export">
-            <Button startIcon={<DownloadIcon />} onClick={handleExport} variant="outlined">
-              {t('core.users.export')}
-            </Button>
-          </Can>
-          <Can permission="users.import">
-            <Button startIcon={<UploadFileIcon />} component={RouterLink} to="/users/import" variant="outlined">
-              {t('core.users.import')}
-            </Button>
-          </Can>
-          <Can permission="users.create">
-            <Button startIcon={<AddIcon />} onClick={openCreate} variant="contained">
-              {t('core.common.create')}
-            </Button>
-          </Can>
+          <PageActions
+            actions={[
+              { key: 'export', label: t('core.users.export'), icon: <DownloadIcon />, onClick: handleExport, permission: 'users.export' },
+              { key: 'import', label: t('core.users.import'), icon: <UploadFileIcon />, to: '/users/import', permission: 'users.import' },
+              { key: 'create', label: t('core.common.create'), icon: <AddIcon />, onClick: openCreate, permission: 'users.create', primary: true },
+            ]}
+          />
         </Stack>
       </Stack>
 

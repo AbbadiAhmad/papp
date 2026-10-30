@@ -42,7 +42,7 @@ import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BooksImportDialog } from './BooksImportDialog';
 import { coverUrl, downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
-import { BookCard, CardGrid, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
+import { BookCard, CardGrid, PageActions, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
 
@@ -238,21 +238,13 @@ export function BooksListPage() {
               <TableRowsIcon fontSize="small" />
             </ToggleButton>
           </ToggleButtonGroup>
-          <Can permission="library_catalog.books.export">
-            <Button startIcon={<DownloadIcon />} onClick={handleExport} variant="outlined">
-              {t('library_catalog.actions.export')}
-            </Button>
-          </Can>
-          <Can permission="library_catalog.books.import">
-            <Button startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)} variant="outlined">
-              {t('library_catalog.import.button')}
-            </Button>
-          </Can>
-          <Can permission="library_catalog.books.create">
-            <Button startIcon={<AddIcon />} onClick={openCreate} variant="contained">
-              {t('library_catalog.actions.add_book')}
-            </Button>
-          </Can>
+          <PageActions
+            actions={[
+              { key: 'export', label: t('library_catalog.actions.export'), icon: <DownloadIcon />, onClick: handleExport, permission: 'library_catalog.books.export' },
+              { key: 'import', label: t('library_catalog.import.button'), icon: <UploadFileIcon />, onClick: () => setImportOpen(true), permission: 'library_catalog.books.import' },
+              { key: 'add', label: t('library_catalog.actions.add_book'), icon: <AddIcon />, onClick: openCreate, permission: 'library_catalog.books.create', primary: true },
+            ]}
+          />
         </Stack>
       </Stack>
 

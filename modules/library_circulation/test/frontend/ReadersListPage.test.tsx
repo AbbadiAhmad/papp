@@ -10,6 +10,7 @@ vi.mock('../../frontend/api', async (importOriginal) => ({ ...(await importOrigi
 vi.mock('../../../../apps/web/src/shared/permissions', () => ({
   Can: ({ children }: { children: unknown }) => children,
   useGatedCall: () => (_code: string, fn: () => unknown) => fn(),
+  useHasPermission: () => () => true,
 }));
 
 import { ReadersListPage } from '../../frontend/pages/ReadersListPage';

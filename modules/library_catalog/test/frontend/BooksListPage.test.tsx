@@ -11,6 +11,7 @@ vi.mock('../../../../apps/web/src/app/LanguageContext', () => ({ useLanguage: ()
 vi.mock('../../../../apps/web/src/shared/permissions', () => ({
   Can: ({ children }: { children: unknown }) => children,
   useGatedCall: () => (_code: string, fn: () => unknown) => fn(),
+  useHasPermission: () => () => true,
 }));
 
 import { BooksListPage } from '../../frontend/pages/BooksListPage';
