@@ -96,6 +96,13 @@ library_catalog_book_ratings(
 - `internal_note` columns (migration 011) on books and copies; permission `library_catalog.notes.view` (admin, library_assistant by migration). Without it nothing about notes is returned, exported, previewed or imported, and writing one is a 403. Rule of thumb for new code: the catalog clients omit `internalNote` by default — never add it to a response without the `notes.view` check in the controller.
 - Export/import columns: `book_note`, `copy_note` (present only for callers with `notes.view`).
 
+## Sorting, filters, thumbnails, viewer (1.6.5, LIBRARY_CATALOG-D39)
+
+- `GET /api/library/books` sorts newest-added first by default; `sortBy` (`createdAt|title|author|category`) / `sortDir` (`asc|desc`) and filters `author`, `category`, `language`, `readingLevel` are optional.
+- Cover and gallery routes accept `?size=thumb` (400 px WebP, cached under `<book folder>/thumbs/`, root D125). Lists and cards use it; the viewer (`frontend/ImageLightbox.tsx`) loads the original.
+- Copy IDs are never pre-filled in the forms; a typed, already-used ID is refused naming the ID.
+- File pickers use `accept="image/*"` plus a **Take photo** (`capture`) button so Samsung/Android phones offer the camera.
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):

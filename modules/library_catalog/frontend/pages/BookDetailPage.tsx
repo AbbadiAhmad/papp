@@ -53,7 +53,9 @@ import {
   type CreateBookCopyInput,
   type LibraryBookCopy,
   coverUrl,
+  imageUrl,
 } from '../api';
+import { ImageLightbox, type LightboxImage } from '../ImageLightbox';
 
 // 1.3: at-a-glance status color coding (docs/LIBRARY_IMPROVEMENTS.md §1.3) —
 // module-local const, matching every other module's own STATUS_COLOR
@@ -82,8 +84,18 @@ export function BookDetailPage() {
   const { status, data: book, errorMessage, reload } = useGuardedQuery(() =>
     libraryCatalogApi.getBook(bookId as string),
   );
+  const galleryImages = book?.files?.images ?? [];
+  const lightboxImages: LightboxImage[] = book
+    ? [
+        ...(book.files?.cover ? [{ url: coverUrl(book.id, book.files.cover.updatedAt), alt: t('library_catalog.files.cover_alt', { title: book.title }) }] : []),
+        ...galleryImages.map((image) => ({ url: imageUrl(book.id, image.id), alt: t('library_catalog.files.gallery_alt') })),
+      ]
+    : [];
+  const galleryOffset = book?.files?.cover ? 1 : 0;
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  // Index into [cover, ...gallery] of the picture shown full-size; null = viewer closed (LIBRARY_CATALOG-D39).
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [editingCopy, setEditingCopy] = useState<LibraryBookCopy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [myRatingValue, setMyRatingValue] = useState<number | null>(null);
@@ -217,18 +229,43 @@ export function BookDetailPage() {
 
   return (
     <Box>
+      <ImageLightbox images={lightboxImages} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         {book ? (
           <Stack spacing={3}>
+            {galleryImages.length > 0 ? (
+              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }} data-testid="book-gallery">
+                {galleryImages.map((image, i) => (
+                  <Box
+                    key={image.id}
+                    component="img"
+                    src={imageUrl(book.id, image.id, true)}
+                    alt={t('library_catalog.files.gallery_alt')}
+                    loading="lazy"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('library_catalog.gallery.open')}
+                    onClick={() => setLightboxIndex(i + galleryOffset)}
+                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setLightboxIndex(i + galleryOffset)}
+                    sx={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 1, cursor: 'zoom-in' }}
+                  />
+                ))}
+              </Stack>
+            ) : null}
             <PageHero
               media={
                 <Box sx={{ width: 96, flexShrink: 0 }}>
                   {book.files?.cover ? (
                     <Box
                       component="img"
-                      src={coverUrl(book.id, book.files.cover.updatedAt)}
+                      src={coverUrl(book.id, book.files.cover.updatedAt, true)}
                       alt={t('library_catalog.files.cover_alt', { title: book.title })}
-                      sx={{ display: 'block', width: '100%', borderRadius: 1, objectFit: 'cover' }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('library_catalog.gallery.open')}
+                      onClick={() => setLightboxIndex(0)}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setLightboxIndex(0)}
+                      sx={{ display: 'block', width: '100%', borderRadius: 1, objectFit: 'cover', cursor: 'zoom-in' }}
                     />
                   ) : (
                     <BookCover title={book.title} author={book.author} />
@@ -590,7 +627,6 @@ function AddCopyDialog({
   const canSeeNotes = usePermission('library_catalog.notes.view');
   const [submitting, setSubmitting] = useState(false);
 
-  const [suggestedCode, setSuggestedCode] = useState('');
   const isEditing = !!copy;
 
   const handleOpen = () => {
@@ -600,19 +636,8 @@ function AddCopyDialog({
       setCondition(copy.condition ?? '');
       setInternalNote(copy.internalNote ?? '');
     } else if (open && !copy) {
-      // qrCode is optional (LIBRARY_CATALOG-D22) — pre-fill with the
-      // suggested next Bxxxxxx code (read-only peek, doesn't consume the
-      // sequence) rather than leaving the field blank with no code visible
-      // until after saving. The librarian can still edit or clear it.
+      // Not pre-filled: blank = the server assigns the next ID; a typed ID is checked for clashes (D39).
       setQrCode('');
-      setSuggestedCode('');
-      libraryCatalogApi
-        .peekNextCopyCode()
-        .then((code) => {
-          setSuggestedCode(code);
-          setQrCode(code);
-        })
-        .catch(() => undefined);
       setLocation('');
       setCondition('');
       setInternalNote('');
@@ -630,7 +655,7 @@ function AddCopyDialog({
         // Sent as undefined (never '') when cleared — a present-but-empty
         // qrCode fails @MinLength(1); only a truly OMITTED field triggers
         // server-side auto-generation.
-        await onSubmit({ qrCode: qrCode.trim() && qrCode.trim() !== suggestedCode ? qrCode.trim() : undefined, location: location || undefined, condition: condition || undefined, ...(canSeeNotes && internalNote.trim() ? { internalNote } : {}) });
+        await onSubmit({ qrCode: qrCode.trim() || undefined, location: location || undefined, condition: condition || undefined, ...(canSeeNotes && internalNote.trim() ? { internalNote } : {}) });
       }
       setQrCode('');
       setLocation('');

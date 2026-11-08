@@ -171,7 +171,7 @@ describe('BooksService', () => {
 
       expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith({
         where: {},
-        orderBy: { title: 'asc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         include: {
           _count: { select: { copies: true } },
           copies: true,
@@ -258,9 +258,9 @@ describe('BooksService', () => {
             { title: { contains: 'kalila', mode: 'insensitive' } },
             { copies: { some: { qrCode: { contains: 'kalila', mode: 'insensitive' } } } },
           ],
-          category: 'fiction',
+          category: { contains: 'fiction', mode: 'insensitive' },
         },
-        orderBy: { title: 'asc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         include: {
           _count: { select: { copies: true } },
           copies: true,
@@ -288,7 +288,7 @@ describe('BooksService', () => {
       prisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
-          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyCreated) },
+          libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(copyCreated) },
         };
         return fn(tx as never);
       });
@@ -312,7 +312,7 @@ describe('BooksService', () => {
       prisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookCreated) },
-          libraryCatalogBookCopy: { create: jest.fn((arg: Record<string, unknown>) => {
+          libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn((arg: Record<string, unknown>) => {
             expect(arg.data.status).toBe('available');
             return copyRow({ qrCode: 'BOOK-002', bookId: 'book-2' });
           }) },
@@ -323,6 +323,33 @@ describe('BooksService', () => {
       await service.create(dto);
 
       expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('LIBRARY_CATALOG-D39: a typed-in initial copy ID that is already used is refused naming the ID, and nothing is created', async () => {
+      const dto = { title: 'Dup', copy: { qrCode: 'B000007' } } as unknown as CreateBookDto;
+      const bookCreate = jest.fn().mockResolvedValue(bookRow());
+      const copyCreate = jest.fn();
+      prisma.$transaction.mockImplementation(async (fn) =>
+        fn({ libraryCatalogBook: { create: bookCreate }, libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000007' })), create: copyCreate } } as never),
+      );
+
+      await expect(service.create(dto)).rejects.toThrow(/"B000007"/);
+      expect(copyCreate).not.toHaveBeenCalled();
+    });
+
+    it('LIBRARY_CATALOG-D39: list sorts as asked and filters by author / language / reading level', async () => {
+      prisma.libraryCatalogBook.findMany.mockResolvedValue([]);
+      await service.list({ sortBy: 'title', author: 'her', language: 'ar', readingLevel: 'A2' });
+      expect(prisma.libraryCatalogBook.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ title: 'asc' }, { id: 'asc' }],
+          where: {
+            author: { contains: 'her', mode: 'insensitive' },
+            language: { equals: 'ar', mode: 'insensitive' },
+            readingLevel: { equals: 'A2', mode: 'insensitive' },
+          },
+        }),
+      );
     });
 
     it('LIBRARY_CATALOG-D22: auto-generates a Bxxxxxx code for the initial copy when copy.qrCode is omitted', async () => {
@@ -358,7 +385,7 @@ describe('BooksService', () => {
       prisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-9' })) },
-          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000005', bookId: 'book-9' })) },
+          libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000005', bookId: 'book-9' })) },
           $queryRawUnsafe: queryRawUnsafe,
         };
         return fn(tx as never);
@@ -378,7 +405,7 @@ describe('BooksService', () => {
       prisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-10' })) },
-          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000050', bookId: 'book-10' })) },
+          libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'B000050', bookId: 'book-10' })) },
           $queryRawUnsafe: queryRawUnsafe,
         };
         return fn(tx as never);
@@ -398,7 +425,7 @@ describe('BooksService', () => {
       prisma.$transaction.mockImplementation(async (fn) => {
         const tx = {
           libraryCatalogBook: { create: jest.fn().mockResolvedValue(bookRow({ id: 'book-11' })) },
-          libraryCatalogBookCopy: { create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'LEGACY-1', bookId: 'book-11' })) },
+          libraryCatalogBookCopy: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(copyRow({ qrCode: 'LEGACY-1', bookId: 'book-11' })) },
           $queryRawUnsafe: queryRawUnsafe,
         };
         return fn(tx as never);

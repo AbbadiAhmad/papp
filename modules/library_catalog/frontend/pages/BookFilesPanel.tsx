@@ -1,5 +1,6 @@
 import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
+import CameraIcon from '@mui/icons-material/PhotoCamera';
 import UploadIcon from '@mui/icons-material/UploadFile';
 import { Alert, Box, Button, IconButton, Paper, Stack, Typography } from '@mui/material';
 import axios from 'axios';
@@ -16,7 +17,9 @@ import { compressImage } from '../compressImage';
 // The server is the authority on type and size; these only avoid sending an obviously wrong file.
 const MAX_COVER_BYTES = 5 * 1024 * 1024;
 const MAX_BOOK_BYTES = 30 * 1024 * 1024;
-const COVER_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/avif';
+// A generic `image/*` (not a list of types): Samsung's picker, and some other Android ones, drop the
+// "Camera" entry when the list names specific types (e.g. image/avif). The server still checks the real type.
+const COVER_ACCEPT = 'image/*';
 const BOOK_ACCEPT = '.pdf,.epub,.azw3,.mobi,.md,.txt,application/pdf,application/epub+zip,text/markdown,text/plain';
 
 type Kind = 'cover' | 'book';
@@ -79,6 +82,13 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
   };
 
   const galleryInput = useRef<HTMLInputElement>(null);
+  // `capture` opens the camera app directly on phones/tablets; where it is unsupported (desktop) it is a normal picker.
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const cameraTarget = useRef<'cover' | 'gallery'>('cover');
+  const takePhoto = (target: 'cover' | 'gallery') => {
+    cameraTarget.current = target;
+    cameraInput.current?.click();
+  };
   const images = files?.images ?? [];
 
   const addImages = async (list: FileList | null) => {
@@ -102,6 +112,12 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
       setBusy(null);
       if (galleryInput.current) galleryInput.current.value = '';
     }
+  };
+
+  const onCameraPicked = async (list: FileList | null) => {
+    if (cameraTarget.current === 'cover') await pick('cover', list?.[0]);
+    else await addImages(list);
+    if (cameraInput.current) cameraInput.current.value = '';
   };
 
   const removeImage = async (imageId: string) => {
@@ -154,6 +170,11 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
                 ? t('library_catalog.files.uploading')
                 : t(`library_catalog.files.${info ? 'replace' : 'upload'}_${kind}`)}
             </Button>
+            {kind === 'cover' ? (
+              <Button size="small" startIcon={<CameraIcon />} disabled={busy !== null} onClick={() => takePhoto('cover')}>
+                {t('library_catalog.files.take_photo')}
+              </Button>
+            ) : null}
             {info ? (
               <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setConfirmRemove(kind)}>
                 {t('library_catalog.files.remove')}
@@ -185,6 +206,7 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
         {row('book', bookInput, BOOK_ACCEPT)}
       </Stack>
       <Box sx={{ mt: 3 }}>
+        <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden data-testid="camera-input" aria-label={t('library_catalog.files.take_photo')} onChange={(e) => void onCameraPicked(e.target.files)} />
         <input ref={galleryInput} type="file" multiple accept={COVER_ACCEPT} hidden data-testid="gallery-input" aria-label={t('library_catalog.files.gallery')} onChange={(e) => void addImages(e.target.files)} />
         <Typography variant="subtitle2">{t('library_catalog.files.gallery')}</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -193,7 +215,7 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
         <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
           {images.map((image) => (
             <Box key={image.id} sx={{ position: 'relative', width: 96, height: 96 }}>
-              <Box component="img" src={imageUrl(bookId, image.id)} alt={t('library_catalog.files.gallery_alt')} loading="lazy" sx={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 1 }} />
+              <Box component="img" src={imageUrl(bookId, image.id, true)} alt={t('library_catalog.files.gallery_alt')} loading="lazy" sx={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 1 }} />
               <Can permission="library_catalog.books.update">
                 <IconButton size="small" aria-label={t('library_catalog.files.remove')} onClick={() => void removeImage(image.id)} sx={{ position: 'absolute', top: 2, insetInlineEnd: 2, bgcolor: 'background.paper' }}>
                   <DeleteIcon fontSize="small" />
@@ -205,6 +227,9 @@ export function BookFilesPanel({ bookId, files, onChanged }: Props) {
         <Can permission="library_catalog.books.update">
           <Button size="small" startIcon={<UploadIcon />} disabled={busy !== null || images.length >= MAX_GALLERY_IMAGES} onClick={() => galleryInput.current?.click()} sx={{ mt: 1 }}>
             {t('library_catalog.files.add_pictures')}
+          </Button>
+          <Button size="small" startIcon={<CameraIcon />} disabled={busy !== null || images.length >= MAX_GALLERY_IMAGES} onClick={() => takePhoto('gallery')} sx={{ mt: 1, marginInlineStart: 1 }}>
+            {t('library_catalog.files.take_photo')}
           </Button>
         </Can>
       </Box>

@@ -57,15 +57,21 @@ let BooksService = BooksService_1 = class BooksService {
             ];
         }
         if (query.category) {
-            where.category = query.category;
+            where.category = { contains: query.category, mode: 'insensitive' };
         }
+        if (query.author)
+            where.author = { contains: query.author, mode: 'insensitive' };
+        if (query.language)
+            where.language = { equals: query.language, mode: 'insensitive' };
+        if (query.readingLevel)
+            where.readingLevel = { equals: query.readingLevel, mode: 'insensitive' };
         const copyStatuses = (query.copyStatus ?? []);
         if (copyStatuses.length > 0) {
             where.copies = { some: { status: { in: copyStatuses } } };
         }
         const books = await this.prisma.libraryCatalogBook.findMany({
             where,
-            orderBy: { title: 'asc' },
+            orderBy: this.listOrder(query),
             omit: notesOmit(withNotes),
             include: {
                 _count: { select: { copies: true } },
@@ -156,6 +162,8 @@ let BooksService = BooksService_1 = class BooksService {
             // `reconcileCopyCodeSequence()` below for why a manually-typed code
             // still needs to bump the sequence).
             const manualCode = copy.qrCode?.trim();
+            if (manualCode)
+                await this.assertCopyCodeFree(tx, manualCode);
             const qrCode = manualCode || (await this.nextCopyCode(tx));
             if (manualCode) {
                 await this.reconcileCopyCodeSequence(tx, manualCode);
@@ -201,10 +209,7 @@ let BooksService = BooksService_1 = class BooksService {
         await this.ensureBookExists(bookId);
         const requestedCode = dto.qrCode?.trim();
         if (requestedCode) {
-            const existing = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: requestedCode } });
-            if (existing) {
-                throw new common_1.ConflictException(`A copy with QR code "${requestedCode}" already exists`);
-            }
+            await this.assertCopyCodeFree(this.prisma, requestedCode);
         }
         const qrCode = requestedCode || (await this.nextCopyCode(this.prisma));
         // See the matching comment in `create()` above — a manually-typed code
@@ -612,6 +617,18 @@ let BooksService = BooksService_1 = class BooksService {
         // the high-water mark already (e.g. an older/reused low number), so it
         // can never move the sequence backwards.
         await client.$queryRawUnsafe("SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)", enteredValue);
+    }
+    /** A typed-in copy code must be unused; the message names the code so the librarian can fix it. */
+    async assertCopyCodeFree(client, code) {
+        const existing = await client.libraryCatalogBookCopy.findUnique({ where: { qrCode: code }, select: { id: true } });
+        if (existing)
+            throw new common_1.ConflictException(`The book copy "${code}" already has this ID`);
+    }
+    /** Newest-added first unless the caller asks otherwise; `id` breaks ties so paging stays stable. */
+    listOrder(query) {
+        const direction = query.sortDir ?? (query.sortBy && query.sortBy !== 'createdAt' ? 'asc' : 'desc');
+        const by = query.sortBy ?? 'createdAt';
+        return [{ [by]: direction }, { id: 'asc' }];
     }
     /** A blank note means "no note": stored as NULL. */
     noteValue(value) {
