@@ -7,6 +7,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -117,6 +118,41 @@ function BookCodes({ book }: { book: LibraryBook }) {
   );
 }
 
+/**
+ * A filter box that suggests the values already in use (LIBRARY_CATALOG-D42): the list opens when the box is
+ * focused and narrows as the user types, but any text can still be typed. `value` is the typed text.
+ */
+function SuggestFilter({ label, value, onChange, options, width }: { label: string; value: string; onChange: (next: string) => void; options: string[]; width: number }) {
+  return (
+    <Autocomplete
+      freeSolo
+      size="small"
+      openOnFocus
+      options={options}
+      inputValue={value}
+      onInputChange={(_event, next) => onChange(next)}
+      sx={{ width }}
+      renderInput={(params) => <TextField {...params} label={label} />}
+    />
+  );
+}
+
+/** Union of two value lists, sorted (case-insensitively), without duplicates. */
+function mergeSorted(existing: string[], added: string[]): string[] {
+  const merged = new Set([...existing, ...added]);
+  return merged.size === existing.length ? existing : [...merged].sort((a, b) => a.localeCompare(b));
+}
+
+/** Distinct, sorted, non-empty values of one book field. */
+function distinctValues(books: LibraryBook[] | undefined, pick: (book: LibraryBook) => string | null | undefined): string[] {
+  const found = new Set<string>();
+  for (const book of books ?? []) {
+    const value = pick(book)?.trim();
+    if (value) found.add(value);
+  }
+  return [...found];
+}
+
 export function BooksListPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -138,6 +174,9 @@ export function BooksListPage() {
   };
   const [reloadToken, setReloadToken] = useState(0);
   const [books, setBooks] = useState<LibraryBook[] | undefined>(undefined);
+  // Values seen so far. They are only ever added to, so the suggestions do not shrink to the one value
+  // left in the list once a filter is applied; a page reload starts over from the current catalog.
+  const [known, setKnown] = useState({ author: [] as string[], category: [] as string[], language: [] as string[], readingLevel: [] as string[] });
   const [status, setStatus] = useState<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const reload = () => setReloadToken((n) => n + 1);
@@ -184,6 +223,12 @@ export function BooksListPage() {
       .then((data) => {
         if (cancelled) return;
         setBooks(data);
+        setKnown((previous) => ({
+          author: mergeSorted(previous.author, distinctValues(data, (b) => b.author)),
+          category: mergeSorted(previous.category, distinctValues(data, (b) => b.category)),
+          language: mergeSorted(previous.language, distinctValues(data, (b) => b.language)),
+          readingLevel: mergeSorted(previous.readingLevel, distinctValues(data, (b) => b.readingLevel)),
+        }));
         setStatus('ready');
       })
       .catch((error: unknown) => {
@@ -327,10 +372,10 @@ export function BooksListPage() {
           <ToggleButton value="asc">{t(sortBy === 'createdAt' ? 'library_catalog.sort.oldest' : 'library_catalog.sort.asc')}</ToggleButton>
           <ToggleButton value="desc">{t(sortBy === 'createdAt' ? 'library_catalog.sort.newest' : 'library_catalog.sort.desc')}</ToggleButton>
         </ToggleButtonGroup>
-        <TextField size="small" label={t('library_catalog.filters.author')} value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)} sx={{ width: 150 }} />
-        <TextField size="small" label={t('library_catalog.filters.category')} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} sx={{ width: 150 }} />
-        <TextField size="small" label={t('library_catalog.filters.language')} value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} sx={{ width: 130 }} />
-        <TextField size="small" label={t('library_catalog.filters.reading_level')} value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)} sx={{ width: 140 }} />
+        <SuggestFilter label={t('library_catalog.filters.author')} value={filterAuthor} onChange={setFilterAuthor} options={known.author} width={150} />
+        <SuggestFilter label={t('library_catalog.filters.category')} value={filterCategory} onChange={setFilterCategory} options={known.category} width={150} />
+        <SuggestFilter label={t('library_catalog.filters.language')} value={filterLanguage} onChange={setFilterLanguage} options={known.language} width={130} />
+        <SuggestFilter label={t('library_catalog.filters.reading_level')} value={filterLevel} onChange={setFilterLevel} options={known.readingLevel} width={140} />
         {filterAuthor || filterCategory || filterLanguage || filterLevel ? (
           <Button onClick={() => { setFilterAuthor(''); setFilterCategory(''); setFilterLanguage(''); setFilterLevel(''); }}>{t('library_catalog.filters.clear')}</Button>
         ) : null}

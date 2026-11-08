@@ -77,6 +77,50 @@ describe('BooksListPage copy-status filter', () => {
   });
 });
 
+describe('BooksListPage filter suggestions (LIBRARY_CATALOG-D42)', () => {
+  const books = [
+    book({ id: 'a', title: 'Alpha', language: 'ar', readingLevel: 'A2', category: 'fiction', author: 'Herbert' }),
+    book({ id: 'b', title: 'Beta', language: 'en', readingLevel: 'A1', category: 'science', author: 'Asimov' }),
+    book({ id: 'c', title: 'Gamma', language: 'en', readingLevel: 'A2', category: null, author: null }),
+  ];
+  const optionsOf = () => screen.queryAllByRole('option').map((o) => o.textContent);
+
+  it('opens on focus with the distinct values in use, sorted and without duplicates', async () => {
+    api.listBooks.mockResolvedValue(books);
+    render(<MemoryRouter><BooksListPage /></MemoryRouter>);
+    await screen.findByText('Alpha');
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Language' }));
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Language' }), { key: 'ArrowDown' });
+    expect(optionsOf()).toEqual(['ar', 'en']);
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Language' }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Reading level' }), { key: 'ArrowDown' });
+    expect(optionsOf()).toEqual(['A1', 'A2']);
+  });
+
+  it('narrows while typing, and still sends free text that is not a suggestion', async () => {
+    api.listBooks.mockResolvedValue(books);
+    render(<MemoryRouter><BooksListPage /></MemoryRouter>);
+    await screen.findByText('Alpha');
+    const level = screen.getByRole('combobox', { name: 'Reading level' });
+    fireEvent.change(level, { target: { value: 'A1' } });
+    expect(optionsOf()).toEqual(['A1']);
+    fireEvent.change(level, { target: { value: 'B7' } });
+    await waitFor(() => expect(api.listBooks.mock.calls.at(-1)![0]).toMatchObject({ readingLevel: 'B7' }));
+  });
+
+  it('keeps every suggestion after a filter narrows the list to one language', async () => {
+    api.listBooks.mockResolvedValueOnce(books).mockResolvedValue([books[0]]);
+    render(<MemoryRouter><BooksListPage /></MemoryRouter>);
+    await screen.findByText('Alpha');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ar' } });
+    await waitFor(() => expect(api.listBooks.mock.calls.at(-1)![0]).toMatchObject({ language: 'ar' }));
+    await waitFor(() => expect(screen.queryByText('Beta')).not.toBeInTheDocument());
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: '' } });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Language' }), { key: 'ArrowDown' });
+    expect(optionsOf()).toEqual(['ar', 'en']);
+  });
+});
+
 describe('BooksListPage card view', () => {
   it('shows each book as a card linking to its page, with an availability pill, and remembers the choice', async () => {
     window.localStorage.setItem('papp:books-view', 'cards');
