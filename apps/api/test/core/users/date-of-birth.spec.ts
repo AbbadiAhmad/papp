@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import ExcelJS from 'exceljs';
+import { buildXlsx, readFirstSheet } from '../../../src/common/excel/xlsx-io';
 import { formatDateOnly, normalizeDateOfBirth, toDateOnly } from '../../../src/core/users/date-of-birth.util';
 import { ExcelImportService } from '../../../src/core/users/excel-import.service';
 
@@ -23,11 +23,7 @@ describe('date of birth', () => {
   describe('users Excel import/export', () => {
     const service = new ExcelImportService({} as never);
     async function sheet(headers: string[], row: unknown[]) {
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Users');
-      ws.addRow(headers);
-      ws.addRow(row);
-      return Buffer.from(await wb.xlsx.writeBuffer());
+      return buildXlsx([{ name: 'Users', header: headers, rows: [row as never[]] }]);
     }
 
     it('reads a "date of birth" column from text or an Excel date and flags a bad one', async () => {
@@ -46,11 +42,9 @@ describe('date of birth', () => {
       const prisma = {
         user: { findMany: async () => [{ name: 'A', email: 'a@x.test', externalId: null, department: null, dateOfBirth: new Date('2014-05-06T00:00:00Z'), userRoles: [] }] },
       };
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load((await new ExcelImportService(prisma as never).exportUsers()) as never);
-      const ws = wb.worksheets[0];
-      expect(ws.getRow(1).getCell(6).value).toBe('date of birth');
-      expect(ws.getRow(2).getCell(6).value).toBe('2014-05-06');
+      const ws = await readFirstSheet(await new ExcelImportService(prisma as never).exportUsers());
+      expect(ws!.rows[0][5]).toBe('date of birth');
+      expect(ws!.rows[1][5]).toBe('2014-05-06');
     });
   });
 });

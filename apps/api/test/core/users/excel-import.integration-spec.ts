@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import ExcelJS from 'exceljs';
+import { buildXlsx } from '../../../src/common/excel/xlsx-io';
 import { randomUUID } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { ExcelImportService } from '../../../src/core/users/excel-import.service';
@@ -39,14 +39,13 @@ describe('ExcelImportService.commit() (integration)', () => {
   async function buildWorkbookBuffer(
     rows: Array<{ name?: string; email?: string; id?: string; role?: string; department?: string }>,
   ): Promise<Buffer> {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Users');
-    worksheet.addRow(['name', 'email', 'id', 'role', 'department']);
-    for (const row of rows) {
-      worksheet.addRow([row.name ?? null, row.email ?? null, row.id ?? null, row.role ?? null, row.department ?? null]);
-    }
-    const arrayBuffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(arrayBuffer);
+    return buildXlsx([
+      {
+        name: 'Users',
+        header: ['name', 'email', 'id', 'role', 'department'],
+        rows: rows.map((row) => [row.name ?? null, row.email ?? null, row.id ?? null, row.role ?? null, row.department ?? null]),
+      },
+    ]);
   }
 
   it('is all-or-nothing: one invalid row among valid ones commits ZERO rows to the DB', async () => {

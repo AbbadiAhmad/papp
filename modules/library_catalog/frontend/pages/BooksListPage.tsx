@@ -7,6 +7,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -41,7 +42,7 @@ import { extractErrorMessage, isForbiddenError } from '../../../../apps/web/src/
 import { useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
 import { BooksImportDialog } from './BooksImportDialog';
-import { coverUrl, downloadBlob, libraryCatalogApi, type BookCopyStatus, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
+import { coverUrl, downloadBlob, libraryCatalogApi, type BookCopyStatus, type BookSortField, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 import { BookCard, CardGrid, PageActions, StatusPill } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
@@ -117,6 +118,41 @@ function BookCodes({ book }: { book: LibraryBook }) {
   );
 }
 
+/**
+ * A filter box that suggests the values already in use (LIBRARY_CATALOG-D42): the list opens when the box is
+ * focused and narrows as the user types, but any text can still be typed. `value` is the typed text.
+ */
+function SuggestFilter({ label, value, onChange, options, width }: { label: string; value: string; onChange: (next: string) => void; options: string[]; width: number }) {
+  return (
+    <Autocomplete
+      freeSolo
+      size="small"
+      openOnFocus
+      options={options}
+      inputValue={value}
+      onInputChange={(_event, next) => onChange(next)}
+      sx={{ width }}
+      renderInput={(params) => <TextField {...params} label={label} />}
+    />
+  );
+}
+
+/** Union of two value lists, sorted (case-insensitively), without duplicates. */
+function mergeSorted(existing: string[], added: string[]): string[] {
+  const merged = new Set([...existing, ...added]);
+  return merged.size === existing.length ? existing : [...merged].sort((a, b) => a.localeCompare(b));
+}
+
+/** Distinct, sorted, non-empty values of one book field. */
+function distinctValues(books: LibraryBook[] | undefined, pick: (book: LibraryBook) => string | null | undefined): string[] {
+  const found = new Set<string>();
+  for (const book of books ?? []) {
+    const value = pick(book)?.trim();
+    if (value) found.add(value);
+  }
+  return [...found];
+}
+
 export function BooksListPage() {
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -124,8 +160,23 @@ export function BooksListPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copyStatuses, setCopyStatuses] = useState<BookCopyStatus[]>([]);
+  // Newest added first by default (LIBRARY_CATALOG-D39).
+  const [sortBy, setSortBy] = useState<BookSortField>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [filterAuthor, setFilterAuthor] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterLanguage, setFilterLanguage] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
+  const [debouncedFilters, setDebouncedFilters] = useState({ author: '', category: '', language: '', readingLevel: '' });
+  const changeSort = (field: BookSortField) => {
+    setSortBy(field);
+    setSortDir(field === 'createdAt' ? 'desc' : 'asc');
+  };
   const [reloadToken, setReloadToken] = useState(0);
   const [books, setBooks] = useState<LibraryBook[] | undefined>(undefined);
+  // Values seen so far. They are only ever added to, so the suggestions do not shrink to the one value
+  // left in the list once a filter is applied; a page reload starts over from the current catalog.
+  const [known, setKnown] = useState({ author: [] as string[], category: [] as string[], language: [] as string[], readingLevel: [] as string[] });
   const [status, setStatus] = useState<'loading' | 'ready' | 'forbidden' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const reload = () => setReloadToken((n) => n + 1);
@@ -149,12 +200,35 @@ export function BooksListPage() {
   }, [search]);
 
   useEffect(() => {
+    const timer = setTimeout(
+      () => setDebouncedFilters({ author: filterAuthor.trim(), category: filterCategory.trim(), language: filterLanguage.trim(), readingLevel: filterLevel.trim() }),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [filterAuthor, filterCategory, filterLanguage, filterLevel]);
+
+  useEffect(() => {
     let cancelled = false;
     libraryCatalogApi
-      .listBooks({ search: debouncedSearch || undefined, copyStatus: copyStatuses })
+      .listBooks({
+        search: debouncedSearch || undefined,
+        copyStatus: copyStatuses,
+        author: debouncedFilters.author || undefined,
+        category: debouncedFilters.category || undefined,
+        language: debouncedFilters.language || undefined,
+        readingLevel: debouncedFilters.readingLevel || undefined,
+        sortBy,
+        sortDir,
+      })
       .then((data) => {
         if (cancelled) return;
         setBooks(data);
+        setKnown((previous) => ({
+          author: mergeSorted(previous.author, distinctValues(data, (b) => b.author)),
+          category: mergeSorted(previous.category, distinctValues(data, (b) => b.category)),
+          language: mergeSorted(previous.language, distinctValues(data, (b) => b.language)),
+          readingLevel: mergeSorted(previous.readingLevel, distinctValues(data, (b) => b.readingLevel)),
+        }));
         setStatus('ready');
       })
       .catch((error: unknown) => {
@@ -165,7 +239,7 @@ export function BooksListPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, copyStatuses, reloadToken]);
+  }, [debouncedSearch, copyStatuses, debouncedFilters, sortBy, sortDir, reloadToken]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<LibraryBook | null>(null);
@@ -286,6 +360,27 @@ export function BooksListPage() {
         {copyStatuses.length > 0 ? <Button onClick={() => setCopyStatuses([])}>{t('library_catalog.filters.clear')}</Button> : null}
       </Stack>
 
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1, alignItems: 'center' }}>
+        <TextField select size="small" label={t('library_catalog.sort.label')} value={sortBy} onChange={(e) => changeSort(e.target.value as BookSortField)} sx={{ minWidth: 160 }}>
+          {(['createdAt', 'title', 'author', 'category'] as const).map((field) => (
+            <MenuItem key={field} value={field}>
+              {t(`library_catalog.sort.${field === 'createdAt' ? 'created_at' : field}`)}
+            </MenuItem>
+          ))}
+        </TextField>
+        <ToggleButtonGroup exclusive size="small" value={sortDir} onChange={(_e, next: 'asc' | 'desc' | null) => next && setSortDir(next)} aria-label={t('library_catalog.sort.label')}>
+          <ToggleButton value="asc">{t(sortBy === 'createdAt' ? 'library_catalog.sort.oldest' : 'library_catalog.sort.asc')}</ToggleButton>
+          <ToggleButton value="desc">{t(sortBy === 'createdAt' ? 'library_catalog.sort.newest' : 'library_catalog.sort.desc')}</ToggleButton>
+        </ToggleButtonGroup>
+        <SuggestFilter label={t('library_catalog.filters.author')} value={filterAuthor} onChange={setFilterAuthor} options={known.author} width={150} />
+        <SuggestFilter label={t('library_catalog.filters.category')} value={filterCategory} onChange={setFilterCategory} options={known.category} width={150} />
+        <SuggestFilter label={t('library_catalog.filters.language')} value={filterLanguage} onChange={setFilterLanguage} options={known.language} width={130} />
+        <SuggestFilter label={t('library_catalog.filters.reading_level')} value={filterLevel} onChange={setFilterLevel} options={known.readingLevel} width={140} />
+        {filterAuthor || filterCategory || filterLanguage || filterLevel ? (
+          <Button onClick={() => { setFilterAuthor(''); setFilterCategory(''); setFilterLanguage(''); setFilterLevel(''); }}>{t('library_catalog.filters.clear')}</Button>
+        ) : null}
+      </Stack>
+
       <QueryStateGate status={status} errorMessage={errorMessage} onRetry={reload}>
         {view === 'cards' ? (
           (books ?? []).length === 0 ? (
@@ -301,7 +396,7 @@ export function BooksListPage() {
                     key={book.id}
                     title={book.title}
                     author={book.author}
-                    imageUrl={book.files?.cover ? coverUrl(book.id, book.files.cover.updatedAt) : null}
+                    imageUrl={book.files?.cover ? coverUrl(book.id, book.files.cover.updatedAt, true) : null}
                     to={`/library/books/${book.id}`}
                     status={
                       <StatusPill
@@ -361,7 +456,7 @@ export function BooksListPage() {
                     {book.files?.cover ? (
                       <Box
                         component="img"
-                        src={coverUrl(book.id, book.files.cover.updatedAt)}
+                        src={coverUrl(book.id, book.files.cover.updatedAt, true)}
                         alt={t('library_catalog.files.cover_alt', { title: book.title })}
                         loading="lazy"
                         sx={{ display: 'block', width: 40, height: 56, objectFit: 'cover', borderRadius: 0.5 }}

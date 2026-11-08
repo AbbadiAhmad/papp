@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LibraryCatalogBookCopyStatus, Prisma, PrismaClient } from '@prisma/client';
-import ExcelJS from 'exceljs';
+import { buildXlsx } from './xlsx-io';
 import { BOOK_COLUMNS, COPY_COLUMNS, NOTE_FIELDS } from './books-import-rules';
 import { CreateBookCopyDto } from './dto/create-book-copy.dto';
 import { CreateBookDto } from './dto/create-book.dto';
@@ -66,15 +66,18 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       ];
     }
     if (query.category) {
-      where.category = query.category;
+      where.category = { contains: query.category, mode: 'insensitive' };
     }
+    if (query.author) where.author = { contains: query.author, mode: 'insensitive' };
+    if (query.language) where.language = { equals: query.language, mode: 'insensitive' };
+    if (query.readingLevel) where.readingLevel = { equals: query.readingLevel, mode: 'insensitive' };
     const copyStatuses = (query.copyStatus ?? []) as LibraryCatalogBookCopyStatus[];
     if (copyStatuses.length > 0) {
       where.copies = { some: { status: { in: copyStatuses } } };
     }
     const books = await this.prisma.libraryCatalogBook.findMany({
       where,
-      orderBy: { title: 'asc' },
+      orderBy: this.listOrder(query),
       omit: notesOmit(withNotes),
       include: {
         _count: { select: { copies: true } },
@@ -171,6 +174,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       // `reconcileCopyCodeSequence()` below for why a manually-typed code
       // still needs to bump the sequence).
       const manualCode = copy.qrCode?.trim();
+      if (manualCode) await this.assertCopyCodeFree(tx, manualCode);
       const qrCode = manualCode || (await this.nextCopyCode(tx));
       if (manualCode) {
         await this.reconcileCopyCodeSequence(tx, manualCode);
@@ -223,10 +227,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
     await this.ensureBookExists(bookId);
     const requestedCode = dto.qrCode?.trim();
     if (requestedCode) {
-      const existing = await this.prisma.libraryCatalogBookCopy.findUnique({ where: { qrCode: requestedCode } });
-      if (existing) {
-        throw new ConflictException(`A copy with QR code "${requestedCode}" already exists`);
-      }
+      await this.assertCopyCodeFree(this.prisma, requestedCode);
     }
     const qrCode = requestedCode || (await this.nextCopyCode(this.prisma));
     // See the matching comment in `create()` above — a manually-typed code
@@ -448,13 +449,11 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       include: { copies: { where: filteredCopies ? copyWhere : undefined, orderBy: { qrCode: 'asc' }, omit: notesOmit(withNotes) } },
     });
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Books');
     const widths: Record<string, number> = { id: 38, copy_id: 38, title: 32, author: 24, publisher: 24, description: 40 };
     // The internal-note columns exist only in an export made by someone who may see notes (LIBRARY_CATALOG-D35).
-    worksheet.columns = [...BOOK_COLUMNS, ...COPY_COLUMNS].filter((c) => withNotes || !NOTE_FIELDS.includes(c)).map((header) => ({ header, key: header, width: widths[header] ?? 16 }));
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    const headers = [...BOOK_COLUMNS, ...COPY_COLUMNS].filter((c) => withNotes || !NOTE_FIELDS.includes(c));
+    const rows: Array<Array<string | number | null>> = [];
+    const addRow = (cells: Record<string, string | number | null>) => rows.push(headers.map((header) => cells[header] ?? null));
     for (const book of books) {
       const bookCells = {
         id: book.id,
@@ -469,11 +468,11 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         ...(withNotes ? { book_note: (book as { internalNote?: string | null }).internalNote ?? '' } : {}),
       };
       if (book.copies.length === 0) {
-        worksheet.addRow(bookCells);
+        addRow(bookCells);
         continue;
       }
       for (const copy of book.copies) {
-        worksheet.addRow({
+        addRow({
           ...bookCells,
           copy_id: copy.id,
           copy_code: copy.qrCode,
@@ -485,7 +484,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
-    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    return buildXlsx([{ name: 'Books', header: headers, widths: headers.map((header) => widths[header] ?? 16), rows, freezeHeader: true }]);
   }
 
   // --- Print Codes / stickers (LIBRARY_CATALOG-D22) ------------------------
@@ -493,7 +492,7 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   // copy-number and the QR for the copies" — a filter-by-acquisition-date
   // preview feeding either a printable sticker sheet (frontend-only, real
   // QR images rendered client-side like QrCodeImage.tsx) or this Excel
-  // export (QR as text, same ExcelJS-cell limitation already accepted by
+  // export (QR as text, same spreadsheet-cell limitation already accepted by
   // `exportBooksWorkbook` above).
 
   /** Copies whose `acquisitionDate` falls within [from, to] (inclusive, both optional), with their book's title joined in for display/validation only — never printed on the sticker itself. */
@@ -529,23 +528,14 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
   async exportCopiesForPrintWorkbook(filter: ListCopiesForPrintDto): Promise<Buffer> {
     const copies = await this.listCopiesForPrint(filter);
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Copies');
-    worksheet.columns = [
-      { header: 'book_title', key: 'bookTitle', width: 32 },
-      { header: 'copy_code', key: 'qrCode', width: 16 },
-      { header: 'location', key: 'location', width: 20 },
-      { header: 'acquisition_date', key: 'acquisitionDate', width: 16 },
-    ];
-    for (const copy of copies) {
-      worksheet.addRow({
-        bookTitle: copy.bookTitle,
-        qrCode: copy.qrCode,
-        location: copy.location ?? '',
-        acquisitionDate: copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '',
-      });
-    }
-    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    return buildXlsx([
+      {
+        name: 'Copies',
+        header: ['book_title', 'copy_code', 'location', 'acquisition_date'],
+        widths: [32, 16, 20, 16],
+        rows: copies.map((copy) => [copy.bookTitle, copy.qrCode, copy.location ?? '', copy.acquisitionDate ? copy.acquisitionDate.toISOString().slice(0, 10) : '']),
+      },
+    ]);
   }
 
   /**
@@ -667,6 +657,19 @@ export class BooksService implements OnModuleInit, OnModuleDestroy {
       "SELECT setval('library_catalog_copy_code_seq', GREATEST($1::bigint, (SELECT last_value FROM library_catalog_copy_code_seq)), true)",
       enteredValue,
     );
+  }
+
+  /** A typed-in copy code must be unused; the message names the code so the librarian can fix it. */
+  private async assertCopyCodeFree(client: { libraryCatalogBookCopy: { findUnique(args: { where: { qrCode: string }; select: { id: true } }): PromiseLike<{ id: string } | null> } }, code: string): Promise<void> {
+    const existing = await client.libraryCatalogBookCopy.findUnique({ where: { qrCode: code }, select: { id: true } });
+    if (existing) throw new ConflictException(`The book copy "${code}" already has this ID`);
+  }
+
+  /** Newest-added first unless the caller asks otherwise; `id` breaks ties so paging stays stable. */
+  private listOrder(query: ListBooksDto): Prisma.LibraryCatalogBookOrderByWithRelationInput[] {
+    const direction = query.sortDir ?? (query.sortBy && query.sortBy !== 'createdAt' ? 'asc' : 'desc');
+    const by = query.sortBy ?? 'createdAt';
+    return [{ [by]: direction }, { id: 'asc' }];
   }
 
   /** A blank note means "no note": stored as NULL. */

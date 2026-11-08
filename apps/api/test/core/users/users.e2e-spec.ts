@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import ExcelJS from 'exceljs';
+import { buildXlsx } from '../../../src/common/excel/xlsx-io';
 import request from 'supertest';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { createTestApp } from '../../support/bootstrap-app';
@@ -187,11 +187,7 @@ describe('Users (e2e)', () => {
 
   describe('Excel import/export (users.import / users.export)', () => {
     async function buildWorkbook(rows: Array<{ name: string; email: string; role: string; department?: string }>) {
-      const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet('Users');
-      sheet.addRow(['name', 'email', 'role', 'department']);
-      for (const r of rows) sheet.addRow([r.name, r.email, r.role, r.department ?? '']);
-      return workbook.xlsx.writeBuffer();
+      return buildXlsx([{ name: 'Users', header: ['name', 'email', 'role', 'department'], rows: rows.map((r) => [r.name, r.email, r.role, r.department ?? '']) }]);
     }
 
     it('users.import gates preview+commit; an authorized role can really import a new user end to end', async () => {

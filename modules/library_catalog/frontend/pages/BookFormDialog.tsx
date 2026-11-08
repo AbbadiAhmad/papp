@@ -13,11 +13,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpClient';
 import { usePermission } from '../../../../apps/web/src/shared/permissions';
-import { libraryCatalogApi, type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
+import { type CreateBookInput, type LibraryBook, type UpdateBookInput } from '../api';
 
 interface Props {
   open: boolean;
@@ -58,30 +58,13 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
   // created together with its first physical copy in one transaction.
   // Never shown/sent on edit: a book's copies are their own sub-resource,
   // added/removed via the Copies tab, not through the book PATCH.
-  // qrCode itself is now OPTIONAL server-side (LIBRARY_CATALOG-D22) — left
-  // blank, the backend auto-assigns the next Bxxxxxx code. Pre-filled below
-  // with that SAME suggested code so the librarian sees/can edit it before
-  // saving, rather than a blank field with no code visible until after.
+  // The copy ID is optional: left blank, the server assigns the next Bxxxxxx number (LIBRARY_CATALOG-D22);
+  // typed in, the server checks it is unused and refuses with the clashing ID otherwise (D39). Not pre-filled.
   const [copyQrCode, setCopyQrCode] = useState('');
-  // The pre-filled suggestion; if the librarian leaves it untouched we send NO code so the
-  // server takes the next sequence value itself (two devices adding at once never collide).
-  const [suggestedCode, setSuggestedCode] = useState('');
   const [copyCondition, setCopyCondition] = useState('');
   const [copyLocation, setCopyLocation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (isEdit) return;
-    libraryCatalogApi
-      .peekNextCopyCode()
-      .then((code) => {
-        setSuggestedCode(code);
-        setCopyQrCode(code);
-      })
-      .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only peek; `isEdit` is stable for this component's lifetime (see the key={book?.id ?? 'new'} remount in BookFormDialog above).
-  }, []);
 
   const handleSubmit = async () => {
     setError(null);
@@ -106,7 +89,7 @@ function BookFormFields({ book, onClose, onSubmit }: { book: LibraryBook | null;
                 // treats a present-but-empty qrCode as a validation error
                 // (@MinLength(1)), auto-generating only on a truly OMITTED
                 // field (LIBRARY_CATALOG-D22).
-                qrCode: copyQrCode.trim() && copyQrCode.trim() !== suggestedCode ? copyQrCode.trim() : undefined,
+                qrCode: copyQrCode.trim() || undefined,
                 condition: copyCondition || undefined,
                 location: copyLocation || undefined,
                 ...(canSeeNotes && copyNote.trim() ? { internalNote: copyNote } : {}),

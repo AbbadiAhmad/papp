@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import ExcelJS from 'exceljs';
+import { buildXlsx as writeXlsx } from '../../../src/common/excel/xlsx-io';
 import { ExcelImportService } from '../../../src/core/users/excel-import.service';
 
 interface MockTx {
@@ -18,14 +18,7 @@ interface MockPrisma {
 
 /** Builds a tiny real .xlsx buffer in memory — same library the service parses with. */
 async function buildXlsx(headers: string[], rows: (string | null | undefined)[][]): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Sheet1');
-  worksheet.addRow(headers);
-  for (const row of rows) {
-    worksheet.addRow(row);
-  }
-  const arrayBuffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(arrayBuffer);
+  return writeXlsx([{ name: 'Sheet1', header: headers, rows }]);
 }
 
 const HEADERS = ['name', 'email', 'ID', 'Role', 'department'];

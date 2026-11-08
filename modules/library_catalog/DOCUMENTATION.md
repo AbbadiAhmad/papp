@@ -96,6 +96,13 @@ library_catalog_book_ratings(
 - `internal_note` columns (migration 011) on books and copies; permission `library_catalog.notes.view` (admin, library_assistant by migration). Without it nothing about notes is returned, exported, previewed or imported, and writing one is a 403. Rule of thumb for new code: the catalog clients omit `internalNote` by default — never add it to a response without the `notes.view` check in the controller.
 - Export/import columns: `book_note`, `copy_note` (present only for callers with `notes.view`).
 
+## Sorting, filters, thumbnails, viewer (1.6.5, LIBRARY_CATALOG-D39)
+
+- `GET /api/library/books` sorts newest-added first by default; `sortBy` (`createdAt|title|author|category`) / `sortDir` (`asc|desc`) and filters `author`, `category`, `language`, `readingLevel` are optional.
+- Cover and gallery routes accept `?size=thumb` (400 px WebP, cached under `<book folder>/thumbs/`, root D125). Lists and cards use it; the viewer (`frontend/ImageLightbox.tsx`) loads the original.
+- Copy IDs are never pre-filled in the forms; a typed, already-used ID is refused naming the ID.
+- File pickers use `accept="image/*"` plus a **Take photo** (`capture`) button so Samsung/Android phones offer the camera.
+
 ## Routes
 
 Backend (`apiPrefix: /api/library`):
@@ -269,3 +276,7 @@ VALUES ('library_catalog', '007_add_page_count.sql', '1d5a66c77d4d2ccda4ef3c3036
 **Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql`/`006_add_copy_code_sequence.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...`/`down/006_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003`, then (once it hits 007, which DOES have a down) would still fail partway on the 004-006 gap. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003 (006 in particular needs `DROP SEQUENCE IF EXISTS library_catalog_copy_code_seq`, not a column drop).
 
 `down/006_add_copy_code_sequence.sql` (LIBRARY_CATALOG-D22) DOES exist (`DROP SEQUENCE IF EXISTS`) — but since the numbering gap at 004/005 above already breaks the descending-order `runDownMigrationsIfPresent` sweep before it would ever reach 006, this is latent until 004/005's down-migrations are written.
+
+## Excel files (1.6.7, root D126)
+
+Books / print-codes exports and the books import use `backend/xlsx-io.ts` (`write-excel-file` + `read-excel-file`). It is an identical copy of `apps/api/src/common/excel/xlsx-io.ts`; edit the core file and copy it over all three module copies (a core test fails otherwise).

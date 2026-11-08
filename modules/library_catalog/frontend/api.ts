@@ -74,11 +74,14 @@ export interface ImportDecisions {
 }
 
 /** Public URL of one extra gallery picture. */
-export const imageUrl = (bookId: string, imageId: string): string => `${API_BASE_URL}/api/library/public/books/${bookId}/images/${imageId}`;
+export const imageUrl = (bookId: string, imageId: string, thumb = false): string =>
+  `${API_BASE_URL}/api/library/public/books/${bookId}/images/${imageId}${thumb ? '?size=thumb' : ''}`;
 
 /** Public cover picture URL (an <img> cannot send the login header); `version` makes the browser reload after a replace. */
-export const coverUrl = (bookId: string, version?: string): string =>
-  `${API_BASE_URL}/api/library/public/books/${bookId}/cover${version ? `?v=${encodeURIComponent(version)}` : ''}`;
+export const coverUrl = (bookId: string, version?: string, thumb = false): string => {
+  const query = [version ? `v=${encodeURIComponent(version)}` : '', thumb ? 'size=thumb' : ''].filter(Boolean).join('&');
+  return `${API_BASE_URL}/api/library/public/books/${bookId}/cover${query ? `?${query}` : ''}`;
+};
 
 export interface LibraryBook {
   id: string;
@@ -290,8 +293,20 @@ export interface CopyForInventory {
   condition: string | null;
 }
 
+export type BookSortField = 'createdAt' | 'title' | 'author' | 'category';
+export interface ListBooksParams {
+  search?: string;
+  category?: string;
+  author?: string;
+  language?: string;
+  readingLevel?: string;
+  copyStatus?: BookCopyStatus[];
+  sortBy?: BookSortField;
+  sortDir?: 'asc' | 'desc';
+}
+
 export const libraryCatalogApi = {
-  listBooks: (params?: { search?: string; category?: string; copyStatus?: BookCopyStatus[] }) =>
+  listBooks: (params?: ListBooksParams) =>
     apiClient
       .get<LibraryBook[]>('/api/library/books', { params: params && { ...params, copyStatus: params.copyStatus?.length ? params.copyStatus.join(',') : undefined } })
       .then((r) => r.data),

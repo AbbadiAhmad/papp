@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 // The REAL core guard, imported from apps/api's BUILT output (never `src/`)
 // — see this file's docblock below and platform.ts's docblock for exactly
@@ -12,6 +12,7 @@ import type { Response } from 'express';
 import { PublicThrottlerGuard } from '../../../apps/api/dist/common/guards/public-throttler.guard';
 import { BookFilesService } from './book-files.service';
 import { BooksService, BookAvailability } from './books.service';
+import { thumbnailFor } from './image-thumbnail';
 import { Audit, Public } from './platform';
 
 /**
@@ -68,18 +69,19 @@ export class PublicBooksController {
    */
   @Get(':id/cover')
   @Public()
-  async cover(@Param('id', new ParseUUIDPipe()) id: string, @Res() res: Response): Promise<void> {
+  async cover(@Param('id', new ParseUUIDPipe()) id: string, @Query('size') size: string | undefined, @Res() res: Response): Promise<void> {
     const found = await this.files.locate(id, 'cover');
     if (!found) throw new NotFoundException('This book has no cover');
+    const thumb = size === 'thumb' ? await thumbnailFor(found.path, found.mime) : null;
     res.set({
-      'Content-Type': found.mime,
+      'Content-Type': thumb ? 'image/webp' : found.mime,
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'Cross-Origin-Resource-Policy': 'cross-origin',
       // The cover can be replaced, so the browser must revalidate (sendFile adds an ETag).
       'Cache-Control': 'public, max-age=0, must-revalidate',
     });
-    res.sendFile(found.path, (err) => {
+    res.sendFile(thumb ?? found.path, (err) => {
       if (err && !res.headersSent) res.status(404).json({ statusCode: 404, message: 'Cover not found' });
     });
   }
@@ -87,17 +89,18 @@ export class PublicBooksController {
   /** An extra gallery picture of a book; public for the same reason as the cover (<img> cannot send credentials). */
   @Get(':id/images/:imageId')
   @Public()
-  async image(@Param('id', new ParseUUIDPipe()) id: string, @Param('imageId', new ParseUUIDPipe()) imageId: string, @Res() res: Response): Promise<void> {
+  async image(@Param('id', new ParseUUIDPipe()) id: string, @Param('imageId', new ParseUUIDPipe()) imageId: string, @Query('size') size: string | undefined, @Res() res: Response): Promise<void> {
     const found = await this.files.locateImage(id, imageId);
     if (!found) throw new NotFoundException('This picture does not exist');
+    const thumb = size === 'thumb' ? await thumbnailFor(found.path, found.mime) : null;
     res.set({
-      'Content-Type': found.mime,
+      'Content-Type': thumb ? 'image/webp' : found.mime,
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'Cross-Origin-Resource-Policy': 'cross-origin',
       'Cache-Control': 'public, max-age=86400',
     });
-    res.sendFile(found.path, (err) => {
+    res.sendFile(thumb ?? found.path, (err) => {
       if (err && !res.headersSent) res.status(404).json({ statusCode: 404, message: 'Picture not found' });
     });
   }

@@ -13,11 +13,19 @@ exports.ListBooksDto = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const COPY_STATUSES = ['available', 'borrowed', 'lost', 'damaged', 'maintenance', 'reserved'];
+const SORT_FIELDS = ['createdAt', 'title', 'author', 'category'];
 /** Optional filters for `GET /api/library/books` — no pagination yet (small catalogs). */
 class ListBooksDto {
     /** Matches the title OR any of the book's copy codes. */
     search;
     category;
+    author;
+    language;
+    readingLevel;
+    /** Default `createdAt` (newest added first). */
+    sortBy;
+    /** Default: descending for `createdAt`, ascending for the text fields. */
+    sortDir;
     /**
      * Multi-select: only books with at least one copy in ANY of these statuses
      * (`?copyStatus=damaged,lost`, comma-separated like the fines status filter).
@@ -35,6 +43,31 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], ListBooksDto.prototype, "category", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListBooksDto.prototype, "author", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListBooksDto.prototype, "language", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ListBooksDto.prototype, "readingLevel", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(SORT_FIELDS),
+    __metadata("design:type", Object)
+], ListBooksDto.prototype, "sortBy", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['asc', 'desc']),
+    __metadata("design:type", String)
+], ListBooksDto.prototype, "sortDir", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_transformer_1.Transform)(({ value }) => (typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : value)),

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
-import ExcelJS from 'exceljs';
+import { buildXlsx, cellToText, readFirstSheet } from '../../common/excel/xlsx-io';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeDateOfBirth, toDateOnly } from './date-of-birth.util';
 import { ExportRow, ImportReport, ImportRowResult, ParsedImportRow } from './excel-import.types';
@@ -38,25 +38,22 @@ export class ExcelImportService {
 
   /** Parses an uploaded .xlsx buffer into raw rows — no validation, no DB access. */
   async parseWorkbook(buffer: Buffer): Promise<ParsedImportRow[]> {
-    const workbook = new ExcelJS.Workbook();
+    let sheet;
     try {
-      await workbook.xlsx.load(buffer as never);
+      sheet = await readFirstSheet(buffer);
     } catch {
       throw new BadRequestException('Could not read the uploaded file as a valid .xlsx workbook');
     }
-
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet) {
+    if (!sheet) {
       throw new BadRequestException('The workbook has no worksheets');
     }
 
-    const headerRow = worksheet.getRow(1);
+    // `sheet.rows[i][j]` is sheet row i+1, column j+1; column indexes below are 0-based.
     const columnByIndex = new Map<number, keyof Omit<ParsedImportRow, 'row'>>();
-    headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const raw = String(cell.value ?? '').trim().toLowerCase();
-      const field = HEADER_ALIASES[raw];
+    (sheet.rows[0] ?? []).forEach((cell, index) => {
+      const field = HEADER_ALIASES[cellToText(cell).toLowerCase()];
       if (field) {
-        columnByIndex.set(colNumber, field);
+        columnByIndex.set(index, field);
       }
     });
 
@@ -68,9 +65,9 @@ export class ExcelImportService {
 
     const hasDateOfBirthColumn = [...columnByIndex.values()].includes('dateOfBirth');
     const rows: ParsedImportRow[] = [];
-    for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
-      const row = worksheet.getRow(rowNumber);
-      if (row.cellCount === 0 || row.values === undefined || (row.values as unknown[]).length === 0) {
+    for (let rowNumber = 2; rowNumber <= sheet.rows.length; rowNumber++) {
+      const row = sheet.rows[rowNumber - 1] ?? [];
+      if (row.every((cell) => cellToText(cell) === '')) {
         continue; // skip fully blank rows
       }
 
@@ -86,7 +83,7 @@ export class ExcelImportService {
       };
       let hasAnyValue = false;
       for (const [colNumber, field] of columnByIndex) {
-        const cellValue = row.getCell(colNumber).value;
+        const cellValue = row[colNumber];
         if (field === 'dateOfBirth') {
           const text = this.cellToDateText(cellValue);
           if (text !== null) {
@@ -279,35 +276,22 @@ export class ExcelImportService {
       dateOfBirth: user.dateOfBirth ? user.dateOfBirth.toISOString().slice(0, 10) : null,
     }));
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Users');
-    worksheet.columns = [
-      { header: 'name', key: 'name', width: 24 },
-      { header: 'email', key: 'email', width: 28 },
-      { header: 'id', key: 'externalId', width: 18 },
-      { header: 'role', key: 'role', width: 20 },
-      { header: 'department', key: 'department', width: 20 },
-      { header: 'date of birth', key: 'dateOfBirth', width: 16 },
-    ];
-    worksheet.addRows(exportRows);
-
-    const arrayBuffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(arrayBuffer);
+    return buildXlsx([
+      {
+        name: 'Users',
+        header: ['name', 'email', 'id', 'role', 'department', 'date of birth'],
+        widths: [24, 28, 18, 20, 20, 16],
+        rows: exportRows.map((r) => [r.name, r.email, r.externalId, r.role, r.department, r.dateOfBirth]),
+      },
+    ]);
   }
 
   /** A date cell (Excel stores real dates) or text -> `YYYY-MM-DD`-ish text; null when blank. */
-  private cellToDateText(value: ExcelJS.CellValue): string | null {
-    if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'invalid' : value.toISOString().slice(0, 10);
+  private cellToDateText(value: unknown): string | null {
     return this.cellToString(value);
   }
 
-  private cellToString(value: ExcelJS.CellValue): string | null {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'object' && 'text' in (value as unknown as Record<string, unknown>)) {
-      // Rich text / hyperlink cells.
-      return String((value as unknown as { text: unknown }).text).trim() || null;
-    }
-    const str = String(value).trim();
-    return str.length > 0 ? str : null;
+  private cellToString(value: unknown): string | null {
+    return cellToText(value) || null;
   }
 }

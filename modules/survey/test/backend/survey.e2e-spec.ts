@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { readFirstSheet } from '../../backend/xlsx-io';
 import { DynamicModule, ForwardReference, INestApplication, Module, Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -1105,14 +1106,9 @@ describe('survey module (e2e, real install + real HTTP)', () => {
       expect((await request(http()).get(`/api/survey/surveys/${id}/responses${q}`).set(admin())).body).toHaveLength(2);
       expect((await request(http()).get(`/api/survey/surveys/${id}/report/dataset${q}`).set(admin())).body.rows).toHaveLength(2);
       const xlsx = await request(http()).get(`/api/survey/surveys/${id}/responses/export${q}`).set(admin()).buffer(true).parse(bin);
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(xlsx.body as Buffer);
-      expect(wb.worksheets[0].rowCount).toBe(3); // header + 2
+      expect((await readFirstSheet(xlsx.body as Buffer))!.rows).toHaveLength(3); // header + 2
       const all = await request(http()).get(`/api/survey/surveys/${id}/responses/export`).set(admin()).buffer(true).parse(bin);
-      const wb2 = new ExcelJS.Workbook();
-      await wb2.xlsx.load(all.body as Buffer);
-      expect(wb2.worksheets[0].rowCount).toBe(5);
+      expect((await readFirstSheet(all.body as Buffer))!.rows).toHaveLength(5);
     });
 
     it('filters by answer: single choice, multiple choice (contains), rating, and several at once (AND)', async () => {

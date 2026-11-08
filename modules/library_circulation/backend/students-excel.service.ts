@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, On
 import { ModuleRef } from '@nestjs/core';
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
-import ExcelJS from 'exceljs';
+import { buildXlsx, cellToText, readFirstSheet, type XlsxListValidation, type XlsxSheet } from './xlsx-io';
 import { randomBytes } from 'node:crypto';
 import { normalizeDateOfBirth, toDateOnly } from './date-of-birth';
 import { READER_IMPORT_EXTENSION, ReaderImportExtension } from './reader-import-extension';
@@ -129,52 +129,28 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
     const extension = this.clubExtension();
     const club = extension ? await extension.exportData(rows.map((r) => r.id)) : null;
 
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Readers');
-    sheet.columns = [
-      { header: 'Code', key: 'code', width: 16 },
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Email', key: 'email', width: 32 },
-      { header: 'Class', key: 'className', width: 16 },
-      { header: 'External ID', key: 'externalId', width: 18 },
-      { header: 'Department', key: 'department', width: 20 },
-      { header: 'Active', key: 'isActive', width: 10 },
-      { header: 'Date of Birth', key: 'dateOfBirth', width: 16 },
-      ...(club
-        ? [
-            { header: 'Club', key: 'club', width: 10 },
-            { header: 'Club Group', key: 'clubGroup', width: 22 },
-            { header: 'Club Stage', key: 'clubStage', width: 22 },
-          ]
-        : []),
-    ];
-    sheet.getRow(1).font = { bold: true };
-    for (const r of rows) {
-      const member = club?.members[r.id];
-      sheet.addRow({
-        code: r.code,
-        name: r.name ?? '',
-        email: r.email ?? '',
-        className: r.className ?? '',
-        externalId: r.externalId ?? '',
-        department: r.department ?? '',
-        isActive: r.isActive ? 'yes' : 'no',
-        dateOfBirth: r.dateOfBirth ?? '',
-        ...(club ? { club: member ? 'yes' : 'no', clubGroup: member?.group ?? '', clubStage: member?.stage ?? '' } : {}),
-      });
-    }
+    const readerSheet: XlsxSheet = {
+      name: 'Readers',
+      header: ['Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth', ...(club ? ['Club', 'Club Group', 'Club Stage'] : [])],
+      widths: [16, 30, 32, 16, 18, 20, 10, 16, ...(club ? [10, 22, 22] : [])],
+      rows: rows.map((r) => {
+        const member = club?.members[r.id];
+        return [
+          r.code,
+          r.name ?? '',
+          r.email ?? '',
+          r.className ?? '',
+          r.externalId ?? '',
+          r.department ?? '',
+          r.isActive ? 'yes' : 'no',
+          r.dateOfBirth ?? '',
+          ...(club ? [member ? 'yes' : 'no', member?.group ?? '', member?.stage ?? ''] : []),
+        ];
+      }),
+    };
+    const sheets: XlsxSheet[] = [readerSheet];
 
     if (club) {
-      const ref = workbook.addWorksheet('Club reference');
-      ref.columns = [
-        { header: 'Group', key: 'group', width: 24 },
-        { header: 'Stage order', key: 'order', width: 12 },
-        { header: 'Stage', key: 'stage', width: 24 },
-        { header: '', key: 'gap', width: 4 },
-        { header: 'Groups (dropdown list)', key: 'groupList', width: 24 },
-        { header: 'Stages (dropdown list)', key: 'stageList', width: 24 },
-      ];
-      ref.getRow(1).font = { bold: true };
       const stageNames = [...new Set(club.groups.flatMap((g) => g.stages.map((s) => s.name)))];
       const lines = Math.max(
         club.groups.reduce((n, g) => n + Math.max(1, g.stages.length), 0),
@@ -184,39 +160,43 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
       const table: Array<{ group: string; order: number | string; stage: string }> = club.groups.flatMap<{ group: string; order: number | string; stage: string }>((g) =>
         g.stages.length ? g.stages.map((s) => ({ group: g.name, order: s.order, stage: s.name })) : [{ group: g.name, order: '', stage: '' }],
       );
+      const refRows: Array<Array<string | number>> = [];
       for (let i = 0; i < lines; i++) {
-        ref.addRow({ ...(table[i] ?? {}), groupList: club.groups[i]?.name ?? '', stageList: stageNames[i] ?? '' });
+        refRows.push([table[i]?.group ?? '', table[i]?.order ?? '', table[i]?.stage ?? '', '', club.groups[i]?.name ?? '', stageNames[i] ?? '']);
       }
+      sheets.push({
+        name: 'Club reference',
+        header: ['Group', 'Stage order', 'Stage', '', 'Groups (dropdown list)', 'Stages (dropdown list)'],
+        widths: [24, 12, 24, 4, 24, 24],
+        rows: refRows,
+      });
+      // Dropdowns reach 200 rows past the last reader so newly typed rows get them too.
       const lastRow = Math.max(2, lines + 1);
-      const lastReaderRow = rows.length + 1;
-      for (let rowNumber = 2; rowNumber <= lastReaderRow + 200; rowNumber++) {
-        sheet.getCell(`I${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"yes,no"'] };
-        if (club.groups.length) {
-          sheet.getCell(`J${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$E$2:$E$${lastRow}`] };
-        }
-        if (stageNames.length) {
-          sheet.getCell(`K${rowNumber}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`'Club reference'!$F$2:$F$${lastRow}`] };
-        }
-      }
+      const lastDropdownRow = rows.length + 1 + 200;
+      // Columns: I = Active (9), J = Club Group (10), K = Club Stage (11).
+      const validations: XlsxListValidation[] = [{ column: 9, fromRow: 2, toRow: lastDropdownRow, values: ['yes', 'no'] }];
+      if (club.groups.length) validations.push({ column: 10, fromRow: 2, toRow: lastDropdownRow, range: `'Club reference'!$E$2:$E$${lastRow}` });
+      if (stageNames.length) validations.push({ column: 11, fromRow: 2, toRow: lastDropdownRow, range: `'Club reference'!$F$2:$F$${lastRow}` });
+      readerSheet.listValidations = validations;
     }
-    return Buffer.from(await workbook.xlsx.writeBuffer());
+    return buildXlsx(sheets);
   }
 
   // --- import ---------------------------------------------------------------
 
   async parseWorkbook(buffer: Buffer): Promise<ParsedStudentRow[]> {
-    const workbook = new ExcelJS.Workbook();
+    let sheet;
     try {
-      await workbook.xlsx.load(buffer as never);
+      sheet = await readFirstSheet(buffer);
     } catch {
       throw new BadRequestException('Could not read the uploaded file as a valid .xlsx workbook');
     }
-    const sheet = workbook.worksheets[0];
     if (!sheet) throw new BadRequestException('The workbook has no worksheets');
 
+    // `sheet.rows[r - 1]` is sheet row r; column indexes are 0-based.
     const columns = new Map<number, Field>();
-    sheet.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
-      const field = HEADER_ALIASES[cellText(cell.value).toLowerCase()];
+    (sheet.rows[0] ?? []).forEach((cell, col) => {
+      const field = HEADER_ALIASES[cellToText(cell).toLowerCase()];
       if (field) columns.set(col, field);
     });
     if (!columns.size) {
@@ -224,16 +204,15 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
     }
 
     const rows: ParsedStudentRow[] = [];
-    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
-      const row = sheet.getRow(rowNumber);
+    for (let rowNumber = 2; rowNumber <= sheet.rows.length; rowNumber++) {
+      const row = sheet.rows[rowNumber - 1] ?? [];
       const parsed: ParsedStudentRow = {
         row: rowNumber, code: null, name: null, email: null, className: null, externalId: null, department: null, dateOfBirth: null, isActive: null,
         club: null, clubGroup: null, clubStage: null,
       };
       let any = false;
       for (const [col, field] of columns) {
-        const rawValue = row.getCell(col).value;
-        const text = field === 'dateOfBirth' && rawValue instanceof Date ? (Number.isNaN(rawValue.getTime()) ? 'invalid' : rawValue.toISOString().slice(0, 10)) : cellText(rawValue);
+        const text = cellToText(row[col]);
         if (!text) continue;
         any = true;
         if (field === 'dateOfBirth') {
@@ -409,19 +388,6 @@ export class StudentsExcelService implements OnModuleInit, OnModuleDestroy {
     }
     return report;
   }
-}
-
-/** ExcelJS cell values may be rich objects (hyperlink emails, formulas, rich text) — flatten to trimmed text. */
-function cellText(value: ExcelJS.CellValue | undefined): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'object') {
-    if ('text' in value && value.text !== undefined) return cellText(value.text as ExcelJS.CellValue);
-    if ('richText' in value) return value.richText.map((p) => p.text).join('').trim();
-    if ('result' in value && value.result !== undefined) return cellText(value.result as ExcelJS.CellValue);
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
-    return '';
-  }
-  return String(value).trim();
 }
 
 function parseFlag(text: string): boolean | undefined {
