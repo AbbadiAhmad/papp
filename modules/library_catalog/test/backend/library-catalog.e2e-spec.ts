@@ -1,4 +1,5 @@
 import { DynamicModule, ForwardReference, INestApplication, Module, Type } from '@nestjs/common';
+import { buildXlsx, readFirstSheet } from '../../backend/xlsx-io';
 import { NestFactory } from '@nestjs/core';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { execSync } from 'node:child_process';
@@ -309,15 +310,10 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
           r.on('data', (c: Buffer) => chunks.push(c));
           r.on('end', () => cb(null, Buffer.concat(chunks)));
         });
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(exported.body as Buffer);
-      const header = (wb.worksheets[0].getRow(1).values as unknown[]).map(String);
+      const { rows } = (await readFirstSheet(exported.body as Buffer))!;
+      const header = rows[0].map(String);
       expect(header).toEqual(expect.arrayContaining(['book_note', 'copy_note']));
-      let copyNoteSeen = false;
-      wb.worksheets[0].eachRow((row, n) => {
-        if (n > 1 && String(row.getCell(header.indexOf('copy_note')).value) === 'COPY-SECRET') copyNoteSeen = true;
-      });
+      const copyNoteSeen = rows.slice(1).some((row) => String(row[header.indexOf('copy_note')]) === 'COPY-SECRET');
       expect(copyNoteSeen).toBe(true);
     });
 
@@ -634,14 +630,9 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
           r.on('end', () => cb(null, Buffer.concat(chunks)));
         });
       expect(res.status).toBe(200);
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(res.body as Buffer);
-      const sheet = wb.worksheets[0];
-      expect(sheet.getRow(1).getCell(1).value).toBe('id');
-      const ids: string[] = [];
-      sheet.eachRow((row, n) => n > 1 && ids.push(String(row.getCell(1).value)));
-      expect(ids).toContain(id);
+      const { rows } = (await readFirstSheet(res.body as Buffer))!;
+      expect(rows[0][0]).toBe('id');
+      expect(rows.slice(1).map((row) => String(row[0]))).toContain(id);
     });
 
     it('the books import requires library_catalog.books.import (preview and commit)', async () => {
@@ -677,18 +668,10 @@ describe('library_catalog module (e2e, real install + real HTTP)', () => {
       expect(plan.copies.every((c: { action: string }) => c.action === 'unchanged')).toBe(true);
 
       // Edit the title in the file, then commit with the change declined: nothing is written.
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(exported.body as Buffer);
-      const sheet = wb.worksheets[0];
-      let edited = false;
-      sheet.eachRow((row, n) => {
-        if (n > 1 && String(row.getCell(1).value) === id && !edited) {
-          row.getCell(2).value = 'Edited through import';
-          edited = true;
-        }
-      });
-      const editedBuffer = Buffer.from(await wb.xlsx.writeBuffer());
+      const { rows } = (await readFirstSheet(exported.body as Buffer))!;
+      const target = rows.findIndex((row, n) => n > 0 && String(row[0]) === id);
+      rows[target][1] = 'Edited through import';
+      const editedBuffer = await buildXlsx([{ name: 'Books', header: rows[0].map(String), rows: rows.slice(1) as never }]);
       const editedPreview = await request(app!.getHttpServer())
         .post('/api/library/books/import/preview')
         .set('Authorization', await tokenOf('admin'))

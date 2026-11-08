@@ -1,14 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import ExcelJS from 'exceljs';
+import { strFromU8, unzipSync } from 'fflate';
+import { buildXlsx, readXlsx } from '../../backend/xlsx-io';
 import { StudentsExcelService } from '../../backend/students-excel.service';
 
 async function workbookBuffer(header: string[], rows: (string | null)[][]): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Readers');
-  ws.addRow(header);
-  rows.forEach((r) => ws.addRow(r));
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  return buildXlsx([{ name: 'Readers', header, rows }]);
 }
 
 function buildService() {
@@ -43,12 +40,10 @@ describe('StudentsExcelService', () => {
       { code: 'STU000001', name: 'Aisha', email: 'a@b.test', className: '5A', externalId: null, department: null, isActive: true },
     ] as never);
     const buffer = await ctx.service.exportWorkbook();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer as never);
-    const ws = wb.worksheets[0];
-    expect(ws.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth']);
-    expect(ws.getRow(2).getCell(1).value).toBe('STU000001');
-    expect(ws.getRow(2).getCell(7).value).toBe('yes');
+    const ws = (await readXlsx(buffer))[0];
+    expect(ws.rows[0]).toEqual(['Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth']);
+    expect(ws.rows[1][0]).toBe('STU000001');
+    expect(ws.rows[1][6]).toBe('yes');
   });
 
   it('with reading_club installed, exports Club / Club Group / Club Stage plus a reference sheet and dropdowns', async () => {
@@ -66,36 +61,39 @@ describe('StudentsExcelService', () => {
     };
     (ctx.service as unknown as { moduleRef: unknown }).moduleRef = { get: () => extension };
 
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load((await ctx.service.exportWorkbook()) as never);
-    const readers = wb.getWorksheet('Readers')!;
-    expect(readers.getRow(1).values).toEqual([undefined, 'Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth', 'Club', 'Club Group', 'Club Stage']);
-    expect([readers.getRow(2).getCell(9).value, readers.getRow(2).getCell(10).value, readers.getRow(2).getCell(11).value]).toEqual(['yes', 'Eagles', 'Silver']);
-    expect([readers.getRow(3).getCell(9).value, readers.getRow(3).getCell(10).value]).toEqual(['no', '']);
-    expect(readers.getCell('J2').dataValidation).toMatchObject({ type: 'list' });
+    const exported = await ctx.service.exportWorkbook();
+    const sheets = await readXlsx(exported);
+    const readers = sheets.find((s) => s.name === 'Readers')!.rows;
+    expect(readers[0]).toEqual(['Code', 'Name', 'Email', 'Class', 'External ID', 'Department', 'Active', 'Date of Birth', 'Club', 'Club Group', 'Club Stage']);
+    expect([readers[1][8], readers[1][9], readers[1][10]]).toEqual(['yes', 'Eagles', 'Silver']);
+    expect([readers[2][8], readers[2][9]]).toEqual(['no', null]);
+    // Dropdowns: yes/no on Active, and the group / stage lists read from the reference sheet.
+    const sheetXml = strFromU8(unzipSync(new Uint8Array(exported))['xl/worksheets/sheet1.xml']);
+    expect(sheetXml).toMatch(/sqref="I2:I\d+"><formula1>"yes,no"<\/formula1>/);
+    expect(sheetXml).toMatch(/sqref="J2:J\d+"><formula1>'Club reference'!\$E\$2:\$E\$\d+<\/formula1>/);
+    expect(sheetXml).toMatch(/sqref="K2:K\d+"><formula1>'Club reference'!\$F\$2:\$F\$\d+<\/formula1>/);
 
-    const ref = wb.getWorksheet('Club reference')!;
-    expect(ref.getRow(2).getCell(1).value).toBe('Eagles');
-    expect(ref.getRow(3).getCell(3).value).toBe('Silver');
-    expect(ref.getRow(4).getCell(1).value).toBe('Owls');
-    expect(ref.getRow(3).getCell(6).value).toBe('Silver'); // distinct stage-name dropdown list
+    const ref = sheets.find((s) => s.name === 'Club reference')!.rows;
+    expect(ref[1][0]).toBe('Eagles');
+    expect(ref[2][2]).toBe('Silver');
+    expect(ref[3][0]).toBe('Owls');
+    expect(ref[2][5]).toBe('Silver'); // distinct stage-name dropdown list
 
     // The exported file feeds straight back into the import parser.
-    const parsed = await ctx.service.parseWorkbook((await wb.xlsx.writeBuffer()) as never);
+    const parsed = await ctx.service.parseWorkbook(exported);
     expect(parsed[0]).toMatchObject({ club: true, clubGroup: 'Eagles', clubStage: 'Silver' });
     expect(parsed[1]).toMatchObject({ club: false, clubGroup: null });
   });
 
   it('parses the Date of Birth column (text or a real Excel date) and flags invalid / future dates', async () => {
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Readers');
-    ws.addRow(['Code', 'Date of Birth']);
-    ws.addRow(['S1', '2014-05-06']);
-    ws.addRow(['S2', new Date(Date.UTC(2013, 0, 31))]);
-    ws.addRow(['S3', '31/12/2014']);
-    ws.addRow(['S4', '2999-01-01']);
-    ws.addRow(['S5', null]);
-    const rows = await ctx.service.parseWorkbook(Buffer.from(await wb.xlsx.writeBuffer()));
+    const file = await buildXlsx([
+      {
+        name: 'Readers',
+        header: ['Code', 'Date of Birth'],
+        rows: [['S1', '2014-05-06'], ['S2', new Date(Date.UTC(2013, 0, 31))], ['S3', '31/12/2014'], ['S4', '2999-01-01'], ['S5', 'x']],
+      },
+    ]);
+    const rows = await ctx.service.parseWorkbook(file);
     expect(rows[0].dateOfBirth).toBe('2014-05-06');
     expect(rows[1].dateOfBirth).toBe('2013-01-31');
     expect(rows[2]).toMatchObject({ dateOfBirth: null, dateOfBirthInvalid: true });

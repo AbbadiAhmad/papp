@@ -276,3 +276,7 @@ VALUES ('library_catalog', '007_add_page_count.sql', '1d5a66c77d4d2ccda4ef3c3036
 **Known gap**: migrations `004_create_book_ratings_table.sql`/`005_add_review_moderation.sql`/`006_add_copy_code_sequence.sql` (added after D86's down-migrations were written) have **no** `down/004_...`/`down/005_...`/`down/006_...` counterpart yet — `--drop-data` uninstall on this module today only reverts through `003`, then (once it hits 007, which DOES have a down) would still fail partway on the 004-006 gap. Flagged here rather than silently worked around; needs the same treatment D86 gave 001-003 (006 in particular needs `DROP SEQUENCE IF EXISTS library_catalog_copy_code_seq`, not a column drop).
 
 `down/006_add_copy_code_sequence.sql` (LIBRARY_CATALOG-D22) DOES exist (`DROP SEQUENCE IF EXISTS`) — but since the numbering gap at 004/005 above already breaks the descending-order `runDownMigrationsIfPresent` sweep before it would ever reach 006, this is latent until 004/005's down-migrations are written.
+
+## Excel files (1.6.7, root D126)
+
+Books / print-codes exports and the books import use `backend/xlsx-io.ts` (`write-excel-file` + `read-excel-file`). It is an identical copy of `apps/api/src/common/excel/xlsx-io.ts`; edit the core file and copy it over all three module copies (a core test fails otherwise).

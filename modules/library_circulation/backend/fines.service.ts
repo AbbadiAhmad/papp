@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
-import ExcelJS from 'exceljs';
+import { buildXlsx } from './xlsx-io';
 import { CreateFineDto } from './dto/create-fine.dto';
 import { PaymentMethod } from './dto/record-payment.dto';
 import { UpdateFineDto } from './dto/update-fine.dto';
@@ -496,33 +496,25 @@ export class FinesService implements OnModuleInit, OnModuleDestroy {
   async exportPaymentsWorkbook(filter: PaymentFilter = {}): Promise<Buffer> {
     const { payments, totalAmount } = await this.getFilteredPayments(filter);
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Payments');
-    worksheet.columns = [
-      { header: 'payment_number', key: 'paymentNumber', width: 16 },
-      { header: 'fine_number', key: 'fineNumber', width: 16 },
-      { header: 'reader', key: 'reader', width: 28 },
-      { header: 'amount', key: 'amount', width: 12 },
-      { header: 'payment_method', key: 'paymentMethod', width: 14 },
-      { header: 'paid_at', key: 'paidAt', width: 18 },
-      { header: 'received_by', key: 'receivedByName', width: 22 },
-      { header: 'fine_created_by', key: 'createdByName', width: 22 },
-    ];
-    for (const payment of payments) {
-      worksheet.addRow({
-        paymentNumber: payment.paymentNumber,
-        fineNumber: payment.fineNumber,
-        reader: [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
-        amount: payment.amount,
-        paymentMethod: payment.paymentMethod,
-        paidAt: payment.paidAt.toISOString(),
-        receivedByName: payment.receivedByName ?? '',
-        createdByName: payment.createdByName ?? '',
-      });
-    }
-    worksheet.addRow({});
-    worksheet.addRow({ paymentNumber: 'TOTAL', amount: totalAmount });
-    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    const rows: Array<Array<string | number | null>> = payments.map((payment) => [
+      payment.paymentNumber,
+      payment.fineNumber,
+      [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
+      Number(payment.amount),
+      payment.paymentMethod,
+      payment.paidAt.toISOString(),
+      payment.receivedByName ?? '',
+      payment.createdByName ?? '',
+    ]);
+    rows.push([], ['TOTAL', null, null, totalAmount]);
+    return buildXlsx([
+      {
+        name: 'Payments',
+        header: ['payment_number', 'fine_number', 'reader', 'amount', 'payment_method', 'paid_at', 'received_by', 'fine_created_by'],
+        widths: [16, 16, 28, 12, 14, 18, 22, 22],
+        rows,
+      },
+    ]);
   }
 
   // --- internals -------------------------------------------------------

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient, SurveyQuestion, SurveyQuestionOption, SurveyResponse } from '@prisma/client';
-import ExcelJS from 'exceljs';
+import { buildXlsx } from './xlsx-io';
 import { answerForDisplay, formatAnswerForDisplay, summarizeChoiceAnswers } from './question-rules';
 import { getOptionsFrom } from './piping';
 import { dailyAverages, dailyCounts, EMPTY_FILTER, FILTERABLE_TYPES, parseReportFilter, type AveragePoint, type DailyPoint, type ReportFilter, type ReportFilterQuery } from './report-filter';
@@ -192,27 +192,25 @@ export class ReportsService implements OnModuleInit, OnModuleDestroy {
   async exportResponsesWorkbook(surveyId: string, filter: ReportFilter = EMPTY_FILTER): Promise<Buffer> {
     const { survey, questions, responses } = await this.loadSurveyWithAnswers(surveyId, filter);
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Responses');
-    worksheet.columns = [
-      { header: 'response_id', key: 'responseId', width: 36 },
-      { header: 'submitted_at', key: 'submittedAt', width: 22 },
-      { header: 'respondent', key: 'respondent', width: 28 },
-      ...questions.map((q) => ({ header: q.title, key: q.id, width: 24 })),
-    ];
-    for (const r of responses) {
-      const row: Record<string, unknown> = {
-        responseId: r.id,
-        submittedAt: r.submittedAt.toISOString(),
-        respondent: r.respondentEmail ?? 'Anonymous',
-      };
+    const rows = responses.map((r) => {
+      const byQuestion = new Map<string, string | number | boolean | null>();
       for (const a of r.answers) {
-        row[a.questionId] = a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? formatAnswerForDisplay(a.value) : a.value;
+        byQuestion.set(
+          a.questionId,
+          a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? formatAnswerForDisplay(a.value) : (a.value as string | number | boolean),
+        );
       }
-      worksheet.addRow(row);
-    }
+      return [r.id, r.submittedAt.toISOString(), r.respondentEmail ?? 'Anonymous', ...questions.map((q) => byQuestion.get(q.id) ?? null)];
+    });
     void survey; // only needed above for its sections->questions shape
-    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+    return buildXlsx([
+      {
+        name: 'Responses',
+        header: ['response_id', 'submitted_at', 'respondent', ...questions.map((q) => q.title)],
+        widths: [36, 22, 28, ...questions.map(() => 24)],
+        rows,
+      },
+    ]);
   }
 
   // --- internals -------------------------------------------------------

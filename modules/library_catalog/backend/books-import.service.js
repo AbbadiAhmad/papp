@@ -8,14 +8,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BooksImportService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
-const exceljs_1 = __importDefault(require("exceljs"));
+const xlsx_io_1 = require("./xlsx-io");
 const books_import_rules_1 = require("./books-import-rules");
 const book_files_service_1 = require("./book-files.service");
 const books_service_1 = require("./books.service");
@@ -44,33 +41,33 @@ let BooksImportService = class BooksImportService {
         await this.prisma.$disconnect();
     }
     async parseWorkbook(buffer) {
-        const workbook = new exceljs_1.default.Workbook();
+        let sheet;
         try {
-            await workbook.xlsx.load(buffer);
+            sheet = await (0, xlsx_io_1.readFirstSheet)(buffer);
         }
         catch {
             throw new common_1.BadRequestException('The file is not a readable .xlsx workbook');
         }
-        const sheet = workbook.worksheets[0];
         if (!sheet)
             throw new common_1.BadRequestException('The workbook has no sheet');
+        // `sheet.rows[r - 1]` is sheet row r; column indexes are 0-based.
         const columns = new Map();
-        sheet.getRow(1).eachCell((cell, col) => {
-            const name = this.cellText(cell.value).toLowerCase();
+        (sheet.rows[0] ?? []).forEach((cell, col) => {
+            const name = this.cellText(cell).toLowerCase();
             if (KNOWN_COLUMNS.has(name))
                 columns.set(name, col);
         });
         if (!columns.has('title'))
             throw new common_1.BadRequestException('The first row must contain a "title" column (use the file produced by the export)');
-        if (sheet.rowCount - 1 > MAX_ROWS)
+        if (sheet.rows.length - 1 > MAX_ROWS)
             throw new common_1.BadRequestException(`At most ${MAX_ROWS} rows can be imported at once`);
         const rows = [];
-        for (let r = 2; r <= sheet.rowCount; r += 1) {
-            const excelRow = sheet.getRow(r);
+        for (let r = 2; r <= sheet.rows.length; r += 1) {
+            const excelRow = sheet.rows[r - 1] ?? [];
             const cells = {};
             let any = false;
             for (const [name, col] of columns) {
-                const value = excelRow.getCell(col).value;
+                const value = excelRow[col];
                 const cellText = name === 'copy_acquisition_date' && value instanceof Date ? value.toISOString().slice(0, 10) : this.cellText(value);
                 cells[name] = cellText;
                 if (cellText)
@@ -82,20 +79,8 @@ let BooksImportService = class BooksImportService {
         return rows;
     }
     cellText(value) {
-        if (value === null || value === undefined)
-            return '';
-        if (value instanceof Date)
-            return value.toISOString();
-        if (typeof value === 'object') {
-            if ('richText' in value)
-                return value.richText.map((part) => part.text).join('').trim();
-            if ('text' in value && typeof value.text === 'string')
-                return value.text.trim();
-            if ('result' in value && value.result !== undefined)
-                return String(value.result).trim();
-            return '';
-        }
-        return String(value).trim();
+        // A date in any other column keeps its full timestamp (only the acquisition date is reduced to a day above).
+        return value instanceof Date ? (Number.isNaN(value.getTime()) ? 'invalid' : value.toISOString()) : (0, xlsx_io_1.cellToText)(value);
     }
     async snapshot(notes) {
         const [books, copies] = await Promise.all([

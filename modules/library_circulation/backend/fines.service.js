@@ -11,15 +11,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 var FinesService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FinesService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
-const exceljs_1 = __importDefault(require("exceljs"));
+const xlsx_io_1 = require("./xlsx-io");
 const notifications_sender_1 = require("./notifications-sender");
 const OPEN_FINE_STATUSES = ['unpaid', 'partially_paid'];
 const LATE_FINE_TYPE_CODE = 'FINE-LATE';
@@ -452,33 +449,25 @@ let FinesService = FinesService_1 = class FinesService {
     /** Same filtered/enriched rows as listPayments(), as an .xlsx workbook — same shape as library_catalog's own exportBooksWorkbook(). */
     async exportPaymentsWorkbook(filter = {}) {
         const { payments, totalAmount } = await this.getFilteredPayments(filter);
-        const workbook = new exceljs_1.default.Workbook();
-        const worksheet = workbook.addWorksheet('Payments');
-        worksheet.columns = [
-            { header: 'payment_number', key: 'paymentNumber', width: 16 },
-            { header: 'fine_number', key: 'fineNumber', width: 16 },
-            { header: 'reader', key: 'reader', width: 28 },
-            { header: 'amount', key: 'amount', width: 12 },
-            { header: 'payment_method', key: 'paymentMethod', width: 14 },
-            { header: 'paid_at', key: 'paidAt', width: 18 },
-            { header: 'received_by', key: 'receivedByName', width: 22 },
-            { header: 'fine_created_by', key: 'createdByName', width: 22 },
-        ];
-        for (const payment of payments) {
-            worksheet.addRow({
-                paymentNumber: payment.paymentNumber,
-                fineNumber: payment.fineNumber,
-                reader: [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
-                amount: payment.amount,
-                paymentMethod: payment.paymentMethod,
-                paidAt: payment.paidAt.toISOString(),
-                receivedByName: payment.receivedByName ?? '',
-                createdByName: payment.createdByName ?? '',
-            });
-        }
-        worksheet.addRow({});
-        worksheet.addRow({ paymentNumber: 'TOTAL', amount: totalAmount });
-        return workbook.xlsx.writeBuffer();
+        const rows = payments.map((payment) => [
+            payment.paymentNumber,
+            payment.fineNumber,
+            [payment.studentName, payment.studentCode ? `(${payment.studentCode})` : null].filter(Boolean).join(' '),
+            Number(payment.amount),
+            payment.paymentMethod,
+            payment.paidAt.toISOString(),
+            payment.receivedByName ?? '',
+            payment.createdByName ?? '',
+        ]);
+        rows.push([], ['TOTAL', null, null, totalAmount]);
+        return (0, xlsx_io_1.buildXlsx)([
+            {
+                name: 'Payments',
+                header: ['payment_number', 'fine_number', 'reader', 'amount', 'payment_method', 'paid_at', 'received_by', 'fine_created_by'],
+                widths: [16, 16, 28, 12, 14, 18, 22, 22],
+                rows,
+            },
+        ]);
     }
     // --- internals -------------------------------------------------------
     async createFineWithTransaction(input) {

@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { readFirstSheet } from '../../backend/xlsx-io';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { LibraryCatalogBookCopyStatus, Prisma } from '@prisma/client';
 import { BooksService } from '../../backend/books.service';
@@ -896,13 +897,10 @@ describe('BooksService', () => {
         orderBy: { title: 'asc' },
         include: { copies: { where: copyWhere, orderBy: { qrCode: 'asc' } } },
       });
-      const ExcelJS = (await import('exceljs')).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer as never);
-      const sheet = wb.worksheets[0];
-      expect(sheet.getRow(1).values).toEqual(expect.arrayContaining(['id', 'title', 'copy_id', 'copy_code', 'copy_status']));
-      expect(sheet.rowCount).toBe(2);
-      expect(String(sheet.getRow(2).getCell(2).value)).toBe('Inventory Export Title');
+      const sheet = (await readFirstSheet(buffer))!;
+      expect(sheet.rows[0]).toEqual(expect.arrayContaining(['id', 'title', 'copy_id', 'copy_code', 'copy_status']));
+      expect(sheet.rows).toHaveLength(2);
+      expect(String(sheet.rows[1][1])).toBe('Inventory Export Title');
     });
   });
 

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { LibraryCatalogBookCopyStatus, Prisma, PrismaClient } from '@prisma/client';
-import ExcelJS from 'exceljs';
+import { cellToText, readFirstSheet } from './xlsx-io';
 import {
   BOOK_COLUMNS,
   BOOK_FIELDS,
@@ -56,29 +56,29 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
   }
 
   async parseWorkbook(buffer: Buffer): Promise<RawImportRow[]> {
-    const workbook = new ExcelJS.Workbook();
+    let sheet;
     try {
-      await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+      sheet = await readFirstSheet(buffer);
     } catch {
       throw new BadRequestException('The file is not a readable .xlsx workbook');
     }
-    const sheet = workbook.worksheets[0];
     if (!sheet) throw new BadRequestException('The workbook has no sheet');
+    // `sheet.rows[r - 1]` is sheet row r; column indexes are 0-based.
     const columns = new Map<string, number>();
-    sheet.getRow(1).eachCell((cell, col) => {
-      const name = this.cellText(cell.value).toLowerCase();
+    (sheet.rows[0] ?? []).forEach((cell, col) => {
+      const name = this.cellText(cell).toLowerCase();
       if (KNOWN_COLUMNS.has(name)) columns.set(name, col);
     });
     if (!columns.has('title')) throw new BadRequestException('The first row must contain a "title" column (use the file produced by the export)');
-    if (sheet.rowCount - 1 > MAX_ROWS) throw new BadRequestException(`At most ${MAX_ROWS} rows can be imported at once`);
+    if (sheet.rows.length - 1 > MAX_ROWS) throw new BadRequestException(`At most ${MAX_ROWS} rows can be imported at once`);
 
     const rows: RawImportRow[] = [];
-    for (let r = 2; r <= sheet.rowCount; r += 1) {
-      const excelRow = sheet.getRow(r);
+    for (let r = 2; r <= sheet.rows.length; r += 1) {
+      const excelRow = sheet.rows[r - 1] ?? [];
       const cells: Record<string, string> = {};
       let any = false;
       for (const [name, col] of columns) {
-        const value = excelRow.getCell(col).value;
+        const value = excelRow[col];
         const cellText = name === 'copy_acquisition_date' && value instanceof Date ? value.toISOString().slice(0, 10) : this.cellText(value);
         cells[name] = cellText;
         if (cellText) any = true;
@@ -88,16 +88,9 @@ export class BooksImportService implements OnModuleInit, OnModuleDestroy {
     return rows;
   }
 
-  private cellText(value: ExcelJS.CellValue): string {
-    if (value === null || value === undefined) return '';
-    if (value instanceof Date) return value.toISOString();
-    if (typeof value === 'object') {
-      if ('richText' in value) return value.richText.map((part) => part.text).join('').trim();
-      if ('text' in value && typeof value.text === 'string') return value.text.trim();
-      if ('result' in value && value.result !== undefined) return String(value.result).trim();
-      return '';
-    }
-    return String(value).trim();
+  private cellText(value: unknown): string {
+    // A date in any other column keeps its full timestamp (only the acquisition date is reduced to a day above).
+    return value instanceof Date ? (Number.isNaN(value.getTime()) ? 'invalid' : value.toISOString()) : cellToText(value);
   }
 
   private async snapshot(notes: boolean): Promise<ImportSnapshot> {

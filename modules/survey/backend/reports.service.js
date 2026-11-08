@@ -5,15 +5,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 var ReportsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
-const exceljs_1 = __importDefault(require("exceljs"));
+const xlsx_io_1 = require("./xlsx-io");
 const question_rules_1 = require("./question-rules");
 const piping_1 = require("./piping");
 const report_filter_1 = require("./report-filter");
@@ -158,27 +155,22 @@ let ReportsService = ReportsService_1 = class ReportsService {
     }
     async exportResponsesWorkbook(surveyId, filter = report_filter_1.EMPTY_FILTER) {
         const { survey, questions, responses } = await this.loadSurveyWithAnswers(surveyId, filter);
-        const workbook = new exceljs_1.default.Workbook();
-        const worksheet = workbook.addWorksheet('Responses');
-        worksheet.columns = [
-            { header: 'response_id', key: 'responseId', width: 36 },
-            { header: 'submitted_at', key: 'submittedAt', width: 22 },
-            { header: 'respondent', key: 'respondent', width: 28 },
-            ...questions.map((q) => ({ header: q.title, key: q.id, width: 24 })),
-        ];
-        for (const r of responses) {
-            const row = {
-                responseId: r.id,
-                submittedAt: r.submittedAt.toISOString(),
-                respondent: r.respondentEmail ?? 'Anonymous',
-            };
+        const rows = responses.map((r) => {
+            const byQuestion = new Map();
             for (const a of r.answers) {
-                row[a.questionId] = a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? (0, question_rules_1.formatAnswerForDisplay)(a.value) : a.value;
+                byQuestion.set(a.questionId, a.value === null || a.value === undefined ? '' : Array.isArray(a.value) || typeof a.value === 'string' ? (0, question_rules_1.formatAnswerForDisplay)(a.value) : a.value);
             }
-            worksheet.addRow(row);
-        }
+            return [r.id, r.submittedAt.toISOString(), r.respondentEmail ?? 'Anonymous', ...questions.map((q) => byQuestion.get(q.id) ?? null)];
+        });
         void survey; // only needed above for its sections->questions shape
-        return workbook.xlsx.writeBuffer();
+        return (0, xlsx_io_1.buildXlsx)([
+            {
+                name: 'Responses',
+                header: ['response_id', 'submitted_at', 'respondent', ...questions.map((q) => q.title)],
+                widths: [36, 22, 28, ...questions.map(() => 24)],
+                rows,
+            },
+        ]);
     }
     // --- internals -------------------------------------------------------
     async ensureSurveyExists(surveyId) {
