@@ -70,6 +70,20 @@ describe('book page actions (LIBRARY_CATALOG-D43)', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 
+  it('keeps Edit and Delete as visible buttons on a phone-sized screen (no hidden menu)', async () => {
+    window.matchMedia = ((query: string) => ({ matches: true, media: query, addEventListener: () => undefined, removeEventListener: () => undefined, addListener: () => undefined, removeListener: () => undefined, onchange: null, dispatchEvent: () => false })) as never;
+    try {
+      renderPage();
+      await screen.findByRole('heading', { name: 'Dune' });
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Actions' })).toBeNull();
+    } finally {
+      // @ts-expect-error restore jsdom's lack of matchMedia
+      delete window.matchMedia;
+    }
+  });
+
   it('shows only the actions the user may use', async () => {
     state.allowed = new Set(['library_catalog.books.view', 'library_catalog.books.update']);
     renderPage();
