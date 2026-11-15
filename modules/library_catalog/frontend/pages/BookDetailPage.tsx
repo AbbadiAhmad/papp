@@ -42,7 +42,7 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { usePermission, useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { BookCover, PageActions, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
 import { BookFormDialog } from './BookFormDialog';
 import { PrintStickerDialog } from './PrintStickerDialog';
 import { BookFilesPanel } from './BookFilesPanel';
@@ -290,13 +290,25 @@ export function BookDetailPage() {
                 </>
               }
               action={
-                <PageActions
-                  actions={[
-                    { key: 'add_copy', label: t('library_catalog.actions.add_copy'), icon: <AddIcon />, onClick: () => setCopyDialogOpen(true), permission: 'library_catalog.books.create', primary: true },
-                    { key: 'edit', label: t('core.common.edit'), icon: <EditIcon />, onClick: () => setBookFormOpen(true), permission: 'library_catalog.books.update' },
-                    { key: 'delete', label: t('core.common.delete'), icon: <DeleteIcon />, onClick: () => setConfirmRemoveBook(true), permission: 'library_catalog.books.delete' },
-                  ]}
-                />
+                // All three stay visible buttons (wrapping on narrow screens), not a "⋮" menu: on this page they are the
+                // book's main controls and a menu hid Edit/Delete on phones (LIBRARY_CATALOG-D43).
+                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                  <Can permission="library_catalog.books.create">
+                    <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
+                      {t('library_catalog.actions.add_copy')}
+                    </Button>
+                  </Can>
+                  <Can permission="library_catalog.books.update">
+                    <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setBookFormOpen(true)}>
+                      {t('core.common.edit')}
+                    </Button>
+                  </Can>
+                  <Can permission="library_catalog.books.delete">
+                    <Button startIcon={<DeleteIcon />} variant="outlined" color="error" onClick={() => setConfirmRemoveBook(true)}>
+                      {t('core.common.delete')}
+                    </Button>
+                  </Can>
+                </Stack>
               }
             />
 
