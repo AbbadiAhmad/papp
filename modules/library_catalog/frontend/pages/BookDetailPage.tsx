@@ -33,7 +33,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../apps/web/src/shared/components/ConfirmDialog';
 import { QueryStateGate } from '../../../../apps/web/src/shared/components/QueryStateGate';
 import { formatDateOnly, formatDateTime } from '../../../../apps/web/src/shared/format';
@@ -42,7 +42,8 @@ import { extractErrorMessage } from '../../../../apps/web/src/shared/api/httpCli
 import { modulesApi } from '../../../../apps/web/src/shared/api/modules';
 import { usePermission, useGatedCall, Can } from '../../../../apps/web/src/shared/permissions';
 import { useLanguage } from '../../../../apps/web/src/app/LanguageContext';
-import { BookCover, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { BookCover, PageActions, PageHero } from '../../../../apps/web/src/shared/ui/kit';
+import { BookFormDialog } from './BookFormDialog';
 import { PrintStickerDialog } from './PrintStickerDialog';
 import { BookFilesPanel } from './BookFilesPanel';
 import { Paginated } from '../../../../apps/web/src/shared/components/Paginated';
@@ -52,6 +53,7 @@ import {
   type CopyHistoryEntry,
   type CreateBookCopyInput,
   type LibraryBookCopy,
+  type UpdateBookInput,
   coverUrl,
   imageUrl,
 } from '../api';
@@ -94,6 +96,10 @@ export function BookDetailPage() {
   const galleryOffset = book?.files?.cover ? 1 : 0;
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  // The same book-level actions the catalog cards offer (LIBRARY_CATALOG-D43).
+  const navigate = useNavigate();
+  const [bookFormOpen, setBookFormOpen] = useState(false);
+  const [confirmRemoveBook, setConfirmRemoveBook] = useState(false);
   // Index into [cover, ...gallery] of the picture shown full-size; null = viewer closed (LIBRARY_CATALOG-D39).
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [editingCopy, setEditingCopy] = useState<LibraryBookCopy | null>(null);
@@ -284,11 +290,13 @@ export function BookDetailPage() {
                 </>
               }
               action={
-                <Can permission="library_catalog.books.create">
-                  <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCopyDialogOpen(true)}>
-                    {t('library_catalog.actions.add_copy')}
-                  </Button>
-                </Can>
+                <PageActions
+                  actions={[
+                    { key: 'add_copy', label: t('library_catalog.actions.add_copy'), icon: <AddIcon />, onClick: () => setCopyDialogOpen(true), permission: 'library_catalog.books.create', primary: true },
+                    { key: 'edit', label: t('core.common.edit'), icon: <EditIcon />, onClick: () => setBookFormOpen(true), permission: 'library_catalog.books.update' },
+                    { key: 'delete', label: t('core.common.delete'), icon: <DeleteIcon />, onClick: () => setConfirmRemoveBook(true), permission: 'library_catalog.books.delete' },
+                  ]}
+                />
               }
             />
 
@@ -569,6 +577,35 @@ export function BookDetailPage() {
           <Button onClick={() => setHistoryCopy(null)}>{t('core.common.close')}</Button>
         </DialogActions>
       </Dialog>
+
+      <BookFormDialog
+        open={bookFormOpen}
+        book={book ?? null}
+        onClose={() => setBookFormOpen(false)}
+        onSubmit={async (dto) => {
+          await gated('library_catalog.books.update', () => libraryCatalogApi.updateBook(bookId as string, dto as UpdateBookInput));
+          reload();
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmRemoveBook}
+        title={t('library_catalog.books.delete_title')}
+        description={t('library_catalog.books.delete_confirm', { title: book?.title ?? '' })}
+        confirmLabel={t('core.common.delete')}
+        confirmColor="error"
+        onCancel={() => setConfirmRemoveBook(false)}
+        onConfirm={async () => {
+          setConfirmRemoveBook(false);
+          try {
+            await gated('library_catalog.books.delete', () => libraryCatalogApi.removeBook(bookId as string));
+            navigate('/library/books');
+          } catch (err) {
+            // e.g. "still has N registered copies - remove them first"
+            setError(extractErrorMessage(err));
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={pendingRemoveCopy !== null}
